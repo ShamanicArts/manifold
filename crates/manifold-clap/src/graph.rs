@@ -5,8 +5,8 @@
 use std::cell::UnsafeCell;
 use std::ffi::{CStr, c_char, c_void};
 use std::ptr::{self, null, null_mut};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "linux")]
 use crate::graph_gui::{GuiMessage, GuiMessageKind, GuiState};
@@ -36,6 +36,7 @@ use clap_sys::process::{
 };
 use clap_sys::stream::{clap_istream, clap_ostream};
 use manifold_core::events::{EventKind, TimedEvent};
+use manifold_native::capture_mailbox::{AudioCaptureWorker, CaptureMailbox};
 use manifold_native::host_buffers::{HostBuffers, RawHostBlock};
 use manifold_native::host_values::ValueBank;
 use manifold_native::parameters::{
@@ -49,6 +50,7 @@ const MAX_NOTES: usize = 1024;
 const MAX_STATE: usize = 45 * 1024 * 1024;
 
 struct Runtime {
+    capture_worker: Option<AudioCaptureWorker>,
     bank: usize,
     prepared: PreparedNativeProject,
     buffers: HostBuffers,
@@ -67,6 +69,7 @@ pub(crate) struct Instance {
     active: AtomicBool,
     configuration: Mutex<Option<(f32, usize)>>,
     state: Mutex<Vec<u8>>,
+    capture_mailbox: Mutex<Option<Arc<CaptureMailbox>>>,
     descriptors: Mutex<[Option<HostParameter>; HOST_SLOT_COUNT]>,
     value_banks: [ValueBank; 2],
     active_bank: AtomicUsize,
@@ -121,7 +124,7 @@ fn build_presentation(bytes: &[u8], project: &NativeProject) -> Option<serde_jso
         })
         .collect();
     Some(serde_json::json!({"schemaVersion":1,"id":"manifold.graph",
-        "nodes":nodes,"controls":controls}))
+        "nodes":nodes,"controls":controls,"captureGesture":true}))
 }
 
 impl Instance {
@@ -161,6 +164,7 @@ impl Instance {
             active: AtomicBool::new(false),
             configuration: Mutex::new(None),
             state: Mutex::new(DEFAULT.to_vec()),
+            capture_mailbox: Mutex::new(None),
             descriptors: Mutex::new(descriptors),
             value_banks: [ValueBank::new(normalized), ValueBank::new(normalized)],
             active_bank: AtomicUsize::new(0),
@@ -201,6 +205,7 @@ impl Instance {
                 })
         });
         Some(Box::new(Runtime {
+            capture_worker: None,
             bank,
             prepared,
             buffers: HostBuffers::prepare(max),
@@ -209,6 +214,73 @@ impl Instance {
             slot_indices,
             midi_node,
         }))
+    }
+
+    fn attach_capture_worker(
+        runtime: &mut Runtime,
+        bytes: &[u8],
+        rate: f32,
+    ) -> Option<Arc<CaptureMailbox>> {
+        let document: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+        document["signal"]["selectedCaptureNodeId"].as_u64()?;
+        let frames = ((rate as usize).saturating_mul(30)).min(1_440_000);
+        let mailbox = CaptureMailbox::new(frames)?;
+        runtime.capture_worker = Some(AudioCaptureWorker::new(Arc::clone(&mailbox)));
+        Some(mailbox)
+    }
+
+    fn request_capture(&self, node: u32, frames: usize) -> bool {
+        self.capture_mailbox
+            .lock()
+            .ok()
+            .and_then(|mailbox| mailbox.clone())
+            .is_some_and(|mailbox| mailbox.request(node, frames))
+    }
+
+    pub(super) fn request_capture_seconds(&self, node: u32, seconds: f64) -> bool {
+        let Some(rate) = self
+            .configuration
+            .lock()
+            .ok()
+            .and_then(|value| *value)
+            .map(|config| config.0 as f64)
+        else {
+            return false;
+        };
+        seconds.is_finite()
+            && (0.05..=30.0).contains(&seconds)
+            && self.request_capture(node, (rate * seconds).round() as usize)
+    }
+
+    pub(super) fn finish_capture(&self, instrument: u32, label: &str) -> Option<bool> {
+        let mailbox = self
+            .capture_mailbox
+            .lock()
+            .ok()
+            .and_then(|value| value.clone())?;
+        let result = mailbox.take()?;
+        let Ok(window) = result else {
+            return Some(false);
+        };
+        let state = self.state_bytes()?;
+        let rate = self
+            .configuration
+            .lock()
+            .ok()
+            .and_then(|value| *value)?
+            .0
+            .round() as u32;
+        let Ok(bytes) = NativeProject::embed_capture_asset(
+            &state,
+            window.node,
+            instrument,
+            window.stereo(),
+            rate,
+            label,
+        ) else {
+            return Some(false);
+        };
+        Some(self.restore(bytes))
     }
 
     fn snapshot(&self, runtime: &Runtime) {
@@ -284,10 +356,11 @@ impl Instance {
         let config = self.configuration.lock().ok().and_then(|value| *value);
         let next_bank = 1 - self.active_bank.load(Ordering::Acquire);
         let prepared = if let Some((rate, max)) = config {
-            let Some(value) = Instance::prepare(&bytes, rate, max, next_bank) else {
+            let Some(mut value) = Instance::prepare(&bytes, rate, max, next_bank) else {
                 return false;
             };
-            Some(value)
+            let capture = Self::attach_capture_worker(&mut value, &bytes, rate);
+            Some((value, capture))
         } else {
             None
         };
@@ -298,6 +371,9 @@ impl Instance {
             return false;
         };
         let Ok(mut bound) = self.descriptors.lock() else {
+            return false;
+        };
+        let Ok(mut mailbox) = self.capture_mailbox.lock() else {
             return false;
         };
         #[cfg(target_os = "linux")]
@@ -312,7 +388,8 @@ impl Instance {
         }
         self.value_banks[next_bank].write_all(values);
         self.active_bank.store(next_bank, Ordering::Release);
-        if let Some(prepared) = prepared {
+        if let Some((prepared, capture)) = prepared {
+            *mailbox = capture;
             self.pending
                 .store(Box::into_raw(prepared), Ordering::Release);
         }
@@ -320,6 +397,7 @@ impl Instance {
         drop(view);
         drop(bound);
         drop(state);
+        drop(mailbox);
         if !self.host.is_null() {
             if let Some(get) = unsafe { (*self.host).get_extension } {
                 let extension = unsafe { get(self.host, CLAP_EXT_PARAMS.as_ptr()) };
@@ -344,6 +422,9 @@ impl Instance {
     }
     fn deactivate(&self) {
         self.active.store(false, Ordering::Release);
+        if let Ok(mut mailbox) = self.capture_mailbox.lock() {
+            *mailbox = None;
+        }
         for pointer in [&self.current, &self.pending, &self.retired] {
             let old = pointer.swap(null_mut(), Ordering::AcqRel);
             if !old.is_null() {
@@ -415,9 +496,15 @@ unsafe extern "C" fn activate(plugin: *const clap_plugin, rate: f64, _min: u32, 
         return false;
     };
     let bank = instance.active_bank.load(Ordering::Acquire);
-    let Some(runtime) = Instance::prepare(&state, rate as f32, max as usize, bank) else {
+    let Some(mut runtime) = Instance::prepare(&state, rate as f32, max as usize, bank) else {
         return false;
     };
+    let capture = Instance::attach_capture_worker(&mut runtime, &state, rate as f32);
+    let Ok(mut mailbox) = instance.capture_mailbox.lock() else {
+        return false;
+    };
+    *mailbox = capture;
+    drop(mailbox);
     instance.snapshot(&runtime);
     instance
         .current
@@ -451,6 +538,9 @@ unsafe extern "C" fn reset(plugin: *const clap_plugin) {
     // CLAP calls reset while process is stopped; the prepared runtime belongs
     // to this audio thread. Keep project state, bindings, and host values.
     let runtime = unsafe { &mut *pointer };
+    if let Some(worker) = runtime.capture_worker.as_mut() {
+        worker.service(&mut runtime.prepared.processor);
+    }
     runtime.prepared.processor.reset_processing();
     runtime.events.clear();
     runtime.automation.clear();
@@ -945,6 +1035,9 @@ unsafe extern "C" fn process(
     };
     if unsafe { runtime.buffers.render(&mut runtime.prepared.processor, raw) }.is_err() {
         return CLAP_PROCESS_ERROR;
+    }
+    if let Some(worker) = runtime.capture_worker.as_mut() {
+        worker.service(&mut runtime.prepared.processor);
     }
     if !runtime.automation.is_empty() || {
         #[cfg(target_os = "linux")]
@@ -1700,6 +1793,102 @@ mod tests {
             (*reopened).deactivate.unwrap()(reopened);
             (*reopened).destroy.unwrap()(reopened)
         };
+    }
+
+    #[test]
+    fn clap_audio_callback_captures_sidechain_and_publishes_portable_sample() {
+        let instance = Instance::new(null(), &crate::GRAPH_DESCRIPTOR);
+        let plugin = &instance.plugin as *const clap_plugin;
+        let authored =
+            include_bytes!("../../../projects/graph-workspace/retrospective-multisource.json");
+        assert!(instance.restore(authored.to_vec()));
+        assert!(unsafe { activate(plugin, 48_000., 1, 128) });
+        let mut main_left = [0.25_f32; 128];
+        let mut main_right = [0.25_f32; 128];
+        let mut side_left = [-0.5_f32; 128];
+        let mut side_right = [-0.5_f32; 128];
+        let mut main_channels = [main_left.as_mut_ptr(), main_right.as_mut_ptr()];
+        let mut side_channels = [side_left.as_mut_ptr(), side_right.as_mut_ptr()];
+        let inputs = [
+            clap_audio_buffer {
+                data32: main_channels.as_mut_ptr(),
+                data64: null_mut(),
+                channel_count: 2,
+                latency: 0,
+                constant_mask: 0,
+            },
+            clap_audio_buffer {
+                data32: side_channels.as_mut_ptr(),
+                data64: null_mut(),
+                channel_count: 2,
+                latency: 0,
+                constant_mask: 0,
+            },
+        ];
+        let mut left = [0_f32; 128];
+        let mut right = [0_f32; 128];
+        let mut channels = [left.as_mut_ptr(), right.as_mut_ptr()];
+        let mut output = clap_audio_buffer {
+            data32: channels.as_mut_ptr(),
+            data64: null_mut(),
+            channel_count: 2,
+            latency: 0,
+            constant_mask: 0,
+        };
+        let mut block = clap_process {
+            steady_time: 0,
+            frames_count: 128,
+            transport: null(),
+            audio_inputs: inputs.as_ptr(),
+            audio_outputs: &mut output,
+            audio_inputs_count: 2,
+            audio_outputs_count: 1,
+            in_events: null(),
+            out_events: null(),
+        };
+        for _ in 0..75 {
+            assert_eq!(unsafe { process(plugin, &block) }, CLAP_PROCESS_CONTINUE);
+        }
+        assert!(!instance.request_capture(10, 1_440_001));
+        assert!(instance.request_capture(10, 9_600));
+        let mut published = false;
+        for _ in 0..100 {
+            assert_eq!(unsafe { process(plugin, &block) }, CLAP_PROCESS_CONTINUE);
+            if let Some(result) = instance.finish_capture(5, "CLAP sidechain take") {
+                assert!(result);
+                published = true;
+                break;
+            }
+        }
+        assert!(published);
+        let saved = instance.state_bytes().unwrap();
+        let document: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+        assert_eq!(document["signal"]["selectedCaptureNodeId"], 10);
+        assert_eq!(document["assets"][0]["frames"], 9_600);
+        let note = clap_event_note {
+            header: clap_event_header {
+                size: std::mem::size_of::<clap_event_note>() as u32,
+                time: 0,
+                space_id: CLAP_CORE_EVENT_SPACE_ID,
+                type_: CLAP_EVENT_NOTE_ON,
+                flags: 0,
+            },
+            note_id: -1,
+            port_index: 0,
+            channel: 0,
+            key: 60,
+            velocity: 1.0,
+        };
+        let pointers = vec![&note.header as *const _];
+        let events = clap_input_events {
+            ctx: &pointers as *const _ as *mut c_void,
+            size: Some(event_count),
+            get: Some(event_get),
+        };
+        block.in_events = &events;
+        assert_eq!(unsafe { process(plugin, &block) }, CLAP_PROCESS_CONTINUE);
+        assert!(left.iter().any(|sample| *sample < -0.01));
+        instance.deactivate();
     }
 
     #[test]

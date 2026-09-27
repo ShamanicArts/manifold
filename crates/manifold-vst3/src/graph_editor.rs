@@ -36,6 +36,8 @@ type ImportResult = Result<(String, Vec<u8>), &'static str>;
 enum EditorAction {
     Import(ImportResult),
     Assign { id: u32, slot: u32 },
+    CaptureStart { node: u32, seconds: f64 },
+    CaptureFinish { instrument: u32 },
 }
 
 #[derive(Clone, Copy)]
@@ -110,15 +112,25 @@ impl State {
     }
 
     fn tick(&self) {
-        let import_status = self.imports.pop().map(|action| match action {
-            EditorAction::Import(Ok((name, bytes))) => match self.shared.import_project(&bytes) {
+        let action_status = self.imports.pop().and_then(|action| match action {
+            EditorAction::Import(Ok((name, bytes))) => Some((match self.shared.import_project(&bytes) {
                 Ok(()) => format!("Loaded {name} into the DAW graph."),
                 Err(reason) => format!("Project unchanged: {reason}."),
-            },
-            EditorAction::Import(Err(reason)) => format!("Project unchanged: {reason}."),
-            EditorAction::Assign { id, slot } => match self.shared.reassign_slot(id, slot) {
+            }, None)),
+            EditorAction::Import(Err(reason)) => Some((format!("Project unchanged: {reason}."), None)),
+            EditorAction::Assign { id, slot } => Some((match self.shared.reassign_slot(id, slot) {
                 Ok(()) => format!("Assigned host slot {} to slot {}. Graph reloaded; active voices and effect tails reset. Existing automation may reach a different control.", id - HOST_SLOT_BASE + 1, slot + 1),
                 Err(reason) => format!("Host slot unchanged: {reason}."),
+            }, None)),
+            EditorAction::CaptureStart { node, seconds } => Some(match self.shared.capture_start(node, seconds) {
+                Ok(()) => (format!("Freezing {seconds} seconds from capture node {node}…"), None),
+                Err(reason) => (format!("Capture failed: {reason}."), Some(false)),
+            }),
+            EditorAction::CaptureFinish { instrument } => match self.shared.capture_finish(instrument) {
+                Ok(None) => None,
+                Ok(Some(true)) => Some(("Captured source published. New notes use this take; capture history restarted.".to_owned(), Some(true))),
+                Ok(Some(false)) => Some(("Capture failed; the project was not changed.".to_owned(), Some(false))),
+                Err(reason) => Some((format!("Capture failed: {reason}."), Some(false))),
             },
         });
         let handler = self
@@ -151,8 +163,12 @@ impl State {
         if self.last_sent.load(Ordering::Acquire) != current && self.send_snapshot() {
             self.last_sent.store(current, Ordering::Release);
         }
-        if let Some(message) = import_status {
-            let command = serde_json::json!({"kind":"status","message":message}).to_string();
+        if let Some((message, capture_result)) = action_status {
+            let command = if let Some(ok) = capture_result {
+                serde_json::json!({"kind":"capture-result","ok":ok,"message":message}).to_string()
+            } else {
+                serde_json::json!({"kind":"status","message":message}).to_string()
+            };
             if let Ok(mut session) = self.session.lock() {
                 if let Some(session) = session.as_mut() {
                     session.send(&command);
@@ -303,6 +319,28 @@ impl IPlugViewTrait for View {
                     continue;
                 }
                 match value["kind"].as_str() {
+                    Some("capture-start") => {
+                        let node = value["nodeId"]
+                            .as_u64()
+                            .and_then(|id| u32::try_from(id).ok());
+                        let seconds = value["seconds"].as_f64();
+                        if let (Some(node), Some(seconds)) = (node, seconds) {
+                            if node > 0 && seconds.is_finite() && (0.05..=30.0).contains(&seconds) {
+                                submit(EditorAction::CaptureStart { node, seconds });
+                            }
+                        }
+                        continue;
+                    }
+                    Some("capture-finish") => {
+                        if let Some(instrument) = value["instrumentId"]
+                            .as_u64()
+                            .and_then(|id| u32::try_from(id).ok())
+                            .filter(|id| *id > 0)
+                        {
+                            submit(EditorAction::CaptureFinish { instrument });
+                        }
+                        continue;
+                    }
                     Some("slot-assign") => {
                         let id = value["id"].as_u64().and_then(|id| u32::try_from(id).ok());
                         let slot = value["slot"]

@@ -1847,6 +1847,32 @@ impl ExecutionPlan {
             })
     }
 
+    pub fn reserve_capture_staging(&mut self, node: NodeId, frames: usize) -> bool {
+        self.nodes
+            .iter_mut()
+            .find(|entry| entry.id == node)
+            .is_some_and(|entry| match &mut entry.kernel {
+                Kernel::LoopCapture(loop_node) => loop_node.reserve_staging_capacity(frames),
+                _ => false,
+            })
+    }
+
+    pub fn begin_prepared_capture_staging(
+        &mut self,
+        node: NodeId,
+        requested_frames: usize,
+    ) -> bool {
+        self.nodes
+            .iter_mut()
+            .find(|entry| entry.id == node)
+            .is_some_and(|entry| match &mut entry.kernel {
+                Kernel::LoopCapture(loop_node) => {
+                    loop_node.begin_prepared_staged_snapshot_recent(requested_frames)
+                }
+                _ => false,
+            })
+    }
+
     pub fn capture_staging_status(&self, node: NodeId) -> Option<bool> {
         self.nodes
             .iter()

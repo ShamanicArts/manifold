@@ -1529,6 +1529,20 @@ pub extern "C" fn manifold_capture_length(node_id: u32) -> u32 {
     })
 }
 
+/// Preallocate a bounded capture window before audio starts.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_capture_stage_reserve(node_id: u32, frames: u32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(
+                engine
+                    .plan
+                    .reserve_capture_staging(node_id.into(), frames as usize),
+            )
+        })
+    })
+}
+
 /// Begin a frozen recording-window copy; later render blocks advance it in bounded slices.
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_capture_stage_begin(node_id: u32, requested_frames: u32) -> u32 {

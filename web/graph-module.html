@@ -11,6 +11,7 @@
     <main>
       <div class="graph-heading"><div><small>Portable project / host controls</small><h1>Graph</h1></div><output id="graph-count"></output></div>
       <div class="graph-toolbar"><label class="graph-open"><span id="graph-import-label">Inspect project JSON</span><input id="graph-file" type="file" accept="application/json,.json"></label><button id="graph-note" type="button">Note voice</button><button id="graph-tone" type="button">Tone texture</button><span id="graph-source"></span></div>
+      <section id="graph-capture" class="graph-capture" aria-label="Capture recent audio" hidden><label>Capture source <select id="graph-capture-source"></select></label><label>Window <input id="graph-capture-seconds" type="number" min="0.05" max="30" step="0.05" value="2"> s</label><button id="graph-capture-go" type="button">Capture to instrument</button></section>
       <section id="graph-widget-root" aria-label="Graph node controls"></section>
       <p id="graph-status" role="status">Loading the authored graph…</p>
       <footer>Controls use the original Manifold compact slider and dropdown renderers. The host keeps the 128 automation slot IDs stable.</footer>

@@ -13,6 +13,12 @@ h1 { margin: 0; font-size: 26px; line-height: 1.1; font-weight: 600; letter-spac
 #graph-count { color: #91a5b9; }
 .graph-toolbar { display: flex; align-items: center; gap: 8px; margin: 20px 0; }
 .graph-open input { display: none; }
+.graph-capture { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: -2px 0 14px; padding: 9px 10px; border: 1px solid #355267; background: #102333; color: #c5d8df; font-size: 11px; }
+.graph-capture[hidden] { display: none; }
+.graph-capture label { display: inline-flex; align-items: center; gap: 6px; }
+.graph-capture select, .graph-capture input { height: 25px; background: #172b3b; border: 1px solid #416179; color: #e2edf0; font: inherit; padding: 2px 5px; }
+.graph-capture input { width: 56px; }
+.graph-capture button { margin-left: auto; }
 #graph-source { margin-left: auto; color: #91a5b9; }
 #graph-widget-root { display: grid; grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); align-items: start; gap: 12px; }
 .graph-card { position: relative; min-height: 88px; background: #121a2f; border: 1px solid #273b58; border-radius: 5px; padding: 13px 14px 14px; }

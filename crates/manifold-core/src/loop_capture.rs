@@ -150,9 +150,35 @@ impl LoopCapture {
         self.begin_staged_snapshot_recent(0)
     }
 
+    /// Allocate and initialize staging storage while the graph is being
+    /// prepared, before a host callback can request a snapshot.
+    pub fn reserve_staging_capacity(&mut self, frames: usize) -> bool {
+        if frames == 0 || frames > self.left.len() || self.staging.is_some() {
+            return false;
+        }
+        self.staged.resize(frames * 2, 0.0);
+        true
+    }
+
     /// A nonzero request chooses a trailing window; retrospective history is
     /// padded with leading silence before the ring has received enough input.
     pub fn begin_staged_snapshot_recent(&mut self, requested_frames: usize) -> bool {
+        self.begin_snapshot(requested_frames, true)
+    }
+
+    /// Callback-safe variant: an unprepared or oversized request fails instead
+    /// of growing the staging buffer.
+    pub fn begin_prepared_staged_snapshot_recent(&mut self, requested_frames: usize) -> bool {
+        if requested_frames == 0
+            || requested_frames > self.left.len()
+            || (!self.retrospective && requested_frames > self.length)
+        {
+            return false;
+        }
+        self.begin_snapshot(requested_frames, false)
+    }
+
+    fn begin_snapshot(&mut self, requested_frames: usize, allow_growth: bool) -> bool {
         if !self.recording || self.staging.is_some() {
             return false;
         }
@@ -166,8 +192,13 @@ impl LoopCapture {
         if length == 0 {
             return false;
         }
+        if self.staged.len() < length * 2 {
+            if !allow_growth {
+                return false;
+            }
+            self.staged.resize(length * 2, 0.0);
+        }
         let available = length.min(self.length);
-        self.staged.resize(length * 2, 0.0);
         self.staging = Some(Staging {
             start: (self.write + self.left.len() - available) % self.left.len(),
             length,
@@ -205,9 +236,9 @@ impl LoopCapture {
     }
 
     pub fn take_staged(&mut self) -> Option<Vec<f32>> {
-        self.staged_length()?;
+        let length = self.staged_length()?;
         self.staging = None;
-        Some(std::mem::take(&mut self.staged))
+        Some(self.staged[..length * 2].to_vec())
     }
 
     pub fn cancel_staged(&mut self) {
@@ -476,6 +507,30 @@ mod tests {
         assert!(capture.begin_staged_snapshot_recent(2));
         capture.process_planar([&[0.; 3], &[0.; 3]], [&mut left, &mut right]);
         assert_eq!(capture.take_staged(), Some(vec![0.5, 0.25, 0.5, 0.25]));
+    }
+
+    #[test]
+    fn prepared_stage_reuses_storage_and_rejects_oversized_callback_request() {
+        let mut capture = LoopCapture::new_retrospective(100.0, 1.0);
+        assert!(!capture.begin_prepared_staged_snapshot_recent(5));
+        assert!(capture.reserve_staging_capacity(10));
+        let storage = capture.staged.as_ptr();
+        assert!(!capture.begin_prepared_staged_snapshot_recent(11));
+        assert!(!capture.begin_prepared_staged_snapshot_recent(101));
+        assert!(capture.begin_prepared_staged_snapshot_recent(5));
+        let mut left = [0.0; 5];
+        let mut right = [0.0; 5];
+        capture.process_planar([&[0.25; 5], &[0.5; 5]], [&mut left, &mut right]);
+        assert_eq!(capture.staged_status(), Some(true));
+        assert_eq!(capture.take_staged(), Some(vec![0.0; 10]));
+        assert_eq!(capture.staged.as_ptr(), storage);
+        assert!(capture.begin_prepared_staged_snapshot_recent(10));
+        capture.process_planar([&[1.0; 5], &[2.0; 5]], [&mut left, &mut right]);
+        assert_eq!(capture.staged_status(), Some(true));
+        assert_eq!(capture.staged.as_ptr(), storage);
+        let mut short = LoopCapture::new_retrospective(100.0, 1.0);
+        assert!(short.reserve_staging_capacity(100));
+        assert!(!short.begin_prepared_staged_snapshot_recent(101));
     }
 
     #[test]

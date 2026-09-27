@@ -72,6 +72,50 @@ pub struct PreparedNativeProject {
     document: Value,
 }
 
+fn replace_sample_asset(
+    document: &mut Value,
+    node: u32,
+    stereo: &[f32],
+    source_rate: u32,
+    label: &str,
+    capture: Option<u32>,
+) -> Result<(), ProjectError> {
+    let frames = stereo.len() / 2;
+    if stereo.len() % 2 != 0
+        || !(8_000..=384_000).contains(&source_rate)
+        || frames == 0
+        || frames > (source_rate as usize * 30).min(1_440_000)
+        || label.len() > 200
+        || !stereo.iter().all(|sample| sample.is_finite())
+    {
+        return Err(ProjectError::Invalid("replacement sample"));
+    }
+    let assets = document
+        .as_object_mut()
+        .ok_or(ProjectError::Invalid("project"))?
+        .entry("assets")
+        .or_insert_with(|| Value::Array(Vec::new()))
+        .as_array_mut()
+        .ok_or(ProjectError::Invalid("assets"))?;
+    let mut pcm = Vec::with_capacity(stereo.len() * 4);
+    for sample in stereo {
+        pcm.extend_from_slice(&sample.to_le_bytes());
+    }
+    let asset = serde_json::json!({
+        "nodeId": node, "sourceRate": source_rate, "frames": frames,
+        "label": label, "pcmF32Base64": STANDARD.encode(pcm),
+    });
+    if let Some(existing) = assets.iter_mut().find(|entry| entry["nodeId"] == node) {
+        *existing = asset;
+    } else {
+        assets.push(asset);
+    }
+    if let Some(capture) = capture {
+        document["signal"]["selectedCaptureNodeId"] = Value::from(capture);
+    }
+    Ok(())
+}
+
 impl PreparedNativeProject {
     pub fn save_state(&mut self) -> Result<Vec<u8>, ProjectError> {
         let parameters = self.document["signal"]["initialParameters"]
@@ -143,41 +187,9 @@ impl PreparedNativeProject {
         max_frames: usize,
         capture: Option<u32>,
     ) -> Result<Self, ProjectError> {
-        let frames = stereo.len() / 2;
-        if stereo.len() % 2 != 0
-            || !(8_000..=384_000).contains(&source_rate)
-            || frames == 0
-            || frames > (source_rate as usize * 30).min(1_440_000)
-            || label.len() > 200
-            || !stereo.iter().all(|sample| sample.is_finite())
-        {
-            return Err(ProjectError::Invalid("replacement sample"));
-        }
         self.save_state()?;
         let mut candidate = self.document.clone();
-        let assets = candidate
-            .as_object_mut()
-            .ok_or(ProjectError::Invalid("project"))?
-            .entry("assets")
-            .or_insert_with(|| Value::Array(Vec::new()))
-            .as_array_mut()
-            .ok_or(ProjectError::Invalid("assets"))?;
-        let mut pcm = Vec::with_capacity(stereo.len() * 4);
-        for sample in stereo {
-            pcm.extend_from_slice(&sample.to_le_bytes());
-        }
-        let asset = serde_json::json!({
-            "nodeId": node, "sourceRate": source_rate, "frames": frames,
-            "label": label, "pcmF32Base64": STANDARD.encode(pcm),
-        });
-        if let Some(existing) = assets.iter_mut().find(|entry| entry["nodeId"] == node) {
-            *existing = asset;
-        } else {
-            assets.push(asset);
-        }
-        if let Some(capture) = capture {
-            candidate["signal"]["selectedCaptureNodeId"] = Value::from(capture);
-        }
+        replace_sample_asset(&mut candidate, node, stereo, source_rate, label, capture)?;
         let bytes = serde_json::to_vec(&candidate).map_err(|_| ProjectError::Invalid("JSON"))?;
         NativeProject::parse(&bytes)?.prepare_with_state(sample_rate, max_frames)
     }
@@ -445,6 +457,35 @@ fn parameter_range(kind: &str, id: u32) -> Option<(f32, f32, bool)> {
 }
 
 impl NativeProject {
+    /// Assemble a captured window into portable state on a host control thread.
+    /// The returned bytes can be passed through the ordinary CLAP/VST3 state
+    /// replacement path, which prepares a new graph before publication.
+    pub fn embed_capture_asset(
+        state: &[u8],
+        capture: u32,
+        instrument: u32,
+        stereo: &[f32],
+        source_rate: u32,
+        label: &str,
+    ) -> Result<Vec<u8>, ProjectError> {
+        let parsed = Self::parse(state)?;
+        let mut document = parsed.document;
+        replace_sample_asset(
+            &mut document,
+            instrument,
+            stereo,
+            source_rate,
+            label,
+            Some(capture),
+        )?;
+        let bytes = serde_json::to_vec(&document).map_err(|_| ProjectError::Invalid("JSON"))?;
+        if bytes.len() > MAX_PROJECT_BYTES {
+            return Err(ProjectError::Invalid("project size"));
+        }
+        Self::parse(&bytes)?;
+        Ok(bytes)
+    }
+
     /// Read the authored Standalone FX project used by the browser module.
     /// Translate its public metadata envelope to the graph-workspace contract
     /// while preserving the original envelope for native state roundtrips.
@@ -1183,6 +1224,18 @@ impl NativeProject {
         }
         let mut processor = NativeProcessor::prepare(&self.graph, sample_rate, max_frames)
             .map_err(ProjectError::Prepare)?;
+        for node in &self.graph.nodes {
+            let seconds = match &node.kind {
+                NodeKind::LoopCapture {
+                    capacity_seconds, ..
+                }
+                | NodeKind::RetrospectiveCapture { capacity_seconds } => capacity_seconds,
+                _ => continue,
+            };
+            let frames = (sample_rate * seconds.min(30.0)).round() as usize;
+            // A disconnected loop node may be parked and absent from the plan.
+            let _ = processor.reserve_capture_staging(node.id, frames);
+        }
         if let Some(table) = self.fx_type_parameters {
             for (effect_type, values) in table.into_iter().enumerate() {
                 if !processor.restore_effect_slot_params(2_u32.into(), effect_type as u32, values) {
@@ -1523,7 +1576,7 @@ mod tests {
         assert!(
             prepared
                 .processor
-                .begin_capture_staging(10_u32.into(), frames as usize)
+                .begin_prepared_capture_staging(10_u32.into(), frames as usize)
         );
         for _ in 0..16 {
             if prepared.processor.capture_staging_status(10_u32.into()) == Some(true) {

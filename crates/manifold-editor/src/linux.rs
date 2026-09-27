@@ -156,6 +156,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                             .evaluate_script(&format!("window.manifoldEditorStatus?.({encoded});"));
                     }
                 }
+                Some("capture-result") => {
+                    if let Some(message) = command["message"].as_str() {
+                        let encoded = serde_json::to_string(message).unwrap_or_default();
+                        let ok = command["ok"].as_bool().unwrap_or(false);
+                        let _ = webview.evaluate_script(&format!(
+                            "window.manifoldCaptureResult?.({ok}, {encoded});"
+                        ));
+                    }
+                }
                 Some("show") => {
                     let _ = webview.set_visible(true);
                 }

@@ -55,6 +55,13 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
             if (engine.manifold_graph_initial_parameter(parameter.nodeId, parameter.id, parameter.value) !== 1) postPrepareParameters.push(parameter);
           }
           if (engine.manifold_prepare(sampleRate, this.capacity) !== 1) throw new Error('Graph preparation failed');
+          for (const node of graph.nodes) {
+            if (!['loop-capture', 'retrospective-capture'].includes(node.type) || !reachable.has(node.id)) continue;
+            const frames = Math.round(Math.min(30, node.a) * sampleRate);
+            if (engine.manifold_capture_stage_reserve(node.id, frames) !== 1) {
+              throw new Error(`Capture staging preparation failed: ${node.id}`);
+            }
+          }
           for (const parameter of postPrepareParameters) {
             if (!graph.patchable && !reachable.has(parameter.nodeId)) continue;
             if (engine.manifold_set_node_parameter(parameter.nodeId, parameter.id, parameter.value) !== 1) {

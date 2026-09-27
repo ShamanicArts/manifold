@@ -20,6 +20,8 @@ let signature = '';
 let active = null;
 const controls = new Map();
 const gestures = new Set();
+let captureTimer = null;
+let captureInstrument = null;
 const status = (message) => { byId('graph-status').textContent = message; };
 const send = (kind, id, value) => {
   if (!editorMode) return;
@@ -53,6 +55,28 @@ function paint(snapshot) {
   active = snapshot;
   const nextSignature = JSON.stringify([snapshot.nodes, snapshot.controls.map(({ id, nodeId, parameterId, min, max, discrete }) =>
     [id, nodeId, parameterId, min, max, discrete])]);
+  if (captureTimer && nextSignature !== signature) {
+    clearInterval(captureTimer);
+    captureTimer = null;
+    byId('graph-capture-go').disabled = false;
+    status('Capture interrupted by a project change.');
+  }
+  const sources = snapshot.nodes.filter(({ type }) => type === 'retrospective-capture' || type === 'loop-capture');
+  const instrument = snapshot.nodes.find(({ type }) => type === 'sample-instrument');
+  const capture = byId('graph-capture');
+  capture.hidden = !(editorMode && snapshot.captureGesture && sources.length && instrument);
+  if (!capture.hidden) {
+    captureInstrument = instrument.id;
+    const select = byId('graph-capture-source');
+    const selected = Number(select.value);
+    select.replaceChildren(...sources.map(({ id }) => {
+      const option = document.createElement('option');
+      option.value = String(id);
+      option.textContent = `Capture node ${id}`;
+      return option;
+    }));
+    if (sources.some(({ id }) => id === selected)) select.value = String(selected);
+  }
   if (nextSignature !== signature) {
     signature = nextSignature;
     for (const { control } of controls.values()) control.destroy?.();
@@ -149,12 +173,18 @@ function paint(snapshot) {
   }
   byId('graph-count').textContent = `${snapshot.nodes.length} nodes · ${snapshot.controls.length} bound controls`;
   byId('graph-source').textContent = editorMode ? 'DAW host' : 'Browser preview';
-  status(editorMode ? 'Host automation and widget gestures use fixed graph slots.'
+  if (!captureTimer) status(editorMode ? 'Host automation and widget gestures use fixed graph slots.'
     : 'Inspect the original widgets here. Open the workbench to hear this graph.');
 }
 
 window.manifoldEditorReceive = (snapshot) => paint(snapshot);
 window.manifoldEditorStatus = (message) => status(message);
+window.manifoldCaptureResult = (ok, message) => {
+  if (captureTimer) clearInterval(captureTimer);
+  captureTimer = null;
+  byId('graph-capture-go').disabled = false;
+  status(message || (ok ? 'Capture published.' : 'Capture failed.'));
+};
 if (window.__manifoldPendingState) {
   paint(window.__manifoldPendingState);
   delete window.__manifoldPendingState;
@@ -164,6 +194,27 @@ if (window.__manifoldPendingState) {
 if (editorMode) send('editor-ready');
 byId('graph-note').addEventListener('click', () => paint(snapshotFromProject(noteVoice)));
 byId('graph-tone').addEventListener('click', () => paint(snapshotFromProject(toneTexture)));
+byId('graph-capture-go').addEventListener('click', () => {
+  const nodeId = Number(byId('graph-capture-source').value);
+  const seconds = Number(byId('graph-capture-seconds').value);
+  if (!Number.isInteger(nodeId) || !Number.isInteger(captureInstrument)
+    || !Number.isFinite(seconds) || seconds < 0.05 || seconds > 30 || !window.ipc?.postMessage) {
+    status('Choose a source and a window from 0.05 to 30 seconds.');
+    return;
+  }
+  if (captureTimer) clearInterval(captureTimer);
+  byId('graph-capture-go').disabled = true;
+  window.ipc.postMessage(JSON.stringify({ version: 1, kind: 'capture-start', nodeId, seconds }));
+  status(`Capturing ${seconds} seconds from node ${nodeId}…`);
+  const deadline = Date.now() + 15_000;
+  captureTimer = setInterval(() => {
+    if (Date.now() > deadline) {
+      window.manifoldCaptureResult(false, 'Capture timed out. Keep the DAW processing audio and try again.');
+      return;
+    }
+    window.ipc.postMessage(JSON.stringify({ version: 1, kind: 'capture-finish', instrumentId: captureInstrument }));
+  }, 100);
+});
 byId('graph-file').addEventListener('change', async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;

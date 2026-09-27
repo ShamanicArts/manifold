@@ -1004,6 +1004,7 @@ name = "manifold-native"
 version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
+ "crossbeam-queue",
  "manifold-core",
  "serde_json",
 ]

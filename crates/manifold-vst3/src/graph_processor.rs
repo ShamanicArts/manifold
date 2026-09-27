@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use crossbeam_queue::ArrayQueue;
 use manifold_core::events::{EventKind, TimedEvent};
+use manifold_native::capture_mailbox::{AudioCaptureWorker, CaptureMailbox};
 use manifold_native::host_buffers::{HostBuffers, RawHostBlock};
 use manifold_native::host_values::ValueBank;
 use manifold_native::parameters::{
@@ -23,6 +24,7 @@ use crate::util::{copy_wstring, read_stream, write_stream};
 const MAX_MESSAGES: usize = 1024;
 
 struct Runtime {
+    capture_worker: Option<AudioCaptureWorker>,
     values: Arc<ValueBank>,
     prepared: PreparedNativeProject,
     buffers: HostBuffers,
@@ -41,6 +43,7 @@ pub(crate) struct GraphProcessor {
     state: Mutex<Vec<u8>>,
     descriptors: Mutex<[Option<HostParameter>; HOST_SLOT_COUNT]>,
     values: Mutex<Arc<ValueBank>>,
+    capture_mailbox: Mutex<Option<Arc<CaptureMailbox>>>,
     sidechain_active: AtomicBool,
     sidechain_arrangement: AtomicU64,
     peer: Mutex<Option<ComPtr<IConnectionPoint>>>,
@@ -66,6 +69,7 @@ impl GraphProcessor {
             state: Mutex::new(DEFAULT_PROJECT.to_vec()),
             descriptors: Mutex::new(descriptors),
             values: Mutex::new(Arc::new(ValueBank::new(values.map(|value| value as f32)))),
+            capture_mailbox: Mutex::new(None),
             sidechain_active: AtomicBool::new(false),
             sidechain_arrangement: AtomicU64::new(SpeakerArr::kStereo),
             peer: Mutex::new(None),
@@ -103,6 +107,7 @@ impl GraphProcessor {
                 })
         });
         Some(Box::new(Runtime {
+            capture_worker: None,
             values,
             prepared,
             buffers: HostBuffers::prepare(frames),
@@ -111,6 +116,75 @@ impl GraphProcessor {
             slot_indices,
             midi_node,
         }))
+    }
+
+    fn attach_capture_worker(
+        runtime: &mut Runtime,
+        bytes: &[u8],
+        rate: f32,
+    ) -> Option<Arc<CaptureMailbox>> {
+        let document: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+        document["signal"]["selectedCaptureNodeId"].as_u64()?;
+        let frames = ((rate as usize).saturating_mul(30)).min(1_440_000);
+        let mailbox = CaptureMailbox::new(frames)?;
+        runtime.capture_worker = Some(AudioCaptureWorker::new(Arc::clone(&mailbox)));
+        Some(mailbox)
+    }
+
+    fn request_capture(&self, node: u32, frames: usize) -> bool {
+        self.capture_mailbox
+            .lock()
+            .ok()
+            .and_then(|mailbox| mailbox.clone())
+            .is_some_and(|mailbox| mailbox.request(node, frames))
+    }
+
+    fn request_capture_seconds(&self, node: u32, seconds: f64) -> bool {
+        let Some(rate) = self
+            .configuration
+            .lock()
+            .ok()
+            .and_then(|value| *value)
+            .map(|config| config.0 as f64)
+        else {
+            return false;
+        };
+        seconds.is_finite()
+            && (0.05..=30.0).contains(&seconds)
+            && self.request_capture(node, (rate * seconds).round() as usize)
+    }
+
+    /// Poll from a control thread, encode portable state, then queue a prepared
+    /// replacement. `None` means the callback has not finished staging yet.
+    fn finish_capture(&self, instrument: u32, label: &str) -> Option<bool> {
+        let mailbox = self
+            .capture_mailbox
+            .lock()
+            .ok()
+            .and_then(|value| value.clone())?;
+        let result = mailbox.take()?;
+        let Ok(window) = result else {
+            return Some(false);
+        };
+        let state = self.capture_state()?;
+        let rate = self
+            .configuration
+            .lock()
+            .ok()
+            .and_then(|value| *value)?
+            .0
+            .round() as u32;
+        let Ok(bytes) = NativeProject::embed_capture_asset(
+            &state,
+            window.node,
+            instrument,
+            window.stereo(),
+            rate,
+            label,
+        ) else {
+            return Some(false);
+        };
+        Some(self.restore_bytes(bytes) == kResultOk)
     }
 
     fn capture_state(&self) -> Option<Vec<u8>> {
@@ -157,6 +231,9 @@ impl GraphProcessor {
 
     fn deactivate(&self) {
         self.active.store(false, Ordering::Release);
+        if let Ok(mut mailbox) = self.capture_mailbox.lock() {
+            *mailbox = None;
+        }
         for pointer in [&self.current, &self.pending] {
             let old = pointer.swap(null_mut(), Ordering::AcqRel);
             if !old.is_null() {
@@ -194,10 +271,11 @@ impl GraphProcessor {
             else {
                 return kResultFalse;
             };
-            let Some(runtime) = Self::prepared(&bytes, rate, frames, Arc::clone(&bank)) else {
+            let Some(mut runtime) = Self::prepared(&bytes, rate, frames, Arc::clone(&bank)) else {
                 return kResultFalse;
             };
-            Some(runtime)
+            let capture = Self::attach_capture_worker(&mut runtime, &bytes, rate);
+            Some((runtime, capture))
         } else {
             None
         };
@@ -210,10 +288,14 @@ impl GraphProcessor {
         let Ok(mut current_bank) = self.values.lock() else {
             return kResultFalse;
         };
+        let Ok(mut mailbox) = self.capture_mailbox.lock() else {
+            return kResultFalse;
+        };
         *state = bytes;
         *bound = descriptors;
         *current_bank = bank;
-        if let Some(runtime) = replacement {
+        if let Some((runtime, capture)) = replacement {
+            *mailbox = capture;
             let previous = self.pending.swap(Box::into_raw(runtime), Ordering::AcqRel);
             if !previous.is_null() {
                 // The callback can only acquire a pending runtime via its own
@@ -390,9 +472,14 @@ impl IComponentTrait for GraphProcessor {
         let Some(bank) = self.values.lock().ok().map(|bank| Arc::clone(&bank)) else {
             return kResultFalse;
         };
-        let Some(runtime) = Self::prepared(&state, rate, frames, bank) else {
+        let Some(mut runtime) = Self::prepared(&state, rate, frames, bank) else {
             return kResultFalse;
         };
+        let capture = Self::attach_capture_worker(&mut runtime, &state, rate);
+        let Ok(mut mailbox) = self.capture_mailbox.lock() else {
+            return kResultFalse;
+        };
+        *mailbox = capture;
         self.publish_snapshot(&runtime);
         self.current
             .store(Box::into_raw(runtime), Ordering::Release);
@@ -440,12 +527,79 @@ impl IConnectionPointTrait for GraphProcessor {
             return kInvalidArgument;
         };
         let id = unsafe { message.getMessageID() };
-        if id.is_null() || unsafe { CStr::from_ptr(id) }.to_bytes() != b"manifold.graph.import.v1" {
+        if id.is_null() {
             return kResultFalse;
         }
+        let kind = unsafe { CStr::from_ptr(id) }.to_bytes();
         let Some(attributes) = (unsafe { ComRef::from_raw(message.getAttributes()) }) else {
             return kResultFalse;
         };
+        if kind == b"manifold.graph.capture.start.v1" {
+            let mut data: *const std::ffi::c_void = std::ptr::null();
+            let mut size = 0;
+            if unsafe { attributes.getBinary(c"request".as_ptr(), &mut data, &mut size) }
+                != kResultOk
+                || data.is_null()
+                || size != 12
+            {
+                return kResultFalse;
+            }
+            let bytes = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), 12) };
+            let node = u32::from_le_bytes(bytes[..4].try_into().unwrap());
+            let seconds = f64::from_le_bytes(bytes[4..12].try_into().unwrap());
+            return if self.request_capture_seconds(node, seconds) {
+                kResultOk
+            } else {
+                kResultFalse
+            };
+        }
+        if kind == b"manifold.graph.capture.finish.v1" {
+            let mut data: *const std::ffi::c_void = std::ptr::null();
+            let mut size = 0;
+            if unsafe { attributes.getBinary(c"instrument".as_ptr(), &mut data, &mut size) }
+                != kResultOk
+                || data.is_null()
+                || size != 4
+            {
+                return kResultFalse;
+            }
+            let instrument = u32::from_le_bytes(
+                unsafe { std::slice::from_raw_parts(data.cast::<u8>(), 4) }
+                    .try_into()
+                    .unwrap(),
+            );
+            let status = match self.finish_capture(instrument, "DAW capture") {
+                None => 0_u8,
+                Some(false) => 2,
+                Some(true) => 1,
+            };
+            if status == 1 {
+                let Some(bytes) = self.capture_state() else {
+                    return kResultFalse;
+                };
+                if unsafe {
+                    attributes.setBinary(
+                        c"project".as_ptr(),
+                        bytes.as_ptr().cast(),
+                        bytes.len() as u32,
+                    )
+                } != kResultOk
+                {
+                    return kResultFalse;
+                }
+            }
+            return if unsafe {
+                attributes.setBinary(c"status".as_ptr(), (&status as *const u8).cast(), 1)
+            } == kResultOk
+            {
+                kResultOk
+            } else {
+                kResultFalse
+            };
+        }
+        if kind != b"manifold.graph.import.v1" {
+            return kResultFalse;
+        }
         let mut data: *const std::ffi::c_void = std::ptr::null();
         let mut size = 0;
         if unsafe { attributes.getBinary(c"project".as_ptr(), &mut data, &mut size) } != kResultOk
@@ -556,6 +710,9 @@ impl IAudioProcessorTrait for GraphProcessor {
             return kResultFalse;
         }
         let runtime = unsafe { &mut *pointer };
+        if let Some(worker) = runtime.capture_worker.as_mut() {
+            worker.service(&mut runtime.prepared.processor);
+        }
         let frames = data.numSamples as usize;
         if !unsafe { collect_automation(data.inputParameterChanges, frames, runtime) }
             || !unsafe { collect_events(data.inputEvents, frames, runtime) }
@@ -592,6 +749,9 @@ impl IAudioProcessorTrait for GraphProcessor {
         .is_err()
         {
             return kResultFalse;
+        }
+        if let Some(worker) = runtime.capture_worker.as_mut() {
+            worker.service(&mut runtime.prepared.processor);
         }
         if !runtime.automation.is_empty() {
             self.publish_snapshot(runtime);
@@ -776,7 +936,93 @@ unsafe fn collect_events(events: *mut IEventList, frames: usize, runtime: &mut R
 mod tests {
     use super::*;
     use manifold_native::host_buffers::{HostBuffers, RawHostBlock};
+    use std::collections::BTreeMap;
+    use std::ffi::{CString, c_void};
     use vst3::ComWrapper;
+
+    type AttrID = *const std::ffi::c_char;
+
+    struct CaptureAttributes(Mutex<BTreeMap<Vec<u8>, Vec<u8>>>);
+    impl Class for CaptureAttributes {
+        type Interfaces = (IAttributeList,);
+    }
+    impl IAttributeListTrait for CaptureAttributes {
+        unsafe fn setInt(&self, _: AttrID, _: i64) -> tresult {
+            kNotImplemented
+        }
+        unsafe fn getInt(&self, _: AttrID, _: *mut i64) -> tresult {
+            kNotImplemented
+        }
+        unsafe fn setFloat(&self, _: AttrID, _: f64) -> tresult {
+            kNotImplemented
+        }
+        unsafe fn getFloat(&self, _: AttrID, _: *mut f64) -> tresult {
+            kNotImplemented
+        }
+        unsafe fn setString(&self, _: AttrID, _: *const TChar) -> tresult {
+            kNotImplemented
+        }
+        unsafe fn getString(&self, _: AttrID, _: *mut TChar, _: u32) -> tresult {
+            kNotImplemented
+        }
+        unsafe fn setBinary(&self, id: AttrID, data: *const c_void, size: u32) -> tresult {
+            if id.is_null() || data.is_null() {
+                return kInvalidArgument;
+            }
+            let key = unsafe { CStr::from_ptr(id) }.to_bytes().to_vec();
+            let bytes =
+                unsafe { std::slice::from_raw_parts(data.cast::<u8>(), size as usize) }.to_vec();
+            self.0.lock().unwrap().insert(key, bytes);
+            kResultOk
+        }
+        unsafe fn getBinary(
+            &self,
+            id: AttrID,
+            data: *mut *const c_void,
+            size: *mut u32,
+        ) -> tresult {
+            if id.is_null() || data.is_null() || size.is_null() {
+                return kInvalidArgument;
+            }
+            let key = unsafe { CStr::from_ptr(id) }.to_bytes();
+            let guard = self.0.lock().unwrap();
+            let Some(bytes) = guard.get(key) else {
+                return kResultFalse;
+            };
+            unsafe {
+                *data = bytes.as_ptr().cast();
+                *size = bytes.len() as u32;
+            }
+            kResultOk
+        }
+    }
+    struct CaptureMessage {
+        id: CString,
+        attributes: ComPtr<IAttributeList>,
+    }
+    impl Class for CaptureMessage {
+        type Interfaces = (IMessage,);
+    }
+    impl IMessageTrait for CaptureMessage {
+        unsafe fn getMessageID(&self) -> FIDString {
+            self.id.as_ptr()
+        }
+        unsafe fn setMessageID(&self, _: FIDString) {}
+        unsafe fn getAttributes(&self) -> *mut IAttributeList {
+            self.attributes.as_ptr()
+        }
+    }
+    fn capture_message(id: &str) -> ComPtr<IMessage> {
+        let attributes = ComWrapper::new(CaptureAttributes(Mutex::new(BTreeMap::new())))
+            .to_com_ptr::<IAttributeList>()
+            .unwrap();
+        ComWrapper::new(CaptureMessage {
+            id: CString::new(id).unwrap(),
+            attributes,
+        })
+        .to_com_ptr::<IMessage>()
+        .unwrap()
+    }
 
     #[test]
     fn live_saves_keep_one_value_block_and_one_imported_generation() {
@@ -1001,6 +1247,154 @@ mod tests {
         assert_eq!(left, expected_left);
         assert_eq!(right, expected_right);
         assert!(left.iter().any(|sample| sample.abs() > 0.001));
+        assert_eq!(unsafe { component.setActive(0) }, kResultOk);
+    }
+
+    #[test]
+    fn vst3_audio_callback_captures_sidechain_and_publishes_portable_sample() {
+        let component = GraphProcessor::new();
+        let mut setup = ProcessSetup {
+            processMode: 0,
+            symbolicSampleSize: SymbolicSampleSizes_::kSample32 as i32,
+            maxSamplesPerBlock: 128,
+            sampleRate: 48_000.,
+        };
+        assert_eq!(unsafe { component.setupProcessing(&mut setup) }, kResultOk);
+        assert_eq!(unsafe { component.setActive(1) }, kResultOk);
+        let authored =
+            include_bytes!("../../../projects/graph-workspace/retrospective-multisource.json");
+        assert_eq!(component.restore_bytes(authored.to_vec()), kResultOk);
+        component.sidechain_active.store(true, Ordering::Release);
+        let mut main_left = [0.25_f32; 128];
+        let mut main_right = [0.25_f32; 128];
+        let mut side_left = [-0.5_f32; 128];
+        let mut side_right = [-0.5_f32; 128];
+        let mut main_channels = [main_left.as_mut_ptr(), main_right.as_mut_ptr()];
+        let mut side_channels = [side_left.as_mut_ptr(), side_right.as_mut_ptr()];
+        let mut inputs = [
+            AudioBusBuffers {
+                numChannels: 2,
+                silenceFlags: 0,
+                __field0: AudioBusBuffers__type0 {
+                    channelBuffers32: main_channels.as_mut_ptr(),
+                },
+            },
+            AudioBusBuffers {
+                numChannels: 2,
+                silenceFlags: 0,
+                __field0: AudioBusBuffers__type0 {
+                    channelBuffers32: side_channels.as_mut_ptr(),
+                },
+            },
+        ];
+        let mut left = [0_f32; 128];
+        let mut right = [0_f32; 128];
+        let mut output_channels = [left.as_mut_ptr(), right.as_mut_ptr()];
+        let mut output = AudioBusBuffers {
+            numChannels: 2,
+            silenceFlags: 0,
+            __field0: AudioBusBuffers__type0 {
+                channelBuffers32: output_channels.as_mut_ptr(),
+            },
+        };
+        let mut data = ProcessData {
+            processMode: 0,
+            symbolicSampleSize: SymbolicSampleSizes_::kSample32 as i32,
+            numSamples: 128,
+            numInputs: 2,
+            numOutputs: 1,
+            inputs: inputs.as_mut_ptr(),
+            outputs: &mut output,
+            inputParameterChanges: null_mut(),
+            outputParameterChanges: null_mut(),
+            inputEvents: null_mut(),
+            outputEvents: null_mut(),
+            processContext: null_mut(),
+        };
+        for _ in 0..75 {
+            assert_eq!(unsafe { component.process(&mut data) }, kResultOk);
+        }
+        assert!(!component.request_capture(10, 1_440_001));
+        let start = capture_message("manifold.graph.capture.start.v1");
+        let start_attributes = unsafe { ComRef::from_raw(start.getAttributes()) }.unwrap();
+        let mut request = [0_u8; 12];
+        request[..4].copy_from_slice(&10_u32.to_le_bytes());
+        request[4..].copy_from_slice(&0.2_f64.to_le_bytes());
+        assert_eq!(
+            unsafe { start_attributes.setBinary(c"request".as_ptr(), request.as_ptr().cast(), 12) },
+            kResultOk
+        );
+        assert_eq!(unsafe { component.notify(start.as_ptr()) }, kResultOk);
+        assert!(!component.request_capture(6, 9_600));
+        let mut published = false;
+        for _ in 0..100 {
+            assert_eq!(unsafe { component.process(&mut data) }, kResultOk);
+            let finish = capture_message("manifold.graph.capture.finish.v1");
+            let attributes = unsafe { ComRef::from_raw(finish.getAttributes()) }.unwrap();
+            let instrument = 5_u32.to_le_bytes();
+            assert_eq!(
+                unsafe {
+                    attributes.setBinary(c"instrument".as_ptr(), instrument.as_ptr().cast(), 4)
+                },
+                kResultOk
+            );
+            assert_eq!(unsafe { component.notify(finish.as_ptr()) }, kResultOk);
+            let mut status_data: *const c_void = std::ptr::null();
+            let mut status_size = 0;
+            assert_eq!(
+                unsafe {
+                    attributes.getBinary(c"status".as_ptr(), &mut status_data, &mut status_size)
+                },
+                kResultOk
+            );
+            assert_eq!(status_size, 1);
+            let status = unsafe { *(status_data.cast::<u8>()) };
+            assert_ne!(status, 2, "capture rejected");
+            if status == 1 {
+                let mut project_data: *const c_void = std::ptr::null();
+                let mut project_size = 0;
+                assert_eq!(
+                    unsafe {
+                        attributes.getBinary(
+                            c"project".as_ptr(),
+                            &mut project_data,
+                            &mut project_size,
+                        )
+                    },
+                    kResultOk
+                );
+                assert!(
+                    NativeProject::parse(unsafe {
+                        std::slice::from_raw_parts(project_data.cast::<u8>(), project_size as usize)
+                    })
+                    .is_ok()
+                );
+                published = true;
+                break;
+            }
+        }
+        assert!(published);
+        let saved = component.capture_state().unwrap();
+        let document: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+        assert_eq!(document["signal"]["selectedCaptureNodeId"], 10);
+        assert_eq!(document["assets"][0]["frames"], 9_600);
+        let mut note: Event = unsafe { std::mem::zeroed() };
+        note.busIndex = 0;
+        note.r#type = Event_::EventTypes_::kNoteOnEvent as u16;
+        note.__field0.noteOn = NoteOnEvent {
+            channel: 0,
+            pitch: 60,
+            tuning: 0.,
+            velocity: 1.,
+            length: 0,
+            noteId: 1,
+        };
+        let list = ComWrapper::new(TestEvents(vec![note]))
+            .to_com_ptr::<IEventList>()
+            .unwrap();
+        data.inputEvents = list.as_ptr();
+        assert_eq!(unsafe { component.process(&mut data) }, kResultOk);
+        assert!(left.iter().any(|sample| *sample < -0.01));
         assert_eq!(unsafe { component.setActive(0) }, kResultOk);
     }
 

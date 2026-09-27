@@ -8,6 +8,7 @@ use manifold_core::main_voice_bank::MainTemporalRecipe;
 use manifold_core::sine_bank::PartialSet;
 use manifold_core::temporal_partials::TemporalFrame;
 
+pub mod capture_mailbox;
 pub mod host_buffers;
 pub mod host_values;
 pub mod parameters;
@@ -108,6 +109,21 @@ impl NativeProcessor {
     /// processor. Subsequent process blocks freeze the requested window.
     pub fn begin_capture_staging(&mut self, node: NodeId, requested_frames: usize) -> bool {
         self.plan.begin_capture_staging(node, requested_frames)
+    }
+
+    /// Reserve a callback-safe window while preparing the native graph.
+    pub fn reserve_capture_staging(&mut self, node: NodeId, frames: usize) -> bool {
+        self.plan.reserve_capture_staging(node, frames)
+    }
+
+    /// Audio-thread entry point. It never grows staging storage.
+    pub fn begin_prepared_capture_staging(
+        &mut self,
+        node: NodeId,
+        requested_frames: usize,
+    ) -> bool {
+        self.plan
+            .begin_prepared_capture_staging(node, requested_frames)
     }
 
     pub fn capture_staging_status(&self, node: NodeId) -> Option<bool> {

@@ -27,6 +27,122 @@ pub(crate) struct GraphShared {
 }
 
 impl GraphShared {
+    fn capture_message(
+        &self,
+        id: &std::ffi::CStr,
+    ) -> Result<(ComPtr<IMessage>, ComPtr<IConnectionPoint>), &'static str> {
+        let host = self
+            .host
+            .lock()
+            .map_err(|_| "host unavailable")?
+            .clone()
+            .ok_or("host message service unavailable")?;
+        let peer = self
+            .peer
+            .lock()
+            .map_err(|_| "processor unavailable")?
+            .clone()
+            .ok_or("processor connection unavailable")?;
+        let mut cid = IMessage_iid;
+        let mut iid = IMessage_iid;
+        let mut raw: *mut c_void = std::ptr::null_mut();
+        if unsafe { host.createInstance(&mut cid, &mut iid, &mut raw) } != kResultOk {
+            return Err("host cannot create a capture message");
+        }
+        let message = unsafe { ComPtr::<IMessage>::from_raw(raw as *mut IMessage) }
+            .ok_or("host returned an empty capture message")?;
+        unsafe { message.setMessageID(id.as_ptr()) };
+        Ok((message, peer))
+    }
+
+    pub fn capture_start(&self, node: u32, seconds: f64) -> Result<(), &'static str> {
+        if node == 0 || !seconds.is_finite() || !(0.05..=30.0).contains(&seconds) {
+            return Err("invalid capture window");
+        }
+        let (message, peer) = self.capture_message(c"manifold.graph.capture.start.v1")?;
+        let attributes = unsafe { ComRef::from_raw(message.getAttributes()) }
+            .ok_or("host message has no attributes")?;
+        let mut request = [0_u8; 12];
+        request[..4].copy_from_slice(&node.to_le_bytes());
+        request[4..].copy_from_slice(&seconds.to_le_bytes());
+        if unsafe { attributes.setBinary(c"request".as_ptr(), request.as_ptr().cast(), 12) }
+            != kResultOk
+        {
+            return Err("host rejected capture request");
+        }
+        if unsafe { peer.notify(message.as_ptr()) } != kResultOk {
+            return Err("processor rejected capture request");
+        }
+        Ok(())
+    }
+
+    /// None means still freezing; true means portable state was returned and
+    /// adopted by this controller. The processor owns the prepared graph swap.
+    pub fn capture_finish(&self, instrument: u32) -> Result<Option<bool>, &'static str> {
+        if instrument == 0 {
+            return Err("invalid sample instrument");
+        }
+        let (message, peer) = self.capture_message(c"manifold.graph.capture.finish.v1")?;
+        let attributes = unsafe { ComRef::from_raw(message.getAttributes()) }
+            .ok_or("host message has no attributes")?;
+        let request = instrument.to_le_bytes();
+        if unsafe { attributes.setBinary(c"instrument".as_ptr(), request.as_ptr().cast(), 4) }
+            != kResultOk
+        {
+            return Err("host rejected capture result request");
+        }
+        if unsafe { peer.notify(message.as_ptr()) } != kResultOk {
+            return Err("processor could not finish capture");
+        }
+        let mut data: *const c_void = std::ptr::null();
+        let mut size = 0;
+        if unsafe { attributes.getBinary(c"status".as_ptr(), &mut data, &mut size) } != kResultOk
+            || data.is_null()
+            || size != 1
+        {
+            return Err("missing capture status");
+        }
+        let status = unsafe { *(data.cast::<u8>()) };
+        if status == 0 {
+            return Ok(None);
+        }
+        if status == 2 {
+            return Ok(Some(false));
+        }
+        if status != 1 {
+            return Err("invalid capture status");
+        }
+        let mut project_data: *const c_void = std::ptr::null();
+        let mut project_size = 0;
+        if unsafe {
+            attributes.getBinary(c"project".as_ptr(), &mut project_data, &mut project_size)
+        } != kResultOk
+            || project_data.is_null()
+            || project_size <= 0
+            || project_size > 45 * 1024 * 1024
+        {
+            return Err("missing captured project");
+        }
+        let bytes =
+            unsafe { std::slice::from_raw_parts(project_data.cast::<u8>(), project_size as usize) };
+        let project = NativeProject::parse(bytes).map_err(|_| "invalid captured project")?;
+        let next = presentation(bytes, &project).ok_or("unsupported captured presentation")?;
+        let values = normalized_values(&slot_descriptors(&project));
+        *self
+            .presentation
+            .lock()
+            .map_err(|_| "presentation unavailable")? = next;
+        *self.project.lock().map_err(|_| "project unavailable")? = bytes.to_vec();
+        for (slot, value) in values.iter().enumerate() {
+            self.normalized[slot].store(value.to_bits(), Ordering::Release);
+        }
+        self.version.fetch_add(1, Ordering::Release);
+        if let Some(handler) = self.handler.lock().ok().and_then(|handler| handler.clone()) {
+            unsafe { handler.restartComponent(RestartFlags_::kParamValuesChanged) };
+        }
+        Ok(Some(true))
+    }
+
     pub fn import_project(&self, bytes: &[u8]) -> Result<(), &'static str> {
         let project = NativeProject::parse(bytes).map_err(|_| "invalid graph project")?;
         let next = presentation(bytes, &project).ok_or("unsupported graph presentation")?;
@@ -153,7 +269,7 @@ fn presentation(bytes: &[u8], project: &NativeProject) -> Option<serde_json::Val
         })
         .collect();
     Some(
-        serde_json::json!({"schemaVersion":1,"id":"manifold.graph","nodes":nodes,"controls":controls}),
+        serde_json::json!({"schemaVersion":1,"id":"manifold.graph","nodes":nodes,"controls":controls,"captureGesture":true}),
     )
 }
 
