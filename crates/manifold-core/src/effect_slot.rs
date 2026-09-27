@@ -135,6 +135,35 @@ pub struct EffectSlot {
 }
 
 impl EffectSlot {
+    /// Stored normalized controls for an effect, including effects whose
+    /// output gate is currently closed.
+    pub fn params_for_type(&self, effect_type: u32) -> Option<[f32; 5]> {
+        Some(match effect_type {
+            CHORUS_TYPE => self.chorus_params,
+            PHASER_TYPE => self.phaser_params,
+            WAVESHAPER_TYPE => self.waveshaper_params,
+            WIDENER_TYPE => self.widener_params,
+            LEGACY_FILTER_TYPE => self.legacy_filter_params,
+            REVERB_TYPE => self.reverb_params,
+            COMPRESSOR_TYPE => self.compressor_params,
+            SVF_TYPE => self.svf_params,
+            DELAY_TYPE => self.delay_params,
+            MULTITAP_TYPE => self.multitap_params,
+            RING_TYPE => self.ring_params,
+            TRANSIENT_TYPE => self.transient_params,
+            BITCRUSHER_TYPE => self.bitcrusher_params,
+            EQ_TYPE => self.eq_params,
+            FORMANT_TYPE => self.formant_params,
+            REVERSE_DELAY_TYPE => self.reverse_delay_params,
+            STUTTER_TYPE => self.stutter_params,
+            PITCH_SHIFT_TYPE => self.pitch_shift_params,
+            SHIMMER_TYPE => self.shimmer_params,
+            GRANULATOR_TYPE => self.granulator_params,
+            LIMITER_TYPE => self.limiter_params,
+            _ => return None,
+        })
+    }
+
     pub fn new(
         sample_rate: f32,
         max_frames: usize,

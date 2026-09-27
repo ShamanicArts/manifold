@@ -1654,6 +1654,16 @@ impl ExecutionPlan {
             })
     }
 
+    pub fn effect_slot_params(&self, node: NodeId, effect_type: u32) -> Option<[f32; 5]> {
+        self.nodes
+            .iter()
+            .find(|entry| entry.id == node)
+            .and_then(|entry| match &entry.kernel {
+                Kernel::EffectSlot(slot) => slot.params_for_type(effect_type),
+                _ => None,
+            })
+    }
+
     pub fn capture_length(&self, node: NodeId) -> Option<usize> {
         self.nodes
             .iter()

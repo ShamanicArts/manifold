@@ -1140,6 +1140,55 @@ mod tests {
         assert!((values[mix_index] - 0.8).abs() < 1e-6);
     }
 
+    #[test]
+    fn fx_type_switch_restores_per_effect_controls_to_public_state() {
+        let authored = include_bytes!("../../../projects/standalone-fx-module/project.json");
+        let mut prepared = NativeProject::parse_fx_module(authored)
+            .unwrap()
+            .prepare_with_state(48_000., 64)
+            .unwrap();
+        let node = 2_u32.into();
+        assert!(prepared.processor.set_parameter(node, 2, 0.87));
+        assert!(prepared.processor.set_parameter(node, 0, 7.));
+        let value = |prepared: &PreparedNativeProject, id| {
+            let index = prepared
+                .processor
+                .host_parameters()
+                .iter()
+                .position(|parameter| parameter.local_id == id)
+                .unwrap();
+            prepared.processor.current_parameter_values()[index]
+        };
+        assert_eq!(value(&prepared, 2), 0.5); // Reverb's remembered first control.
+        assert!(prepared.processor.set_parameter(node, 2, 0.13));
+        let mut left = [0.; 64];
+        let mut right = [0.; 64];
+        prepared
+            .processor
+            .process_host_automated(
+                crate::AudioBlock {
+                    main: None,
+                    sidechain: None,
+                    output: [&mut left, &mut right],
+                    events: &[],
+                },
+                &[TimedAutomation {
+                    offset: 32,
+                    id: HOST_SLOT_BASE,
+                    normalized: 0.,
+                }],
+            )
+            .unwrap();
+        assert_eq!(value(&prepared, 0), 0.);
+        assert_eq!(value(&prepared, 2), 0.87);
+        let saved = prepared.save_state().unwrap();
+        let reopened = NativeProject::parse_fx_module(&saved)
+            .unwrap()
+            .prepare_with_state(48_000., 64)
+            .unwrap();
+        assert_eq!(value(&reopened, 2), 0.87);
+    }
+
     fn parse(value: &Value) -> Result<NativeProject, ProjectError> {
         NativeProject::parse(&serde_json::to_vec(value).unwrap())
     }

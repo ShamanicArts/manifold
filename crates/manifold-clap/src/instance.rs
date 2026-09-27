@@ -37,6 +37,7 @@ pub(crate) struct Instance {
     pending: AtomicPtr<Runtime>,
     retired: AtomicPtr<Runtime>,
     active: AtomicBool,
+    rescan_needed: AtomicBool,
     sample_rate: Mutex<Option<(f32, usize)>>,
     state: Mutex<Vec<u8>>,
     values: [AtomicU32; 7],
@@ -72,6 +73,7 @@ impl Instance {
             pending: AtomicPtr::new(null_mut()),
             retired: AtomicPtr::new(null_mut()),
             active: AtomicBool::new(false),
+            rescan_needed: AtomicBool::new(false),
             sample_rate: Mutex::new(None),
             state: Mutex::new(SOURCE_PROJECT.to_vec()),
             values: DEFAULTS.map(|value| AtomicU32::new(value.to_bits())),
@@ -304,6 +306,30 @@ fn publish_values(instance: &Instance, automation: &[TimedAutomation]) {
     }
 }
 
+fn publish_processor_values(instance: &Instance, runtime: &Runtime) {
+    for (descriptor, value) in runtime
+        .prepared
+        .processor
+        .host_parameters()
+        .iter()
+        .zip(runtime.prepared.processor.current_parameter_values())
+    {
+        if descriptor.node == 2 && descriptor.local_id < 7 {
+            instance.values[descriptor.local_id as usize].store(value.to_bits(), Ordering::Release);
+        }
+    }
+    if !instance.host.is_null() {
+        instance.rescan_needed.store(true, Ordering::Release);
+        if let Some(request) = unsafe { (*instance.host).request_callback } {
+            unsafe { request(instance.host) };
+        }
+    }
+}
+
+fn type_changed(automation: &[TimedAutomation]) -> bool {
+    automation.iter().any(|point| point.id == HOST_SLOT_BASE)
+}
+
 fn publish_pending(instance: &Instance) {
     if !instance.retired.load(Ordering::Acquire).is_null() {
         return;
@@ -416,13 +442,28 @@ unsafe extern "C" fn plugin_process(
     {
         return CLAP_PROCESS_ERROR;
     }
-    publish_values(instance, &runtime.automation);
+    if type_changed(&runtime.automation) {
+        publish_processor_values(instance, runtime);
+    } else {
+        publish_values(instance, &runtime.automation);
+    }
     CLAP_PROCESS_CONTINUE
 }
 
 unsafe extern "C" fn plugin_main_thread(plugin: *const clap_plugin) {
     if let Some(instance) = unsafe { instance(plugin) } {
         instance.retire_old();
+        if instance.rescan_needed.swap(false, Ordering::AcqRel) && !instance.host.is_null() {
+            if let Some(get) = unsafe { (*instance.host).get_extension } {
+                let extension = unsafe { get(instance.host, CLAP_EXT_PARAMS.as_ptr()) };
+                if !extension.is_null() {
+                    let params = unsafe { &*(extension as *const clap_host_params) };
+                    if let Some(rescan) = params.rescan {
+                        unsafe { rescan(instance.host, CLAP_PARAM_RESCAN_VALUES) };
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -543,7 +584,11 @@ pub(crate) unsafe extern "C" fn param_flush(
         )
         .is_ok()
     {
-        publish_values(instance, &runtime.automation);
+        if type_changed(&runtime.automation) {
+            publish_processor_values(instance, runtime);
+        } else {
+            publish_values(instance, &runtime.automation);
+        }
     }
 }
 

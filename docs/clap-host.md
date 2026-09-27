@@ -20,7 +20,9 @@ surface has not been embedded in a native editor.
   mix automation at exact frame offsets, saves project state, and reopens it.
 - `cargo test -p manifold-clap` creates the CLAP plug-in through its factory,
   activates it, sends a host parameter event, and compares its stereo output
-  sample for sample with the native project adapter.
+  sample for sample with the native project adapter. It also switches between
+  Chorus and Reverb and checks that the generic host controls follow each
+  effect's remembered values.
 - The official `free-audio/clap-validator` v0.4.1 test suite loads the built
   `.clap` module. On this Linux machine it reports 44 tests run: 33 passed,
   0 failed, 0 warnings, 11 skipped. The passing tests include in-place and
@@ -42,6 +44,9 @@ State load while active prepares the replacement on the main thread and swaps
 at the next process block; old runtime retirement stays off the callback.
 Multiple queued state loads before a process block are currently rejected.
 The browser remembers per-effect control values in JavaScript; that per-type
-memory is not yet part of the CLAP state model. CLAP automation and audio
+memory is now reflected in the live CLAP parameter values on type switches,
+with a host value rescan requested on the main thread. Saved state still only
+contains the selected effect's five controls; reopening a DAW project resets
+the other effects' remembered controls to their defaults. CLAP automation and audio
 processing cover f32 stereo; f64 audio and sidechain ports are not advertised.
 VST3, Audio Unit, and other format bundles remain separate host adapters.

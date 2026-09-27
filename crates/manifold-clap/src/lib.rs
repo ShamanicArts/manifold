@@ -364,6 +364,28 @@ mod tests {
         }
         assert_eq!(out_left, reference_left);
         assert_eq!(out_right, reference_right);
+        let flush_parameter = |id: u32, value: f64| {
+            let mut event = event;
+            event.param_id = id;
+            event.value = value;
+            let events = clap_input_events {
+                ctx: &event as *const _ as *mut c_void,
+                size: Some(event_count),
+                get: Some(event_get),
+            };
+            unsafe { PARAMS.flush.unwrap()(plugin, &events, null()) };
+        };
+        let public_value = |id: u32| {
+            let mut value = -1.;
+            assert!(unsafe { PARAMS.get_value.unwrap()(plugin, id, &mut value) });
+            value
+        };
+        flush_parameter(2, 0.87);
+        flush_parameter(0, 7.);
+        assert_eq!(public_value(2), 0.5); // Reverb's first control.
+        flush_parameter(2, 0.13);
+        flush_parameter(0, 0.);
+        assert!((public_value(2) - 0.87).abs() < 1e-6);
         unsafe {
             (*plugin).stop_processing.unwrap()(plugin);
             (*plugin).deactivate.unwrap()(plugin);

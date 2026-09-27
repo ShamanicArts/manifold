@@ -123,7 +123,33 @@ impl NativeProcessor {
         {
             self.current_parameter_values[index] = value;
         }
+        if parameter == 0 {
+            Self::sync_effect_slot_public_values(
+                &self.plan,
+                &self.host_parameters,
+                &mut self.current_parameter_values,
+                node,
+                value as u32,
+            );
+        }
         true
+    }
+
+    fn sync_effect_slot_public_values(
+        plan: &ExecutionPlan,
+        host_parameters: &[HostParameter],
+        current_parameter_values: &mut [f32],
+        node: NodeId,
+        effect_type: u32,
+    ) {
+        let Some(params) = plan.effect_slot_params(node, effect_type) else {
+            return;
+        };
+        for (index, descriptor) in host_parameters.iter().enumerate() {
+            if descriptor.node == node && (2..=6).contains(&descriptor.local_id) {
+                current_parameter_values[index] = params[(descriptor.local_id - 2) as usize];
+            }
+        }
     }
 
     pub fn load_sample_stereo(&mut self, node: NodeId, stereo: Vec<f32>, source_rate: f32) -> bool {
@@ -294,6 +320,15 @@ impl NativeProcessor {
                     .position(|entry| entry.node == node && entry.local_id == local_id)
                 {
                     self.current_parameter_values[index] = value;
+                }
+                if local_id == 0 {
+                    Self::sync_effect_slot_public_values(
+                        &self.plan,
+                        &self.host_parameters,
+                        &mut self.current_parameter_values,
+                        node,
+                        value as u32,
+                    );
                 }
                 point_index += 1;
             }

@@ -48,13 +48,13 @@
       <tbody>
         <tr><td>Project load</td><td>The exact <code>standalone-fx-module/project.json</code> is validated and prepared by <code>manifold-native</code>.</td></tr>
         <tr><td>Audio</td><td>CLAP stereo f32 input and output enter preallocated host buffers. An ABI host test compares its 128-frame output sample for sample with the native project renderer.</td></tr>
-        <tr><td>Automation</td><td>CLAP parameter events map to fixed host slots and reach the Rust graph at their frame offsets.</td></tr>
+        <tr><td>Automation</td><td>CLAP parameter events map to fixed host slots and reach the Rust graph at their frame offsets. Switching effect type now restores that effect's five remembered controls in both DSP and host-visible parameter values; the host is asked to rescan those values on its main thread.</td></tr>
         <tr><td>State</td><td>Host stream callbacks save and reopen the authored project envelope with edited controls.</td></tr>
         <tr><td>Independent validator</td><td>CLAP validator v0.4.1 loaded the built <code>.clap</code> file and passed in-place audio, varied blocks and rates, parameter, and state tests.</td></tr>
       </tbody>
     </table>
     <h2>Still to connect</h2>
-    <p class="note">The CLAP module currently uses the host's generic parameter editor. The browser widget surface is not embedded in a DAW yet. A proper allocation-free DSP reset, per-effect remembered controls in host state, and VST3/Audio Unit adapters are next host milestones. Visual pixel parity against the running old JUCE/ImGui export is still unmeasured.</p>
+    <p class="note">The CLAP module currently uses the host's generic parameter editor. The browser widget surface is not embedded in a DAW yet. A proper allocation-free DSP reset, persistence of inactive effects' remembered controls, and VST3/Audio Unit adapters are next host milestones. Visual pixel parity against the running old JUCE/ImGui export is still unmeasured.</p>
     <p>Build locally with <code>./scripts/build-clap.sh</code>. The resulting file is <code>target/clap/ManifoldFX.clap</code>. <a href="/standalone-fx-module-review.html">View the widget port checkpoint ↗</a></p>
   </main>
 </body>
