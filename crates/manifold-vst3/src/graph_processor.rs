@@ -1003,4 +1003,99 @@ mod tests {
         assert!(left.iter().any(|sample| sample.abs() > 0.001));
         assert_eq!(unsafe { component.setActive(0) }, kResultOk);
     }
+
+    #[test]
+    fn browser_two_source_capture_reopens_and_plays_in_vst3() {
+        let bytes = include_bytes!("../../../artifacts/fixtures/two-source-browser-capture.json");
+        let component = GraphProcessor::new();
+        let mut setup = ProcessSetup {
+            processMode: 0,
+            symbolicSampleSize: SymbolicSampleSizes_::kSample32 as i32,
+            maxSamplesPerBlock: 128,
+            sampleRate: 48_000.,
+        };
+        assert_eq!(unsafe { component.setupProcessing(&mut setup) }, kResultOk);
+        assert_eq!(unsafe { component.setActive(1) }, kResultOk);
+        assert_eq!(component.restore_bytes(bytes.to_vec()), kResultOk);
+
+        let mut note: Event = unsafe { std::mem::zeroed() };
+        note.busIndex = 0;
+        note.sampleOffset = 0;
+        note.r#type = Event_::EventTypes_::kNoteOnEvent as u16;
+        note.__field0.noteOn = NoteOnEvent {
+            channel: 0,
+            pitch: 60,
+            tuning: 0.,
+            velocity: 1.,
+            length: 0,
+            noteId: 1,
+        };
+        let list = ComWrapper::new(TestEvents(vec![note]))
+            .to_com_ptr::<IEventList>()
+            .unwrap();
+        let mut left = [0_f32; 128];
+        let mut right = [0_f32; 128];
+        let mut output_channels = [left.as_mut_ptr(), right.as_mut_ptr()];
+        let mut output_bus = AudioBusBuffers {
+            numChannels: 2,
+            silenceFlags: 0,
+            __field0: AudioBusBuffers__type0 {
+                channelBuffers32: output_channels.as_mut_ptr(),
+            },
+        };
+        let mut data = ProcessData {
+            processMode: 0,
+            symbolicSampleSize: SymbolicSampleSizes_::kSample32 as i32,
+            numSamples: 128,
+            numInputs: 0,
+            numOutputs: 1,
+            inputs: null_mut(),
+            outputs: &mut output_bus,
+            inputParameterChanges: null_mut(),
+            outputParameterChanges: null_mut(),
+            inputEvents: list.as_ptr(),
+            outputEvents: null_mut(),
+            processContext: null_mut(),
+        };
+        assert_eq!(unsafe { component.process(&mut data) }, kResultOk);
+        let mut native = NativeProject::parse(bytes)
+            .unwrap()
+            .prepare(48_000., 128)
+            .unwrap();
+        let mut buffers = HostBuffers::prepare(128);
+        let mut expected_left = [0_f32; 128];
+        let mut expected_right = [0_f32; 128];
+        unsafe {
+            buffers
+                .render(
+                    &mut native,
+                    RawHostBlock {
+                        frames: 128,
+                        main: [std::ptr::null(); 2],
+                        sidechain: [std::ptr::null(); 2],
+                        output: [expected_left.as_mut_ptr(), expected_right.as_mut_ptr()],
+                        events: &[TimedEvent {
+                            offset: 0,
+                            node: 4,
+                            kind: EventKind::NoteOn {
+                                channel: 0,
+                                note: 60,
+                                velocity: 127,
+                            },
+                        }],
+                        automation: &[],
+                    },
+                )
+                .unwrap();
+        }
+        assert_eq!(left, expected_left);
+        assert_eq!(right, expected_right);
+        assert!(left.iter().any(|sample| sample.abs() > 0.001));
+        let saved = component.capture_state().unwrap();
+        let document: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+        assert_eq!(document["signal"]["selectedCaptureNodeId"], 10);
+        assert_eq!(document["signal"]["captureWindowSeconds"], 0.2);
+        assert_eq!(document["assets"][0]["frames"], 9_600);
+        assert_eq!(unsafe { component.setActive(0) }, kResultOk);
+    }
 }

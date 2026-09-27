@@ -669,6 +669,9 @@ try {
   assert.equal(sideSourceBundle.assets[0].label, 'Recent history 10');
   assert.equal(sideSourceBundle.signal.selectedCaptureNodeId, 10);
   assert.equal(sideSourceBundle.signal.captureWindowSeconds, .2);
+  if (process.env.MANIFOLD_CAPTURE_FIXTURE_OUT) {
+    await writeFile(process.env.MANIFOLD_CAPTURE_FIXTURE_OUT, `${JSON.stringify(sideSourceBundle)}\n`);
+  }
   const sourceHz = (asset) => {
     const samples = Buffer.from(asset.pcmF32Base64, 'base64');
     let crossings = 0;

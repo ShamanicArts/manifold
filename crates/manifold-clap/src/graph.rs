@@ -1701,4 +1701,126 @@ mod tests {
             (*reopened).destroy.unwrap()(reopened)
         };
     }
+
+    #[test]
+    fn browser_two_source_capture_reopens_and_plays_in_clap() {
+        let bytes = include_bytes!("../../../artifacts/fixtures/two-source-browser-capture.json");
+        let host = clap_host {
+            clap_version: CLAP_VERSION,
+            host_data: null_mut(),
+            name: c"Test host".as_ptr(),
+            vendor: c"Manifold".as_ptr(),
+            url: c"https://example.test".as_ptr(),
+            version: c"1".as_ptr(),
+            get_extension: None,
+            request_restart: None,
+            request_process: None,
+            request_callback: None,
+        };
+        let plugin =
+            unsafe { crate::factory_create(&crate::FACTORY.0, &host, crate::GRAPH_ID.as_ptr()) };
+        assert!(unsafe { (*plugin).init.unwrap()(plugin) });
+        let mut reader = Reader { bytes, offset: 0 };
+        let input = clap_istream {
+            ctx: &mut reader as *mut _ as *mut c_void,
+            read: Some(read),
+        };
+        assert!(unsafe { STATE.load.unwrap()(plugin, &input) });
+        assert!(unsafe { (*plugin).activate.unwrap()(plugin, 48_000., 1, 128) });
+        assert!(unsafe { (*plugin).start_processing.unwrap()(plugin) });
+        let note = clap_event_note {
+            header: clap_event_header {
+                size: std::mem::size_of::<clap_event_note>() as u32,
+                time: 0,
+                space_id: CLAP_CORE_EVENT_SPACE_ID,
+                type_: CLAP_EVENT_NOTE_ON,
+                flags: 0,
+            },
+            note_id: -1,
+            port_index: 0,
+            channel: 0,
+            key: 60,
+            velocity: 1.0,
+        };
+        let pointers = vec![&note.header as *const _];
+        let events = clap_input_events {
+            ctx: &pointers as *const _ as *mut c_void,
+            size: Some(event_count),
+            get: Some(event_get),
+        };
+        let mut left = [0_f32; 128];
+        let mut right = [0_f32; 128];
+        let mut channels = [left.as_mut_ptr(), right.as_mut_ptr()];
+        let mut output = clap_audio_buffer {
+            data32: channels.as_mut_ptr(),
+            data64: null_mut(),
+            channel_count: 2,
+            latency: 0,
+            constant_mask: 0,
+        };
+        let block = clap_process {
+            steady_time: 0,
+            frames_count: 128,
+            transport: null(),
+            audio_inputs: null(),
+            audio_outputs: &mut output,
+            audio_inputs_count: 0,
+            audio_outputs_count: 1,
+            in_events: &events,
+            out_events: null(),
+        };
+        assert_eq!(
+            unsafe { (*plugin).process.unwrap()(plugin, &block) },
+            CLAP_PROCESS_CONTINUE
+        );
+
+        let mut native = NativeProject::parse(bytes)
+            .unwrap()
+            .prepare(48_000., 128)
+            .unwrap();
+        let mut buffers = HostBuffers::prepare(128);
+        let mut expected_left = [0_f32; 128];
+        let mut expected_right = [0_f32; 128];
+        unsafe {
+            buffers
+                .render(
+                    &mut native,
+                    RawHostBlock {
+                        frames: 128,
+                        main: [null(); 2],
+                        sidechain: [null(); 2],
+                        output: [expected_left.as_mut_ptr(), expected_right.as_mut_ptr()],
+                        events: &[TimedEvent {
+                            offset: 0,
+                            node: 4,
+                            kind: EventKind::NoteOn {
+                                channel: 0,
+                                note: 60,
+                                velocity: 127,
+                            },
+                        }],
+                        automation: &[],
+                    },
+                )
+                .unwrap();
+        }
+        assert_eq!(left, expected_left);
+        assert_eq!(right, expected_right);
+        assert!(left.iter().any(|sample| sample.abs() > 0.001));
+        let mut saved = Vec::new();
+        let stream = clap_ostream {
+            ctx: &mut saved as *mut _ as *mut c_void,
+            write: Some(write),
+        };
+        assert!(unsafe { STATE.save.unwrap()(plugin, &stream) });
+        let document: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+        assert_eq!(document["signal"]["selectedCaptureNodeId"], 10);
+        assert_eq!(document["signal"]["captureWindowSeconds"], 0.2);
+        assert_eq!(document["assets"][0]["frames"], 9_600);
+        unsafe {
+            (*plugin).stop_processing.unwrap()(plugin);
+            (*plugin).deactivate.unwrap()(plugin);
+            (*plugin).destroy.unwrap()(plugin);
+        }
+    }
 }
