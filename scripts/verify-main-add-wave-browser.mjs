@@ -35,8 +35,19 @@ try {
   }]);
   await page.waitForFunction(() => document.querySelector('#main-state-status').textContent.startsWith('Opened'));
   assert.equal(await page.locator('[data-parameter-id="19"] select').inputValue(), '1');
+  await page.locator('#main-preset-name').fill('Original square');
+  await page.locator('#main-preset-store').click();
+  await page.locator('[data-parameter-id="19"] select').selectOption('0');
+  await page.locator('#main-preset-apply').click();
+  assert.equal(await page.locator('[data-parameter-id="19"] select').inputValue(), '1');
+  const presetDownloadPromise = page.waitForEvent('download');
+  await page.locator('#main-state-export').click();
+  const withPreset = JSON.parse((await readFile(await (await presetDownloadPromise).path())).toString());
+  assert.equal(withPreset.presets.length, 1);
+  assert.equal(withPreset.presets[0].parameters['add-wave-source'], 1);
+  assert.equal(withPreset.presets[0].source, undefined);
   assert.deepEqual(errors, []);
-  console.log('Main Add wave browser: square original wavetable, live worklet, project bundle save/reopen passed');
+  console.log('Main Add wave browser: square original wavetable, live worklet, project bundle and named preset passed');
 } finally {
   await browser.close();
 }

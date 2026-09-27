@@ -63,7 +63,7 @@ import { captureStandaloneFxState, parseStandaloneFxState, capturePersistentFxSt
 import { captureControlPatchState, parseControlPatchState } from './state/control-patch.js';
 import { captureMainSampleBlendState, parseMainSampleBlendState } from './state/main-sample-blend.js';
 import { captureMainVoiceBankState, parseMainVoiceBankState } from './state/main-voice-bank.js';
-import { captureProjectDocument, parseProjectDocument } from './state/project-document.js';
+import { captureProjectDocument, captureProjectPreset, applyProjectPreset, parseProjectDocument } from './state/project-document.js';
 
 const byId = (id) => document.getElementById(id);
 const primitivePicker = byId('primitive-picker');
@@ -438,6 +438,7 @@ function resetMainBankTargets() {
 }
 let values = new Map();
 let activeProject = null;
+const mainProjectPresets = new Map([['main-voice-bank', []], ['main-sample-blend', []]]);
 const patchedSignals = new Map();
 const patchedParameterValues = new Map();
 let slotValuesByType = new Map();
@@ -1535,8 +1536,11 @@ function renderPrimitive(family) {
   if (family === 'main-sample-blend' || family === 'main-voice-bank') {
     byId('main-state-label').textContent = family === 'main-voice-bank' ? 'Main voice bank project' : 'Main blend project';
     byId('main-state-status').textContent = family === 'main-voice-bank'
-      ? 'Saves all bank controls, both prepared targets, and the shared source. Stop audio before opening a state.'
-      : 'Saves branch levels, target controls, and the decoded source. Stop audio before opening a state.';
+      ? 'Saves the fixed graph, all bank controls, both prepared targets, and the shared source. Stop audio before opening a project.'
+      : 'Saves the fixed graph, branch controls, target settings, and the shared source. Stop audio before opening a project.';
+    byId('main-preset-name').value = '';
+    byId('main-preset-status').textContent = 'Presets hold controls and targets; they use the current project source. Stop audio before applying one.';
+    renderMainPresetList();
   }
   byId('main-state-file').disabled = audio.running;
   if (family === 'main-sample-blend' && !loadedSineSource) {
@@ -2289,40 +2293,54 @@ function mainBlendTargetControls() {
     contrast: Number(byId('sine-contrast').value),
   };
 }
+function mainStateReader() {
+  return activeFamily === 'main-voice-bank' ? parseMainVoiceBankState : parseMainSampleBlendState;
+}
+function captureCurrentMainState() {
+  return activeFamily === 'main-voice-bank'
+    ? captureMainVoiceBankState(activeProject, values, {
+      ...mainBlendTargetControls(), followPlayback: byId('sine-follow-playback').checked,
+      speed: Number(byId('sine-temporal-speed').value),
+    }, loadedSample)
+    : captureMainSampleBlendState(activeProject, values, mainBlendTargetControls(), loadedSineSource);
+}
+function renderMainPresetList(selectedId = '') {
+  const list = byId('main-preset-list');
+  const presets = mainProjectPresets.get(activeFamily) ?? [];
+  list.replaceChildren(new Option('Select a preset', ''));
+  for (const preset of presets) list.add(new Option(preset.name, preset.id));
+  list.value = presets.some((preset) => preset.id === selectedId) ? selectedId : '';
+  byId('main-preset-apply').disabled = !list.value;
+  byId('main-preset-remove').disabled = !list.value;
+}
+byId('main-preset-list').addEventListener('change', () => {
+  const selected = byId('main-preset-list').value;
+  const preset = mainProjectPresets.get(activeFamily)?.find((entry) => entry.id === selected);
+  byId('main-preset-name').value = preset?.name ?? '';
+  byId('main-preset-apply').disabled = !preset;
+  byId('main-preset-remove').disabled = !preset;
+});
 byId('main-state-export').addEventListener('click', () => {
   if (activeFamily !== 'main-sample-blend' && activeFamily !== 'main-voice-bank') return;
   const readout = byId('main-state-status');
   try {
     const bank = activeFamily === 'main-voice-bank';
-    const state = bank
-      ? captureMainVoiceBankState(activeProject, values, {
-        ...mainBlendTargetControls(), followPlayback: byId('sine-follow-playback').checked,
-        speed: Number(byId('sine-temporal-speed').value),
-      }, loadedSample)
-      : captureMainSampleBlendState(activeProject, values, mainBlendTargetControls(), loadedSineSource);
-    const bundle = captureProjectDocument(activeProject, state);
+    const state = captureCurrentMainState();
+    const bundle = captureProjectDocument(activeProject, state,
+      mainProjectPresets.get(activeFamily), mainStateReader());
     const url = URL.createObjectURL(new Blob([`${JSON.stringify(bundle)}\n`], { type: 'application/json' }));
     const link = document.createElement('a');
     link.href = url;
     link.download = bank ? 'manifold-main-voice-bank-project.json' : 'manifold-main-sample-blend-project.json';
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    readout.textContent = `Saved authored graph, ${activeProject.parameters.length} controls, ${bank ? 'both prepared targets' : 'target settings'}, and ${state.source.kind === 'builtin' ? 'the built-in source choice' : `${state.source.frames} source frames`}.`;
+    readout.textContent = `Saved authored graph, ${bundle.presets.length} presets, ${activeProject.parameters.length} controls, ${bank ? 'both prepared targets' : 'target settings'}, and ${state.source.kind === 'builtin' ? 'the built-in source choice' : `${state.source.frames} source frames`}.`;
   } catch (error) {
     readout.textContent = `State unavailable: ${error.message ?? String(error)}`;
   }
 });
-byId('main-state-file').addEventListener('change', async (event) => {
-  const file = event.target.files?.[0];
-  if (!file) return;
-  const readout = byId('main-state-status');
-  try {
-    if (!['main-sample-blend', 'main-voice-bank'].includes(activeFamily) || audio.running) throw new Error('Stop the Main instrument before opening a state.');
-    if (file.size > 20 * 1024 * 1024) throw new Error('State JSON must be smaller than 20 MB.');
-    const contents = await file.text();
-    if (!['main-sample-blend', 'main-voice-bank'].includes(activeFamily) || audio.running) throw new Error('Project view changed while opening the state.');
+function restoreMainState(state, label) {
     if (activeFamily === 'main-voice-bank') {
-      const { state } = parseProjectDocument(JSON.parse(contents), mainVoiceBankProject, parseMainVoiceBankState);
       pendingSineTargets.clear();
       latestSineTargetId = 0;
       if (sineTargetRequestFrame !== null) cancelAnimationFrame(sineTargetRequestFrame);
@@ -2364,10 +2382,9 @@ byId('main-state-file').addEventListener('change', async (event) => {
       renderSineSourceAnalysis();
       requestSampleAnalysis(loadedSample);
       requestSampleAnalysis(loadedSineSource, true);
-      readout.textContent = `Opened ${file.name} · ${activeProject.parameters.length} controls, two prepared targets, and ${state.source.kind === 'builtin' ? 'built-in source' : `${state.source.frames} embedded source frames`}.`;
+      byId('main-state-status').textContent = `Opened ${label} · ${activeProject.parameters.length} controls, two prepared targets, and ${state.source.kind === 'builtin' ? 'built-in source' : `${state.source.frames} embedded source frames`}.`;
       return;
     }
-    const { state } = parseProjectDocument(JSON.parse(contents), mainSampleBlendProject, parseMainSampleBlendState);
     phraseReferenceAuto = false;
     for (const parameter of mainSampleBlendProject.parameters) {
       const value = state.parameters[parameter.hostId];
@@ -2406,12 +2423,72 @@ byId('main-state-file').addEventListener('change', async (event) => {
     byId('sine-target-status').textContent = sineTargetActive ? 'Rebuilding prepared target in Rust/Wasm…' : 'Source restored; select Audition prepared target.';
     renderSineSourceAnalysis();
     requestSampleAnalysis(loadedSineSource, true);
-    readout.textContent = `Opened ${file.name} · ${activeProject.parameters.length} controls, target settings, and ${state.source.kind === 'builtin' ? 'built-in source' : `${state.source.frames} embedded source frames`}.`;
+    byId('main-state-status').textContent = `Opened ${label} · ${activeProject.parameters.length} controls, target settings, and ${state.source.kind === 'builtin' ? 'built-in source' : `${state.source.frames} embedded source frames`}.`;
+}
+byId('main-state-file').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const readout = byId('main-state-status');
+  try {
+    if (!['main-sample-blend', 'main-voice-bank'].includes(activeFamily) || audio.running) throw new Error('Stop the Main instrument before opening a project.');
+    if (file.size > 20 * 1024 * 1024) throw new Error('Project JSON must be smaller than 20 MB.');
+    const family = activeFamily;
+    const contents = await file.text();
+    if (activeFamily !== family || audio.running) throw new Error('Project view changed while opening the project.');
+    const project = family === 'main-voice-bank' ? mainVoiceBankProject : mainSampleBlendProject;
+    const { state, presets } = parseProjectDocument(JSON.parse(contents), project, mainStateReader());
+    restoreMainState(state, file.name);
+    mainProjectPresets.set(family, presets);
+    byId('main-preset-name').value = '';
+    renderMainPresetList();
+    byId('main-preset-status').textContent = `Loaded ${presets.length} named sound presets. Store updates a selected preset or creates a new one.`;
   } catch (error) {
     readout.textContent = `State unavailable: ${error.message ?? String(error)}`;
   } finally {
     event.target.value = '';
   }
+});
+byId('main-preset-store').addEventListener('click', () => {
+  const readout = byId('main-preset-status');
+  try {
+    if (!mainProjectPresets.has(activeFamily)) return;
+    const name = byId('main-preset-name').value.trim();
+    const list = byId('main-preset-list');
+    const id = list.value || crypto.randomUUID().replaceAll('-', '');
+    const snapshot = captureCurrentMainState();
+    const preset = captureProjectPreset(id, name, snapshot, activeProject, mainStateReader());
+    const presets = [...mainProjectPresets.get(activeFamily).filter((entry) => entry.id !== id), preset];
+    captureProjectDocument(activeProject, snapshot, presets, mainStateReader());
+    mainProjectPresets.set(activeFamily, presets);
+    renderMainPresetList(id);
+    readout.textContent = `Stored ${name}. Download the project bundle to keep ${presets.length} preset${presets.length === 1 ? '' : 's'}.`;
+  } catch (error) {
+    readout.textContent = `Preset unavailable: ${error.message ?? String(error)}`;
+  }
+});
+byId('main-preset-apply').addEventListener('click', () => {
+  const readout = byId('main-preset-status');
+  try {
+    if (audio.running) throw new Error('Stop audio before applying a preset.');
+    const preset = mainProjectPresets.get(activeFamily)?.find((entry) => entry.id === byId('main-preset-list').value);
+    if (!preset) throw new Error('Choose a preset first.');
+    const snapshot = captureCurrentMainState();
+    const state = applyProjectPreset(snapshot, preset, activeProject, mainStateReader());
+    restoreMainState(state, preset.name);
+    readout.textContent = `Applied ${preset.name} with the current project source.`;
+  } catch (error) {
+    readout.textContent = `Preset unavailable: ${error.message ?? String(error)}`;
+  }
+});
+byId('main-preset-remove').addEventListener('click', () => {
+  const id = byId('main-preset-list').value;
+  const presets = mainProjectPresets.get(activeFamily) ?? [];
+  const preset = presets.find((entry) => entry.id === id);
+  if (!preset) return;
+  mainProjectPresets.set(activeFamily, presets.filter((entry) => entry.id !== id));
+  byId('main-preset-name').value = '';
+  renderMainPresetList();
+  byId('main-preset-status').textContent = `Removed ${preset.name}. Download the project bundle to keep this change.`;
 });
 byId('slot-state-export').addEventListener('click', () => {
   if (!hasFxState(activeFamily)) return;

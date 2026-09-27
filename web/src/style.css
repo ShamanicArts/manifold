@@ -48,6 +48,13 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .module h1, .panel-heading h2 { font-size: 19px; line-height: 1.25; letter-spacing: -.02em; margin: 3px 0 0; font-weight: 640; }
 .module-ports, .panel-note { font-size: 11px; color: #91a2ae; white-space: nowrap; padding-top: 6px; }
 .module-section { margin-top: 25px; }
+.main-presets { margin-top: 14px; padding-top: 12px; border-top: 1px solid #526170; }
+.main-presets > label { display: block; margin-bottom: 7px; font-size: 11px; font-weight: 650; color: #c8d6dc; }
+.main-preset-row { display: flex; gap: 6px; margin-top: 6px; }
+.main-preset-row input, .main-preset-row select { min-width: 0; flex: 1; padding: 7px; border: 1px solid #526170; border-radius: 4px; background: #1c2a35; color: #e7edf0; }
+.main-preset-row .gate-button { flex: none; padding: 0 9px; }
+.main-presets > select { width: 100%; margin-top: 6px; padding: 7px; border: 1px solid #526170; border-radius: 4px; background: #1c2a35; color: #e7edf0; }
+.main-preset-actions .gate-button { flex: 1; }
 .section-label { margin-bottom: 10px; }
 .mode-switch { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid #394754; border-radius: 4px; overflow: hidden; }
 .mode-switch button { height: 32px; border: 0; border-right: 1px solid #394754; background: #202b36; color: #aebbc5; font-size: 12px; }

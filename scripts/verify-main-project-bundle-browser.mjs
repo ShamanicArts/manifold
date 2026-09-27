@@ -47,8 +47,29 @@ try {
   }]);
   await page.waitForFunction(() => document.querySelector('#main-state-status').textContent.startsWith('Opened'));
   assert.equal(await page.locator('#sine-pulse-width').inputValue(), '0.32');
+  await page.locator('#main-preset-name').fill('Warm start');
+  await page.locator('#main-preset-store').click();
+  assert.equal(await page.locator('#main-preset-list option').count(), 2);
+  await page.locator('#sine-pulse-width').fill('0.5');
+  await page.locator('#main-preset-apply').click();
+  assert.equal(await page.locator('#sine-pulse-width').inputValue(), '0.32');
+  const presetDownloadPromise = page.waitForEvent('download');
+  await page.locator('#main-state-export').click();
+  const withPreset = JSON.parse((await readFile(await (await presetDownloadPromise).path())).toString());
+  assert.equal(withPreset.presets.length, 1);
+  assert.equal(withPreset.presets[0].name, 'Warm start');
+  assert.equal(withPreset.presets[0].target.pulseWidth, .32);
+  assert.equal(withPreset.presets[0].source, undefined);
+  await page.locator('#main-state-file').setInputFiles([{
+    name: 'main-blend-with-preset.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(withPreset)),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#main-state-status').textContent.startsWith('Opened main-blend-with-preset'));
+  assert.equal(await page.locator('#main-preset-list option').count(), 2);
+  await page.locator('#main-preset-list').selectOption(withPreset.presets[0].id);
+  await page.locator('#main-preset-remove').click();
+  assert.equal(await page.locator('#main-preset-list option').count(), 1);
   assert.deepEqual(errors, []);
-  console.log('Main blend project browser: bundle save/reopen, changed graph rejection, older bare state import passed');
+  console.log('Main blend project browser: bundle and named preset save/reopen/apply/remove, changed graph rejection, older bare state import passed');
 } finally {
   await browser.close();
 }

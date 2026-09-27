@@ -179,11 +179,18 @@ note ownership follows the old UI's note-only policy across channels.
 - `web/src/state/project-document.js` wraps the authored Main bank or blend
   signal graph and its instrument snapshot in a version-1 project document.
   Imports compare the graph with the fixed route this workbench can execute,
-  then validate the snapshot before changing the session. Earlier bare bank
+  then validate the snapshot and up to 32 named sound presets before changing
+  the session. Presets hold parameters and prepared targets; they use the
+  project's shared source rather than duplicating PCM. The browser can store,
+  apply, remove, download and reopen them. Earlier bare bank
   and blend state files still open. `scripts/verify-project-document.mjs`
-  checks both projects, the old format, changed graphs, and invalid snapshots.
-  Graph replacement and the original project's preset library remain future
-  work.
+  checks both projects, the old format, changed graphs, and invalid snapshots
+  or presets. `scripts/verify-main-project-bundle-browser.mjs` exercises a
+  blend preset, bundle reopen, changed-graph rejection, and old state import.
+  The bank browser check exercises store/apply. The old Main "Save Preset"
+  command actually saved broad runtime state including rack layout; this v2
+  sound preset is deliberately narrower. Graph replacement and migrating the
+  old project's runtime state and preset library remain future work.
 
 The playable workbench is `/?primitive=main-voice-bank`; the Add/Morph checkpoint
 review is `/main-add-morph-review.html`; the timing review is
@@ -201,7 +208,8 @@ the review page was visually checked in headless Chromium.
 
 ## Next integration
 
-Expand the fixed-graph bundle into an editable Main project and preset model. Compare
+Expand the fixed-graph bundle into an editable Main project and migrate broader
+legacy state where behavior is understood. Compare
 other wave recipes and broader source material with the assembled old route.
 Repeat capacity measurements against a regular browser and physical output
 device, then identify the vocoder's native/Wasm numerical variance. Host
