@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use manifold_core::graph::{Connection, GraphDescription, NodeKind, NodeSpec};
+use manifold_core::sine_bank::{Partial, PartialSet};
 use serde_json::Value;
 
 use crate::parameters::{HOST_SLOT_COUNT, HostBinding, HostParameter};
@@ -35,14 +36,20 @@ struct Asset {
     stereo: Vec<f32>,
 }
 
-/// A parsed v1 project. Currently supported node kinds are the live sampler
-/// graph slice; other kinds and partial/temporal assets fail explicitly.
+struct Target {
+    node: u32,
+    index: u32,
+    partials: PartialSet,
+}
+
+/// A parsed v1 project; unsupported node and temporal features fail explicitly.
 pub struct NativeProject {
     graph: GraphDescription,
     parameters: Vec<Parameter>,
     host_parameters: Vec<HostParameter>,
     host_bindings: Vec<HostBinding>,
     assets: Vec<Asset>,
+    targets: Vec<Target>,
 }
 
 fn object<'a>(
@@ -128,6 +135,28 @@ fn parameter_range(kind: &str, id: u32) -> Option<(f32, f32, bool)> {
             (0., 100., false),
             (0., 1., false),
         ],
+        "main-voice-bank" => &[
+            (0., 4., true),
+            (-1., 1., false),
+            (36., 84., false),
+            (0., 2., true),
+            (-24., 24., false),
+            (0., 2., true),
+            (0., 5., true),
+            (0., 1., false),
+            (0., 1., false),
+            (0., 1., false),
+            (0., 1., true),
+            (0.001, 0.5, false),
+            (0.001, 1., false),
+            (0., 1., false),
+            (0.001, 2., false),
+            (0., 2., false),
+            (0.25, 4., false),
+            (0., 1., false),
+            (0.05, 0.6, false),
+            (0., 1., true),
+        ],
         "sample-region" => match id {
             0 => return Some((0.25, 2., false)),
             1 | 2 => return Some((0., 1., true)),
@@ -171,7 +200,7 @@ impl NativeProject {
         {
             return Err(ProjectError::Invalid("project version"));
         }
-        for key in ["targets", "temporal"] {
+        for key in ["temporal"] {
             if let Some(entries) = doc.get(key) {
                 if !entries.as_array().is_some_and(Vec::is_empty) {
                     return Err(ProjectError::UnsupportedFeature(key));
@@ -241,8 +270,8 @@ impl NativeProject {
                         },
                     }
                 }
-                "gain" | "loop-capture" | "sum2" | "midi-transpose" | "oscillator" | "noise"
-                | "lfo" | "modulated-gain" => {
+                "gain" | "loop-capture" | "sum2" | "midi-transpose" | "main-voice-bank"
+                | "oscillator" | "noise" | "lfo" | "modulated-gain" => {
                     let a = float(
                         entry
                             .get("a")
@@ -250,7 +279,14 @@ impl NativeProject {
                         -f32::MAX,
                         f32::MAX,
                     )?;
-                    if kind == "midi-transpose" || kind == "lfo" {
+                    if kind == "main-voice-bank" {
+                        if entry.len() != 3 || a != 9.0 {
+                            return Err(ProjectError::Invalid("Main bank arguments"));
+                        }
+                        NodeKind::MainVoiceBank {
+                            fft_order: a as u32,
+                        }
+                    } else if kind == "midi-transpose" || kind == "lfo" {
                         if entry.len() != 3 || a != if kind == "lfo" { 2.0 } else { 0.0 } {
                             return Err(ProjectError::Invalid("node arguments"));
                         }
@@ -377,7 +413,7 @@ impl NativeProject {
             host_parameters.push(HostParameter::new(node, id, min, max, discrete, value));
         }
         for (&node, kind) in &kinds {
-            if (0..=13).any(|id| parameter_range(kind, id).is_some() && !seen.contains(&(node, id)))
+            if (0..=19).any(|id| parameter_range(kind, id).is_some() && !seen.contains(&(node, id)))
             {
                 return Err(ProjectError::Invalid("missing parameter"));
             }
@@ -450,6 +486,64 @@ impl NativeProject {
                 graph_parameter,
             });
         }
+        let raw_targets: &[Value] = match doc.get("targets") {
+            None => &[],
+            Some(Value::Array(values)) => values,
+            Some(_) => return Err(ProjectError::Invalid("partial targets")),
+        };
+        if raw_targets.len() > 8 {
+            return Err(ProjectError::Invalid("partial target count"));
+        }
+        let mut targets = Vec::with_capacity(raw_targets.len());
+        let mut target_keys = BTreeSet::new();
+        for target in raw_targets {
+            let entry = object(target, &["nodeId", "target", "fundamental", "values"], &[])?;
+            let node = uint(required(entry, "nodeId"), 65_535)?;
+            let index = uint(required(entry, "target"), 1)?;
+            if kinds.get(&node).map(String::as_str) != Some("main-voice-bank")
+                || !target_keys.insert((node, index))
+            {
+                return Err(ProjectError::Invalid("partial target node"));
+            }
+            let fundamental = float(required(entry, "fundamental"), 0., 24_000.)?;
+            if fundamental <= 0. {
+                return Err(ProjectError::Invalid("partial fundamental"));
+            }
+            let values = required(entry, "values")
+                .as_array()
+                .ok_or(ProjectError::Invalid("partial values"))?;
+            if values.len() < 4 || values.len() > 128 || values.len() % 4 != 0 {
+                return Err(ProjectError::Invalid("partial count"));
+            }
+            let mut partials = PartialSet {
+                fundamental,
+                count: values.len() / 4,
+                ..PartialSet::default()
+            };
+            for (part, chunk) in values.chunks_exact(4).enumerate() {
+                partials.partials[part] = Partial {
+                    frequency: float(&chunk[0], 0., 24_000.)?,
+                    amplitude: float(&chunk[1], 0., f32::MAX)?,
+                    phase: float(&chunk[2], -f32::MAX, f32::MAX)?,
+                    decay_rate: float(&chunk[3], 0., f32::MAX)?,
+                };
+            }
+            if !partials.validate() {
+                return Err(ProjectError::Invalid("partial values"));
+            }
+            targets.push(Target {
+                node,
+                index,
+                partials,
+            });
+        }
+        for (&node, kind) in &kinds {
+            if kind == "main-voice-bank"
+                && (!target_keys.contains(&(node, 0)) || !target_keys.contains(&(node, 1)))
+            {
+                return Err(ProjectError::Invalid("missing Main targets"));
+            }
+        }
         let encoded_assets: &[Value] = match doc.get("assets") {
             None => &[],
             Some(Value::Array(values)) => values,
@@ -470,7 +564,7 @@ impl NativeProject {
             let node = uint(required(entry, "nodeId"), 65_535)?;
             if !matches!(
                 kinds.get(&node).map(String::as_str),
-                Some("sample-instrument" | "sample-region" | "granulator")
+                Some("sample-instrument" | "sample-region" | "granulator" | "main-voice-bank")
             ) || !asset_nodes.insert(node)
             {
                 return Err(ProjectError::Invalid("asset node"));
@@ -521,6 +615,7 @@ impl NativeProject {
             host_parameters,
             host_bindings,
             assets,
+            targets,
         })
     }
 
@@ -548,6 +643,11 @@ impl NativeProject {
         for asset in self.assets {
             if !processor.load_sample_stereo(asset.node.into(), asset.stereo, asset.rate) {
                 return Err(ProjectError::Invalid("unavailable sample slot"));
+            }
+        }
+        for target in self.targets {
+            if !processor.load_partials_target(target.node.into(), target.index, target.partials) {
+                return Err(ProjectError::Invalid("unavailable partial target"));
             }
         }
         processor.host_parameters = self.host_parameters;
@@ -687,6 +787,120 @@ mod tests {
         assert!(left.iter().any(|sample| sample.abs() > 0.0001));
         assert!(left.iter().all(|sample| sample.is_finite()));
         assert!(right.iter().all(|sample| sample.is_finite()));
+    }
+
+    #[test]
+    fn browser_main_bank_restores_both_partial_targets_and_renders_note() {
+        let project = include_bytes!("../../../projects/graph-workspace/main-bank.json");
+        let mut processor = NativeProject::parse(project)
+            .unwrap()
+            .prepare(48_000.0, 128)
+            .unwrap();
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        let note = TimedEvent {
+            offset: 24,
+            node: 4,
+            kind: EventKind::NoteOn {
+                channel: 0,
+                note: 60,
+                velocity: 127,
+            },
+        };
+        let note_event = [note];
+        let mut audible = false;
+        for block in 0..16 {
+            processor
+                .process(AudioBlock {
+                    main: None,
+                    sidechain: None,
+                    output: [&mut left, &mut right],
+                    events: if block == 0 { &note_event } else { &[] },
+                })
+                .unwrap();
+            if block == 0 {
+                assert_eq!(left[..24], [0.0; 24]);
+            }
+            audible |= left.iter().any(|sample| sample.abs() > 0.0001);
+            assert!(left.iter().all(|sample| sample.is_finite()));
+            assert!(right.iter().all(|sample| sample.is_finite()));
+        }
+        assert!(audible);
+    }
+
+    #[test]
+    fn main_bank_rejects_missing_or_invalid_spectral_state() {
+        let source = include_bytes!("../../../projects/graph-workspace/main-bank.json");
+        let mut bundle: Value = serde_json::from_slice(source).unwrap();
+        bundle["targets"].as_array_mut().unwrap().pop();
+        assert!(matches!(
+            parse(&bundle),
+            Err(ProjectError::Invalid("missing Main targets"))
+        ));
+        let mut bundle: Value = serde_json::from_slice(source).unwrap();
+        bundle["targets"][0]["values"][0] = json!(25_000);
+        assert!(matches!(
+            parse(&bundle),
+            Err(ProjectError::Invalid("number range"))
+        ));
+        let mut bundle: Value = serde_json::from_slice(source).unwrap();
+        bundle["temporal"] = json!([{}]);
+        assert!(matches!(
+            parse(&bundle),
+            Err(ProjectError::UnsupportedFeature("temporal"))
+        ));
+    }
+
+    #[test]
+    fn main_bank_embedded_sample_restores_sample_voice_route() {
+        let source = include_bytes!("../../../projects/graph-workspace/main-bank.json");
+        let mut bundle: Value = serde_json::from_slice(source).unwrap();
+        let pcm: Vec<f32> = (0..4800)
+            .flat_map(|i| {
+                let sample = (i as f32 * std::f32::consts::TAU * 330.0 / 48_000.0).sin() * 0.8;
+                [sample, sample]
+            })
+            .collect();
+        let bytes: Vec<u8> = pcm.iter().flat_map(|sample| sample.to_le_bytes()).collect();
+        bundle["assets"] = json!([{ "nodeId": 5, "sourceRate": 48000, "frames": 4800,
+            "label": "Main source", "pcmF32Base64": STANDARD.encode(bytes) }]);
+        bundle["signal"]["initialParameters"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|entry| entry["nodeId"] == 5 && entry["id"] == 1)
+            .unwrap()["value"] = json!(1);
+        let mut processor = parse(&bundle).unwrap().prepare(48_000.0, 128).unwrap();
+        let note = TimedEvent {
+            offset: 0,
+            node: 4,
+            kind: EventKind::NoteOn {
+                channel: 0,
+                note: 60,
+                velocity: 127,
+            },
+        };
+        let mut audible = false;
+        for block in 0..32 {
+            let mut left = [0.0; 128];
+            let mut right = [0.0; 128];
+            let events: &[TimedEvent] = if block == 0 {
+                std::slice::from_ref(&note)
+            } else {
+                &[]
+            };
+            processor
+                .process(AudioBlock {
+                    main: None,
+                    sidechain: None,
+                    output: [&mut left, &mut right],
+                    events,
+                })
+                .unwrap();
+            audible |= left.iter().any(|sample| sample.abs() > 0.0001);
+            assert!(left.iter().all(|sample| sample.is_finite()));
+        }
+        assert!(audible);
     }
 
     #[test]
@@ -965,12 +1179,9 @@ mod tests {
         ));
         let mut bundle = fixture();
         bundle["targets"] = json!([{}]);
-        assert!(matches!(
-            parse(&bundle),
-            Err(ProjectError::UnsupportedFeature("targets"))
-        ));
+        assert!(matches!(parse(&bundle), Err(ProjectError::Invalid(_))));
         let mut bundle = fixture();
-        bundle["signal"]["nodes"][3]["type"] = json!("main-voice-bank");
+        bundle["signal"]["nodes"][3]["type"] = json!("unavailable-node");
         assert!(matches!(
             parse(&bundle),
             Err(ProjectError::UnsupportedNode(_))

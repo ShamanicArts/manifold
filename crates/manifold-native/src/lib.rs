@@ -3,6 +3,7 @@
 
 use manifold_core::events::{EventError, TimedEvent};
 use manifold_core::graph::{ExecutionPlan, GraphDescription, GraphError, NodeId};
+use manifold_core::sine_bank::PartialSet;
 
 pub mod parameters;
 pub mod project;
@@ -95,6 +96,15 @@ impl NativeProcessor {
 
     pub fn load_sample_stereo(&mut self, node: NodeId, stereo: Vec<f32>, source_rate: f32) -> bool {
         self.plan.load_sample_stereo(node, stereo, source_rate)
+    }
+
+    pub fn load_partials_target(
+        &mut self,
+        node: NodeId,
+        target: u32,
+        partials: PartialSet,
+    ) -> bool {
+        self.plan.load_partials_target(node, target, partials)
     }
 
     /// Render one host block without allocating. Missing buses are silence.
