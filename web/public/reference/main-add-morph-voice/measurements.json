@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "settledStartFrame": 4096,
-  "comparisonScope": "old sample player, oscillator, additive sine/saw/square/triangle/blend wave recipes, SineBank spectral Add/Morph with fixed published source spectrum, crossfaders, gains and voice mixers; temporal updates, vocoder and old UI envelope excluded",
+  "comparisonScope": "old sample player, oscillator, additive sine/saw/square/triangle/blend wave recipes, SineBank spectral Add/Morph with fixed published source spectrum and driven Add flavor/pulse width, crossfaders, gains and voice mixers; temporal updates, vocoder and old UI envelope excluded",
   "results": [
     {
       "id": "add-source",
@@ -199,6 +199,78 @@
         "max": 0.0009357716771773994,
         "rms": 0.0000732697466491486,
         "referenceRms": 0.07926808091079675
+      }
+    },
+    {
+      "id": "add-driven-saw",
+      "settledOldVsNative": {
+        "max": 5.960464477539063e-8,
+        "rms": 1.024703658475853e-8,
+        "referenceRms": 0.16534520651683496
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.15711677702821583
+      },
+      "onsetOldVsNative": {
+        "max": 0.0006047098431736231,
+        "rms": 0.000041127425449886056,
+        "referenceRms": 0.14843291388371108
+      }
+    },
+    {
+      "id": "add-driven-pulse-narrow",
+      "settledOldVsNative": {
+        "max": 5.960464477539063e-8,
+        "rms": 1.0096098656293318e-8,
+        "referenceRms": 0.1508039511543898
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.14307909840989383
+      },
+      "onsetOldVsNative": {
+        "max": 0.000526213611010462,
+        "rms": 0.00003548586617009947,
+        "referenceRms": 0.13491266589392184
+      }
+    },
+    {
+      "id": "add-driven-pulse-half",
+      "settledOldVsNative": {
+        "max": 4.470348358154297e-8,
+        "rms": 9.813210679205736e-9,
+        "referenceRms": 0.19147202402757152
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.18229903053716653
+      },
+      "onsetOldVsNative": {
+        "max": 0.0007319998694583774,
+        "rms": 0.00004970201152671241,
+        "referenceRms": 0.17263935199545846
+      }
+    },
+    {
+      "id": "add-driven-bright",
+      "settledOldVsNative": {
+        "max": 5.960464477539063e-8,
+        "rms": 9.667798939754343e-9,
+        "referenceRms": 0.15486803008669647
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.147011785091914
+      },
+      "onsetOldVsNative": {
+        "max": 0.0005434485501609743,
+        "rms": 0.000037086539918378835,
+        "referenceRms": 0.13871130435200194
       }
     }
   ]

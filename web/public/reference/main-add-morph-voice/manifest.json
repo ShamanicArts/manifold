@@ -1,10 +1,10 @@
 {
   "version": 1,
   "reference": "compiled original C++ Main Add/Morph voice nodes versus native Rust Main bank",
-  "scope": "old sample player, oscillator, additive sine/saw/square/triangle/blend wave recipes, SineBank spectral Add/Morph with fixed published source spectrum, crossfaders, gains and voice mixers; temporal updates, vocoder and old UI envelope excluded",
+  "scope": "old sample player, oscillator, additive sine/saw/square/triangle/blend wave recipes, SineBank spectral Add/Morph with fixed published source spectrum and driven Add flavor/pulse width, crossfaders, gains and voice mixers; temporal updates, vocoder and old UI envelope excluded",
   "legacySourceSha256": "deaf46d884f6e2c3c2187734291b1cdf6f282b0d90335bce557ee3ea24f0492a",
-  "referenceHarnessSha256": "ad5080226e9638cff461276eb1d15f3f3ebcfa4a9e3f39472b60a9c044a40f60",
-  "rustSourceSha256": "9458578f5c324474aeb80bd5a1050734fbd8f3c528e5d3a81ccdd1d5a69b3cd6",
+  "referenceHarnessSha256": "11bc57e05fce61694516137663bd57e3250c3a3841fc57cf7654875292cd56f8",
+  "rustSourceSha256": "d48e06a6ab9fd65fb4eb3f3b0265853975e111c0ca93d07ec168586bfecaec65",
   "wasmSha256": "ef5cf4ea62d3e14666e43678c79b7079746a494bc78ab7152cde1e2526d66364",
   "sampleRate": 48000,
   "sampleSourceRate": 48000,
@@ -79,7 +79,22 @@
         1.0,
         0.0,
         0.0
-      ]
+      ],
+      "sourceTarget": [
+        1,
+        1,
+        0,
+        0,
+        2,
+        0.38,
+        0,
+        0,
+        3,
+        0.13,
+        0,
+        0
+      ],
+      "driven": null
     },
     {
       "id": "add-center",
@@ -124,7 +139,22 @@
         1.0,
         0.0,
         0.0
-      ]
+      ],
+      "sourceTarget": [
+        1,
+        1,
+        0,
+        0,
+        2,
+        0.38,
+        0,
+        0,
+        3,
+        0.13,
+        0,
+        0
+      ],
+      "driven": null
     },
     {
       "id": "add-wave",
@@ -169,7 +199,22 @@
         1.0,
         0.0,
         0.0
-      ]
+      ],
+      "sourceTarget": [
+        1,
+        1,
+        0,
+        0,
+        2,
+        0.38,
+        0,
+        0,
+        3,
+        0.13,
+        0,
+        0
+      ],
+      "driven": null
     },
     {
       "id": "add-wave-only",
@@ -214,7 +259,22 @@
         1.0,
         0.0,
         0.0
-      ]
+      ],
+      "sourceTarget": [
+        1,
+        1,
+        0,
+        0,
+        2,
+        0.38,
+        0,
+        0,
+        3,
+        0.13,
+        0,
+        0
+      ],
+      "driven": null
     },
     {
       "id": "morph-source",
@@ -259,7 +319,22 @@
         1.0,
         0.0,
         0.0
-      ]
+      ],
+      "sourceTarget": [
+        1,
+        1,
+        0,
+        0,
+        2,
+        0.38,
+        0,
+        0,
+        3,
+        0.13,
+        0,
+        0
+      ],
+      "driven": null
     },
     {
       "id": "morph-center",
@@ -304,7 +379,22 @@
         1.0,
         0.0,
         0.0
-      ]
+      ],
+      "sourceTarget": [
+        1,
+        1,
+        0,
+        0,
+        2,
+        0.38,
+        0,
+        0,
+        3,
+        0.13,
+        0,
+        0
+      ],
+      "driven": null
     },
     {
       "id": "add-saw-center",
@@ -377,7 +467,22 @@
         0.045992114,
         3.1415927,
         0.0
-      ]
+      ],
+      "sourceTarget": [
+        1,
+        1,
+        0,
+        0,
+        2,
+        0.38,
+        0,
+        0,
+        3,
+        0.13,
+        0,
+        0
+      ],
+      "driven": null
     },
     {
       "id": "add-square-center",
@@ -450,7 +555,22 @@
         0.032973908,
         0.0,
         0.0
-      ]
+      ],
+      "sourceTarget": [
+        1,
+        1,
+        0,
+        0,
+        2,
+        0.38,
+        0,
+        0,
+        3,
+        0.13,
+        0,
+        0
+      ],
+      "driven": null
     },
     {
       "id": "add-triangle-center",
@@ -523,7 +643,22 @@
         0.0036960314,
         1.5707964,
         0.0
-      ]
+      ],
+      "sourceTarget": [
+        1,
+        1,
+        0,
+        0,
+        2,
+        0.38,
+        0,
+        0,
+        3,
+        0.13,
+        0,
+        0
+      ],
+      "driven": null
     },
     {
       "id": "add-blend-center",
@@ -600,7 +735,22 @@
         0.04197386,
         0.0,
         0.0
-      ]
+      ],
+      "sourceTarget": [
+        1,
+        1,
+        0,
+        0,
+        2,
+        0.38,
+        0,
+        0,
+        3,
+        0.13,
+        0,
+        0
+      ],
+      "driven": null
     },
     {
       "id": "add-saw-wave-only",
@@ -673,7 +823,270 @@
         0.045992114,
         3.1415927,
         0.0
-      ]
+      ],
+      "sourceTarget": [
+        1,
+        1,
+        0,
+        0,
+        2,
+        0.38,
+        0,
+        0,
+        3,
+        0.13,
+        0,
+        0
+      ],
+      "driven": null
+    },
+    {
+      "id": "add-driven-saw",
+      "label": "Original Main Add fixed-spectrum route \u00b7 blend 1.0 \u00b7 depth 1.0",
+      "parameters": [
+        0,
+        1.0,
+        60,
+        2,
+        0,
+        0,
+        4,
+        1.0,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2,
+        0
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "add-driven-saw-rust.f32",
+      "legacyOutput": "add-driven-saw-cpp.f32",
+      "waveTarget": [
+        1.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "sourceTarget": [
+        1.0,
+        1.0,
+        0.0,
+        0.0,
+        2.0,
+        0.19,
+        0.0,
+        0.0,
+        3.0,
+        0.043333333,
+        0.0,
+        0.0
+      ],
+      "driven": {
+        "waveform": 1,
+        "pulseWidth": 0.5
+      }
+    },
+    {
+      "id": "add-driven-pulse-narrow",
+      "label": "Original Main Add fixed-spectrum route \u00b7 blend 1.0 \u00b7 depth 1.0",
+      "parameters": [
+        0,
+        1.0,
+        60,
+        2,
+        0,
+        0,
+        4,
+        1.0,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2,
+        0
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "add-driven-pulse-narrow-rust.f32",
+      "legacyOutput": "add-driven-pulse-narrow-cpp.f32",
+      "waveTarget": [
+        1.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "sourceTarget": [
+        1.0,
+        1.0,
+        0.0,
+        0.0,
+        2.0,
+        0.3208446,
+        0.0,
+        0.0,
+        3.0,
+        0.08023419,
+        0.0,
+        0.0
+      ],
+      "driven": {
+        "waveform": 6,
+        "pulseWidth": 0.18
+      }
+    },
+    {
+      "id": "add-driven-pulse-half",
+      "label": "Original Main Add fixed-spectrum route \u00b7 blend 1.0 \u00b7 depth 1.0",
+      "parameters": [
+        0,
+        1.0,
+        60,
+        2,
+        0,
+        0,
+        4,
+        1.0,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2,
+        0
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "add-driven-pulse-half-rust.f32",
+      "legacyOutput": "add-driven-pulse-half-cpp.f32",
+      "waveTarget": [
+        1.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "sourceTarget": [
+        1.0,
+        1.0,
+        0.0,
+        0.0,
+        3.0,
+        0.043333333,
+        0.0,
+        0.0
+      ],
+      "driven": {
+        "waveform": 6,
+        "pulseWidth": 0.5
+      }
+    },
+    {
+      "id": "add-driven-bright",
+      "label": "Original Main Add fixed-spectrum route \u00b7 blend 1.0 \u00b7 depth 1.0",
+      "parameters": [
+        0,
+        1.0,
+        60,
+        2,
+        0,
+        0,
+        4,
+        1.0,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2,
+        0
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "add-driven-bright-rust.f32",
+      "legacyOutput": "add-driven-bright-cpp.f32",
+      "waveTarget": [
+        1.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "sourceTarget": [
+        1.0,
+        1.0,
+        0.0,
+        0.0,
+        2.0,
+        0.26870057,
+        0.0,
+        0.0,
+        3.0,
+        0.07505553,
+        0.0,
+        0.0
+      ],
+      "driven": {
+        "waveform": 5,
+        "pulseWidth": 0.5
+      }
     }
   ]
 }

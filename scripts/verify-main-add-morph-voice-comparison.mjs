@@ -23,7 +23,8 @@ assert.equal(hashFiles(['tools/legacy-main-add-morph-voice-reference.cpp',
   'scripts/build-legacy-main-add-morph-voice-reference.sh']), manifest.referenceHarnessSha256);
 assert.equal(hashFiles([...['main_voice_bank.rs', 'sample_region.rs', 'oscillator.rs', 'wave_add_oscillator.rs', 'sine_bank.rs', 'graph.rs',
   'spectral_targets.rs'].map((file) => join('crates/manifold-core/src', file)),
-  'crates/manifold-core/examples/emit_main_wave_recipe.rs']), manifest.rustSourceSha256);
+  'crates/manifold-core/examples/emit_main_wave_recipe.rs',
+  'crates/manifold-core/examples/emit_main_add_source_recipe.rs']), manifest.rustSourceSha256);
 const wasmBytes = readFileSync('web/dist/manifold_filter.wasm');
 assert.equal(createHash('sha256').update(wasmBytes).digest('hex'), manifest.wasmSha256);
 manifest.sampleData = floats(`${root}${manifest.sample}`);
@@ -62,6 +63,14 @@ for (const selected of manifest.cases) {
     nativeVsWasm, onsetOldVsNative: onset });
   console.log(`${selected.id}: settled old/Rust max ${oldVsNative.max.toExponential(3)}, RMS ${oldVsNative.rms.toExponential(3)}; native/Wasm max ${nativeVsWasm.max.toExponential(3)}; onset max ${onset.max.toExponential(3)}`);
 }
+const pulseNarrow = floats(`${root}add-driven-pulse-narrow-rust.f32`);
+const pulseHalf = floats(`${root}add-driven-pulse-half-rust.f32`);
+const bright = floats(`${root}add-driven-bright-rust.f32`);
+const saw = floats(`${root}add-driven-saw-rust.f32`);
+assert.ok(measure(pulseNarrow, pulseHalf).max > .05,
+  'Changing driven pulse width did not affect the assembled voice');
+assert.ok(measure(saw, bright).max > .01,
+  'Changing driven waveform did not affect the assembled voice');
 if (process.argv[2]) writeFileSync(process.argv[2], `${JSON.stringify({
   schemaVersion: 1, settledStartFrame: manifest.settledStartFrame,
   comparisonScope: manifest.scope, results,

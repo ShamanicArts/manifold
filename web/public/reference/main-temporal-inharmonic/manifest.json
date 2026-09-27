@@ -5,7 +5,7 @@
   "scope": "original C++ source temporal interpolation and assembled Add/Morph routing compared with both the 256-position prepared table and the raw-frame route; old UI envelope and vocoder omitted",
   "sourceSha256": "dee6c11a45236eead9f89bebbedbfb46cf89509331ee0663f00309eddf972b57",
   "wasmSha256": "ef5cf4ea62d3e14666e43678c79b7079746a494bc78ab7152cde1e2526d66364",
-  "legacySourceSha256": "e31bdc05da5be0e6f3dee24c6dfe375b81fb89a5092e773aa5f2b0ab4acf8643",
+  "legacySourceSha256": "143c0883ec541e8e751dd12f03ad5c6e96022fd7b45627e8ac9e242921315315",
   "oldTemporalFrames": 45,
   "trackedPitch": 223.87875366210938,
   "sampleRate": 48000,

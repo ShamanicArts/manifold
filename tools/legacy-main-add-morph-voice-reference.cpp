@@ -60,8 +60,8 @@ static void crossfade(dsp_primitives::CrossfaderNode& node, int block, float pos
 }
 
 int main(int argc, char** argv) {
-    if (argc != 13 && argc != 15 && argc != 16) {
-        std::cerr << "usage: legacy-main-add-morph-voice-reference SAMPLE OUTPUT SAMPLE_FRAMES FREQ AMP WAVEFORM BLEND DEPTH MODE FRAMES BLOCK SOURCE_PARTIALS [TEMPORAL_FRAMES TEMPORAL_SPEED [MORPH_AMOUNT]]\n";
+    if (argc != 13 && argc != 14 && argc != 15 && argc != 16) {
+        std::cerr << "usage: legacy-main-add-morph-voice-reference SAMPLE OUTPUT SAMPLE_FRAMES FREQ AMP WAVEFORM BLEND DEPTH MODE FRAMES BLOCK SOURCE_PARTIALS [ADD_FLAVOR,SPECTRAL_WAVEFORM,PULSE_WIDTH | TEMPORAL_FRAMES TEMPORAL_SPEED [MORPH_AMOUNT]]\n";
         return 2;
     }
     const int sampleFrames = std::atoi(argv[3]);
@@ -83,6 +83,21 @@ int main(int argc, char** argv) {
         values.push_back(std::strtof(field.c_str(), nullptr));
     }
     if (values.empty() || values.size() % 4 || values.size() > 32 * 4) return 2;
+    int addFlavor = 0, spectralWaveform = waveform;
+    float pulseWidth = 0.5f;
+    if (argc == 14) {
+        std::istringstream controls(argv[13]);
+        std::string field;
+        if (!std::getline(controls, field, ',')) return 2;
+        addFlavor = std::atoi(field.c_str());
+        if (!std::getline(controls, field, ',')) return 2;
+        spectralWaveform = std::atoi(field.c_str());
+        if (!std::getline(controls, field, ',')) return 2;
+        pulseWidth = std::strtof(field.c_str(), nullptr);
+        if (std::getline(controls, field, ',') || addFlavor < 0 || addFlavor > 1
+            || spectralWaveform < 0 || spectralWaveform > 7
+            || !std::isfinite(pulseWidth) || pulseWidth < 0.01f || pulseWidth > 0.99f) return 2;
+    }
     std::vector<float> source(static_cast<size_t>(sampleFrames) * 2);
     std::ifstream input(argv[1], std::ios::binary);
     input.read(reinterpret_cast<char*>(source.data()), source.size() * sizeof(float));
@@ -183,7 +198,9 @@ int main(int argc, char** argv) {
     sampleAdditive.setAmplitude(0.0f);
     sampleAdditive.setSpectralMode(mode == 4 ? 1 : 2);
     sampleAdditive.setSpectralSamplePlayback(player);
-    sampleAdditive.setSpectralWaveform(waveform);
+    sampleAdditive.setSpectralWaveform(spectralWaveform);
+    sampleAdditive.setSpectralAddFlavor(addFlavor);
+    sampleAdditive.setSpectralPulseWidth(pulseWidth);
     sampleAdditive.setSpectralMorphAmount(morphAmount);
     sampleAdditive.setSpectralMorphDepth(1.0f);
     sampleAdditive.setSpectralMorphCurve(2);

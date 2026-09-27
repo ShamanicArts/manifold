@@ -117,7 +117,7 @@ note ownership follows the old UI's note-only policy across channels.
   0.000003263 after frame 512; native Rust and Wasm are bit-exact. Depth zero
   and three wet positions are covered. The same vocoder and envelope scope
   applies.
-- `scripts/verify-main-add-morph-voice-comparison.mjs` checks eleven assembled
+- `scripts/verify-main-add-morph-voice-comparison.mjs` checks fifteen assembled
   original C++ Add/Morph routes against native Rust and Wasm. The old
   `SineBankNode` runs spectral Add/Morph mode from a fixed published source
   spectrum; the original additive oscillator, sample player, crossfaders,
@@ -125,7 +125,10 @@ note ownership follows the old UI's note-only policy across channels.
   largest old/Rust sample difference is 0.000002444; native/Wasm is bit-exact.
   Five extra cases select the original band-limited additive wavetable for
   saw, square, triangle, and sine/saw blend. Their largest settled old/Rust
-  difference is 0.0000000615. The Main parameter `add-wave-source` selects
+  difference is 0.0000000615. Four driven Add cases cover saw, bright and
+  pulse waveforms at two widths. They agree with the assembled original route
+  within 0.00000006 settled peak; changing pulse width moves output by
+  0.1165 peak. The Main parameter `add-wave-source` selects
   the authored prepared partial bank or the original additive oscillator;
   saved states from versions 1 and 2 migrate with prepared partials selected.
   The fixture excludes temporal source changes, vocoder processing, and the
