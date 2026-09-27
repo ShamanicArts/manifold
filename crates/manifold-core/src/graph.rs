@@ -1801,13 +1801,97 @@ impl ExecutionPlan {
             })
     }
 
-    pub fn capture_snapshot_length(&self, node: NodeId) -> Option<usize> {
+    pub fn begin_capture_staging(&mut self, node: NodeId) -> bool {
+        self.nodes
+            .iter_mut()
+            .find(|entry| entry.id == node)
+            .is_some_and(|entry| match &mut entry.kernel {
+                Kernel::LoopCapture(loop_node) => loop_node.begin_staged_snapshot(),
+                _ => false,
+            })
+    }
+
+    pub fn capture_staging_status(&self, node: NodeId) -> Option<bool> {
         self.nodes
             .iter()
             .find(|entry| entry.id == node)
             .and_then(|entry| match &entry.kernel {
-                Kernel::LoopCapture(loop_node) => Some(loop_node.snapshot_length()),
+                Kernel::LoopCapture(loop_node) => loop_node.staged_status(),
                 _ => None,
+            })
+    }
+
+    pub fn capture_staged_length(&self, node: NodeId) -> Option<usize> {
+        self.nodes
+            .iter()
+            .find(|entry| entry.id == node)
+            .and_then(|entry| match &entry.kernel {
+                Kernel::LoopCapture(loop_node) => loop_node.staged_length(),
+                _ => None,
+            })
+    }
+
+    pub fn copy_capture_staged_interleaved(
+        &self,
+        node: NodeId,
+        start_frame: usize,
+        output: &mut [f32],
+    ) -> usize {
+        self.nodes
+            .iter()
+            .find(|entry| entry.id == node)
+            .map_or(0, |entry| match &entry.kernel {
+                Kernel::LoopCapture(loop_node) => {
+                    loop_node.copy_staged_interleaved(start_frame, output)
+                }
+                _ => 0,
+            })
+    }
+
+    pub fn cancel_capture_staging(&mut self, node: NodeId) -> bool {
+        self.nodes
+            .iter_mut()
+            .find(|entry| entry.id == node)
+            .is_some_and(|entry| match &mut entry.kernel {
+                Kernel::LoopCapture(loop_node) => {
+                    loop_node.cancel_staged();
+                    true
+                }
+                _ => false,
+            })
+    }
+
+    /// Move a frozen capture buffer into the instrument. The caller has already
+    /// exported its project asset; held notes retain the previous shared PCM.
+    pub fn publish_staged_capture_to_instrument(
+        &mut self,
+        capture: NodeId,
+        instrument: NodeId,
+    ) -> bool {
+        if capture == instrument
+            || !self.nodes.iter().any(|entry| {
+                entry.id == instrument && matches!(entry.kernel, Kernel::SampleInstrument(_))
+            })
+        {
+            return false;
+        }
+        let Some(stereo) = self
+            .nodes
+            .iter_mut()
+            .find(|entry| entry.id == capture)
+            .and_then(|entry| match &mut entry.kernel {
+                Kernel::LoopCapture(loop_node) => loop_node.take_staged(),
+                _ => None,
+            })
+        else {
+            return false;
+        };
+        self.nodes
+            .iter_mut()
+            .find(|entry| entry.id == instrument)
+            .is_some_and(|entry| match &mut entry.kernel {
+                Kernel::SampleInstrument(player) => player.publish_stereo(stereo, self.sample_rate),
+                _ => false,
             })
     }
 
@@ -1828,40 +1912,9 @@ impl ExecutionPlan {
             })
     }
 
-    pub fn copy_capture_snapshot_interleaved(
-        &self,
-        node: NodeId,
-        start_frame: usize,
-        output: &mut [f32],
-    ) -> usize {
-        self.nodes
-            .iter()
-            .find(|entry| entry.id == node)
-            .map_or(0, |entry| match &entry.kernel {
-                Kernel::LoopCapture(loop_node) => {
-                    loop_node.copy_snapshot_interleaved(start_frame, output)
-                }
-                _ => 0,
-            })
-    }
-
     /// Publish a stopped capture to a sample instrument between process calls.
     /// The source ring is copied once; held notes retain their previous PCM.
     pub fn publish_capture_to_instrument(&mut self, capture: NodeId, instrument: NodeId) -> bool {
-        self.publish_capture(capture, instrument, false)
-    }
-
-    /// Publish the current ring window while recording continues. New notes adopt it;
-    /// held notes retain the PCM that was current when they started.
-    pub fn publish_live_capture_to_instrument(
-        &mut self,
-        capture: NodeId,
-        instrument: NodeId,
-    ) -> bool {
-        self.publish_capture(capture, instrument, true)
-    }
-
-    fn publish_capture(&mut self, capture: NodeId, instrument: NodeId, live: bool) -> bool {
         if capture == instrument
             || !self.nodes.iter().any(|entry| {
                 entry.id == instrument && matches!(entry.kernel, Kernel::SampleInstrument(_))
@@ -1869,21 +1922,11 @@ impl ExecutionPlan {
         {
             return false;
         }
-        let Some(frames) = (if live {
-            self.capture_snapshot_length(capture)
-        } else {
-            self.capture_length(capture)
-        })
-        .filter(|frames| *frames > 0) else {
+        let Some(frames) = self.capture_length(capture).filter(|frames| *frames > 0) else {
             return false;
         };
         let mut stereo = vec![0.0; frames * 2];
-        let copied = if live {
-            self.copy_capture_snapshot_interleaved(capture, 0, &mut stereo)
-        } else {
-            self.copy_capture_interleaved(capture, 0, &mut stereo)
-        };
-        if copied != frames {
+        if self.copy_capture_interleaved(capture, 0, &mut stereo) != frames {
             return false;
         }
         self.nodes

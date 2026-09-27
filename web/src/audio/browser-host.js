@@ -101,11 +101,49 @@ export class BrowserAudioHost {
             if (pending) {
               this.pendingPublishes.delete(data.requestId);
               clearTimeout(pending.timeout);
+              clearTimeout(pending.poll);
               data.accepted
-                ? pending.resolve(pending.live ? { sourceRate: data.sourceRate, stereo: data.stereo } : undefined)
+                ? pending.resolve(pending.live ? { sourceRate: data.sourceRate, stereo: pending.stereo } : undefined)
                 : pending.reject(new Error(data.message ?? (pending.live
                   ? 'Rust rejected the recording window publication.'
                   : 'Rust rejected the capture publication. Stop recording and try again.')));
+            }
+          }
+          if (data.type === 'capture-stage-started' || data.type === 'capture-stage-status' || data.type === 'capture-stage-chunk') {
+            const pending = this.pendingPublishes.get(data.requestId);
+            if (pending?.live) {
+              if (data.type === 'capture-stage-started') {
+                if (data.accepted) this.processor.port.postMessage({ type: 'capture-stage-status', requestId: data.requestId, captureId: pending.captureId });
+                else {
+                  this.pendingPublishes.delete(data.requestId);
+                  clearTimeout(pending.timeout);
+                  pending.reject(new Error('Start recording before publishing its current window.'));
+                }
+              } else if (data.type === 'capture-stage-status') {
+                if (data.state === 1) {
+                  pending.poll = setTimeout(() => {
+                    if (this.pendingPublishes.has(data.requestId)) this.processor?.port.postMessage({ type: 'capture-stage-status', requestId: data.requestId, captureId: pending.captureId });
+                  }, 10);
+                } else if (data.state === 2 && data.frames > 0) {
+                  pending.stereo = new Float32Array(data.frames * 2);
+                  this.processor.port.postMessage({ type: 'capture-stage-chunk', requestId: data.requestId,
+                    captureId: pending.captureId, offset: 0, frames: Math.min(data.frames, 16384) });
+                } else {
+                  this.pendingPublishes.delete(data.requestId);
+                  clearTimeout(pending.timeout);
+                  pending.reject(new Error('Recording window was reset during publication.'));
+                }
+              } else {
+                pending.stereo.set(data.stereo, data.offset * 2);
+                const next = data.offset + data.stereo.length / 2;
+                if (next < pending.stereo.length / 2) {
+                  this.processor.port.postMessage({ type: 'capture-stage-chunk', requestId: data.requestId,
+                    captureId: pending.captureId, offset: next, frames: Math.min(pending.stereo.length / 2 - next, 16384) });
+                } else {
+                  this.processor.port.postMessage({ type: 'capture-stage-commit', requestId: data.requestId,
+                    captureId: pending.captureId, instrumentId: pending.instrumentId });
+                }
+              }
             }
           }
           if ((data.type === 'capture' || data.type === 'capture-error') && this.pendingCapture) {
@@ -328,12 +366,18 @@ export class BrowserAudioHost {
 
   publishCaptureRequest(captureId, instrumentId, live) {
     if (!this.processor || !this.ready) return Promise.reject(new Error('Start audio before publishing a take.'));
+    if (live && [...this.pendingPublishes.values()].some((pending) => pending.live)) {
+      return Promise.reject(new Error('A recording window is already being published.'));
+    }
     return new Promise((resolve, reject) => {
       const requestId = this.nextPublishRequest++;
       const timeout = setTimeout(() => {
-        if (this.pendingPublishes.delete(requestId)) reject(new Error('Capture publication timed out.'));
+        if (this.pendingPublishes.delete(requestId)) {
+          if (live) this.processor?.port.postMessage({ type: 'capture-stage-cancel', captureId });
+          reject(new Error('Capture publication timed out.'));
+        }
       }, 10_000);
-      this.pendingPublishes.set(requestId, { resolve, reject, timeout, live });
+      this.pendingPublishes.set(requestId, { resolve, reject, timeout, live, captureId, instrumentId, stereo: null, poll: null });
       this.processor.port.postMessage({ type: live ? 'capture-publish-live' : 'capture-publish', requestId, captureId, instrumentId });
     });
   }
@@ -351,6 +395,7 @@ export class BrowserAudioHost {
     this.pendingParameters.clear();
     for (const pending of this.pendingPublishes.values()) {
       clearTimeout(pending.timeout);
+      clearTimeout(pending.poll);
       pending.reject(new Error('Audio stopped during capture publication.'));
     }
     this.pendingPublishes.clear();

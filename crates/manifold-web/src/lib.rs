@@ -1525,15 +1525,57 @@ pub extern "C" fn manifold_capture_length(node_id: u32) -> u32 {
     })
 }
 
-/// Current ring window's frame count, including while recording.
+/// Begin a frozen recording-window copy; later render blocks advance it in bounded slices.
 #[unsafe(no_mangle)]
-pub extern "C" fn manifold_capture_snapshot_length(node_id: u32) -> u32 {
+pub extern "C" fn manifold_capture_stage_begin(node_id: u32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(engine.plan.begin_capture_staging(node_id.into()))
+        })
+    })
+}
+
+/// 0 idle/invalid, 1 copying, 2 ready.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_capture_stage_status(node_id: u32) -> u32 {
     ENGINE.with(|slot| {
         slot.borrow()
             .as_ref()
-            .and_then(|engine| engine.plan.capture_snapshot_length(node_id.into()))
+            .and_then(|engine| engine.plan.capture_staging_status(node_id.into()))
+            .map_or(0, |ready| if ready { 2 } else { 1 })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_capture_stage_length(node_id: u32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|engine| engine.plan.capture_staged_length(node_id.into()))
             .and_then(|frames| u32::try_from(frames).ok())
             .unwrap_or(0)
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_capture_stage_cancel(node_id: u32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(engine.plan.cancel_capture_staging(node_id.into()))
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_capture_stage_publish(capture_id: u32, instrument_id: u32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(
+                engine
+                    .plan
+                    .publish_staged_capture_to_instrument(capture_id.into(), instrument_id.into()),
+            )
+        })
     })
 }
 
@@ -1555,19 +1597,15 @@ pub extern "C" fn manifold_capture_copy(node_id: u32, start_frame: u32, frames: 
     })
 }
 
-/// Copy the current ring window between process blocks, including while recording.
+/// Copy a bounded chunk from the frozen window into prepared output scratch.
 #[unsafe(no_mangle)]
-pub extern "C" fn manifold_capture_snapshot_copy(
-    node_id: u32,
-    start_frame: u32,
-    frames: u32,
-) -> u32 {
+pub extern "C" fn manifold_capture_stage_copy(node_id: u32, start_frame: u32, frames: u32) -> u32 {
     ENGINE.with(|slot| {
         slot.borrow_mut().as_mut().map_or(0, |engine| {
             if frames == 0 || frames as usize > engine.capacity {
                 return 0;
             }
-            engine.plan.copy_capture_snapshot_interleaved(
+            engine.plan.copy_capture_staged_interleaved(
                 node_id.into(),
                 start_frame as usize,
                 &mut engine.output[..frames as usize * 2],
@@ -1586,20 +1624,6 @@ pub extern "C" fn manifold_capture_publish(capture_id: u32, instrument_id: u32) 
                 engine
                     .plan
                     .publish_capture_to_instrument(capture_id.into(), instrument_id.into()),
-            )
-        })
-    })
-}
-
-/// Publish the current ring window while recording continues.
-#[unsafe(no_mangle)]
-pub extern "C" fn manifold_capture_publish_live(capture_id: u32, instrument_id: u32) -> u32 {
-    ENGINE.with(|slot| {
-        slot.borrow_mut().as_mut().map_or(0, |engine| {
-            u32::from(
-                engine
-                    .plan
-                    .publish_live_capture_to_instrument(capture_id.into(), instrument_id.into()),
             )
         })
     })

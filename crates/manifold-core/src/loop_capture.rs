@@ -3,6 +3,8 @@
 pub struct LoopCapture {
     left: Vec<f32>,
     right: Vec<f32>,
+    staged: Vec<f32>,
+    staging: Option<Staging>,
     write: usize,
     length: usize,
     start: usize,
@@ -19,6 +21,12 @@ pub struct LoopCapture {
     smoothing: f32,
 }
 
+struct Staging {
+    start: usize,
+    length: usize,
+    copied: usize,
+}
+
 impl LoopCapture {
     pub fn new(sample_rate: f32, capacity_seconds: f32, mix: f32) -> Self {
         let seconds = capacity_seconds.clamp(0.05, 30.0);
@@ -27,6 +35,8 @@ impl LoopCapture {
         Self {
             left: vec![0.0; size],
             right: vec![0.0; size],
+            staged: Vec::new(),
+            staging: None,
             write: 0,
             length: 0,
             start: 0,
@@ -47,6 +57,7 @@ impl LoopCapture {
 
     /// Discard the logical take without touching the prepared capture buffers.
     pub fn reset(&mut self) {
+        self.staging = None;
         self.write = 0;
         self.length = 0;
         self.start = 0;
@@ -67,6 +78,7 @@ impl LoopCapture {
             0 => {
                 let next = value >= 0.5;
                 if next && !self.recording {
+                    self.staging = None;
                     self.write = 0;
                     self.length = 0;
                     self.start = 0;
@@ -86,7 +98,12 @@ impl LoopCapture {
                 }
             }
             1 => self.playing = value >= 0.5 && self.length > 0,
-            2 => self.overdub = value >= 0.5,
+            2 => {
+                self.overdub = value >= 0.5;
+                if self.overdub {
+                    self.staging = None;
+                }
+            }
             3 => self.target_speed = value.clamp(0.0, 4.0),
             4 => self.reversed = value >= 0.5,
             5 => self.target_mix = value.clamp(0.0, 1.0),
@@ -107,6 +124,75 @@ impl LoopCapture {
     /// Current ring window, ordered oldest to newest, including while recording.
     pub fn snapshot_length(&self) -> usize {
         self.length
+    }
+
+    /// Start a frozen window. Allocation is confined to the caller's control path.
+    pub fn begin_staged_snapshot(&mut self) -> bool {
+        if !self.recording || self.length == 0 || self.staging.is_some() {
+            return false;
+        }
+        self.staged.resize(self.length * 2, 0.0);
+        self.staging = Some(Staging {
+            start: if self.length == self.left.len() {
+                self.write
+            } else {
+                0
+            },
+            length: self.length,
+            copied: 0,
+        });
+        true
+    }
+
+    /// None means idle; Some(false) copying; Some(true) ready for export.
+    pub fn staged_status(&self) -> Option<bool> {
+        self.staging
+            .as_ref()
+            .map(|stage| stage.copied == stage.length)
+    }
+
+    pub fn staged_length(&self) -> Option<usize> {
+        self.staging
+            .as_ref()
+            .filter(|stage| stage.copied == stage.length)
+            .map(|stage| stage.length)
+    }
+
+    pub fn copy_staged_interleaved(&self, start_frame: usize, output: &mut [f32]) -> usize {
+        let Some(length) = self.staged_length() else {
+            return 0;
+        };
+        if start_frame >= length {
+            return 0;
+        }
+        let frames = (output.len() / 2).min(length - start_frame);
+        output[..frames * 2]
+            .copy_from_slice(&self.staged[start_frame * 2..(start_frame + frames) * 2]);
+        frames
+    }
+
+    pub fn take_staged(&mut self) -> Option<Vec<f32>> {
+        self.staged_length()?;
+        self.staging = None;
+        Some(std::mem::take(&mut self.staged))
+    }
+
+    pub fn cancel_staged(&mut self) {
+        self.staging = None;
+    }
+
+    fn advance_staged(&mut self, block_frames: usize) {
+        let Some(stage) = &mut self.staging else {
+            return;
+        };
+        let budget = block_frames.saturating_mul(16).min(8192).max(block_frames);
+        let end = (stage.copied + budget).min(stage.length);
+        for frame in stage.copied..end {
+            let index = (stage.start + frame) % self.left.len();
+            self.staged[frame * 2] = self.left[index];
+            self.staged[frame * 2 + 1] = self.right[index];
+        }
+        stage.copied = end;
     }
 
     /// Copy a bounded chunk without allocating. The caller may invoke this between blocks.
@@ -148,6 +234,7 @@ impl LoopCapture {
         let [out_l, out_r] = output;
         debug_assert_eq!(in_l.len(), out_l.len());
         debug_assert_eq!(in_r.len(), out_r.len());
+        self.advance_staged(in_l.len());
         for frame in 0..in_l.len() {
             let dry_l = in_l[frame];
             let dry_r = in_r[frame];
@@ -297,6 +384,37 @@ mod tests {
         assert_eq!(capture.copy_snapshot_interleaved(0, &mut snapshot), 5);
         assert_eq!(snapshot, [5., 0., 6., 0., 7., 0., 8., 0., 9., 0.]);
         assert_eq!(capture.copy_capture_interleaved(0, &mut snapshot), 0);
+    }
+
+    #[test]
+    fn staged_snapshot_survives_ring_overwrite_and_record_restart_cancels_it() {
+        let mut capture = LoopCapture::new(1000.0, 0.5, 1.0);
+        capture.set_parameter(0, 1.0);
+        let mut out_l = [0.; 10];
+        let mut out_r = [0.; 10];
+        for block in 0..60 {
+            let left = [block as f32; 10];
+            capture.process_planar([&left, &left], [&mut out_l, &mut out_r]);
+        }
+        assert!(capture.begin_staged_snapshot());
+        assert_eq!(capture.staged_status(), Some(false));
+        assert!(!capture.begin_staged_snapshot());
+        for _ in 0..6 {
+            capture.process_planar([&[9.; 10], &[9.; 10]], [&mut out_l, &mut out_r]);
+        }
+        assert_eq!(capture.staged_status(), Some(true));
+        let mut frozen = [0.; 1000];
+        assert_eq!(capture.copy_staged_interleaved(0, &mut frozen), 500);
+        assert_eq!(frozen[0], 10.);
+        assert_eq!(frozen[998], 59.);
+        assert_eq!(capture.snapshot_length(), 500);
+        assert_eq!(capture.copy_snapshot_interleaved(0, &mut [0.; 2]), 1);
+        assert_eq!(capture.take_staged(), Some(frozen.to_vec()));
+        assert_eq!(capture.staged_status(), None);
+        assert!(capture.begin_staged_snapshot());
+        capture.set_parameter(0, 0.0);
+        capture.set_parameter(0, 1.0);
+        assert_eq!(capture.staged_status(), None);
     }
 
     #[test]

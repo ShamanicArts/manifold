@@ -176,27 +176,41 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
           this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted });
         } else if (data.type === 'capture-publish-live' && this.engine) {
-          const frames = this.engine.manifold_capture_snapshot_length(data.captureId);
-          if (!frames) {
-            this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted: false });
-            return;
-          }
-          const stereo = new Float32Array(frames * 2);
-          for (let offset = 0; offset < frames;) {
-            const count = Math.min(this.capacity, frames - offset);
-            const copied = this.engine.manifold_capture_snapshot_copy(data.captureId, offset, count);
-            if (copied !== count) throw new Error('Recording window changed during snapshot');
-            stereo.set(new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), copied * 2), offset * 2);
-            offset += copied;
-          }
-          const accepted = this.engine.manifold_capture_publish_live(data.captureId, data.instrumentId) === 1;
+          const accepted = this.engine.manifold_capture_stage_begin(data.captureId) === 1;
           this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 4);
           this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
-          this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted,
-            sourceRate: sampleRate, stereo: accepted ? stereo : undefined }, accepted ? [stereo.buffer] : []);
+          this.port.postMessage({ type: 'capture-stage-started', requestId: data.requestId, accepted });
+        } else if (data.type === 'capture-stage-status' && this.engine) {
+          const state = this.engine.manifold_capture_stage_status(data.captureId);
+          const frames = state === 2 ? this.engine.manifold_capture_stage_length(data.captureId) : 0;
+          this.port.postMessage({ type: 'capture-stage-status', requestId: data.requestId, state, frames });
+        } else if (data.type === 'capture-stage-chunk' && this.engine) {
+          const length = this.engine.manifold_capture_stage_length(data.captureId);
+          if (!Number.isInteger(data.offset) || !Number.isInteger(data.frames) || data.offset < 0
+            || data.frames < 1 || data.frames > this.capacity * 8 || data.offset + data.frames > length) {
+            throw new Error('Invalid staged capture chunk');
+          }
+          const stereo = new Float32Array(data.frames * 2);
+          for (let offset = 0; offset < data.frames;) {
+            const count = Math.min(this.capacity, data.frames - offset);
+            const copied = this.engine.manifold_capture_stage_copy(data.captureId, data.offset + offset, count);
+            if (copied !== count) throw new Error('Staged capture changed during export');
+            stereo.set(new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), count * 2), offset * 2);
+            offset += count;
+          }
+          this.port.postMessage({ type: 'capture-stage-chunk', requestId: data.requestId,
+            offset: data.offset, stereo }, [stereo.buffer]);
+        } else if (data.type === 'capture-stage-commit' && this.engine) {
+          const accepted = this.engine.manifold_capture_stage_publish(data.captureId, data.instrumentId) === 1;
+          this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 4);
+          this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
+          this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted, sourceRate: sampleRate });
+        } else if (data.type === 'capture-stage-cancel' && this.engine) {
+          this.engine.manifold_capture_stage_cancel(data.captureId);
         }
       } catch (error) {
-        if (data.type === 'capture-publish-live' || data.type === 'capture-publish') {
+        if (data.type === 'capture-publish-live' || data.type === 'capture-publish'
+          || data.type === 'capture-stage-status' || data.type === 'capture-stage-chunk' || data.type === 'capture-stage-commit') {
           this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted: false, message: String(error) });
         } else {
           this.port.postMessage({ type: data.type === 'capture-request' ? 'capture-error' : 'error', message: String(error) });
