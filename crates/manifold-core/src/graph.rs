@@ -1679,6 +1679,19 @@ impl ExecutionPlan {
             })
     }
 
+    pub fn reset_effect_slot(&mut self, node: NodeId) -> bool {
+        self.nodes
+            .iter_mut()
+            .find(|entry| entry.id == node)
+            .is_some_and(|entry| match &mut entry.kernel {
+                Kernel::EffectSlot(slot) => {
+                    slot.reset_processing();
+                    true
+                }
+                _ => false,
+            })
+    }
+
     pub fn capture_length(&self, node: NodeId) -> Option<usize> {
         self.nodes
             .iter()

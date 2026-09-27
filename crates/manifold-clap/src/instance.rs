@@ -238,9 +238,18 @@ unsafe extern "C" fn plugin_start(plugin: *const clap_plugin) -> bool {
     unsafe { instance(plugin) }.is_some_and(|instance| instance.active.load(Ordering::Acquire))
 }
 unsafe extern "C" fn plugin_stop(_plugin: *const clap_plugin) {}
-unsafe extern "C" fn plugin_reset(_plugin: *const clap_plugin) {
-    // The graph has no allocation-free reset hook yet. Activation and state
-    // publication prepare fresh kernels outside the callback.
+unsafe extern "C" fn plugin_reset(plugin: *const clap_plugin) {
+    let Some(instance) = (unsafe { instance(plugin) }) else {
+        return;
+    };
+    let runtime = instance.current.load(Ordering::Acquire);
+    if !runtime.is_null() {
+        // CLAP serializes reset with this instance's process callback.
+        unsafe { &mut *runtime }
+            .prepared
+            .processor
+            .reset_effect_slot(2_u32.into());
+    }
 }
 
 fn physical(index: usize, value: f64) -> Option<f32> {

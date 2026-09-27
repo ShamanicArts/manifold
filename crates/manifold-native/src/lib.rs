@@ -99,6 +99,10 @@ impl NativeProcessor {
             .restore_effect_slot_params(node, effect_type, values)
     }
 
+    pub fn reset_effect_slot(&mut self, node: NodeId) -> bool {
+        self.plan.reset_effect_slot(node)
+    }
+
     /// Fixed public host slots; a slot may be unbound in a given project.
     pub fn bound_graph_parameter(&self, slot: u32) -> Option<u32> {
         self.slot_bindings.get(slot as usize).copied().flatten()

@@ -33,6 +33,9 @@ state files remain available through the existing **Save state** action.
   and controls while inactive, then activates and verifies the saved values.
 - `node web/tests/fx-module.browser.mjs` exports a host project from the
   actual browser controls, reads its state, and reopens it in the browser.
+- `cargo test -p manifold-native fx_host_reset_clears_reverb_tail_and_keeps_controls`
+  excites a Reverb tail, calls the host reset path, and verifies silent input
+  stays silent while type and mix retain their host values.
 - The official `free-audio/clap-validator` v0.4.1 test suite loads the built
   `.clap` module. On this Linux machine it reports 44 tests run: 33 passed,
   0 failed, 0 warnings, 11 skipped. The passing tests include in-place and
@@ -47,9 +50,10 @@ and test tool; no CLAP framework runs the DSP.
 ## Remaining host work
 
 The plug-in exposes seven generic host controls but no custom CLAP editor, so
-the browser reconstruction is not yet visible inside a DAW. The DSP graph has
-no allocation-free reset hook; `clap_plugin::reset` currently does not clear
-effect history, though deactivation and state publication prepare new kernels.
+the browser reconstruction is not yet visible inside a DAW. The CLAP reset
+callback now clears all 21 prepared effect histories in place while preserving
+controls and visited routing. Its cost includes clearing Reverb's prepared
+delay lines, so worst-case reset timing still needs measurement.
 State load while active prepares the replacement on the main thread and swaps
 at the next process block; old runtime retirement stays off the callback.
 Multiple queued state loads before a process block are currently rejected.

@@ -495,6 +495,8 @@ mod tests {
         let saved_document: serde_json::Value = serde_json::from_slice(&saved).unwrap();
         assert!((saved_document["typeParameters"]["0"][0].as_f64().unwrap() - 0.87).abs() < 1e-6);
         assert!((saved_document["typeParameters"]["7"][0].as_f64().unwrap() - 0.13).abs() < 1e-6);
+        unsafe { (*plugin).reset.unwrap()(plugin) };
+        assert!((public_value(2) - 0.87).abs() < 1e-6);
         unsafe {
             (*plugin).stop_processing.unwrap()(plugin);
             (*plugin).deactivate.unwrap()(plugin);

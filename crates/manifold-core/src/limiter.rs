@@ -53,6 +53,12 @@ impl Limiter {
         set_value(&mut self.target, id, value)
     }
 
+    pub fn reset(&mut self) {
+        self.current = self.target;
+        self.gain = 1.0;
+        self.reduction_db = 0.0;
+    }
+
     pub fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
         for id in 0..PARAM_COUNT {
             self.current[id] += (self.target[id] - self.current[id]) * self.smooth;

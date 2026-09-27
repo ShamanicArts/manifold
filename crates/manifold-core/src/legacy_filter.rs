@@ -45,6 +45,11 @@ impl LegacyFilter {
     pub fn set_parameter(&mut self, id: u32, value: f32) -> bool {
         set_value(&mut self.target, id, value)
     }
+    pub fn reset(&mut self) {
+        self.current = self.target;
+        self.z1 = [0.0; 2];
+        self.z2 = [0.0; 2];
+    }
     // The original scalar FilterNode::reset is a no-op; freshly prepared instances clear state.
     pub fn process_planar(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
         let [in_l, in_r] = input;

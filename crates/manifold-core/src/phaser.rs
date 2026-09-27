@@ -38,6 +38,18 @@ impl Phaser {
         set_value(&mut self.target, id, value)
     }
 
+    pub fn reset(&mut self) {
+        self.current = [
+            self.target[0],
+            self.target[1],
+            self.target[3],
+            self.target[4],
+        ];
+        self.z1 = [[0.0; 12]; 2];
+        self.feedback_state = [0.0; 2];
+        self.phase = 0.0;
+    }
+
     pub fn process_planar(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
         let [in_left, in_right] = input;
         let [out_left, out_right] = output;

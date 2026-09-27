@@ -46,6 +46,10 @@ impl RingModulator {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.reset_to(self.target);
+    }
+
     pub fn reset_to(&mut self, params: [f32; PARAM_COUNT]) {
         self.target = DEFAULTS;
         for (id, value) in params.into_iter().enumerate() {

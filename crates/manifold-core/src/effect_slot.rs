@@ -227,6 +227,37 @@ impl EffectSlot {
         true
     }
 
+    /// Clear processing history while retaining every authored control and
+    /// visited effect. Called by native hosts at a processing reset boundary.
+    pub fn reset_processing(&mut self) {
+        self.mix = self.target_mix;
+        self.limiter_pre_gain = self.limiter_pre_target;
+        self.chorus.reconfigure(self.chorus_settings());
+        self.phaser.reset();
+        self.waveshaper.reset();
+        self.compressor.reset();
+        self.widener.reset();
+        self.legacy_filter.reset();
+        self.filter.settle();
+        self.reverb.reset();
+        self.delay.settle();
+        self.multitap.reset();
+        self.pitch_shift.reset();
+        self.granulator.reset();
+        self.ring.reset();
+        self.formant.reset();
+        self.eq.reset();
+        self.limiter.reset();
+        self.transient.reset();
+        self.bitcrusher.reset();
+        self.shimmer.reset();
+        self.reverse_delay.reset();
+        self.stutter.reset();
+        if let Some(legacy) = &mut self.legacy {
+            legacy.routing.select_reprepared(self.selected);
+        }
+    }
+
     pub fn new(
         sample_rate: f32,
         max_frames: usize,

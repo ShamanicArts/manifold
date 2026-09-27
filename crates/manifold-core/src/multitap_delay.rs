@@ -90,6 +90,10 @@ impl MultitapDelay {
         set_value(&mut self.target, id, value)
     }
 
+    pub fn reset(&mut self) {
+        self.reset_to(self.target);
+    }
+
     pub fn reset_to(&mut self, params: [f32; PARAM_COUNT]) {
         self.clear_delay();
         self.dormant_bypass = false;

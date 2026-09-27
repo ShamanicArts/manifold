@@ -197,6 +197,10 @@ impl Reverb {
     pub fn set_parameter(&mut self, id: u32, value: f32) -> bool {
         set_value(&mut self.target, id, value)
     }
+    pub fn reset(&mut self) {
+        self.reset_to(self.target);
+    }
+
     pub fn reset_to(&mut self, params: [f32; PARAM_COUNT]) {
         for channel in &mut self.combs {
             for comb in channel {

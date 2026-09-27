@@ -64,6 +64,10 @@ impl Compressor {
         self.release_coefficient = Self::timing_coefficient(sample_rate, self.params[3]);
     }
 
+    pub fn reset(&mut self) {
+        self.envelope = 0.0;
+    }
+
     pub fn set_parameter(&mut self, id: u32, value: f32) -> bool {
         // Legacy attack/release setters do not rebuild prepared coefficients.
         set_value(&mut self.params, id, value)

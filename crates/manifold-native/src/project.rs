@@ -1239,6 +1239,64 @@ mod tests {
         assert_eq!(value(&reopened, 2), 0.13);
     }
 
+    #[test]
+    fn fx_host_reset_clears_reverb_tail_and_keeps_controls() {
+        let authored = include_bytes!("../../../projects/standalone-fx-module/project.json");
+        let mut processor = NativeProject::parse_fx_module(authored)
+            .unwrap()
+            .prepare(48_000., 1024)
+            .unwrap();
+        let node = 2_u32.into();
+        assert!(processor.set_parameter(node, 0, 7.));
+        assert!(processor.set_parameter(node, 1, 1.));
+        let silence = [0.; 1024];
+        let mut impulse = [0.; 1024];
+        impulse[0] = 1.;
+        let mut left = [0.; 1024];
+        let mut right = [0.; 1024];
+        let mut tail_peak = 0.0_f32;
+        for block in 0..8 {
+            let input = if block == 0 { &impulse } else { &silence };
+            processor
+                .process(crate::AudioBlock {
+                    main: Some([input, input]),
+                    sidechain: None,
+                    output: [&mut left, &mut right],
+                    events: &[],
+                })
+                .unwrap();
+            if block > 0 {
+                tail_peak =
+                    tail_peak.max(left.iter().map(|sample| sample.abs()).fold(0., f32::max));
+            }
+        }
+        assert!(
+            tail_peak > 1e-5,
+            "reverb must have produced a tail before reset"
+        );
+        assert!(processor.reset_effect_slot(node));
+        processor
+            .process(crate::AudioBlock {
+                main: Some([&silence, &silence]),
+                sidechain: None,
+                output: [&mut left, &mut right],
+                events: &[],
+            })
+            .unwrap();
+        assert!(left.iter().all(|sample| sample.abs() < 1e-7));
+        assert!(right.iter().all(|sample| sample.abs() < 1e-7));
+        let values = processor.current_parameter_values();
+        let types = processor.host_parameters();
+        assert_eq!(
+            values[types.iter().position(|entry| entry.local_id == 0).unwrap()],
+            7.
+        );
+        assert_eq!(
+            values[types.iter().position(|entry| entry.local_id == 1).unwrap()],
+            1.
+        );
+    }
+
     fn parse(value: &Value) -> Result<NativeProject, ProjectError> {
         NativeProject::parse(&serde_json::to_vec(value).unwrap())
     }
