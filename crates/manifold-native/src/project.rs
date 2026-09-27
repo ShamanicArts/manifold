@@ -361,12 +361,90 @@ fn parameter_range(kind: &str, id: u32) -> Option<(f32, f32, bool)> {
             (0., 1., false),
             (0., 1., false),
         ],
+        "effect-slot-legacy" => match id {
+            0 => return Some((0., 20., true)),
+            1..=6 => return Some((0., 1., false)),
+            _ => return None,
+        },
         _ => &[],
     };
     spec.get(id as usize).copied()
 }
 
 impl NativeProject {
+    /// Read the authored Standalone FX project used by the browser module.
+    /// Translate its public metadata envelope to the graph-workspace contract
+    /// while preserving the original envelope for native state roundtrips.
+    pub fn parse_fx_module(json: &[u8]) -> Result<Self, ProjectError> {
+        if json.len() > MAX_PROJECT_BYTES {
+            return Err(ProjectError::Invalid("project size"));
+        }
+        let mut authored: Value =
+            serde_json::from_slice(json).map_err(|_| ProjectError::Invalid("JSON"))?;
+        let root = object(
+            &authored,
+            &[
+                "schemaVersion",
+                "id",
+                "name",
+                "source",
+                "signal",
+                "parameters",
+            ],
+            &[],
+        )?;
+        if required(root, "schemaVersion") != 1
+            || required(root, "id") != "manifold.standalone-fx-module"
+        {
+            return Err(ProjectError::Invalid("FX project version"));
+        }
+        let public = required(root, "parameters")
+            .as_array()
+            .ok_or(ProjectError::Invalid("FX public parameters"))?;
+        if public.len() != 7 {
+            return Err(ProjectError::Invalid("FX public parameters"));
+        }
+        for (index, parameter) in public.iter().enumerate() {
+            let entry = parameter
+                .as_object()
+                .ok_or(ProjectError::Invalid("FX public parameter"))?;
+            if entry.get("id") != Some(&Value::from(index as u64))
+                || entry.get("nodeId") != Some(&Value::from(2))
+                || entry.get("nodeParameterId") != Some(&Value::from(index as u64))
+                || entry.get("hostId").and_then(Value::as_str).is_none()
+            {
+                return Err(ProjectError::Invalid("FX public parameter"));
+            }
+        }
+        let defaults = [public[0]["default"].clone(), public[1]["default"].clone()];
+        let signal = authored["signal"]
+            .as_object_mut()
+            .ok_or(ProjectError::Invalid("FX signal"))?;
+        let parameters = signal["initialParameters"]
+            .as_array_mut()
+            .ok_or(ProjectError::Invalid("FX initial parameters"))?;
+        for id in 0..=1 {
+            if !parameters
+                .iter()
+                .any(|entry| entry["nodeId"] == 2 && entry["id"] == id)
+            {
+                parameters.push(serde_json::json!({
+                    "nodeId": 2, "id": id, "value": defaults[id],
+                }));
+            }
+        }
+        let envelope = serde_json::json!({
+            "format": "manifold.project",
+            "schemaVersion": 1,
+            "projectId": "manifold.graph-workspace",
+            "signal": authored["signal"],
+        });
+        let encoded = serde_json::to_vec(&envelope).map_err(|_| ProjectError::Invalid("JSON"))?;
+        let mut parsed = Self::parse(&encoded)?;
+        parsed.document = authored;
+        Ok(parsed)
+    }
+
     pub fn parse(json: &[u8]) -> Result<Self, ProjectError> {
         if json.len() > MAX_PROJECT_BYTES {
             return Err(ProjectError::Invalid("project size"));
@@ -448,7 +526,7 @@ impl NativeProject {
                     }
                 }
                 "gain" | "loop-capture" | "sum2" | "midi-transpose" | "main-voice-bank"
-                | "oscillator" | "noise" | "lfo" | "modulated-gain" => {
+                | "oscillator" | "noise" | "lfo" | "modulated-gain" | "effect-slot-legacy" => {
                     let a = float(
                         entry
                             .get("a")
@@ -456,7 +534,23 @@ impl NativeProject {
                         -f32::MAX,
                         f32::MAX,
                     )?;
-                    if kind == "main-voice-bank" {
+                    if kind == "effect-slot-legacy" {
+                        let b = float(
+                            entry
+                                .get("b")
+                                .ok_or(ProjectError::Invalid("node arguments"))?,
+                            0.,
+                            1.,
+                        )?;
+                        if entry.len() != 4 || a != 0. || b != 0. {
+                            return Err(ProjectError::Invalid("FX node arguments"));
+                        }
+                        NodeKind::EffectSlotLegacy {
+                            selected: 0,
+                            mix: 0.,
+                            params: [0.5, 0.5, 0.2, 0.6, 0.4],
+                        }
+                    } else if kind == "main-voice-bank" {
                         if entry.len() != 3 || a != 9.0 {
                             return Err(ProjectError::Invalid("Main bank arguments"));
                         }
@@ -973,6 +1067,77 @@ mod tests {
             "../../../projects/graph-workspace/sidechain-sampler.json"
         ))
         .unwrap()
+    }
+
+    #[test]
+    fn standalone_fx_module_loads_the_authored_project_and_roundtrips_host_state() {
+        use crate::host_buffers::{HostBuffers, RawHostBlock};
+
+        let authored = include_bytes!("../../../projects/standalone-fx-module/project.json");
+        let project = NativeProject::parse_fx_module(authored).unwrap();
+        assert_eq!(project.host_parameters().len(), 7);
+        assert_eq!(project.host_bindings()[0].slot, 0);
+        let mut prepared = project.prepare_with_state(48_000., 128).unwrap();
+        let mut buffers = HostBuffers::prepare(128);
+        let left = [0.3; 128];
+        let right = [-0.2; 128];
+        let mut output_left = [0.; 128];
+        let mut output_right = [0.; 128];
+        let automation = [
+            TimedAutomation {
+                offset: 0,
+                id: HOST_SLOT_BASE + 1,
+                normalized: 0.8,
+            },
+            TimedAutomation {
+                offset: 64,
+                id: HOST_SLOT_BASE,
+                normalized: 8. / 20.,
+            },
+        ];
+        // SAFETY: Each pointer refers to a live 128-frame array, with no aliasing.
+        unsafe {
+            buffers
+                .render(
+                    &mut prepared.processor,
+                    RawHostBlock {
+                        frames: 128,
+                        main: [left.as_ptr(), right.as_ptr()],
+                        sidechain: [std::ptr::null(); 2],
+                        output: [output_left.as_mut_ptr(), output_right.as_mut_ptr()],
+                        events: &[],
+                        automation: &automation,
+                    },
+                )
+                .unwrap();
+        }
+        assert!(output_left.iter().all(|sample| sample.is_finite()));
+        assert!(output_right.iter().all(|sample| sample.is_finite()));
+        assert!(output_left.iter().any(|sample| sample.abs() > 0.01));
+        let saved = prepared.save_state().unwrap();
+        let document: Value = serde_json::from_slice(&saved).unwrap();
+        assert_eq!(document["id"], "manifold.standalone-fx-module");
+        assert_eq!(
+            document["signal"]["initialParameters"]
+                .as_array()
+                .unwrap()
+                .len(),
+            7
+        );
+        let reopened = NativeProject::parse_fx_module(&saved).unwrap();
+        let processor = reopened.prepare(48_000., 128).unwrap();
+        let values = processor.current_parameter_values();
+        let parameters = processor.host_parameters();
+        let type_index = parameters
+            .iter()
+            .position(|parameter| parameter.local_id == 0)
+            .unwrap();
+        let mix_index = parameters
+            .iter()
+            .position(|parameter| parameter.local_id == 1)
+            .unwrap();
+        assert_eq!(values[type_index], 8.);
+        assert!((values[mix_index] - 0.8).abs() < 1e-6);
     }
 
     fn parse(value: &Value) -> Result<NativeProject, ProjectError> {

@@ -49,6 +49,13 @@ The sampler prepares eight note slots with four `SampleRegion` cursors each. Cur
 
 The same Rust DSP crate builds to native code and Wasm. `manifold-native` wraps the graph with explicit main/sidechain buses, bounded variable blocks, timed MIDI events, and silent missing buses. A bounded native loader restores the browser's live and sidechain sampler project graphs, authored parameters, and embedded PCM; broader graph state remains open. A VST3 adapter will implement the format's processor/controller, parameter, state, bus, and event contracts through a pinned official C API binding. JUCE is not a dependency. We do not require a Wasm interpreter inside a DAW callback. This still provides a Wasm build for browser and other compatible hosts. A packaged web editor will be connected to the native controller; it cannot share the real-time thread. The [native boundary plan](native-vst3-boundary.md) lists the remaining host contracts and validation gates.
 
+The first loadable native format is now CLAP on Linux. `manifold-clap` uses the
+raw CLAP C ABI bindings and loads the authored Standalone FX project through
+`manifold-native`, with seven stable controls, stereo f32 processing, and host
+state callbacks. Its Audio callback runs prepared native Rust DSP; the browser
+still runs the Wasm build of the same core. The CLAP module has no custom editor
+yet. See the [CLAP host proof](clap-host.md) for tests and remaining work.
+
 ## Decisions to revisit
 
 1. Which old project/preset versions must import without manual rebuilding?

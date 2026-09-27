@@ -1,0 +1,13 @@
+[package]
+name = "manifold-clap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+clap-sys = "0.5.0"
+manifold-native = { path = "../manifold-native" }
+serde_json = "1"

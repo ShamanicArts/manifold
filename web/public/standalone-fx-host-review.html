@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Manifold · Browser to CLAP checkpoint</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #dce5ed; background: #0b1220; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(980px, calc(100% - 36px)); margin: 0 auto; padding: 44px 0 80px; }
+    header { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid #334155; font-size: 12px; }
+    a { color: #8fe2e7; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .eyebrow { color: #8fe2e7; text-transform: uppercase; letter-spacing: .1em; font: 11px ui-monospace, monospace; margin-top: 28px; }
+    h1 { font-size: clamp(32px, 6vw, 58px); font-weight: 500; letter-spacing: -.045em; margin: 8px 0 16px; }
+    h2 { font-size: 22px; font-weight: 500; margin-top: 42px; }
+    p { color: #aebdcc; line-height: 1.6; }
+    .lead { max-width: 760px; font-size: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 32px 0; }
+    .card { border: 1px solid #334155; background: #111d2e; padding: 18px; }
+    .card b { display: block; color: #f1f6f8; font-size: 24px; font-weight: 500; }
+    .card span { display: block; color: #9fb1c0; font-size: 12px; line-height: 1.5; margin-top: 7px; }
+    img { display: block; width: 100%; height: auto; border: 1px solid #334155; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 12px 8px; border-bottom: 1px solid #334155; text-align: left; vertical-align: top; }
+    th { color: #8ca5b7; font-weight: 500; }
+    code { color: #c7e5e3; }
+    .note { border-left: 2px solid #caab77; padding: 2px 0 2px 16px; }
+    @media (max-width: 650px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header><span>MANIFOLD / HOST CHECKPOINT</span><a href="/fx-module.html">Open the browser module ↗</a></header>
+    <p class="eyebrow">Standalone FX · same authored project</p>
+    <h1>From browser to a loadable plug-in.</h1>
+    <p class="lead">The Standalone FX project now opens in the browser and in a native CLAP host. Both paths run the Rust persistent effect graph. The browser draws the ported widget controls; CLAP exposes the seven host parameters and project state through a loadable plug-in.</p>
+    <div class="grid">
+      <div class="card"><b>21</b><span>Authored effect type IDs in one persistent Rust FX slot</span></div>
+      <div class="card"><b>7</b><span>CLAP host parameters: type, wet mix, and five normalized controls</span></div>
+      <div class="card"><b>33 / 33</b><span>Applicable CLAP validator tests passed; zero failures or warnings</span></div>
+    </div>
+    <img src="/standalone-fx-slider-port.png" alt="Current browser Standalone FX module with the ported compact sliders and dropdowns" />
+    <h2>What the host proof exercises</h2>
+    <table>
+      <thead><tr><th>Boundary</th><th>Evidence</th></tr></thead>
+      <tbody>
+        <tr><td>Project load</td><td>The exact <code>standalone-fx-module/project.json</code> is validated and prepared by <code>manifold-native</code>.</td></tr>
+        <tr><td>Audio</td><td>CLAP stereo f32 input and output enter preallocated host buffers. An ABI host test compares its 128-frame output sample for sample with the native project renderer.</td></tr>
+        <tr><td>Automation</td><td>CLAP parameter events map to fixed host slots and reach the Rust graph at their frame offsets.</td></tr>
+        <tr><td>State</td><td>Host stream callbacks save and reopen the authored project envelope with edited controls.</td></tr>
+        <tr><td>Independent validator</td><td>CLAP validator v0.4.1 loaded the built <code>.clap</code> file and passed in-place audio, varied blocks and rates, parameter, and state tests.</td></tr>
+      </tbody>
+    </table>
+    <h2>Still to connect</h2>
+    <p class="note">The CLAP module currently uses the host's generic parameter editor. The browser widget surface is not embedded in a DAW yet. A proper allocation-free DSP reset, per-effect remembered controls in host state, and VST3/Audio Unit adapters are next host milestones. Visual pixel parity against the running old JUCE/ImGui export is still unmeasured.</p>
+    <p>Build locally with <code>./scripts/build-clap.sh</code>. The resulting file is <code>target/clap/ManifoldFX.clap</code>. <a href="/standalone-fx-module-review.html">View the widget port checkpoint ↗</a></p>
+  </main>
+</body>
+</html>

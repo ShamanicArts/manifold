@@ -6,6 +6,11 @@
 
 Status: native Rust processor and bounded browser-project loader exist; a loadable VST3 module does not yet exist. The same `manifold-core::ExecutionPlan` runs under the browser Wasm adapter and `manifold-native::NativeProcessor`. No JUCE or Lua is involved in either path.
 
+A separate [loadable CLAP module](clap-host.md) now exercises the authored
+Standalone FX graph through this native processor. The CLAP validator passes
+33 applicable tests with no failures. This verifies a real plug-in ABI and
+host state/automation path while VST3 remains an independent adapter task.
+
 `manifold_native::project::NativeProject::parse` accepts the browser's `manifold.project` schema v1 for all eight authored graph workspace bundles. The `project.json` in that directory is an older standalone format, not a graph workspace bundle. The loader validates graph shape, node arguments, routes, parameter IDs and ranges, asset limits, source rate, frame count, base64 byte count, finite PCM, Main partial targets, and optional temporal source recipes. `prepare` compiles and installs parameters, PCM, partial targets, and analyzed temporal frames away from the audio callback. The supported node kinds are `input.raw`, `input.sidechain`, `output`, `midi-input`, `midi-transpose`, `voice-synth`, `gain`, `sum2`, `svf`, `loop-capture`, `sample-instrument`, `sample-region`, `granulator`, `oscillator`, `noise`, `lfo`, `modulated-gain`, and `main-voice-bank`. Tests render audible native output from the note, region, granular, texture, and Main bank routes. An embedded Main sample and a temporal recipe also restore and sound. Browser source recipes are metadata, since the native host supplies its own main and sidechain buses. A saved temporal bundle now has matching native and Wasm audio output.
 
 Each restored control has an internal graph-scoped 32-bit ID, `(nodeId << 8) | localParameterId`, plus physical minimum, maximum, initial value, and discrete or continuous mapping. `NativeProcessor::process_automated` accepts ordered normalized points at frame offsets, validates the complete queue before touching output, then renders audio and MIDI in bounded segments. It reuses event scratch reserved in `prepare` and accepts up to 1024 MIDI events when automation splits a block. A zero-frame call can flush parameter changes.
