@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = ROOT / "target/vst3/ManifoldFX.vst3"
 REVIEW = ROOT / "web/public"
 RATE = 48_000
+NATIVE_BLOCK = 1_024
 
 
 def wait_for(path: Path) -> str:
@@ -124,6 +125,20 @@ reaper.defer(finish_setup)
         note_rms = math.sqrt(sum(sample * sample for sample in sounding) / len(sounding))
         assert lead_peak < 1e-6, lead_peak
         assert note_peak > 0.001 and note_rms > 0.0001, (note_peak, note_rms)
+        native_path = work / "native.f32"
+        subprocess.run([
+            "cargo", "run", "-q", "-p", "manifold-native", "--example",
+            "render_graph_midi_audio", "--",
+            str(ROOT / "projects/graph-workspace/note-voice.json"),
+            str(native_path), str(NATIVE_BLOCK), "6000", "24000", "100",
+        ], cwd=ROOT, check=True, timeout=120)
+        native = array("f")
+        native.frombytes(native_path.read_bytes())
+        assert len(native) == len(samples)
+        differences = [host - direct for host, direct in zip(samples, native)]
+        parity_peak = max(abs(error) for error in differences)
+        parity_rms = math.sqrt(sum(error * error for error in differences) / len(differences))
+        assert parity_peak < 1e-7, (parity_peak, parity_rms)
         target = REVIEW / "graph-vst3-reaper-note.wav"
         target.write_bytes(rendered.read_bytes())
         metrics = {
@@ -133,6 +148,9 @@ reaper.defer(finish_setup)
             "midiPitch": 60,
             "noteStartSeconds": 0.125, "noteEndSeconds": 0.5,
             "beforeNotePeak": lead_peak, "notePeak": note_peak, "noteRms": note_rms,
+            "nativeBlockFrames": NATIVE_BLOCK,
+            "hostVsNativePeakError": parity_peak,
+            "hostVsNativeRmsError": parity_rms,
             "render": target.name,
         }
         (REVIEW / "graph-vst3-reaper-note.json").write_text(json.dumps(metrics, indent=2) + "\n")

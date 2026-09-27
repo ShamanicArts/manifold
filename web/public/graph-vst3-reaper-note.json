@@ -12,5 +12,8 @@
   "beforeNotePeak": 0.0,
   "notePeak": 0.10163843631744385,
   "noteRms": 0.06153539917665956,
+  "nativeBlockFrames": 1024,
+  "hostVsNativePeakError": 5.960464477539063e-08,
+  "hostVsNativeRmsError": 2.5746493197824346e-08,
   "render": "graph-vst3-reaper-note.wav"
 }
