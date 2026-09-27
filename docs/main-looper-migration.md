@@ -12,6 +12,8 @@ The behavior and visual references are read-only files under `/home/shamanic/dev
 
 Layer output mixes with the monitored input. Per-layer volume, mute, signed speed/reverse, seek, play/pause, stop, clear, and the two original overdub length policies are present. Forward playback uses the old fixed 4,410-frame tail/head crossfade. The Rust core is compiled directly to native and Wasm; `crates/manifold-web` only exposes a pointer/message ABI.
 
+Playback follows the original integer sample step at fractional speed, and a seek across more than one frame blends the old and new positions over 64 output frames. This keeps waveform scrubbing from producing the abrupt jump heard without the original seek transition.
+
 The prepared capture ring plus two loop buffers per layer cost about 132 MiB of stereo `f32` PCM at 48 kHz, before other Wasm memory. This preserves independent 30-second layer histories and uninterrupted playback during commits. Pooling or more compact inactive-loop storage needs an explicit continuity and callback-cost study before replacing this boundary.
 
 `web/main-looper.html` follows the current shared transport, nine capture regions, and four strip layout. The rotary controls draw the geometry in `knob.lua`; the browser has no Lua runtime. Microphone permission is requested only when selected. Test tone and decoded audio file inputs work without MIDI permission. The versioned `projects/main-looper/project.json` defines stable IDs consumed by the browser adapter. Session files carry four PCM loops and controls, with bounded 4,096-frame transfers; reopen currently requires the same device sample rate. An import publishes layers one by one, so it is not yet an atomic four-layer state switch.

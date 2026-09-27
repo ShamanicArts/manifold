@@ -46,6 +46,8 @@ struct Layer {
     captured: usize,
     length: usize,
     position: f64,
+    seek_source: f64,
+    seek_remaining: u32,
     playing: bool,
     muted: bool,
     volume: f32,
@@ -66,6 +68,8 @@ impl Layer {
             captured: 0,
             length: 0,
             position: 0.0,
+            seek_source: 0.0,
+            seek_remaining: 0,
             playing: false,
             muted: false,
             volume: 1.0,
@@ -83,6 +87,8 @@ impl Layer {
         self.commit = None;
         self.length = 0;
         self.position = 0.0;
+        self.seek_source = 0.0;
+        self.seek_remaining = 0;
         self.playing = false;
         self.loading = None;
         self.muted = false;
@@ -134,6 +140,7 @@ impl Layer {
             self.active = next;
             self.length = job.target;
             self.position = self.position.rem_euclid(self.length as f64);
+            self.seek_remaining = 0;
             self.playing = true;
         } else {
             self.commit = Some(job);
@@ -144,32 +151,38 @@ impl Layer {
             return [0.0; 2];
         }
         let index = self.position.floor() as usize;
-        let next = (index + 1) % self.length;
-        let frac = (self.position - index as f64) as f32;
         let loop_data = &self.loops[self.active];
         let mut out = [0.0; 2];
+        let increment = if self.reversed {
+            -self.speed
+        } else {
+            self.speed
+        };
         if !self.muted {
             for channel in 0..2 {
-                let a = loop_data[index * 2 + channel];
-                let b = loop_data[next * 2 + channel];
-                let mut sample = a + (b - a) * frac;
+                let mut sample = loop_data[index * 2 + channel];
                 // Main's LoopPlaybackNode blends the last 4,410 frames into
                 // the loop head when moving forward.
-                if !self.reversed && self.length > 4410 && index >= self.length - 4410 {
+                if increment > 0.0 && self.length > 4410 && index >= self.length - 4410 {
                     let head_index = index - (self.length - 4410);
                     let head = loop_data[head_index * 2 + channel];
                     let mix = head_index as f32 / 4410.0;
                     sample = sample * (mix * std::f32::consts::FRAC_PI_2).cos()
                         + head * (mix * std::f32::consts::FRAC_PI_2).sin();
                 }
+                if self.seek_remaining > 0 {
+                    let source_index = self.seek_source.floor() as usize;
+                    let source = loop_data[source_index * 2 + channel];
+                    let t = 1.0 - self.seek_remaining as f32 / 64.0;
+                    sample = source * (1.0 - t) + sample * t;
+                }
                 out[channel] = sample * self.volume;
             }
         }
-        let increment = if self.reversed {
-            -self.speed
-        } else {
-            self.speed
-        };
+        if self.seek_remaining > 0 {
+            self.seek_source = (self.seek_source + increment as f64).rem_euclid(self.length as f64);
+            self.seek_remaining -= 1;
+        }
         self.position = (self.position + increment as f64).rem_euclid(self.length as f64);
         out
     }
@@ -224,6 +237,7 @@ impl Layer {
         self.active = 1 - self.active;
         self.length = job.frames;
         self.position = (job.position as f64 * job.frames as f64).rem_euclid(job.frames as f64);
+        self.seek_remaining = 0;
         self.playing = job.playing;
         self.bars = job.bars;
         true
@@ -392,8 +406,15 @@ impl MainLooper {
                 layer.playing = value >= 0.5 && layer.length > 0;
             }
             4 => {
-                layer.position =
-                    value.clamp(0.0, 1.0) as f64 * layer.length.saturating_sub(1) as f64;
+                let next =
+                    (value.clamp(0.0, 1.0) as f64 * layer.length.saturating_sub(1) as f64).floor();
+                if layer.length > 0 && (next - layer.position).abs() > 1.0 {
+                    layer.seek_source = layer.position;
+                    layer.seek_remaining = 64;
+                } else {
+                    layer.seek_remaining = 0;
+                }
+                layer.position = next;
             }
             _ => return false,
         }
@@ -479,6 +500,7 @@ impl MainLooper {
         for layer in &mut self.layers {
             layer.playing = false;
             layer.position = 0.0;
+            layer.seek_remaining = 0;
         }
     }
     pub fn clear_all(&mut self) {
@@ -690,6 +712,24 @@ mod tests {
         settle(&mut looper);
         assert_eq!(looper.layer_length(0), 1_000);
         assert!(looper.peak(0, 0, 0, 1000) > 0.15);
+    }
+    #[test]
+    fn playback_uses_original_integer_step_and_seek_crossfade() {
+        let mut looper = MainLooper::new(8_000.0);
+        let layer = &mut looper.layers[0];
+        layer.length = 8;
+        layer.playing = true;
+        layer.speed = 0.5;
+        for frame in 0..8 {
+            layer.loops[0][frame * 2] = frame as f32;
+            layer.loops[0][frame * 2 + 1] = frame as f32;
+        }
+        assert_eq!(layer.sample()[0], 0.0);
+        assert_eq!(layer.sample()[0], 0.0);
+        assert_eq!(layer.sample()[0], 1.0);
+        assert!(looper.set_layer_control(0, 4, 1.0));
+        assert_eq!(looper.layers[0].seek_remaining, 64);
+        assert_eq!(looper.layers[0].sample()[0], 1.0); // old source on first jumped sample
     }
     #[test]
     fn exported_loop_reopens_without_touching_live_capture_or_previous_audio_until_complete() {
