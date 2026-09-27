@@ -74,4 +74,20 @@ assert.equal(e.manifold_looper_synth_note(0, 60, 100), 1);
 let layerSamplePeak = 0;
 for (let i = 0; i < 4; i++) layerSamplePeak = Math.max(layerSamplePeak, Math.abs(block(0)));
 assert.ok(layerSamplePeak > .01, `L1 sample output peak ${layerSamplePeak}`);
-console.log('Main looper Wasm: First Loop, retrospective dry input, Rust synth-to-layer capture, and Live/L1 Sample voices passed');
+assert.equal(e.manifold_looper_synth_note(2, 0, 0), 1);
+for (let i = 0; i < 8; i++) block(.33);
+assert.equal(e.manifold_looper_sample_free_start(0), 1);
+for (let i = 0; i < 6; i++) block(.48);
+assert.equal(e.manifold_looper_sample_free_elapsed(), 768);
+assert.equal(e.manifold_looper_sample_free_finish(), 768);
+while (e.manifold_looper_sample_progress() < 768) block(0);
+assert.equal(e.manifold_looper_sample_publish_begin(), 768);
+for (let offset = 0; offset < 768; offset += 128) {
+  assert.equal(e.manifold_looper_sample_publish_chunk(offset, 128), 1);
+}
+assert.equal(e.manifold_looper_sample_publish_finish(), 1);
+assert.equal(e.manifold_looper_synth_note(0, 60, 100), 1);
+let freeSamplePeak = 0;
+for (let i = 0; i < 4; i++) freeSamplePeak = Math.max(freeSamplePeak, Math.abs(block(0)));
+assert.ok(freeSamplePeak > .01, `Free sample output peak ${freeSamplePeak}`);
+console.log('Main looper Wasm: First Loop, retrospective dry input, Rust synth-to-layer capture, and Retro/Free Sample voices passed');

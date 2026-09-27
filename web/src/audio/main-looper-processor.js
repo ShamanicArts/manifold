@@ -21,6 +21,7 @@ class MainLooperProcessor extends AudioWorkletProcessor {
     this.outputView = null;
     this.transferJob = null;
     this.sampleJob = null;
+    this.freeSource = null;
     this.port.onmessage = async ({ data }) => {
       try {
         if (data.type === 'init') {
@@ -34,11 +35,25 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           this.port.postMessage({ type: 'ready' });
         } else if (this.transferJob && ['control', 'layer-control', 'command', 'synth-note', 'synth-parameter'].includes(data.type)) {
           this.port.postMessage({ type: 'rejected', action: data });
-        } else if (data.type === 'sample-capture' && this.engine && !this.sampleJob && !this.transferJob) {
+        } else if (data.type === 'sample-capture' && this.engine && !this.sampleJob && !this.transferJob && this.freeSource === null) {
           const frames = this.engine.manifold_looper_sample_capture(data.source, data.bars);
           if (!frames) throw new Error('Sample capture was rejected.');
           this.sampleJob = { source: data.source, frames, copied: 0, publishing: false };
           this.port.postMessage({ type: 'sample-capture-started', source: data.source, frames });
+        } else if (data.type === 'sample-free-start' && this.engine && !this.sampleJob && !this.transferJob && this.freeSource === null) {
+          if (this.engine.manifold_looper_sample_free_start(data.source) !== 1) throw new Error('Free sample recording could not start.');
+          this.freeSource = data.source;
+          this.port.postMessage({ type: 'sample-free-started', source: data.source });
+        } else if (data.type === 'sample-free-stop' && this.engine && this.freeSource !== null) {
+          const source = this.freeSource;
+          const frames = this.engine.manifold_looper_sample_free_finish();
+          this.freeSource = null;
+          if (!frames) throw new Error('Free sample recording contains no audio.');
+          this.sampleJob = { source, frames, copied: 0, publishing: false };
+          this.port.postMessage({ type: 'sample-capture-started', source, frames });
+        } else if (data.type === 'sample-free-cancel' && this.engine) {
+          this.engine.manifold_looper_sample_free_cancel();
+          this.freeSource = null;
         } else if (data.type === 'sample-publish-next' && this.engine && this.sampleJob) {
           const job = this.sampleJob;
           const frames = Math.min(4096, job.frames - job.copied);
@@ -60,7 +75,7 @@ class MainLooperProcessor extends AudioWorkletProcessor {
         } else if (data.type === 'sample-cancel' && this.engine) {
           this.engine.manifold_looper_sample_cancel();
           this.sampleJob = null;
-        } else if (data.type === 'save-start' && this.engine && !this.transferJob && !this.sampleJob) {
+        } else if (data.type === 'save-start' && this.engine && !this.transferJob && !this.sampleJob && this.freeSource === null) {
           const e = this.engine, s = (id, layer = 0) => e.manifold_looper_status(id, layer);
           if (s(project.status.recording) || Array.from({ length: project.layers }, (_, layer) => s(project.status.layerPending, layer)).some(Boolean)) {
             throw new Error('Finish recording and pending commits before saving.');
@@ -89,7 +104,7 @@ class MainLooperProcessor extends AudioWorkletProcessor {
         } else if (data.type === 'save-end' && this.transferJob?.type === 'save'
           && this.transferJob.requestId === data.requestId) {
           this.transferJob = null;
-        } else if (data.type === 'import-start' && this.engine && !this.transferJob && !this.sampleJob) {
+        } else if (data.type === 'import-start' && this.engine && !this.transferJob && !this.sampleJob && this.freeSource === null) {
           const s = (id, layer = 0) => this.engine.manifold_looper_status(id, layer);
           if (s(project.status.recording) || Array.from({ length: project.layers }, (_, layer) => s(project.status.layerPending, layer)).some(Boolean)) {
             throw new Error('Finish recording and pending commits before opening a session.');
@@ -158,6 +173,9 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           if (!accepted) this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'snapshot' && this.engine) {
           const e = this.engine;
+          if (this.freeSource !== null) {
+            this.port.postMessage({ type: 'sample-free-progress', frames: e.manifold_looper_sample_free_elapsed() });
+          }
           if (this.sampleJob && !this.sampleJob.publishing
             && e.manifold_looper_sample_progress() === this.sampleJob.frames) {
             if (e.manifold_looper_sample_publish_begin() !== this.sampleJob.frames) {
@@ -196,6 +214,8 @@ class MainLooperProcessor extends AudioWorkletProcessor {
       } catch (error) {
         if (this.sampleJob && this.engine) this.engine.manifold_looper_sample_cancel();
         this.sampleJob = null;
+        if (this.freeSource !== null && this.engine) this.engine.manifold_looper_sample_free_cancel();
+        this.freeSource = null;
         if (this.transferJob?.type === 'import' && this.transferJob.layer) {
           this.engine.manifold_looper_import_cancel(this.transferJob.layer.index);
         }

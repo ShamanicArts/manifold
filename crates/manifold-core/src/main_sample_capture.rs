@@ -13,12 +13,19 @@ struct Snapshot {
     start: usize,
 }
 
+struct FreeRecording {
+    source: usize,
+    start_written: u64,
+}
+
 pub struct MainSampleCapture {
     rings: [Vec<f32>; LAYERS + 1],
     frozen: Vec<f32>,
     write: [usize; LAYERS + 1],
     captured: [usize; LAYERS + 1],
+    written: [u64; LAYERS + 1],
     snapshot: Option<Snapshot>,
+    free: Option<FreeRecording>,
 }
 
 impl MainSampleCapture {
@@ -29,13 +36,20 @@ impl MainSampleCapture {
             frozen: vec![0.0; frames * 2],
             write: [0; LAYERS + 1],
             captured: [0; LAYERS + 1],
+            written: [0; LAYERS + 1],
             snapshot: None,
+            free: None,
         }
     }
 
     pub fn request(&mut self, source: usize, frames: usize) -> bool {
         let capacity = self.capacity();
-        if source > LAYERS || frames == 0 || frames > capacity || self.snapshot.is_some() {
+        if source > LAYERS
+            || frames == 0
+            || frames > capacity
+            || self.snapshot.is_some()
+            || self.free.is_some()
+        {
             return false;
         }
         self.snapshot = Some(Snapshot {
@@ -45,6 +59,47 @@ impl MainSampleCapture {
             start: (self.write[source] + capacity - frames) % capacity,
         });
         true
+    }
+
+    pub fn start_free(&mut self, source: usize) -> bool {
+        if source > LAYERS || self.snapshot.is_some() || self.free.is_some() {
+            return false;
+        }
+        self.free = Some(FreeRecording {
+            source,
+            start_written: self.written[source],
+        });
+        true
+    }
+
+    pub fn finish_free(&mut self) -> usize {
+        let Some(recording) = self.free.take() else {
+            return 0;
+        };
+        let frames = self.written[recording.source]
+            .saturating_sub(recording.start_written)
+            .min(self.capacity() as u64) as usize;
+        if self.request(recording.source, frames) {
+            frames
+        } else {
+            0
+        }
+    }
+
+    pub fn cancel_free(&mut self) {
+        self.free = None;
+    }
+
+    pub fn free_source(&self) -> Option<usize> {
+        self.free.as_ref().map(|recording| recording.source)
+    }
+
+    pub fn free_elapsed_frames(&self) -> usize {
+        self.free.as_ref().map_or(0, |recording| {
+            self.written[recording.source]
+                .saturating_sub(recording.start_written)
+                .min(self.capacity() as u64) as usize
+        })
     }
 
     pub fn progress(&self) -> (usize, usize) {
@@ -111,6 +166,7 @@ impl MainSampleCapture {
                 self.rings[source][target + 1] = r;
                 self.write[source] = (self.write[source] + 1) % capacity;
                 self.captured[source] = (self.captured[source] + 1).min(capacity);
+                self.written[source] = self.written[source].saturating_add(1);
             }
         }
     }
@@ -139,5 +195,30 @@ mod tests {
         assert!(capture.copy_frozen_chunk(240_000 - 128, &mut tail));
         assert!(head.iter().all(|v| (*v - 0.7).abs() < 1e-6));
         assert!(tail.iter().all(|v| (*v - 0.7).abs() < 1e-6));
+    }
+
+    #[test]
+    fn free_capture_over_ring_capacity_uses_newest_frames_in_order() {
+        let mut capture = MainSampleCapture::new(8_000.0);
+        let taps = std::array::from_fn(|_| vec![0.0; 256]);
+        let old = [0.3; 128];
+        let new = [0.7; 128];
+        let silence = [0.0; 128];
+        assert!(capture.start_free(0));
+        for _ in 0..(240_000 / 128) {
+            capture.process([&old, &old], &taps);
+        }
+        capture.process([&new, &new], &taps);
+        assert_eq!(capture.free_elapsed_frames(), 240_000);
+        assert_eq!(capture.finish_free(), 240_000);
+        while capture.progress().0 < 240_000 {
+            capture.process([&silence, &silence], &taps);
+        }
+        let mut head = [0.0; 256];
+        let mut tail = [0.0; 256];
+        assert!(capture.copy_frozen_chunk(0, &mut head));
+        assert!(capture.copy_frozen_chunk(240_000 - 128, &mut tail));
+        assert!(head.iter().all(|value| (*value - 0.3).abs() < 1e-6));
+        assert!(tail.iter().all(|value| (*value - 0.7).abs() < 1e-6));
     }
 }

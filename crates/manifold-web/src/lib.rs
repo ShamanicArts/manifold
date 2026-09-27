@@ -180,6 +180,45 @@ pub extern "C" fn manifold_looper_sample_capture(source: u32, bars: f32) -> u32 
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_sample_free_start(source: u32) -> u32 {
+    LOOPER.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |e| {
+            if e.sample_upload.is_some() {
+                return 0;
+            }
+            u32::from(e.instrument.start_free_sample(source as usize))
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_sample_free_finish() -> u32 {
+    LOOPER.with(|slot| {
+        slot.borrow_mut()
+            .as_mut()
+            .map_or(0, |e| e.instrument.finish_free_sample() as u32)
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_sample_free_elapsed() -> u32 {
+    LOOPER.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .map_or(0, |e| e.instrument.free_sample_elapsed_frames() as u32)
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_sample_free_cancel() {
+    LOOPER.with(|slot| {
+        if let Some(e) = slot.borrow_mut().as_mut() {
+            e.instrument.cancel_free_sample();
+        }
+    });
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn manifold_looper_sample_progress() -> u32 {
     LOOPER.with(|slot| {
         slot.borrow()

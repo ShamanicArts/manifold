@@ -67,6 +67,26 @@ impl MainInstrument {
         }
     }
 
+    pub fn start_free_sample(&mut self, source: usize) -> bool {
+        self.sample_capture.start_free(source)
+    }
+
+    pub fn finish_free_sample(&mut self) -> usize {
+        self.sample_capture.finish_free()
+    }
+
+    pub fn cancel_free_sample(&mut self) {
+        self.sample_capture.cancel_free();
+    }
+
+    pub fn free_sample_source(&self) -> Option<usize> {
+        self.sample_capture.free_source()
+    }
+
+    pub fn free_sample_elapsed_frames(&self) -> usize {
+        self.sample_capture.free_elapsed_frames()
+    }
+
     pub fn sample_progress(&self) -> (usize, usize) {
         self.sample_capture.progress()
     }
@@ -184,6 +204,42 @@ mod tests {
         assert!(chunk.iter().all(|value| (*value - 0.4).abs() < 1e-6));
         main.release_sample();
         assert_eq!(main.request_sample_source(5, 0.0625), 0);
+    }
+
+    #[test]
+    fn free_sample_spans_only_audio_after_start_from_the_pinned_layer() {
+        let mut main = MainInstrument::new(8_000.0, 128);
+        let original = [0.4; 128];
+        let other_dry = [0.9; 128];
+        let silence = [0.0; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        for _ in 0..12 {
+            main.process([&original, &original], [&mut left, &mut right]);
+        }
+        assert!(main.looper_mut().commit(0.0625));
+        for _ in 0..10 {
+            main.process([&silence, &silence], [&mut left, &mut right]);
+        }
+        assert!(main.start_free_sample(1));
+        assert_eq!(main.free_sample_source(), Some(1));
+        for _ in 0..6 {
+            main.process([&other_dry, &other_dry], [&mut left, &mut right]);
+        }
+        assert_eq!(main.finish_free_sample(), 768);
+        while main.sample_progress().0 < 768 {
+            main.process([&silence, &silence], [&mut left, &mut right]);
+        }
+        let mut first = [0.0; 256];
+        let mut last = [0.0; 256];
+        assert!(main.copy_sample_chunk(0, &mut first));
+        assert!(main.copy_sample_chunk(640, &mut last));
+        assert!(
+            first
+                .iter()
+                .chain(last.iter())
+                .all(|value| (*value - 0.4).abs() < 1e-6)
+        );
     }
 
     #[test]

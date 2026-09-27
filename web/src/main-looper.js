@@ -10,7 +10,7 @@ const layerColors = ['#22d3ee', '#a78bfa', '#f59e0b', '#34d399'];
 let context = null, processor = null, stream = null, sourceNode = null, inputGain = null;
 let latest = null, poll = null, dragging = null;
 let transferJob = null, nextRequest = 1;
-let sampleJob = null;
+let sampleJob = null, freeSource = null, sampleMode = 0;
 const status = (message) => { $('status').textContent = message; };
 function formatBars(value) {
   if (!value) return '';
@@ -40,13 +40,48 @@ sampleBlend.onChange(value => { sampleBlendValue = value; synthParameter(1, valu
 const paintSampleSliders = () => { sampleBars.paint(); sampleRoot.paint(); sampleBlend.paint(); };
 new ResizeObserver(paintSampleSliders).observe($('sample-root'));
 requestAnimationFrame(paintSampleSliders);
+function resetSampleCaptureUI() {
+  $('sample-cap').textContent = 'Cap';
+  $('sample-cap').classList.remove('recording');
+  $('sample-cap').disabled = false;
+  $('sample-mode').disabled = false;
+  $('sample-source-select').disabled = false;
+}
+$('sample-mode').onclick = () => {
+  if (sampleJob || freeSource !== null) return;
+  sampleMode = 1 - sampleMode;
+  $('sample-mode').textContent = sampleMode ? 'Free' : 'Retro';
+  $('sample-mode').classList.toggle('free', sampleMode === 1);
+};
 $('sample-cap').onclick = () => {
   if (!processor) { status('Start audio to capture a sample.'); return; }
+  if (freeSource !== null) {
+    const source = freeSource;
+    freeSource = null;
+    sampleJob = { source, mode: 1 };
+    $('sample-cap').textContent = 'Cap';
+    $('sample-cap').classList.remove('recording');
+    $('sample-cap').disabled = true;
+    status(`Freezing ${source === 0 ? 'Live' : `L${source}`} Free sample…`);
+    post({ type: 'sample-free-stop' });
+    return;
+  }
   const source = Number($('sample-source-select').value);
   if (source === 0 && $('source').value === 'none') { status('Choose a dry input before capturing a Live sample.'); return; }
   if (source > 0 && !latest?.layers[source - 1]?.length) { status(`Record or commit a loop into L${source} before sampling it.`); return; }
   if (sampleJob || transferJob) return;
-  sampleJob = { source, bars: sampleBarsValue };
+  if (sampleMode === 1) {
+    freeSource = source;
+    $('sample-cap').textContent = 'STOP';
+    $('sample-cap').classList.add('recording');
+    $('sample-mode').disabled = true;
+    $('sample-source-select').disabled = true;
+    $('sample-length').textContent = '0ms';
+    status(`Recording ${source === 0 ? 'Live' : `L${source}`} Free sample. Press STOP to capture.`);
+    post({ type: 'sample-free-start', source });
+    return;
+  }
+  sampleJob = { source, bars: sampleBarsValue, mode: 0 };
   $('sample-cap').disabled = true;
   status(`Capturing recent ${source === 0 ? 'dry input' : `L${source} playback`} for the Main Sample voice…`);
   post({ type: 'sample-capture', source, bars: sampleBarsValue });
@@ -361,7 +396,7 @@ function handleTransfer(data) {
 
 $('save-session').onclick = () => {
   if (!processor) { status('Start audio before downloading a looper session.'); return; }
-  if (transferJob || sampleJob) return;
+  if (transferJob || sampleJob || freeSource !== null) return;
   const id = nextRequest++;
   transferJob = { kind: 'save', id, state: null, audio: null, layer: 0, offset: 0 };
   $('save-session').disabled = true; status('Collecting loop audio for download…');
@@ -369,7 +404,7 @@ $('save-session').onclick = () => {
 };
 $('open-session').onchange = async () => {
   if (!processor) { status('Start audio before opening a looper session.'); return; }
-  if (transferJob || sampleJob) return;
+  if (transferJob || sampleJob || freeSource !== null) return;
   const file = $('open-session').files[0];
   if (!file) return;
   try {
@@ -424,8 +459,11 @@ async function start() {
       if (data.type === 'snapshot') render(data);
       else if (data.type === 'error') {
         if (transferJob) { transferJob = null; $('save-session').disabled = false; }
-        if (sampleJob) { sampleJob = null; $('sample-cap').disabled = false; }
+        sampleJob = null; freeSource = null; resetSampleCaptureUI();
         status(`Audio error: ${data.message}`);
+      }
+      else if (data.type === 'sample-free-progress' && freeSource !== null) {
+        $('sample-length').textContent = `${Math.round(data.frames / context.sampleRate * 1000)}ms`;
       }
       else if (data.type === 'sample-capture-started') {
         sampleJob.frames = data.frames;
@@ -436,11 +474,12 @@ async function start() {
       }
       else if (data.type === 'sample-capture-complete') {
         const source = sampleJob?.source ?? 0;
+        const mode = sampleJob?.mode ?? 0;
         sampleJob = null;
-        $('sample-cap').disabled = false;
+        resetSampleCaptureUI();
         $('sample-length').textContent = `${Math.round(data.frames / context.sampleRate * 1000)}ms`;
         sampleBlend.setValue(1, true);
-        status(`${source === 0 ? 'Live' : `L${source}`} sample captured. Play the keyboard to hear the Sample voice.`);
+        status(`${source === 0 ? 'Live' : `L${source}`} ${mode === 1 ? 'Free ' : ''}sample captured. Play the keyboard to hear the Sample voice.`);
       }
       else if (data.type === 'rejected') status('That looper action could not be applied.');
       else handleTransfer(data);
@@ -477,7 +516,8 @@ async function stop() {
   document.querySelectorAll('.synth-key.held').forEach(key => key.classList.remove('held'));
   if (transferJob?.kind === 'import') post({ type: 'import-cancel' });
   if (sampleJob) post({ type: 'sample-cancel' });
-  sampleJob = null; $('sample-cap').disabled = false;
+  if (freeSource !== null) post({ type: 'sample-free-cancel' });
+  sampleJob = null; freeSource = null; resetSampleCaptureUI();
   $('sample-length').textContent = '0ms';
   sampleBlend.setValue(0, true);
   transferJob = null; $('save-session').disabled = false;
