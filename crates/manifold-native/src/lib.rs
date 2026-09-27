@@ -104,6 +104,35 @@ impl NativeProcessor {
         self.plan.reset_effect_slot(node)
     }
 
+    /// Host control transaction: call only with exclusive access to this
+    /// processor. Subsequent process blocks freeze the requested window.
+    pub fn begin_capture_staging(&mut self, node: NodeId, requested_frames: usize) -> bool {
+        self.plan.begin_capture_staging(node, requested_frames)
+    }
+
+    pub fn capture_staging_status(&self, node: NodeId) -> Option<bool> {
+        self.plan.capture_staging_status(node)
+    }
+
+    pub fn capture_staged_length(&self, node: NodeId) -> Option<usize> {
+        self.plan.capture_staged_length(node)
+    }
+
+    /// Copy frozen PCM into caller-owned storage outside the audio callback.
+    pub fn copy_capture_staged_interleaved(
+        &self,
+        node: NodeId,
+        start_frame: usize,
+        output: &mut [f32],
+    ) -> usize {
+        self.plan
+            .copy_capture_staged_interleaved(node, start_frame, output)
+    }
+
+    pub fn cancel_capture_staging(&mut self, node: NodeId) -> bool {
+        self.plan.cancel_capture_staging(node)
+    }
+
     /// Audio-thread reset of prepared signal state; host controls and assets stay loaded.
     pub fn reset_processing(&mut self) {
         self.plan.reset_processing();

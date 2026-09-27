@@ -122,6 +122,27 @@ impl PreparedNativeProject {
         sample_rate: f32,
         max_frames: usize,
     ) -> Result<Self, ProjectError> {
+        self.prepare_sample_replacement_with_capture(
+            node,
+            stereo,
+            source_rate,
+            label,
+            sample_rate,
+            max_frames,
+            None,
+        )
+    }
+
+    fn prepare_sample_replacement_with_capture(
+        &mut self,
+        node: u32,
+        stereo: &[f32],
+        source_rate: u32,
+        label: &str,
+        sample_rate: f32,
+        max_frames: usize,
+        capture: Option<u32>,
+    ) -> Result<Self, ProjectError> {
         let frames = stereo.len() / 2;
         if stereo.len() % 2 != 0
             || !(8_000..=384_000).contains(&source_rate)
@@ -154,8 +175,48 @@ impl PreparedNativeProject {
         } else {
             assets.push(asset);
         }
+        if let Some(capture) = capture {
+            candidate["signal"]["selectedCaptureNodeId"] = Value::from(capture);
+        }
         let bytes = serde_json::to_vec(&candidate).map_err(|_| ProjectError::Invalid("JSON"))?;
         NativeProject::parse(&bytes)?.prepare_with_state(sample_rate, max_frames)
+    }
+
+    /// Finish a frozen native capture on a synchronized host control thread.
+    /// The returned graph can be published by an adapter at a block boundary.
+    pub fn prepare_staged_capture_replacement(
+        &mut self,
+        capture: u32,
+        instrument: u32,
+        label: &str,
+        sample_rate: f32,
+        max_frames: usize,
+    ) -> Result<Self, ProjectError> {
+        let frames = self
+            .processor
+            .capture_staged_length(capture.into())
+            .ok_or(ProjectError::Invalid("staged capture unavailable"))?;
+        if frames == 0 || frames > 1_440_000 {
+            return Err(ProjectError::Invalid("staged capture length"));
+        }
+        let mut stereo = vec![0.0; frames * 2];
+        if self
+            .processor
+            .copy_capture_staged_interleaved(capture.into(), 0, &mut stereo)
+            != frames
+        {
+            return Err(ProjectError::Invalid("staged capture changed"));
+        }
+        let source_rate = sample_rate.round() as u32;
+        self.prepare_sample_replacement_with_capture(
+            instrument,
+            &stereo,
+            source_rate,
+            label,
+            sample_rate,
+            max_frames,
+            Some(capture),
+        )
     }
 
     /// Build a replacement Main partial target without mutating the live graph.
@@ -1420,6 +1481,103 @@ mod tests {
         assert!(parse(&document).is_err());
         document["signal"]["captureTempoBpm"] = serde_json::json!(120);
         assert!(parse(&document).is_ok());
+    }
+
+    #[test]
+    fn native_sidechain_ring_stages_to_portable_sample_and_reopens() {
+        use manifold_core::capture_timing::{retrospective_frames, samples_per_bar};
+
+        let project = NativeProject::parse(include_bytes!(
+            "../../../projects/graph-workspace/retrospective-multisource.json"
+        ))
+        .unwrap();
+        let mut prepared = project.prepare_with_state(48_000.0, 128).unwrap();
+        assert!(
+            prepared
+                .prepare_staged_capture_replacement(10, 5, "Sidechain take", 48_000.0, 128)
+                .is_err()
+        );
+        let main = [0.25; 128];
+        let side = [-0.5; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        let mut render = |prepared: &mut PreparedNativeProject| {
+            prepared
+                .processor
+                .process(AudioBlock {
+                    main: Some([&main, &main]),
+                    sidechain: Some([&side, &side]),
+                    output: [&mut left, &mut right],
+                    events: &[],
+                })
+                .unwrap();
+            assert_eq!(left, [0.0; 128], "capture roots stay silent");
+            assert_eq!(right, [0.0; 128]);
+        };
+        for _ in 0..75 {
+            render(&mut prepared);
+        }
+        let spb = samples_per_bar(Some(96_000.0), 48_000.0, 120.0).unwrap();
+        let frames = retrospective_frames(spb, 0.1).unwrap();
+        assert_eq!(frames, 9_600);
+        assert!(
+            prepared
+                .processor
+                .begin_capture_staging(10_u32.into(), frames as usize)
+        );
+        for _ in 0..16 {
+            if prepared.processor.capture_staging_status(10_u32.into()) == Some(true) {
+                break;
+            }
+            render(&mut prepared);
+        }
+        assert_eq!(
+            prepared.processor.capture_staging_status(10_u32.into()),
+            Some(true)
+        );
+        let mut replacement = prepared
+            .prepare_staged_capture_replacement(10, 5, "Sidechain take", 48_000.0, 128)
+            .unwrap();
+        let saved = replacement.save_state().unwrap();
+        let document: Value = serde_json::from_slice(&saved).unwrap();
+        assert_eq!(document["signal"]["selectedCaptureNodeId"], 10);
+        assert_eq!(document["signal"]["captureWindowMode"], "bars");
+        assert_eq!(document["assets"][0]["frames"], 9_600);
+        let encoded = document["assets"][0]["pcmF32Base64"].as_str().unwrap();
+        let pcm = STANDARD.decode(encoded).unwrap();
+        assert_eq!(f32::from_le_bytes(pcm[..4].try_into().unwrap()), -2.0);
+
+        let mut reopened = NativeProject::parse(&saved)
+            .unwrap()
+            .prepare_with_state(48_000.0, 128)
+            .unwrap();
+        let note = [TimedEvent {
+            offset: 0,
+            node: 4_u32.into(),
+            kind: EventKind::NoteOn {
+                channel: 0,
+                note: 60,
+                velocity: 127,
+            },
+        }];
+        let play = |prepared: &mut PreparedNativeProject| {
+            let mut l = [0.0; 128];
+            let mut r = [0.0; 128];
+            prepared
+                .processor
+                .process(AudioBlock {
+                    main: None,
+                    sidechain: None,
+                    output: [&mut l, &mut r],
+                    events: &note,
+                })
+                .unwrap();
+            [l, r]
+        };
+        let first = play(&mut replacement);
+        let second = play(&mut reopened);
+        assert_eq!(first, second);
+        assert!(first[0].iter().any(|sample| *sample < -0.01));
     }
 
     #[test]
