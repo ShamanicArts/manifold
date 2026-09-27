@@ -119,7 +119,9 @@ export class BrowserAudioHost {
       const uploads = (Array.isArray(sample) ? sample : sample ? [sample] : [])
         .filter((asset) => project.id !== 'manifold.graph-workspace' || reachable.has(asset.nodeId))
         .map((asset) => ({ nodeId: asset.nodeId ?? 2, sourceRate: asset.sourceRate, stereo: asset.stereo.slice() }));
-      const partials = project.extraPartials?.length ? [project.partials, ...project.extraPartials] : project.partials ?? null;
+      const partials = project.id === 'manifold.graph-workspace'
+        ? (project.graphTargets ?? []).filter((target) => reachable.has(target.nodeId))
+        : project.extraPartials?.length ? [project.partials, ...project.extraPartials] : project.partials ?? null;
       processor.port.postMessage({ type: 'init', wasmBytes, graph, samples: uploads, partials },
         [wasmBytes, ...uploads.map((asset) => asset.stereo.buffer)]);
       await ready;

@@ -2,6 +2,7 @@
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_core::granulator;
 use manifold_core::graph::{Connection, GraphDescription, NodeKind, NodeSpec};
+use manifold_core::sine_bank::{Partial, PartialSet};
 use std::io::Write;
 
 fn tone_texture() -> GraphDescription {
@@ -196,6 +197,34 @@ fn granular_capture() -> GraphDescription {
     description
 }
 
+fn main_bank() -> GraphDescription {
+    let mut description = sample_voice();
+    description
+        .nodes
+        .iter_mut()
+        .find(|node| node.id == 5)
+        .unwrap()
+        .kind = NodeKind::MainVoiceBank { fft_order: 9 };
+    description
+}
+
+fn main_target(amplitudes: &[f32]) -> PartialSet {
+    let mut target = PartialSet {
+        fundamental: 1.0,
+        ..PartialSet::default()
+    };
+    target.count = amplitudes.len();
+    for (index, amplitude) in amplitudes.iter().enumerate() {
+        target.partials[index] = Partial {
+            frequency: (index + 1) as f32,
+            amplitude: *amplitude,
+            phase: 0.0,
+            decay_rate: 0.0,
+        };
+    }
+    target
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
     if args.len() != 3
@@ -209,6 +238,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "region-voice",
             "granular-source",
             "granular-capture",
+            "main-bank",
+            "main-bank-add",
         ]
         .contains(&args[1].as_str())
     {
@@ -217,22 +248,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
     if args[1] == "texture" {
-        return render(tone_texture(), &args[2], false, false, false);
+        return render(tone_texture(), &args[2], false, false, false, false);
     }
     if args[1] == "note-voice" {
-        return render(note_voice(), &args[2], true, false, false);
+        return render(note_voice(), &args[2], true, false, false, false);
     }
     if args[1] == "sample-voice" {
-        return render(sample_voice(), &args[2], true, true, false);
+        return render(sample_voice(), &args[2], true, true, false, false);
     }
     if args[1] == "region-voice" {
-        return render(region_voice(), &args[2], true, true, true);
+        return render(region_voice(), &args[2], true, true, true, false);
     }
     if args[1] == "granular-source" {
-        return render(granular_source(), &args[2], false, true, false);
+        return render(granular_source(), &args[2], false, true, false, false);
     }
     if args[1] == "granular-capture" {
-        return render(granular_capture(), &args[2], false, false, false);
+        return render(granular_capture(), &args[2], false, false, false, false);
+    }
+    if args[1] == "main-bank" || args[1] == "main-bank-add" {
+        return render(
+            main_bank(),
+            &args[2],
+            true,
+            true,
+            false,
+            args[1] == "main-bank-add",
+        );
     }
     let distorted = args[1] != "seed";
     let cv = args[1] == "cv";
@@ -315,6 +356,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         false,
         false,
         false,
+        false,
     )
 }
 
@@ -324,10 +366,43 @@ fn render(
     note_events: bool,
     sample_source: bool,
     sample_region: bool,
+    main_add: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut plan = description.compile(48_000.0, 2048)?;
     if note_events && !sample_source && !plan.set_parameter(5, 0, 7.0) {
         return Err("MIDI transpose parameter unavailable".into());
+    }
+    let main_bank = description
+        .nodes
+        .iter()
+        .any(|node| matches!(node.kind, NodeKind::MainVoiceBank { .. }));
+    if main_bank {
+        for (id, value) in [
+            (0, 0.0),
+            (1, 0.35),
+            (2, 60.0),
+            (3, 2.0),
+            (4, 0.0),
+            (5, 0.0),
+            (6, if main_add { 4.0 } else { 0.0 }),
+            (7, 0.5),
+            (8, 0.5),
+            (9, 0.0),
+            (10, 1.0),
+            (11, 0.005),
+            (12, 0.08),
+            (13, 0.8),
+            (14, 0.16),
+            (15, 1.0),
+            (16, 1.0),
+            (17, 0.0),
+            (18, 0.2),
+            (19, 0.0),
+        ] {
+            if !plan.set_parameter(5, id, value) {
+                return Err("Main bank parameter rejected".into());
+            }
+        }
     }
     if sample_source {
         let source = std::fs::read(
@@ -345,6 +420,13 @@ fn render(
         }
         if sample_region && !plan.set_parameter(5, 8, 0.08) {
             return Err("sample region crossfade rejected".into());
+        }
+    }
+    if main_bank {
+        if !plan.load_partials_target(5, 0, main_target(&[1.0, 0.42, 0.2, 0.1]))
+            || !plan.load_partials_target(5, 1, main_target(&[1.0, 0.38, 0.13]))
+        {
+            return Err("Main bank partial target rejected".into());
         }
     }
     let event_schedule = [

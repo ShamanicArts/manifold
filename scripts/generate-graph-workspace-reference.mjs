@@ -12,6 +12,7 @@ const noteVoice = JSON.parse(readFileSync('projects/graph-workspace/note-voice.j
 const sampleVoice = JSON.parse(readFileSync('projects/graph-workspace/sample-voice.json', 'utf8')).signal;
 const regionVoice = JSON.parse(readFileSync('projects/graph-workspace/region-voice.json', 'utf8')).signal;
 const granularSource = JSON.parse(readFileSync('projects/graph-workspace/granular-source.json', 'utf8')).signal;
+const mainBundle = JSON.parse(readFileSync('projects/graph-workspace/main-bank.json', 'utf8'));
 const granularCapture = setInputSource(setConnection(granularSource, 5, 0, 1), 'external');
 let distorted = addNode(seed, 'distortion');
 distorted = setConnection(distorted, 4, 0, 2);
@@ -60,6 +61,11 @@ const cases = [
   { id: 'granular-source', label: 'Prepared source → granulator → SVF', graph: granularSource,
     sampleNodeId: 5 },
   { id: 'granular-capture', label: 'Live input → capture granulator → SVF', graph: granularCapture },
+  { id: 'main-bank', label: 'MIDI → Main voice bank → SVF', graph: mainBundle.signal,
+    events: notes, sampleNodeId: 5, targets: mainBundle.targets },
+  { id: 'main-bank-add', label: 'MIDI → Main voice bank Add mode → SVF',
+    graph: setInitialParameter(mainBundle.signal, 5, 6, 4), events: notes,
+    sampleNodeId: 5, targets: mainBundle.targets },
 ];
 for (const entry of cases) {
   entry.output = `${entry.id}.f32`;

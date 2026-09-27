@@ -1,8 +1,8 @@
 // Browser authoring contract for a subset of Rust's prepared typed graph.
 // Rust compilation remains the final authority when playback starts.
 import { encodePcm, decodePcm } from '../state/stereo-source.js';
-export const SAMPLE_NODE_TYPES = new Set(['sample-instrument', 'sample-region', 'granulator']);
-const NOTE_NODE_TYPES = new Set(['voice-synth', 'sample-instrument', 'sample-region']);
+export const SAMPLE_NODE_TYPES = new Set(['sample-instrument', 'sample-region', 'granulator', 'main-voice-bank']);
+const NOTE_NODE_TYPES = new Set(['voice-synth', 'sample-instrument', 'sample-region', 'main-voice-bank']);
 export const NODE_TYPES = {
   'input.raw': { label: 'Live input', code: 0, output: 'audio', inputs: [], fixedId: 1 },
   output: { label: 'Output', code: 7, output: null, inputs: ['audio'], fixedId: 3 },
@@ -80,6 +80,29 @@ export const NODE_TYPES = {
       { id: 8, label: 'Enabled', choices: ['Off', 'On'], default: 1 },
       { id: 9, label: 'Region start', min: 0, max: 1, default: 0 },
       { id: 10, label: 'Region end', min: 0, max: 1, default: 1 },
+    ] },
+  'main-voice-bank': { label: 'Main voice bank', code: 64, output: 'audio', inputs: ['midi'], args: { a: 9 },
+    parameters: [
+      { id: 0, label: 'Wave shape', choices: ['Sine', 'Saw', 'Square', 'Triangle', 'Sine + saw'], default: 0 },
+      { id: 1, label: 'Wave / sample', min: -1, max: 1, default: 0 },
+      { id: 2, label: 'Sample root', min: 36, max: 84, default: 60 },
+      { id: 3, label: 'Keytrack', choices: ['Wave', 'Sample', 'Both'], default: 2 },
+      { id: 4, label: 'Sample pitch', min: -24, max: 24, default: 0 },
+      { id: 5, label: 'Pitch engine', choices: ['Classic', 'Vocoder', 'Vocoder HQ'], default: 0 },
+      { id: 6, label: 'Blend mode', choices: ['Normal', 'Ring', 'FM', 'Sync', 'Add', 'Morph'], default: 0 },
+      { id: 7, label: 'Direction depth', min: 0, max: 1, default: .5 },
+      { id: 8, label: 'Wave to sample', min: 0, max: 1, default: .5 },
+      { id: 9, label: 'Sample to wave', min: 0, max: 1, default: 0 },
+      { id: 10, label: 'Sync retrigger', choices: ['Off', 'On'], default: 1 },
+      { id: 11, label: 'Attack', min: .001, max: .5, default: .005 },
+      { id: 12, label: 'Decay', min: .001, max: 1, default: .08 },
+      { id: 13, label: 'Sustain', min: 0, max: 1, default: .8 },
+      { id: 14, label: 'Release', min: .001, max: 2, default: .16 },
+      { id: 15, label: 'Output', min: 0, max: 2, default: 1 },
+      { id: 16, label: 'Vocoder time', min: .25, max: 4, default: 1 },
+      { id: 17, label: 'Phrase contour', min: 0, max: 1, default: 0 },
+      { id: 18, label: 'Phrase reference', min: .05, max: .6, default: .2 },
+      { id: 19, label: 'Add wave source', choices: ['Prepared partials', 'Original additive'], default: 0 },
     ] },
 };
 
@@ -247,26 +270,60 @@ export function validateGraphAssets(signal, assets) {
   });
 }
 
-export function captureGraphProject(signal, assets = []) {
+export function validateGraphTargets(signal, targets) {
+  if (!Array.isArray(targets) || targets.length > 8) throw new Error('Graph partial target limit exceeded.');
+  const banks = signal.nodes.filter((node) => node.type === 'main-voice-bank').map((node) => node.id);
+  const seen = new Set();
+  const checked = targets.map((target) => {
+    const key = `${target?.nodeId}:${target?.target}`;
+    if (!target || !sameKeys(target, ['nodeId', 'target', 'fundamental', 'values'])
+      || !banks.includes(target.nodeId) || ![0, 1].includes(target.target)
+      || seen.has(key) || typeof target.fundamental !== 'number'
+      || !Number.isFinite(target.fundamental) || target.fundamental <= 0 || target.fundamental > 24000
+      || !Array.isArray(target.values) || target.values.length < 4
+      || target.values.length > 128 || target.values.length % 4) throw new Error('Invalid graph partial target.');
+    for (let index = 0; index < target.values.length; index += 4) {
+      const [frequency, amplitude, phase, decay] = target.values.slice(index, index + 4);
+      if (![frequency, amplitude, phase, decay].every((value) => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 3.4028235e38)
+        || frequency < 0 || frequency > 24000 || amplitude < 0 || decay < 0) {
+        throw new Error('Invalid graph partial target.');
+      }
+    }
+    seen.add(key);
+    return { nodeId: target.nodeId, target: target.target, fundamental: target.fundamental,
+      values: [...target.values] };
+  });
+  for (const id of banks) {
+    if (!seen.has(`${id}:0`) || !seen.has(`${id}:1`)) throw new Error('Main voice bank needs wave and source targets.');
+  }
+  return checked;
+}
+
+export function captureGraphProject(signal, assets = [], targets = []) {
   const graph = validateTopology(signal);
   const checked = validateGraphAssets(graph, assets);
+  const partials = validateGraphTargets(graph, targets);
   return { format: PROJECT_FORMAT, schemaVersion: PROJECT_VERSION, projectId, signal: graph,
     ...(checked.length ? { assets: checked.map((asset) => ({ nodeId: asset.nodeId,
       sourceRate: asset.sourceRate, frames: asset.stereo.length / 2, label: asset.label,
-      pcmF32Base64: encodePcm(asset.stereo) })) } : {}) };
+      pcmF32Base64: encodePcm(asset.stereo) })) } : {}),
+    ...(partials.length ? { targets: partials } : {}) };
 }
 
 export function parseGraphBundle(document) {
   if (document?.format !== PROJECT_FORMAT || document.schemaVersion !== PROJECT_VERSION
     || document.projectId !== projectId
-    || !(sameKeys(document, ['format', 'schemaVersion', 'projectId', 'signal'])
-      || sameKeys(document, ['format', 'schemaVersion', 'projectId', 'signal', 'assets']))) {
+    || ![[], ['assets'], ['targets'], ['assets', 'targets']].some((optional) =>
+      sameKeys(document, ['format', 'schemaVersion', 'projectId', 'signal', ...optional]))) {
     throw new Error('This is not a supported graph workspace project.');
   }
   const signal = validateTopology(document.signal);
   if ((Object.hasOwn(document, 'assets') && !Array.isArray(document.assets))
     || (document.assets?.length ?? 0) > 4) {
     throw new Error('Graph supports at most four sample assets.');
+  }
+  if (Object.hasOwn(document, 'targets') && !Array.isArray(document.targets)) {
+    throw new Error('Invalid graph partial targets.');
   }
   const assets = (document.assets ?? []).map((asset) => {
     if (!asset || !sameKeys(asset, ['nodeId', 'sourceRate', 'frames', 'label', 'pcmF32Base64'])
@@ -276,7 +333,8 @@ export function parseGraphBundle(document) {
     return { nodeId: asset.nodeId, sourceRate: asset.sourceRate, label: asset.label,
       stereo: decodePcm(asset.pcmF32Base64, asset.frames) };
   });
-  return { signal, assets: validateGraphAssets(signal, assets) };
+  return { signal, assets: validateGraphAssets(signal, assets),
+    targets: validateGraphTargets(signal, document.targets ?? []) };
 }
 
 export function parseGraphProject(document) { return parseGraphBundle(document).signal; }

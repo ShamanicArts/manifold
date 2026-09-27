@@ -1,0 +1,211 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "midi-input"
+      },
+      {
+        "id": 5,
+        "type": "main-voice-bank",
+        "a": 9
+      },
+      {
+        "id": 6,
+        "type": "svf"
+      }
+    ],
+    "connections": [
+      {
+        "from": 4,
+        "to": 5,
+        "inputPort": 0
+      },
+      {
+        "from": 5,
+        "to": 6,
+        "inputPort": 0
+      },
+      {
+        "from": 6,
+        "to": 3,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 5,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 5,
+        "id": 1,
+        "value": 0.35
+      },
+      {
+        "nodeId": 5,
+        "id": 2,
+        "value": 60
+      },
+      {
+        "nodeId": 5,
+        "id": 3,
+        "value": 2
+      },
+      {
+        "nodeId": 5,
+        "id": 4,
+        "value": 0
+      },
+      {
+        "nodeId": 5,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 5,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 5,
+        "id": 7,
+        "value": 0.5
+      },
+      {
+        "nodeId": 5,
+        "id": 8,
+        "value": 0.5
+      },
+      {
+        "nodeId": 5,
+        "id": 9,
+        "value": 0
+      },
+      {
+        "nodeId": 5,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 5,
+        "id": 11,
+        "value": 0.005
+      },
+      {
+        "nodeId": 5,
+        "id": 12,
+        "value": 0.08
+      },
+      {
+        "nodeId": 5,
+        "id": 13,
+        "value": 0.8
+      },
+      {
+        "nodeId": 5,
+        "id": 14,
+        "value": 0.16
+      },
+      {
+        "nodeId": 5,
+        "id": 15,
+        "value": 1
+      },
+      {
+        "nodeId": 5,
+        "id": 16,
+        "value": 1
+      },
+      {
+        "nodeId": 5,
+        "id": 17,
+        "value": 0
+      },
+      {
+        "nodeId": 5,
+        "id": 18,
+        "value": 0.2
+      },
+      {
+        "nodeId": 5,
+        "id": 19,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 1,
+        "value": 3200
+      },
+      {
+        "nodeId": 6,
+        "id": 2,
+        "value": 0.75
+      }
+    ]
+  },
+  "targets": [
+    {
+      "nodeId": 5,
+      "target": 0,
+      "fundamental": 1,
+      "values": [
+        1,
+        1,
+        0,
+        0,
+        2,
+        0.42,
+        0,
+        0,
+        3,
+        0.2,
+        0,
+        0,
+        4,
+        0.1,
+        0,
+        0
+      ]
+    },
+    {
+      "nodeId": 5,
+      "target": 1,
+      "fundamental": 1,
+      "values": [
+        1,
+        1,
+        0,
+        0,
+        2,
+        0.38,
+        0,
+        0,
+        3,
+        0.13,
+        0,
+        0
+      ]
+    }
+  ]
+}

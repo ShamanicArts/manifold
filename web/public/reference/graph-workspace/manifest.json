@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust authored graph topology",
-  "sourceSha256": "193815397cdff6574cd54c8354807e1fb3cc887a3c6e91355da84e8531934b67",
+  "sourceSha256": "7c48366c86d7faab4828eb30f28b5c6d945e5fc493858ee39772480a221bde24",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 8192,
@@ -1051,6 +1051,490 @@
         ]
       },
       "output": "granular-capture.f32"
+    },
+    {
+      "id": "main-bank",
+      "label": "MIDI → Main voice bank → SVF",
+      "graph": {
+        "inputs": 2,
+        "outputs": 2,
+        "inputSource": "none",
+        "nodes": [
+          {
+            "id": 1,
+            "type": "input.raw"
+          },
+          {
+            "id": 3,
+            "type": "output"
+          },
+          {
+            "id": 4,
+            "type": "midi-input"
+          },
+          {
+            "id": 5,
+            "type": "main-voice-bank",
+            "a": 9
+          },
+          {
+            "id": 6,
+            "type": "svf"
+          }
+        ],
+        "connections": [
+          {
+            "from": 4,
+            "to": 5,
+            "inputPort": 0
+          },
+          {
+            "from": 5,
+            "to": 6,
+            "inputPort": 0
+          },
+          {
+            "from": 6,
+            "to": 3,
+            "inputPort": 0
+          }
+        ],
+        "initialParameters": [
+          {
+            "nodeId": 5,
+            "id": 0,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 1,
+            "value": 0.35
+          },
+          {
+            "nodeId": 5,
+            "id": 2,
+            "value": 60
+          },
+          {
+            "nodeId": 5,
+            "id": 3,
+            "value": 2
+          },
+          {
+            "nodeId": 5,
+            "id": 4,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 5,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 6,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 7,
+            "value": 0.5
+          },
+          {
+            "nodeId": 5,
+            "id": 8,
+            "value": 0.5
+          },
+          {
+            "nodeId": 5,
+            "id": 9,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 10,
+            "value": 1
+          },
+          {
+            "nodeId": 5,
+            "id": 11,
+            "value": 0.005
+          },
+          {
+            "nodeId": 5,
+            "id": 12,
+            "value": 0.08
+          },
+          {
+            "nodeId": 5,
+            "id": 13,
+            "value": 0.8
+          },
+          {
+            "nodeId": 5,
+            "id": 14,
+            "value": 0.16
+          },
+          {
+            "nodeId": 5,
+            "id": 15,
+            "value": 1
+          },
+          {
+            "nodeId": 5,
+            "id": 16,
+            "value": 1
+          },
+          {
+            "nodeId": 5,
+            "id": 17,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 18,
+            "value": 0.2
+          },
+          {
+            "nodeId": 5,
+            "id": 19,
+            "value": 0
+          },
+          {
+            "nodeId": 6,
+            "id": 0,
+            "value": 0
+          },
+          {
+            "nodeId": 6,
+            "id": 1,
+            "value": 3200
+          },
+          {
+            "nodeId": 6,
+            "id": 2,
+            "value": 0.75
+          }
+        ]
+      },
+      "events": [
+        {
+          "frame": 16,
+          "kind": 0,
+          "channel": 15,
+          "note": 60,
+          "velocity": 100
+        },
+        {
+          "frame": 2048,
+          "kind": 0,
+          "channel": 15,
+          "note": 64,
+          "velocity": 96
+        },
+        {
+          "frame": 4096,
+          "kind": 1,
+          "channel": 15,
+          "note": 60,
+          "velocity": 0
+        },
+        {
+          "frame": 6144,
+          "kind": 1,
+          "channel": 15,
+          "note": 64,
+          "velocity": 0
+        }
+      ],
+      "sampleNodeId": 5,
+      "targets": [
+        {
+          "nodeId": 5,
+          "target": 0,
+          "fundamental": 1,
+          "values": [
+            1,
+            1,
+            0,
+            0,
+            2,
+            0.42,
+            0,
+            0,
+            3,
+            0.2,
+            0,
+            0,
+            4,
+            0.1,
+            0,
+            0
+          ]
+        },
+        {
+          "nodeId": 5,
+          "target": 1,
+          "fundamental": 1,
+          "values": [
+            1,
+            1,
+            0,
+            0,
+            2,
+            0.38,
+            0,
+            0,
+            3,
+            0.13,
+            0,
+            0
+          ]
+        }
+      ],
+      "output": "main-bank.f32"
+    },
+    {
+      "id": "main-bank-add",
+      "label": "MIDI → Main voice bank Add mode → SVF",
+      "graph": {
+        "inputs": 2,
+        "outputs": 2,
+        "inputSource": "none",
+        "nodes": [
+          {
+            "id": 1,
+            "type": "input.raw"
+          },
+          {
+            "id": 3,
+            "type": "output"
+          },
+          {
+            "id": 4,
+            "type": "midi-input"
+          },
+          {
+            "id": 5,
+            "type": "main-voice-bank",
+            "a": 9
+          },
+          {
+            "id": 6,
+            "type": "svf"
+          }
+        ],
+        "connections": [
+          {
+            "from": 4,
+            "to": 5,
+            "inputPort": 0
+          },
+          {
+            "from": 5,
+            "to": 6,
+            "inputPort": 0
+          },
+          {
+            "from": 6,
+            "to": 3,
+            "inputPort": 0
+          }
+        ],
+        "initialParameters": [
+          {
+            "nodeId": 5,
+            "id": 0,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 1,
+            "value": 0.35
+          },
+          {
+            "nodeId": 5,
+            "id": 2,
+            "value": 60
+          },
+          {
+            "nodeId": 5,
+            "id": 3,
+            "value": 2
+          },
+          {
+            "nodeId": 5,
+            "id": 4,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 5,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 6,
+            "value": 4
+          },
+          {
+            "nodeId": 5,
+            "id": 7,
+            "value": 0.5
+          },
+          {
+            "nodeId": 5,
+            "id": 8,
+            "value": 0.5
+          },
+          {
+            "nodeId": 5,
+            "id": 9,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 10,
+            "value": 1
+          },
+          {
+            "nodeId": 5,
+            "id": 11,
+            "value": 0.005
+          },
+          {
+            "nodeId": 5,
+            "id": 12,
+            "value": 0.08
+          },
+          {
+            "nodeId": 5,
+            "id": 13,
+            "value": 0.8
+          },
+          {
+            "nodeId": 5,
+            "id": 14,
+            "value": 0.16
+          },
+          {
+            "nodeId": 5,
+            "id": 15,
+            "value": 1
+          },
+          {
+            "nodeId": 5,
+            "id": 16,
+            "value": 1
+          },
+          {
+            "nodeId": 5,
+            "id": 17,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 18,
+            "value": 0.2
+          },
+          {
+            "nodeId": 5,
+            "id": 19,
+            "value": 0
+          },
+          {
+            "nodeId": 6,
+            "id": 0,
+            "value": 0
+          },
+          {
+            "nodeId": 6,
+            "id": 1,
+            "value": 3200
+          },
+          {
+            "nodeId": 6,
+            "id": 2,
+            "value": 0.75
+          }
+        ]
+      },
+      "events": [
+        {
+          "frame": 16,
+          "kind": 0,
+          "channel": 15,
+          "note": 60,
+          "velocity": 100
+        },
+        {
+          "frame": 2048,
+          "kind": 0,
+          "channel": 15,
+          "note": 64,
+          "velocity": 96
+        },
+        {
+          "frame": 4096,
+          "kind": 1,
+          "channel": 15,
+          "note": 60,
+          "velocity": 0
+        },
+        {
+          "frame": 6144,
+          "kind": 1,
+          "channel": 15,
+          "note": 64,
+          "velocity": 0
+        }
+      ],
+      "sampleNodeId": 5,
+      "targets": [
+        {
+          "nodeId": 5,
+          "target": 0,
+          "fundamental": 1,
+          "values": [
+            1,
+            1,
+            0,
+            0,
+            2,
+            0.42,
+            0,
+            0,
+            3,
+            0.2,
+            0,
+            0,
+            4,
+            0.1,
+            0,
+            0
+          ]
+        },
+        {
+          "nodeId": 5,
+          "target": 1,
+          "fundamental": 1,
+          "values": [
+            1,
+            1,
+            0,
+            0,
+            2,
+            0.38,
+            0,
+            0,
+            3,
+            0.13,
+            0,
+            0
+          ]
+        }
+      ],
+      "output": "main-bank-add.f32"
     }
   ]
 }

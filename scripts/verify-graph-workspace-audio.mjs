@@ -22,6 +22,7 @@ const noteVoice = JSON.parse(readFileSync('projects/graph-workspace/note-voice.j
 const sampleVoice = JSON.parse(readFileSync('projects/graph-workspace/sample-voice.json', 'utf8')).signal;
 const regionVoice = JSON.parse(readFileSync('projects/graph-workspace/region-voice.json', 'utf8')).signal;
 const granularSource = JSON.parse(readFileSync('projects/graph-workspace/granular-source.json', 'utf8')).signal;
+const mainBundle = JSON.parse(readFileSync('projects/graph-workspace/main-bank.json', 'utf8'));
 const granularCapture = setInputSource(setConnection(granularSource, 5, 0, 1), 'external');
 let distorted = addNode(seed, 'distortion');
 distorted = setConnection(distorted, 4, 0, 2);
@@ -35,9 +36,9 @@ cv = setConnection(cv, 3, 0, 6);
 
 const workspace = mkdtempSync(join(tmpdir(), 'manifold-graph-'));
 try {
-  for (const [mode, signal] of [['seed', seed], ['distortion', distorted], ['cv', cv], ['texture', texture], ['note-voice', noteVoice], ['sample-voice', sampleVoice], ['region-voice', regionVoice], ['granular-source', granularSource], ['granular-capture', granularCapture]]) {
+  for (const [mode, signal] of [['seed', seed], ['distortion', distorted], ['cv', cv], ['texture', texture], ['note-voice', noteVoice], ['sample-voice', sampleVoice], ['region-voice', regionVoice], ['granular-source', granularSource], ['granular-capture', granularCapture], ['main-bank', mainBundle.signal], ['main-bank-add', setInitialParameter(mainBundle.signal, 5, 6, 4)]]) {
     const output = join(workspace, `${mode}.f32`);
-    const source = ['sample-voice', 'region-voice', 'granular-source'].includes(mode)
+    const source = ['sample-voice', 'region-voice', 'granular-source', 'main-bank', 'main-bank-add'].includes(mode)
       ? readFileSync('web/public/reference/graph-workspace/sample-source.f32') : null;
     if (source) writeFileSync(join(workspace, 'sample-source.f32'), source);
     execFileSync('cargo', ['run', '--quiet', '-p', 'manifold-core', '--example',
@@ -48,9 +49,10 @@ try {
       type: 'init', wasmBytes: readFileSync('web/dist/manifold_filter.wasm'), graph: signal,
       samples: source ? [{ nodeId: 5, sourceRate: 48000,
         stereo: new Float32Array(source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength)) }] : [],
+      partials: mode.startsWith('main-bank') ? mainBundle.targets : [],
     } });
     assert.deepEqual(messages.at(-1), { type: 'ready' }, `${mode} prepared`);
-    if (['note-voice', 'sample-voice', 'region-voice'].includes(mode)) {
+    if (['note-voice', 'sample-voice', 'region-voice', 'main-bank', 'main-bank-add'].includes(mode)) {
       for (const [frame, kind, note, velocity] of [[16, 0, 60, 100], [2048, 0, 64, 96],
         [4096, 1, 60, 0], [6144, 1, 64, 0]]) {
         await processor.port.onmessage({ data: { type: 'event', nodeId: 4, frame, kind,

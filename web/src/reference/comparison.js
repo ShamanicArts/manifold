@@ -766,6 +766,15 @@ export function renderWasm(engine, family, manifest, input, selected) {
     new Float32Array(engine.memory.buffer, engine.manifold_sample_ptr(), manifest.sampleData.length).set(manifest.sampleData);
     if (engine.manifold_sample_commit() !== 1) throw new Error('Graph workspace sample commit failed');
   }
+  if (family === 'graph-workspace') {
+    for (const target of selected.targets ?? []) {
+      if (engine.manifold_partials_begin_target(target.nodeId, target.target, target.values.length / 4, target.fundamental) !== 1) {
+        throw new Error('Graph workspace partial target preparation failed');
+      }
+      new Float32Array(engine.memory.buffer, engine.manifold_partials_ptr(), target.values.length).set(target.values);
+      if (engine.manifold_partials_commit() !== 1) throw new Error('Graph workspace partial target commit failed');
+    }
+  }
   if (family === 'sine-bank') {
     if (engine.manifold_partials_begin(2, selected.partials.length / 4, 440) !== 1) throw new Error('Wasm sine bank upload begin failed');
     new Float32Array(engine.memory.buffer, engine.manifold_partials_ptr(), selected.partials.length).set(selected.partials);
