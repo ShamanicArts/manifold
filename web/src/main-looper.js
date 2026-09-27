@@ -1,6 +1,7 @@
 import './main-looper.css';
 import project from '../../projects/main-looper/project.json';
 import { encodePcm, decodePcm } from './state/stereo-source.js';
+import { mountCompactSlider } from './widgets/compact-slider.js';
 
 const $ = (id) => document.getElementById(id);
 const bars = project.segments;
@@ -9,6 +10,7 @@ const layerColors = ['#22d3ee', '#a78bfa', '#f59e0b', '#34d399'];
 let context = null, processor = null, stream = null, sourceNode = null, inputGain = null;
 let latest = null, poll = null, dragging = null;
 let transferJob = null, nextRequest = 1;
+let liveJob = null;
 const status = (message) => { $('status').textContent = message; };
 function formatBars(value) {
   if (!value) return '';
@@ -24,6 +26,29 @@ const layerControl = (layer, id, value) => post({ type: 'layer-control', layer, 
 const command = (id, value = 0) => post({ type: 'command', id, value });
 const synthNote = (kind, note = 0, velocity = 0) => post({ type: 'synth-note', kind, note, velocity });
 const synthParameter = (id, value) => post({ type: 'synth-parameter', id, value });
+
+const sampleBars = mountCompactSlider($('sample-bars'), { label: 'Bars', min: .0625, max: 16,
+  step: .0625, value: 1, style: { colour: '#22d3ee', bg: '#08212a' } });
+const sampleRoot = mountCompactSlider($('sample-root'), { label: 'Root', min: 12, max: 96,
+  step: 1, value: 60, style: { colour: '#fbbf24', bg: '#2b2008' } });
+const sampleBlend = mountCompactSlider($('sample-blend'), { label: 'Blend', min: 0, max: 1,
+  step: .01, value: 0, style: { colour: '#f59e0b', bg: '#2a1b08' } });
+let sampleBarsValue = 1, sampleBlendValue = 0;
+sampleBars.onChange(value => { sampleBarsValue = value; });
+sampleRoot.onChange(value => synthParameter(2, value));
+sampleBlend.onChange(value => { sampleBlendValue = value; synthParameter(1, value * 2 - 1); });
+const paintSampleSliders = () => { sampleBars.paint(); sampleRoot.paint(); sampleBlend.paint(); };
+new ResizeObserver(paintSampleSliders).observe($('sample-root'));
+requestAnimationFrame(paintSampleSliders);
+$('sample-cap').onclick = () => {
+  if (!processor) { status('Start audio to capture a Live sample.'); return; }
+  if ($('source').value === 'none') { status('Choose a dry input before capturing a Live sample.'); return; }
+  if (liveJob || transferJob) return;
+  liveJob = { bars: sampleBarsValue };
+  $('sample-cap').disabled = true;
+  status('Capturing recent dry input for the Main Sample voice…');
+  post({ type: 'live-capture', bars: sampleBarsValue });
+};
 
 function sizeInstrument() {
   const frame = $('instrument-frame');
@@ -47,7 +72,7 @@ for (let index = 0; index < noteNames.length; index++) {
     key.classList.remove('held'); synthNote(1, note);
   };
   key.addEventListener('pointerdown', event => {
-    if (!processor || $('source').value !== 'synth') return;
+    if (!processor) return;
     key.setPointerCapture(event.pointerId);
     key.classList.add('held'); synthNote(0, note, 100);
   });
@@ -397,22 +422,37 @@ async function start() {
       if (data.type === 'snapshot') render(data);
       else if (data.type === 'error') {
         if (transferJob) { transferJob = null; $('save-session').disabled = false; }
+        if (liveJob) { liveJob = null; $('sample-cap').disabled = false; }
         status(`Audio error: ${data.message}`);
+      }
+      else if (data.type === 'live-capture-started') {
+        liveJob.frames = data.frames;
+        status(`Freezing ${(data.frames / context.sampleRate).toFixed(2)}s of dry input…`);
+      }
+      else if (data.type === 'live-capture-ready' || data.type === 'live-publish-progress') {
+        post({ type: 'live-publish-next' });
+      }
+      else if (data.type === 'live-capture-complete') {
+        liveJob = null;
+        $('sample-cap').disabled = false;
+        $('sample-length').textContent = `${Math.round(data.frames / context.sampleRate * 1000)}ms`;
+        sampleBlend.setValue(1, true);
+        status('Live sample captured. Play the keyboard to hear the Sample voice.');
       }
       else if (data.type === 'rejected') status('That looper action could not be applied.');
       else handleTransfer(data);
     };
-    if (sourceKind === 'synth') {
-      synthParameter(0, Number($('synth-wave').value));
-      synthParameter(1, -1); // wave branch until the sample source is ported into Main
-    } else if (sourceKind === 'microphone') {
+    synthParameter(0, Number($('synth-wave').value));
+    synthParameter(1, sampleBlendValue * 2 - 1);
+    synthParameter(2, 60);
+    if (sourceKind === 'microphone') {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
       sourceNode = context.createMediaStreamSource(stream);
     } else if (sourceKind === 'file') {
       const bytes = await $('file').files[0].arrayBuffer();
       const buffer = await context.decodeAudioData(bytes);
       sourceNode = context.createBufferSource(); sourceNode.buffer = buffer; sourceNode.loop = true; sourceNode.start();
-    } else {
+    } else if (sourceKind === 'oscillator') {
       sourceNode = context.createOscillator(); sourceNode.type = 'sine';
       sourceNode.frequency.value = Number($('pitch').value) || 220; sourceNode.start();
     }
@@ -424,7 +464,7 @@ async function start() {
     post({ type: 'snapshot' });
     button.textContent = 'Stop audio'; button.disabled = false; button.onclick = stop;
     $('source').disabled = true;
-    status(`Running · ${sourceKind === 'synth' ? 'Main synth voice' : sourceKind === 'oscillator' ? 'test tone' : sourceKind === 'file' ? 'looping audio file' : 'microphone'} · all four layers capturing`);
+    status(`Running · ${sourceKind === 'none' ? 'no dry input' : sourceKind === 'oscillator' ? 'test tone' : sourceKind === 'file' ? 'looping audio file' : 'microphone'} + Main voice bank · all four layers capturing`);
   } catch (error) {
     status(error.message); await stop();
   }
@@ -433,6 +473,10 @@ async function stop() {
   synthNote(2);
   document.querySelectorAll('.synth-key.held').forEach(key => key.classList.remove('held'));
   if (transferJob?.kind === 'import') post({ type: 'import-cancel' });
+  if (liveJob) post({ type: 'live-cancel' });
+  liveJob = null; $('sample-cap').disabled = false;
+  $('sample-length').textContent = '0ms';
+  sampleBlend.setValue(0, true);
   transferJob = null; $('save-session').disabled = false;
   clearInterval(poll); poll = null;
   sourceNode?.disconnect(); if (sourceNode?.stop) { try { sourceNode.stop(); } catch { /* already stopped */ } }
@@ -442,7 +486,7 @@ async function stop() {
   $('source').disabled = false;
 }
 $('audio-button').onclick = start;
-$('source').onchange = () => { $('file-label').hidden = $('source').value !== 'file'; $('pitch-label').hidden = $('source').value !== 'oscillator'; $('synth-source').hidden = $('source').value !== 'synth'; };
+$('source').onchange = () => { $('file-label').hidden = $('source').value !== 'file'; $('pitch-label').hidden = $('source').value !== 'oscillator'; };
 $('synth-wave').onchange = () => synthParameter(0, Number($('synth-wave').value));
 $('pitch').onchange = () => { if (sourceNode?.frequency) sourceNode.frequency.setTargetAtTime(Math.max(60, Math.min(1200, Number($('pitch').value))), context.currentTime, .01); };
 $('mode').onchange = () => control(project.controls.mode, Number($('mode').value));

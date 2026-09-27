@@ -19,6 +19,13 @@ try {
   await page.waitForTimeout(1000);
   await page.locator('#rec').click();
   await page.waitForFunction(() => document.querySelector('.layer[data-layer="0"] .state').textContent === 'Playing', { timeout: 10000 });
+  await page.locator('#sample-bars').focus();
+  await page.keyboard.press('Home');
+  await page.locator('#sample-cap').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Live sample captured'), { timeout: 15000 });
+  assert.notEqual(await page.locator('#sample-length').textContent(), '0ms');
+  assert.equal(await page.locator('#sample-blend').getAttribute('aria-valuenow'), '1');
+  await page.screenshot({ path: new URL('../web/public/main-live-sample.png', import.meta.url).pathname, fullPage: true });
   const inferredTempo = Number(await page.locator('#tempo').inputValue());
   assert.ok(inferredTempo > 90 && inferredTempo < 160, `First Loop tempo: ${inferredTempo}`);
   await page.locator('.donut').nth(1).click();
@@ -72,9 +79,9 @@ try {
   await page.locator('.segment').nth(8).click();
   await page.waitForFunction(() => document.querySelector('.layer[data-layer="0"] .state').textContent === 'Playing');
   await page.locator('#audio-button').click();
-  await page.locator('#source').selectOption('synth');
+  await page.locator('#source').selectOption('none');
   await page.locator('#audio-button').click();
-  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Main synth voice'));
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Main voice bank'));
   const key = await page.locator('.synth-key').first().boundingBox();
   await page.mouse.move(key.x + key.width / 2, key.y + key.height / 2);
   await page.mouse.down();

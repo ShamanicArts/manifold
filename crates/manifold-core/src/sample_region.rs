@@ -68,8 +68,7 @@ impl StereoSampleUpload {
         self.stereo.as_mut_ptr()
     }
 
-    #[cfg(test)]
-    fn samples_mut(&mut self) -> &mut [f32] {
+    pub fn samples_mut(&mut self) -> &mut [f32] {
         &mut self.stereo
     }
 

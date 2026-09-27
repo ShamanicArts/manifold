@@ -11,7 +11,7 @@ use crate::oscillator::Oscillator;
 use crate::phase_vocoder::PhaseVocoder;
 use crate::phrase_gain::PhraseGain;
 use crate::ring_modulator::RingModulator;
-use crate::sample_region::SampleRegion;
+use crate::sample_region::{SampleRegion, ValidatedStereo};
 use crate::sine_bank::{DEFAULTS as SINE_DEFAULTS, PartialSet, SineBank};
 use crate::spectral_targets::{
     AddFlavor, MorphRecipe, SpectralShape, prepare_add_target, prepare_morph_target,
@@ -168,9 +168,13 @@ impl MainVoiceBank {
     }
 
     pub fn load_stereo(&mut self, stereo: Vec<f32>, source_rate: f32) -> bool {
-        if !self.voices[0].player.load_stereo(stereo, source_rate) {
-            return false;
-        }
+        let Some(source) = ValidatedStereo::from_stereo(stereo, source_rate) else { return false };
+        self.load_validated(source);
+        true
+    }
+
+    pub fn load_validated(&mut self, source: ValidatedStereo) {
+        self.voices[0].player.load_validated(source);
         let (first, remaining) = self.voices.split_at_mut(1);
         for voice in remaining {
             voice.player.share_sample_from(&first[0].player);
@@ -179,7 +183,6 @@ impl MainVoiceBank {
         self.temporal_source_frames.clear();
         self.temporal_recipe = None;
         self.panic();
-        true
     }
 
     /// A uniformly spaced, prepared source spectrum table. The control side

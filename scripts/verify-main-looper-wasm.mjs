@@ -39,4 +39,20 @@ for (let i = 0; i < 20; i++) block(0);
 assert.equal(e.manifold_looper_status(8, 2), 1_000);
 assert.ok(e.manifold_looper_peak(2, 0, 0, 1_000) > .001);
 assert.equal(e.manifold_looper_status(8, 0), 0);
-console.log('Main looper Wasm: First Loop, retrospective dry input, and Rust synth-to-layer capture passed');
+assert.equal(e.manifold_looper_command(5, 0), 1);
+assert.equal(e.manifold_looper_synth_note(2, 0, 0), 1);
+for (let i = 0; i < 16; i++) block(.35);
+const capturedFrames = e.manifold_looper_live_capture(.0625);
+assert.equal(capturedFrames, 1_000);
+while (e.manifold_looper_live_progress() < capturedFrames) block(0);
+assert.equal(e.manifold_looper_live_publish_begin(), capturedFrames);
+for (let offset = 0; offset < capturedFrames; offset += 128) {
+  assert.equal(e.manifold_looper_live_publish_chunk(offset, Math.min(128, capturedFrames - offset)), 1);
+}
+assert.equal(e.manifold_looper_live_publish_finish(), 1);
+assert.equal(e.manifold_looper_synth_parameter(1, 1), 1);
+assert.equal(e.manifold_looper_synth_note(0, 60, 100), 1);
+let samplePeak = 0;
+for (let i = 0; i < 4; i++) samplePeak = Math.max(samplePeak, Math.abs(block(0)));
+assert.ok(samplePeak > .001, `live sample output peak ${samplePeak}`);
+console.log('Main looper Wasm: First Loop, retrospective dry input, Rust synth-to-layer capture, and Live sample voice passed');

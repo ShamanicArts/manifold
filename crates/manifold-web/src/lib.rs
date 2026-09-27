@@ -42,6 +42,7 @@ struct LooperEngine {
     input: Vec<f32>,
     output: Vec<f32>,
     transfer: Vec<f32>,
+    live_upload: Option<StereoSampleUpload>,
 }
 
 struct CapturePublish {
@@ -91,6 +92,7 @@ pub extern "C" fn manifold_looper_prepare(sample_rate: f32, capacity: u32) -> u3
             input: vec![0.0; capacity as usize * 2],
             output: vec![0.0; capacity as usize * 2],
             transfer: vec![0.0; 4096 * 2],
+            live_upload: None,
         })
     });
     1
@@ -162,6 +164,77 @@ pub extern "C" fn manifold_looper_synth_parameter(id: u32, value: f32) -> u32 {
             u32::from(e.instrument.set_synth_parameter(id, value))
         })
     })
+}
+
+/// Snapshot the dry host input used by Main's MidiSynth Live sample source.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_live_capture(bars: f32) -> u32 {
+    LOOPER.with(|slot| slot.borrow_mut().as_mut().map_or(0, |e| {
+        if e.live_upload.is_some() { return 0; }
+        e.instrument.request_live_sample(bars) as u32
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_live_progress() -> u32 {
+    LOOPER.with(|slot| slot.borrow().as_ref().map_or(0, |e| {
+        e.instrument.live_sample_progress().0 as u32
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_live_captured_frames() -> u32 {
+    LOOPER.with(|slot| slot.borrow().as_ref().map_or(0, |e| {
+        e.instrument.live_sample_captured_frames() as u32
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_live_publish_begin() -> u32 {
+    LOOPER.with(|slot| slot.borrow_mut().as_mut().map_or(0, |e| {
+        let (copied, frames) = e.instrument.live_sample_progress();
+        if frames == 0 || copied != frames || e.live_upload.is_some() { return 0; }
+        let Some(upload) = StereoSampleUpload::new(frames, e.instrument.sample_rate()) else { return 0; };
+        e.live_upload = Some(upload);
+        frames as u32
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_live_publish_chunk(offset: u32, frames: u32) -> u32 {
+    LOOPER.with(|slot| slot.borrow_mut().as_mut().map_or(0, |e| {
+        if frames == 0 || frames > 4096 { return 0; }
+        let Some(upload) = e.live_upload.as_mut() else { return 0; };
+        let offset = offset as usize;
+        let frames = frames as usize;
+        if !upload.prepare_next(offset, frames) { return 0; }
+        if !e.instrument.copy_live_sample_chunk(offset, &mut upload.samples_mut()[offset * 2..(offset + frames) * 2]) {
+            e.live_upload = None;
+            return 0;
+        }
+        u32::from(upload.validate_next(offset, frames))
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_live_publish_finish() -> u32 {
+    LOOPER.with(|slot| slot.borrow_mut().as_mut().map_or(0, |e| {
+        let Some(upload) = e.live_upload.take() else { return 0; };
+        let Some(sample) = upload.finish() else { return 0; };
+        e.instrument.load_validated_sample(sample);
+        e.instrument.release_live_sample();
+        1
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_live_cancel() {
+    LOOPER.with(|slot| {
+        if let Some(e) = slot.borrow_mut().as_mut() {
+            e.live_upload = None;
+            e.instrument.release_live_sample();
+        }
+    });
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_looper_control(id: u32, value: f32) -> u32 {
