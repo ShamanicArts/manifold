@@ -9,14 +9,15 @@ Manifold is an environment for authored audio projects, not a single filter. Pro
 ## Runtime shape
 
 ```text
-Browser: WebAudio input -> AudioWorklet -> Rust/Wasm DSP -> WebAudio output
+Browser: main + sidechain WebAudio inputs -> AudioWorklet -> Rust/Wasm DSP -> WebAudio output
                                     ^
                    parameter messages / timed note events
 
 Main thread: DOM controls -> control adapter
              AnalyserNode -> Three.js WebGPU/WebGL2 visualizer
 
-Later native host: VST3 process callback -> same Rust DSP crate built natively
+Native boundary: host stereo buses -> manifold-native -> same Rust DSP crate
+Later VST3 module: process callback -> native boundary
                    plug-in editor -> packaged web frontend in a native webview
 ```
 
@@ -42,11 +43,11 @@ The first cross-project sample transfer exports a stopped Loop Capture take thro
 
 Source analysis uses a separate Web Worker with its own Rust/Wasm instance. The browser transfers a copy of decoded PCM to that worker; Rust computes 256 stereo peak bins, peak, RMS, and a bounded YIN-style pitch estimate. The result is 512 peak floats plus four scalars. The main thread draws the waveform and may offer the detected MIDI root as an explicit control action; analysis never changes pitch mapping on its own. The worker and its allocations are isolated from the live audio worklet. If workers are unavailable, the page computes waveform peaks locally and leaves the analysis readout unavailable.
 
-The sampler prepares eight note slots with four `SampleRegion` cursors each. All 32 cursors share one immutable PCM buffer, and the callback visits only active subvoices. This caps worst-case work and leaves note allocation free of heap operations. Pan and normalization gains are calculated when parameters change, so the sample loop only multiplies by prepared values. The first v2 unison slice supports one to four subvoices; changing the count affects new notes, while detune and pan spread update sounding notes. The legacy playback node permits eight subvoices and smooths their gain and spread, so increasing this ceiling and matching its transitions remain separate steps.
+The sampler prepares eight note slots with four `SampleRegion` cursors each. Cursors share immutable PCM buffers; when a stopped take is published in a running graph, held notes keep the prior buffer and later notes adopt the new one. The callback visits only active subvoices. This caps worst-case work and leaves note allocation free of heap operations. Pan and normalization gains are calculated when parameters change, so the sample loop only multiplies by prepared values. The first v2 unison slice supports one to four subvoices; changing the count affects new notes, while detune and pan spread update sounding notes. The legacy playback node permits eight subvoices and smooths their gain and spread, so increasing this ceiling and matching its transitions remain separate steps.
 
 ## Native plug-in stance
 
-The same Rust DSP crate builds to native code and Wasm. A VST3 adapter will implement the format's processor/controller, parameter, state, bus, and event contracts directly through the VST3 SDK or a narrow binding. JUCE is not a dependency. We do not require a Wasm interpreter inside a DAW callback. This still provides a Wasm build for browser and other compatible hosts. A packaged web editor will be connected to the native controller; it cannot share the real-time thread.
+The same Rust DSP crate builds to native code and Wasm. `manifold-native` now wraps the native graph with explicit main/sidechain buses, bounded variable blocks, timed MIDI events, and silent missing buses. A VST3 adapter will implement the format's processor/controller, parameter, state, bus, and event contracts through a pinned official C API binding. JUCE is not a dependency. We do not require a Wasm interpreter inside a DAW callback. This still provides a Wasm build for browser and other compatible hosts. A packaged web editor will be connected to the native controller; it cannot share the real-time thread. The [native boundary plan](native-vst3-boundary.md) lists the remaining host contracts and validation gates.
 
 ## Decisions to revisit
 

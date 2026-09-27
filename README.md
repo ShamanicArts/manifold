@@ -1,6 +1,10 @@
 # Manifold v2
 
-The new Manifold core: portable Rust DSP, a browser AudioWorklet host, and a JavaScript interface. The primitive library has 52 interactive views, from filter and voice basics through audio/CV slew, effects, loop capture, the original eight-band Spectrum Analyzer, Envelope Follower, Resonator, manual Sine bank, and an authored envelope ducking project. Analyzer and follower cases compare both audio and meter snapshots with C++; composed v2 projects compare native Rust with Rust/Wasm. It is an independent jj history on the `manifold-v2` branch of the existing [Manifold repository](https://github.com/ShamanicArts/manifold). Legacy Lua supplies behavior and visual references only; no Lua is loaded into v2.
+The new Manifold core: portable Rust DSP, browser and native host adapters, and a JavaScript interface. The primitive library has 55+ interactive views, from filter and voice basics through audio/CV slew, effects, loop capture, the original eight-band Spectrum Analyzer, Envelope Follower, Resonator, manual Sine bank, and an authored envelope ducking project. Analyzer and follower cases compare both audio and meter snapshots with C++; composed v2 projects compare native Rust with Rust/Wasm. It is an independent jj history on the `manifold-v2` branch of the existing [Manifold repository](https://github.com/ShamanicArts/manifold). Legacy Lua supplies behavior and visual references only; no Lua is loaded into v2.
+
+## Native host boundary
+
+`manifold-native` now prepares and renders the shared Rust graph with separate main/sidechain stereo buses, variable block sizes, and timed MIDI events. Run `cargo test -p manifold-native`. This is the processor boundary for the future VST3 module; the factory, controller, state loader, sample-offset automation, and webview editor remain open. See the [native VST3 contract](docs/native-vst3-boundary.md) and [review page](web/public/native-boundary-review.html).
 
 ## Try the primitive workbench
 

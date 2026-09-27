@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/manifold-core", "crates/manifold-web"]
+members = ["crates/manifold-core", "crates/manifold-web", "crates/manifold-native"]
 resolver = "2"
 
 [workspace.package]

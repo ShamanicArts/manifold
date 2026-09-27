@@ -7,6 +7,13 @@ name = "manifold-core"
 version = "0.1.0"
 
 [[package]]
+name = "manifold-native"
+version = "0.1.0"
+dependencies = [
+ "manifold-core",
+]
+
+[[package]]
 name = "manifold-web"
 version = "0.1.0"
 dependencies = [
