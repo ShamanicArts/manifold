@@ -54,6 +54,17 @@
               </div>
             </section>
           </div>
+          <section class="rack-eq" aria-label="Main EQ module">
+            <div class="rack-shell-head eq-head">EQ</div>
+            <div class="eq-module">
+              <canvas id="eq-graph" width="432" height="216" aria-label="Eight-band EQ response graph"></canvas>
+              <label class="eq-curve-label" for="eq-type">Curve</label>
+              <select id="eq-type" aria-label="EQ curve type"><option value="0">Bell</option><option value="1">Low Shelf</option><option value="2">High Shelf</option><option value="3">Low Pass</option><option value="4">High Pass</option><option value="5">Notch</option></select>
+              <label class="eq-field eq-freq" for="eq-freq">Freq<input id="eq-freq" type="number" min="20" max="20000" step="1" aria-label="EQ band frequency"></label>
+              <label class="eq-field eq-gain" for="eq-gain">Gain<input id="eq-gain" type="number" min="-24" max="24" step="0.1" aria-label="EQ band gain"></label>
+              <label class="eq-field eq-q" for="eq-q">Q<input id="eq-q" type="number" min="0.1" max="24" step="0.05" aria-label="EQ band Q"></label>
+            </div>
+          </section>
           <div class="source-play-area"><div id="synth-keys" class="synth-keys" aria-label="Synth keyboard"></div></div>
         </div>
       </section>

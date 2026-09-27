@@ -4,6 +4,7 @@ import { encodePcm, decodePcm } from './state/stereo-source.js';
 import { mountCompactSlider } from './widgets/compact-slider.js';
 import { mountMainAdsr } from './widgets/main-adsr.js';
 import { mountMainFilter } from './widgets/main-filter.js';
+import { mountMainEq } from './widgets/main-eq.js';
 
 const $ = (id) => document.getElementById(id);
 const bars = project.segments;
@@ -31,6 +32,7 @@ const synthParameter = (id, value) => post({ type: 'synth-parameter', id, value 
 const synthIds = project.synthParameters;
 const adsr = mountMainAdsr($, synthParameter, synthIds);
 const filter = mountMainFilter($, synthParameter, synthIds);
+const eq = mountMainEq($, synthParameter, project.eqParameters);
 const selectedSegment = id => Number($(id).querySelector('[aria-pressed="true"]').dataset.value);
 function wireSegments(id, change) {
   const group = $(id);
@@ -180,7 +182,7 @@ for (const tab of document.querySelectorAll('[data-main-tab]')) {
       button.classList.toggle('active', selected);
       button.setAttribute('aria-selected', String(selected));
     }
-    requestAnimationFrame(() => { sizeInstrument(); if (synth) { paintSampleSliders(); adsr.paint(); filter.paint(); } });
+    requestAnimationFrame(() => { sizeInstrument(); if (synth) { paintSampleSliders(); adsr.paint(); filter.paint(); eq.paint(); } });
   });
 }
 
@@ -390,6 +392,7 @@ const stateColors = ['#64748b', '#34d399', '#ef4444', '#fde047', '#a78bfa'];
 function render(data) {
   latest = data;
   latestSamplePeaks = data.samplePeaks ?? [];
+  eq.setResponse(data.eqResponse);
   drawSourceGraph();
   if (document.activeElement !== $('tempo')) $('tempo').value = Math.round(data.tempo);
   if (document.activeElement !== $('mode')) $('mode').value = String(data.mode);

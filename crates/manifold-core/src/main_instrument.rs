@@ -1,6 +1,7 @@
 //! Main's synth-to-looper routing, with all scratch prepared before processing.
 
 use crate::Filter;
+use crate::eq8::{self, Eq8};
 use crate::events::EventKind;
 use crate::main_looper::LAYERS;
 use crate::main_looper::MainLooper;
@@ -12,6 +13,7 @@ pub struct MainInstrument {
     looper: MainLooper,
     synth: MainVoiceBank,
     filter: Filter,
+    eq: Eq8,
     sample_capture: MainSampleCapture,
     layer_taps: [Vec<f32>; LAYERS],
     sample_rate: f32,
@@ -19,6 +21,8 @@ pub struct MainInstrument {
     synth_right: Vec<f32>,
     filtered_left: Vec<f32>,
     filtered_right: Vec<f32>,
+    equalized_left: Vec<f32>,
+    equalized_right: Vec<f32>,
     capture_left: Vec<f32>,
     capture_right: Vec<f32>,
     monitor_left: Vec<f32>,
@@ -31,6 +35,7 @@ impl MainInstrument {
             looper: MainLooper::new(sample_rate),
             synth: MainVoiceBank::new(sample_rate, max_frames, 9),
             filter: Filter::new(sample_rate),
+            eq: Eq8::new(sample_rate, eq8::defaults()),
             sample_capture: MainSampleCapture::new(sample_rate),
             layer_taps: std::array::from_fn(|_| vec![0.0; max_frames * 2]),
             sample_rate,
@@ -38,6 +43,8 @@ impl MainInstrument {
             synth_right: vec![0.0; max_frames],
             filtered_left: vec![0.0; max_frames],
             filtered_right: vec![0.0; max_frames],
+            equalized_left: vec![0.0; max_frames],
+            equalized_right: vec![0.0; max_frames],
             capture_left: vec![0.0; max_frames],
             capture_right: vec![0.0; max_frames],
             monitor_left: vec![0.0; max_frames],
@@ -56,8 +63,13 @@ impl MainInstrument {
     pub fn set_synth_parameter(&mut self, id: u32, value: f32) -> bool {
         match id {
             21..=23 => self.filter.set_parameter(id - 21, value),
+            64..=105 => self.eq.set_parameter(id - 64, value),
             _ => self.synth.set_parameter(id, value),
         }
+    }
+
+    pub fn eq_response_db_at(&self, frequency: f32) -> Option<f32> {
+        self.eq.response_db_at(frequency)
     }
 
     pub fn synth_event(&mut self, event: EventKind) {
@@ -144,14 +156,24 @@ impl MainInstrument {
                 &mut self.filtered_right[..frames],
             ],
         );
+        self.eq.process_planar(
+            [
+                &self.filtered_left[..frames],
+                &self.filtered_right[..frames],
+            ],
+            [
+                &mut self.equalized_left[..frames],
+                &mut self.equalized_right[..frames],
+            ],
+        );
         for frame in 0..frames {
             // Main/dsp/main.lua routes host input to the capture and monitor
             // branches. midisynth_integration.lua sends `spec` to every
             // capture input, and its audible `out` applies a gain of 0.8.
-            self.capture_left[frame] = dry[0][frame] + self.filtered_left[frame];
-            self.capture_right[frame] = dry[1][frame] + self.filtered_right[frame];
-            self.monitor_left[frame] = dry[0][frame] + self.filtered_left[frame] * 0.8;
-            self.monitor_right[frame] = dry[1][frame] + self.filtered_right[frame] * 0.8;
+            self.capture_left[frame] = dry[0][frame] + self.equalized_left[frame];
+            self.capture_right[frame] = dry[1][frame] + self.equalized_right[frame];
+            self.monitor_left[frame] = dry[0][frame] + self.equalized_left[frame] * 0.8;
+            self.monitor_right[frame] = dry[1][frame] + self.equalized_right[frame] * 0.8;
         }
         self.looper.process_routed_with_taps(
             [&self.capture_left[..frames], &self.capture_right[..frames]],
@@ -167,6 +189,54 @@ impl MainInstrument {
 mod tests {
     use super::*;
     use crate::sample_region::StereoSampleUpload;
+
+    #[test]
+    fn main_eq_changes_synth_monitor_and_capture_but_not_dry_input() {
+        fn level(enabled: bool) -> (f32, f32) {
+            let mut main = MainInstrument::new(48_000.0, 128);
+            assert!(main.set_synth_parameter(0, 2.0)); // square wave
+            assert!(main.set_synth_parameter(1, -1.0)); // wave only
+            assert!(main.set_synth_parameter(22, 16_000.0)); // open shared filter
+            assert!(main.set_synth_parameter(65, 3.0)); // EQ band 1 low-pass
+            assert!(main.set_synth_parameter(66, 120.0));
+            assert!(main.set_synth_parameter(64, if enabled { 1.0 } else { 0.0 }));
+            main.synth_event(EventKind::NoteOn {
+                channel: 0,
+                note: 96,
+                velocity: 100,
+            });
+            let silence = [0.0; 128];
+            let mut left = [0.0; 128];
+            let mut right = [0.0; 128];
+            let mut energy = 0.0;
+            for block in 0..240 {
+                main.process([&silence, &silence], [&mut left, &mut right]);
+                if block >= 200 {
+                    energy += left.iter().map(|sample| sample.abs()).sum::<f32>();
+                }
+            }
+            (energy, main.looper().peak(0, 1, 0, 512))
+        }
+        let (cut_monitor, cut_capture) = level(true);
+        let (open_monitor, open_capture) = level(false);
+        assert!(
+            open_monitor > cut_monitor * 5.0,
+            "monitor {open_monitor} / {cut_monitor}"
+        );
+        assert!(
+            open_capture > cut_capture * 5.0,
+            "capture {open_capture} / {cut_capture}"
+        );
+        let mut main = MainInstrument::new(48_000.0, 128);
+        assert!(main.set_synth_parameter(65, 3.0));
+        assert!(main.set_synth_parameter(66, 120.0));
+        assert!(main.set_synth_parameter(64, 1.0));
+        let dry = [0.25; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        main.process([&dry, &dry], [&mut left, &mut right]);
+        assert!(left.iter().all(|sample| (*sample - 0.25).abs() < 1e-6));
+    }
 
     #[test]
     fn shared_svf_filters_the_synth_before_main_capture_without_filtering_dry_input() {

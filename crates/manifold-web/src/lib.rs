@@ -167,6 +167,16 @@ pub extern "C" fn manifold_looper_synth_parameter(id: u32, value: f32) -> u32 {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_eq_response(frequency: f32) -> f32 {
+    LOOPER.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|e| e.instrument.eq_response_db_at(frequency))
+            .unwrap_or(0.0)
+    })
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn manifold_looper_synth_sample_frames() -> u32 {
     LOOPER.with(|slot| {
         slot.borrow()

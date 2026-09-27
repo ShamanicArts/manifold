@@ -31,6 +31,7 @@ try {
   assert.equal(Math.round(rackBounds.y - tabBounds.y), 34);
   assert.equal(await page.locator('.rack-adsr').count(), 1);
   assert.equal(await page.locator('.rack-filter').count(), 1);
+  assert.equal(await page.locator('.rack-eq').count(), 1);
   assert.equal(await page.locator('#adsr-attack').getAttribute('aria-valuenow'), '50');
   await page.locator('#adsr-attack').focus();
   await page.keyboard.press('ArrowRight');
@@ -50,6 +51,20 @@ try {
   await page.mouse.up();
   assert.ok(Number(await page.locator('#filter-cutoff').getAttribute('aria-valuenow')) > 1000);
   assert.ok(Number(await page.locator('#filter-resonance').getAttribute('aria-valuenow')) > .75);
+  const eqGraph = await page.locator('#eq-graph').boundingBox();
+  await page.mouse.click(eqGraph.x + eqGraph.width * .5, eqGraph.y + eqGraph.height * .3);
+  assert.ok(Number(await page.locator('#eq-freq').inputValue()) > 500);
+  assert.ok(Number(await page.locator('#eq-gain').inputValue()) > 5);
+  await page.locator('#eq-type').selectOption('1');
+  assert.equal(await page.locator('#eq-q').isDisabled(), true);
+  await page.locator('#eq-type').selectOption('0');
+  await page.locator('#eq-gain').fill('12');
+  await page.locator('#eq-gain').dispatchEvent('change');
+  assert.equal(await page.locator('#eq-gain').inputValue(), '12.0');
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: new URL('../web/public/main-eq-rack.png', import.meta.url).pathname, fullPage: true });
+  await page.mouse.dblclick(eqGraph.x + eqGraph.width * .5, eqGraph.y + eqGraph.height * .3);
+  assert.equal(await page.locator('#eq-freq').isDisabled(), true);
   await page.screenshot({ path: new URL('../web/public/main-filter-rack.png', import.meta.url).pathname, fullPage: true });
   await page.locator('#filter-mode').selectOption('0');
   await page.locator('#filter-cutoff').focus();
@@ -180,5 +195,5 @@ try {
   assert.ok(lastSegment.x + lastSegment.width <= frame.x + frame.width + 1);
   assert.ok(await narrow.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await narrow.screenshot({ path: new URL('../web/public/main-looper-narrow.png', import.meta.url).pathname, fullPage: true });
-  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth ADSR/Source/Filter, Live/L1 Retro Cap, L1 Free Cap/STOP, traditional arm/fire, reverse scrub, session save/reopen, decoded file and Rust synth capture passed`);
+  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth ADSR/Source/Filter/EQ, Live/L1 Retro Cap, L1 Free Cap/STOP, traditional arm/fire, reverse scrub, session save/reopen, decoded file and Rust synth capture passed`);
 } finally { await browser.close(); }

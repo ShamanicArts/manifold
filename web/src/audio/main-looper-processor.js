@@ -195,6 +195,8 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           const samplePeaks = sampleFrames ? Array.from({ length: 128 }, (_, bin) =>
             e.manifold_looper_synth_sample_peak(
               Math.floor(sampleFrames * bin / 128), Math.floor(sampleFrames * (bin + 1) / 128))) : [];
+          const eqResponse = Array.from({ length: 108 }, (_, bin) =>
+            e.manifold_looper_eq_response(20 * (1000 ** (bin / 107))));
           const layers = Array.from({ length: project.layers }, (_, index) => {
             const length = s(project.status.layerLength, index);
             const peaks = length > 0 ? Array.from({ length: 128 }, (_, bin) =>
@@ -213,7 +215,7 @@ class MainLooperProcessor extends AudioWorkletProcessor {
             mode: s(project.status.mode), recording: s(project.status.recording) === 1,
             overdub: s(project.status.overdub) === 1, forwardBars: s(project.status.forwardBars),
             captured: s(project.status.capturedFrames, active), sampleRate: s(project.status.sampleRate),
-            layers, segments, sampleFrames, samplePeaks });
+            layers, segments, sampleFrames, samplePeaks, eqResponse });
         }
       } catch (error) {
         if (this.sampleJob && this.engine) this.engine.manifold_looper_sample_cancel();

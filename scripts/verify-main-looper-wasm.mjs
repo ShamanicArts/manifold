@@ -123,4 +123,14 @@ for (let index = 0; index < 80; index++) {
   if (index >= 60) highpassLevel += output.subarray(0, 128).reduce((sum, sample) => sum + Math.abs(sample), 0);
 }
 assert.ok(highpassLevel > lowpassLevel * 5, `Main SVF: lowpass ${lowpassLevel}, highpass ${highpassLevel}`);
-console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, shared SVF, synth-to-layer capture, and Retro/Free Sample voices passed');
+assert.equal(e.manifold_looper_synth_parameter(ids.filterCutoff, 16000), 1);
+const eq = contract.eqParameters;
+assert.equal(e.manifold_looper_synth_parameter(eq.base + 1, 3), 1);
+assert.equal(e.manifold_looper_synth_parameter(eq.base + 2, 120), 1);
+assert.equal(e.manifold_looper_synth_parameter(eq.base, 1), 1);
+for (let index = 0; index < 40; index++) block(0);
+assert.ok(e.manifold_looper_eq_response(2000) < -10, `Main EQ low-pass: ${e.manifold_looper_eq_response(2000)} dB`);
+assert.equal(e.manifold_looper_synth_parameter(eq.base, 0), 1);
+block(0);
+assert.ok(Math.abs(e.manifold_looper_eq_response(2000)) < .01);
+console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, EQ response, synth-to-layer capture, and Retro/Free Sample voices passed');
