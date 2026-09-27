@@ -43,6 +43,7 @@ def main() -> None:
     dry = samples("dry.f32")
     wet = samples("wet.f32")
     native = samples("native-wet.f32")
+    native_512 = samples("native-wet-512.f32")
     for label in ("source", "dry", "wet"):
         shutil.copyfile(PROOF / f"{label}.wav", PUBLIC / f"{PREFIX}-{label}.wav")
     shutil.copyfile(PROOF / "metrics.json", PUBLIC / f"{PREFIX}-metrics.json")
@@ -89,7 +90,7 @@ def main() -> None:
     <p class="lead">REAPER rendered a one-second stereo source through the packaged Standalone FX VST3. The same authored project and source were rendered by native Rust. Separate bypass and wet renders make both the host audio path and the effect audible and measurable.</p>
     <div class="grid">
       <div class="card"><b>@@DRY@@</b><span>Largest dry REAPER/native sample difference, full second</span></div>
-      <div class="card"><b>@@STEADY@@</b><span>Largest wet REAPER/native difference after frame 3,072</span></div>
+      <div class="card"><b>@@WET@@</b><span>Largest wet REAPER/native difference, full second with 1,024-frame Rust blocks</span></div>
       <div class="card"><b>@@EFFECT@@</b><span>Wet versus bypass RMS difference</span></div>
     </div>
     <h2>Listen to the three renders</h2>
@@ -108,13 +109,13 @@ def main() -> None:
       <path d="@@WET_PATH@@" stroke="#7fdee4" stroke-width="1.3" fill="none" />
     </svg>
     <p class="legend"><span><i style="background:#72889b"></i>REAPER bypass</span><span><i style="background:#7fdee4"></i>REAPER WaveShaper</span><span><i style="background:#d7b171"></i>native Rust WaveShaper</span></p>
-    <h2>The startup transition is still different</h2>
-    <p>Absolute REAPER/native wet error over the first 4,096 frames. The mismatch peaks at <code>@@STARTUP@@</code> early on; after frame 3,072 the largest difference is <code>@@STEADY@@</code>. Dry output matches throughout. The initial wet difference remains an open host parameter/startup timing issue.</p>
-    <svg viewBox="0 0 900 190" role="img" aria-label="Wet output error during the first 4096 samples, falling to zero by frame 3072">
+    <h2>Why the first comparison differed</h2>
+    <p>A 512-frame native reference differs from REAPER by up to <code>@@ALTERNATE@@</code> during startup; the 1,024-frame reference matches the entire wet render to <code>@@WET@@</code>. The original C++ WaveShaper advances one shared smoothing state through the left channel before the right. Rust preserves that behavior, so its startup response depends on block partition. This plot shows the 512-frame comparison over the first 4,096 frames.</p>
+    <svg viewBox="0 0 900 190" role="img" aria-label="Error caused by comparing the REAPER render to a 512-frame native reference during the first 4096 samples">
       <path d="M0,174 L900,174" stroke="#334155" fill="none" />
       <path d="@@ERROR_PATH@@" stroke="#caab77" stroke-width="2" fill="none" />
     </svg>
-    <p class="note">This comparison covers the WaveShaper project at one sample rate and one REAPER render configuration. It does not prove every effect, host buffer layout, or the first 3,072 wet frames match.</p>
+    <p class="note">This comparison covers WaveShaper at 48 kHz in one REAPER render configuration. The full wet and bypass renders match their 1,024-frame native references to 24-bit WAV quantization. Other effect types and host buffer layouts require their own comparisons. Preserving the legacy channel-first smoothing is a deliberate porting decision that can be revisited.</p>
     <p>Repeat with <code>DISPLAY=:88 MANIFOLD_ISOLATED_DISPLAY=1 python3 scripts/probe-reaper-vst3-audio.py</code>. <a href="/standalone-fx-reaper-audio-metrics.json">Open the measured values ↗</a></p>
   </main>
 </body>
@@ -122,13 +123,13 @@ def main() -> None:
 """
     substitutions = {
         "@@DRY@@": f"{metrics['dryVsNative']['peak']:.3g}",
-        "@@STEADY@@": f"{metrics['wetVsNativeAfterStartup']['peak']:.3g}",
+        "@@WET@@": f"{metrics['wetVsNativeFull']['peak']:.3g}",
         "@@EFFECT@@": f"{metrics['wetVsDry']['rms']:.3f}",
-        "@@STARTUP@@": f"{metrics['wetVsNativeFull']['peak']:.4f}",
+        "@@ALTERNATE@@": f"{metrics['wetVsNativeAt512']['peak']:.4f}",
         "@@DRY_PATH@@": waveform(dry),
         "@@WET_PATH@@": waveform(wet),
         "@@NATIVE_PATH@@": waveform(native),
-        "@@ERROR_PATH@@": startup_error(wet, native),
+        "@@ERROR_PATH@@": startup_error(wet, native_512),
     }
     for marker, value in substitutions.items():
         page = page.replace(marker, value)

@@ -3,16 +3,22 @@
   "effect": "WaveShaper",
   "rate": 48000,
   "frames": 48000,
-  "steadyStartFrame": 3072,
+  "nativeBlockFrames": 1024,
+  "alternateBlockFrames": 512,
+  "alternateSteadyStartFrame": 3072,
   "dryVsNative": {
     "peak": 5.960464477539063e-08,
     "rms": 3.3916679491806327e-08
   },
   "wetVsNativeFull": {
+    "peak": 5.960464477539063e-08,
+    "rms": 3.780862835335536e-08
+  },
+  "wetVsNativeAt512": {
     "peak": 0.01644548773765564,
     "rms": 0.0007743924403764064
   },
-  "wetVsNativeAfterStartup": {
+  "wetVsNativeAt512After3072": {
     "peak": 5.960464477539063e-08,
     "rms": 3.788327312954974e-08
   },

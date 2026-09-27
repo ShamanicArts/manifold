@@ -27,6 +27,8 @@ OUTPUT = Path("/tmp/manifold-reaper-vst3-audio-proof")
 RATE = 48_000
 FRAMES = RATE
 STEADY_START = 3_072
+NATIVE_BLOCK = 1_024
+ALTERNATE_BLOCK = 512
 
 
 def run(*args: str, timeout: int = 45) -> None:
@@ -186,26 +188,39 @@ def main() -> None:
             project.write_text(json.dumps(doc))
             run("cargo", "run", "-q", "-p", "manifold-native", "--example",
                 "render_fx_host_audio", "--", str(project),
-                str(work / "source.f32"), str(work / f"native-{label}.f32"), "512",
+                str(work / "source.f32"), str(work / f"native-{label}.f32"),
+                str(NATIVE_BLOCK),
                 timeout=120)
+            if label == "wet":
+                run("cargo", "run", "-q", "-p", "manifold-native", "--example",
+                    "render_fx_host_audio", "--", str(project),
+                    str(work / "source.f32"), str(work / "native-wet-512.f32"),
+                    str(ALTERNATE_BLOCK), timeout=120)
         dry, wet = raw_f32(work / "dry.f32"), raw_f32(work / "wet.f32")
         native_dry = raw_f32(work / "native-dry.f32")
         native_wet = raw_f32(work / "native-wet.f32")
+        native_wet_512 = raw_f32(work / "native-wet-512.f32")
         dry_error = difference(dry, native_dry)
         wet_error = difference(wet, native_wet)
-        steady_error = difference(wet, native_wet, STEADY_START)
+        alternate_error = difference(wet, native_wet_512)
+        alternate_steady_error = difference(wet, native_wet_512, STEADY_START)
         effect = difference(wet, dry)
         assert dry_error[0] < 2e-7, dry_error
-        assert steady_error[0] < 2e-6, steady_error
+        assert wet_error[0] < 2e-7, wet_error
         assert effect[1] > 0.05, effect
-        for label in ("dry", "wet", "native-dry", "native-wet"):
+        for label in ("dry", "wet", "native-dry", "native-wet", "native-wet-512"):
             shutil.copyfile(work / f"{label}.f32", OUTPUT / f"{label}.f32")
         report = {
             "host": "REAPER Linux VST3", "effect": "WaveShaper", "rate": RATE,
-            "frames": FRAMES, "steadyStartFrame": STEADY_START,
+            "frames": FRAMES, "nativeBlockFrames": NATIVE_BLOCK,
+            "alternateBlockFrames": ALTERNATE_BLOCK,
+            "alternateSteadyStartFrame": STEADY_START,
             "dryVsNative": {"peak": dry_error[0], "rms": dry_error[1]},
             "wetVsNativeFull": {"peak": wet_error[0], "rms": wet_error[1]},
-            "wetVsNativeAfterStartup": {"peak": steady_error[0], "rms": steady_error[1]},
+            "wetVsNativeAt512": {"peak": alternate_error[0], "rms": alternate_error[1]},
+            "wetVsNativeAt512After3072": {
+                "peak": alternate_steady_error[0], "rms": alternate_steady_error[1]
+            },
             "wetVsDry": {"peak": effect[0], "rms": effect[1]},
             "wetHostParameters": wet_values,
         }
