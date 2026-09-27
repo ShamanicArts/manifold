@@ -2,6 +2,8 @@
 """Import Tone Texture through the CLAP editor in REAPER, save, reopen, render."""
 
 from array import array
+import argparse
+import ctypes as c
 import json
 import os
 from pathlib import Path
@@ -32,6 +34,9 @@ def wait_for(path: Path, prefix: str, timeout: float = 15) -> str:
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--gesture", action="store_true", help="drag the original Frequency slider through XTEST")
+    args = parser.parse_args()
     assert os.environ.get("MANIFOLD_ISOLATED_DISPLAY") == "1", "use isolated X display"
     assert os.environ.get("DISPLAY") and os.environ["DISPLAY"] != ":0"
     module = ROOT / "target/clap/ManifoldFX.clap"
@@ -67,6 +72,20 @@ if fx<0 then out:write('FAILED: Graph CLAP unavailable'); out:close(); return en
 reaper.TrackFX_Show(track,fx,3)
 out:write('done ' .. tostring(fx)); out:close()
 local function poll()
+ local play=io.open('{work / 'play-command.txt'}','r')
+ if play then
+  play:close(); os.remove('{work / 'play-command.txt'}')
+  reaper.OnPlayButton()
+  local result=io.open('{work / 'playing.txt'}','w')
+  result:write(tostring(reaper.GetPlayState())); result:close()
+ end
+ local query=io.open('{work / 'query-command.txt'}','r')
+ if query then
+  local name=query:read('*a'); query:close(); os.remove('{work / 'query-command.txt'}')
+  local result=io.open('{work}/' .. name .. '.txt','w')
+  result:write(tostring(reaper.TrackFX_GetParamNormalized(track,fx,1)))
+  result:close()
+ end
  local command=io.open('{work / 'save-command.txt'}','r')
  if command then
   command:close()
@@ -101,10 +120,70 @@ reaper.defer(poll)
                 x11 = runpy.run_path(str(Path(__file__).with_name("probe-reaper-graph-vst3-gui.py")))["X11"]()
                 editor = x11.editor()
                 capture = PUBLIC / "graph-clap-reaper-editor-tone-import.png"
-                subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "x11grab",
-                                "-window_id", hex(editor), "-i", os.environ["DISPLAY"],
-                                "-frames:v", "1", "-y", str(capture)], check=True, timeout=20)
-                assert capture.stat().st_size > 10000
+                if not args.gesture:
+                    subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "x11grab",
+                                    "-window_id", hex(editor), "-i", os.environ["DISPLAY"],
+                                    "-frames:v", "1", "-y", str(capture)], check=True, timeout=20)
+                    assert capture.stat().st_size > 10000
+                gesture_result = None
+                if args.gesture:
+                    def query(name):
+                        (work / "query-command.txt").write_text(name)
+                        return float(wait_for(work / f"{name}.txt", "", timeout=5))
+                    for _ in range(2):
+                        notification = next((window for window, title, _ in x11.window_titles()
+                                             if title.startswith("REAPER New Version Notification")), None)
+                        if notification:
+                            x11.lib.XRaiseWindow(x11.display, notification)
+                            x11.lib.XFlush(x11.display)
+                            time.sleep(0.2)
+                            x11.click(670, 360)
+                            time.sleep(0.3)
+                        about = next((window for window, title, _ in x11.window_titles()
+                                      if title.startswith("About REAPER")), None)
+                        if about:
+                            x11.lib.XRaiseWindow(x11.display, about)
+                            x11.lib.XFlush(x11.display)
+                            time.sleep(3)
+                            x11.click(490, 395)
+                            time.sleep(0.3)
+                    try: x11.raise_fx()
+                    except AssertionError: pass
+                    time.sleep(0.2)
+                    origin_x, origin_y = x11.origin(editor)
+                    (work / "play-command.txt").write_text("play")
+                    assert int(wait_for(work / "playing.txt", "", timeout=5)) & 1
+                    time.sleep(1.5)
+                    before = query("before")
+                    test = c.CDLL("libXtst.so.6")
+                    test.XTestFakeMotionEvent.argtypes = [c.c_void_p, c.c_int, c.c_int, c.c_int, c.c_ulong]
+                    test.XTestFakeButtonEvent.argtypes = [c.c_void_p, c.c_uint, c.c_int, c.c_ulong]
+                    assert test.XTestFakeMotionEvent(x11.display, -1, origin_x + 110, origin_y + 237, 0)
+                    assert test.XTestFakeButtonEvent(x11.display, 1, 1, 0)
+                    x11.lib.XFlush(x11.display)
+                    time.sleep(0.12)
+                    assert test.XTestFakeMotionEvent(x11.display, -1, origin_x + 230, origin_y + 237, 0)
+                    x11.lib.XFlush(x11.display)
+                    time.sleep(0.12)
+                    assert test.XTestFakeButtonEvent(x11.display, 1, 0, 0)
+                    x11.lib.XFlush(x11.display)
+                    time.sleep(2)
+                    after = query("after")
+                    if after <= before + 0.2:
+                        subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "x11grab",
+                                        "-video_size", "1024x768", "-i", os.environ["DISPLAY"],
+                                        "-frames:v", "1", "-y", "/tmp/manifold-clap-gesture-failure.png"],
+                                       check=True, timeout=20)
+                        shutil.copy2(work / "host.log", "/tmp/manifold-clap-gesture-host.log")
+                    assert after > before + 0.2, (before, after, x11.window_titles())
+                    gesture_capture = PUBLIC / "graph-clap-reaper-widget-gesture.png"
+                    subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "x11grab",
+                                    "-video_size", "1024x768", "-i", os.environ["DISPLAY"],
+                                    "-frames:v", "1", "-y", str(gesture_capture)], check=True, timeout=20)
+                    assert gesture_capture.stat().st_size > 10000
+                    gesture_result = {"host": "REAPER Linux CLAP", "control": "original compact Frequency slider",
+                                      "normalizedBefore": before, "normalizedAfter": after,
+                                      "editorScreenshot": gesture_capture.name}
                 x11.close()
                 (work / "save-command.txt").write_text("save")
                 wait_for(saved, "done")
@@ -113,6 +192,33 @@ reaper.defer(poll)
                 if process.poll() is None:
                     os.killpg(process.pid, signal.SIGTERM)
                 process.wait(timeout=5)
+        if args.gesture:
+            assert gesture_result is not None
+            reopened = work / "reopened.txt"
+            recall = work / "recall.lua"
+            recall.write_text(f"""
+reaper.Main_openProject('{project}')
+local track=reaper.GetTrack(0,0)
+local fx=track and reaper.TrackFX_AddByName(track,'CLAP: Manifold Graph',false,0) or -1
+local result=io.open('{reopened}','w')
+if fx<0 then result:write('FAILED: saved Graph CLAP missing')
+else result:write(tostring(reaper.TrackFX_GetParamNormalized(track,fx,1))) end
+result:close()
+""")
+            with (work / "recall.log").open("w") as log:
+                fresh = subprocess.Popen(["reaper", "-cfgfile", str(config), "-newinst", "-nosplash",
+                                          "-noactivate", str(recall)], env=env,
+                                         stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                try:
+                    gesture_result["reopenedNormalized"] = float(wait_for(reopened, "", timeout=15))
+                finally:
+                    if fresh.poll() is None:
+                        os.killpg(fresh.pid, signal.SIGTERM)
+                    fresh.wait(timeout=5)
+            assert abs(gesture_result["reopenedNormalized"] - gesture_result["normalizedAfter"]) < 0.001
+            (PUBLIC / "graph-clap-reaper-widget-gesture.json").write_text(json.dumps(gesture_result, indent=2) + "\n")
+            print(json.dumps(gesture_result))
+            return
         render_env = {key: value for key, value in env.items() if key != "MANIFOLD_GRAPH_IMPORT_PROBE"}
         with (work / "render.log").open("w") as log:
             subprocess.run(["reaper", "-cfgfile", str(config), "-newinst", "-nosplash",

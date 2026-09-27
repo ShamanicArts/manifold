@@ -1,0 +1,8 @@
+{
+  "host": "REAPER Linux CLAP",
+  "control": "original compact Frequency slider",
+  "normalizedBefore": 0.012515644542873,
+  "normalizedAfter": 0.75,
+  "editorScreenshot": "graph-clap-reaper-widget-gesture.png",
+  "reopenedNormalized": 0.75
+}

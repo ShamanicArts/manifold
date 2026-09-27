@@ -39,7 +39,14 @@ Frequency slider changes from 220 to 14,402. Captures are
 `web/public/graph-clap-original-editor.png` and
 `web/public/graph-clap-host-automation.png`. The graph gesture unit test checks
 begin/value/end events reach CLAP and the changed value saves into project state.
-Physical pointer gestures in a real CLAP DAW remain a separate host gate.
+`scripts/probe-reaper-graph-clap-editor.py --gesture` also drags the original
+Frequency slider with XTEST in an isolated REAPER CLAP window. The host value
+changes from `0.012515644542873` to `0.75`. The probe saves the DAW project,
+opens it in a fresh REAPER process, and reads back `0.75`. Its screenshot and
+measurements are `web/public/graph-clap-reaper-widget-gesture.png` and `.json`.
+The probe dismisses REAPER's first-run dialogs and starts playback before the
+drag, since otherwise REAPER may leave CLAP gesture events queued while its
+audio engine is stopped.
 `scripts/probe-reaper-graph-clap.py` adds the Graph CLAP class to a private
 REAPER profile, saves a one-second Note Voice MIDI project, reopens it in a
 fresh REAPER process, and renders a WAV. Its 48,000 stereo frames match a
