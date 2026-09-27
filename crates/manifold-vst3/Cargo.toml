@@ -1,0 +1,14 @@
+[package]
+name = "manifold-vst3"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+crossbeam-queue = "0.3.14"
+manifold-native = { path = "../manifold-native" }
+serde_json = "1"
+vst3 = "=0.3.0"

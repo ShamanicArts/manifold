@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Manifold · VST3 host checkpoint</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #dce5ed; background: #0b1220; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(980px, calc(100% - 36px)); margin: 0 auto; padding: 44px 0 80px; }
+    header { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid #334155; font-size: 12px; }
+    a { color: #8fe2e7; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .eyebrow { color: #8fe2e7; text-transform: uppercase; letter-spacing: .1em; font: 11px ui-monospace, monospace; margin-top: 28px; }
+    h1 { font-size: clamp(32px, 6vw, 58px); font-weight: 500; letter-spacing: -.045em; margin: 8px 0 16px; }
+    h2 { font-size: 22px; font-weight: 500; margin-top: 42px; }
+    p { color: #aebdcc; line-height: 1.6; }
+    .lead { max-width: 760px; font-size: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 32px 0; }
+    .card { border: 1px solid #334155; background: #111d2e; padding: 18px; }
+    .card b { display: block; color: #f1f6f8; font-size: 24px; font-weight: 500; }
+    .card span { display: block; color: #9fb1c0; font-size: 12px; line-height: 1.5; margin-top: 7px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 12px 8px; border-bottom: 1px solid #334155; text-align: left; vertical-align: top; }
+    th { color: #8ca5b7; font-weight: 500; }
+    code { color: #c7e5e3; }
+    .note { border-left: 2px solid #caab77; padding: 2px 0 2px 16px; }
+    @media (max-width: 650px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header><span>MANIFOLD / HOST CHECKPOINT</span><a href="/fx-module.html">Open the browser module ↗</a></header>
+    <p class="eyebrow">Standalone FX · Rust graph · VST3</p>
+    <h1>The same project in a second native plug-in format.</h1>
+    <p class="lead">The authored Standalone FX project now loads as a Linux VST3 bundle. Its processor runs the same prepared Rust effect graph as browser Wasm and CLAP. The VST3 host path has independent audio, parameter, and state validation.</p>
+    <div class="grid">
+      <div class="card"><b>537 / 537</b><span>Steinberg SDK 3.8.1 validator tests passed on the built Linux bundle</span></div>
+      <div class="card"><b>7</b><span>Stable host parameters with bounded sample-offset automation</span></div>
+      <div class="card"><b>21</b><span>Effect type memories retained in the authored project state</span></div>
+    </div>
+    <h2>What was exercised</h2>
+    <table>
+      <thead><tr><th>Boundary</th><th>Evidence</th></tr></thead>
+      <tbody>
+        <tr><td>Host discovery</td><td>The exported VST3 factory creates distinct processor and controller classes. Steinberg's validator loads the packaged <code>.vst3</code> bundle.</td></tr>
+        <tr><td>Audio</td><td>Stereo planar f32 host buffers enter prepared native scratch. A 128-frame adapter test matches the authored native project sample for sample.</td></tr>
+        <tr><td>Automation</td><td>Seven fixed parameters accept normalized host queues with sample offsets and feed the Rust graph without allocation in the callback.</td></tr>
+        <tr><td>State</td><td>Processor and controller round-trip the authored project JSON, including the selected effect and all 21 remembered control sets.</td></tr>
+        <tr><td>Independent validation</td><td>Steinberg's official SDK 3.8.1 validator reported 537 passed and zero failed tests on this bundle.</td></tr>
+      </tbody>
+    </table>
+    <h2>Editor and next host gate</h2>
+    <p class="note">The VST3 controller currently provides a generic host parameter UI. The exact original widget renderer is embedded in the <a href="/standalone-fx-editor-bridge-review.html">CLAP native editor proof</a>; its VST3 <code>IPlugView</code> bridge is the next step. Real DAW pointer gestures and multi-instance behavior are still to be tested.</p>
+    <p>Build locally with <code>./scripts/build-vst3.sh</code>. The resulting bundle is <code>target/vst3/ManifoldFX.vst3</code>. <a href="/standalone-fx-host-review.html">Compare the CLAP host checkpoint ↗</a></p>
+  </main>
+</body>
+</html>

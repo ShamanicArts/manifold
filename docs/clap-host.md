@@ -80,4 +80,6 @@ The browser's per-effect control memory is now reflected in the live CLAP
 parameter values and its saved project state. Type switches request a host
 value rescan on the main thread. CLAP automation and audio
 processing cover f32 stereo; f64 audio and sidechain ports are not advertised.
-VST3, Audio Unit, and other format bundles remain separate host adapters.
+The first [VST3 Standalone FX bundle](vst3-host.md) now runs the same native DSP
+and authored state through Steinberg's processor/controller ABI. Audio Unit and
+broader graph project exports remain separate host adapters.
