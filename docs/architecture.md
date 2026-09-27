@@ -58,6 +58,8 @@ and prepares it before publication to the audio callback. Its audio callback
 runs prepared native Rust DSP; the browser
 still runs the Wasm build of the same core. The CLAP module has no custom editor
 yet. See the [CLAP host proof](clap-host.md) for tests and remaining work.
+The [native editor boundary](native-editor-plan.md) records the exact widget
+reuse, CLAP GUI lifecycle, and proposed browser process bridge.
 
 ## Decisions to revisit
 
