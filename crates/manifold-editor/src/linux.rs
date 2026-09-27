@@ -110,6 +110,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         })
         .build_as_child(&parent)?;
     write_message("{\"kind\":\"ready\"}");
+    // Opt-in isolated host probe: exercise the actual file input/IPC path
+    // without steering a desktop file chooser from a test process.
+    let mut probe_import = if graph {
+        std::env::var("MANIFOLD_GRAPH_IMPORT_PROBE").ok()
+    } else {
+        None
+    };
     gtk::glib::timeout_add_local(Duration::from_millis(16), move || {
         while let Ok(line) = receiver.try_recv() {
             let Ok(command) = serde_json::from_str::<serde_json::Value>(&line) else {
@@ -124,6 +131,30 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         "window.manifoldEditorReceive ? window.manifoldEditorReceive({document}) : (window.__manifoldPendingState = {document});"
                     );
                     let _ = webview.evaluate_script(&script);
+                    if let Some(path) = probe_import.take() {
+                        if let Ok(contents) = fs::read_to_string(&path) {
+                            let text = serde_json::to_string(&contents).unwrap_or_default();
+                            let name = Path::new(&path)
+                                .file_name()
+                                .and_then(|name| name.to_str())
+                                .unwrap_or("project.json");
+                            let name = serde_json::to_string(name).unwrap_or_default();
+                            let _ = webview.evaluate_script(&format!(
+                                "{{ const input = document.getElementById('graph-file'); \
+                                  const transfer = new DataTransfer(); \
+                                  transfer.items.add(new File([{text}], {name}, {{type:'application/json'}})); \
+                                  input.files = transfer.files; \
+                                  input.dispatchEvent(new Event('change', {{bubbles:true}})); }}"
+                            ));
+                        }
+                    }
+                }
+                Some("status") => {
+                    if let Some(message) = command["message"].as_str() {
+                        let encoded = serde_json::to_string(message).unwrap_or_default();
+                        let _ = webview
+                            .evaluate_script(&format!("window.manifoldEditorStatus?.({encoded});"));
+                    }
                 }
                 Some("show") => {
                     let _ = webview.set_visible(true);

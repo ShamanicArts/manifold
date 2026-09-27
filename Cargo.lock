@@ -1010,6 +1010,7 @@ dependencies = [
 name = "manifold-vst3"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "crossbeam-queue",
  "libc",
  "manifold-core",

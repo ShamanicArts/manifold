@@ -52,6 +52,21 @@
     </div>
   </section>
   <section class="panel">
+    <h2>Import browser JSON directly in the open editor</h2>
+    <p>The <em>Import project JSON</em> control accepts an authored graph bundle. The companion transfers bounded chunks to the VST3 controller; the controller asks the connected Rust processor to prepare the new graph. REAPER receives the updated host values and the open editor redraws the original widgets for the new bindings.</p>
+    <figure><img src="/graph-vst3-reaper-editor-direct-import.png" alt="REAPER graph editor after Tone Texture JSON was selected in its native file chooser, with oscillator, noise, filter, CV gain, and LFO controls"><figcaption>Tone Texture JSON selected through the native file chooser. The editor reports the loaded file and shows 8 nodes with 12 bound controls.</figcaption></figure>
+    <p>REAPER saved the imported project. A fresh REAPER process reopened it and rendered one second from a silent media item. All 48,000 stereo frames match the earlier Tone Texture preset render exactly; that preset render already matched direct native Rust within 5.96e-8 peak sample error.</p>
+    <audio controls preload="metadata" src="/graph-vst3-reaper-direct-import.wav"></audio>
+    <p class="small"><a href="/graph-vst3-reaper-direct-import.wav">Download direct-import render</a> · <a href="/graph-vst3-reaper-tone.wav">Compare preset render</a></p>
+  </section>
+  <section class="panel">
+    <h2>Embedded sample survives editor import</h2>
+    <p>The same path imported a 513,055-byte sample instrument project containing 48,000 stereo PCM frames. REAPER saved it, reopened it in a fresh process, and rendered a MIDI note through the Rust sample instrument. The full 48,000-frame output differs from direct native Rust by at most 5.96e-8.</p>
+    <figure><img src="/graph-vst3-reaper-editor-sample-import.png" alt="REAPER hosting the directly imported sample instrument project with original compact controls"><figcaption>The open graph editor after direct sample project import: 5 nodes, 17 bound controls, and the original compact widget renderers.</figcaption></figure>
+    <audio controls preload="metadata" src="/graph-vst3-reaper-sample-import.wav"></audio>
+    <p class="small"><a href="/graph-vst3-reaper-sample-import.wav">Download actual REAPER sample render</a> · <a href="/graph-vst3-reaper-sample-import.json">Measurements</a></p>
+  </section>
+  <section class="panel">
     <h2>Hear the actual REAPER render</h2>
     <p>REAPER inserted <em>Manifold Graph</em>, sent note 60 from 0.125 to 0.5 seconds, and rendered its master output at 48 kHz. The default project is <code>projects/graph-workspace/note-voice.json</code>.</p>
     <audio controls preload="metadata" src="/graph-vst3-reaper-note.wav"></audio>
@@ -71,11 +86,13 @@
     <div class="row"><span>Project state</span><span>The component accepts and saves a portable graph bundle. A test loads a sidechain to output route and verifies the VST3 sidechain bus produces the expected stereo samples. REAPER also loads a second authored graph via a standard preset file.</span></div>
     <div class="row"><span>Host parameters</span><span>All 128 public IDs stay fixed while project bindings change. REAPER reports 131 parameters because it adds three host controls.</span></div>
     <div class="row"><span>Editor round trip</span><span>The packaged VST3 editor shows the original widgets. REAPER automation updates a visible slider, a physical drag reaches REAPER's parameter, and a preset change rebuilds the node controls in the open view.</span></div>
+    <div class="row"><span>Direct import</span><span>The editor imports Tone Texture JSON, updates REAPER's fixed slots, and the processor persists it. A fresh-process render matches the preset path exactly over 48,000 stereo frames.</span></div>
+    <div class="row"><span>Embedded PCM</span><span>A 513 KB browser project with one second of stereo sample data imports through the same editor path. REAPER's saved-project MIDI render matches direct native Rust within 5.96e-8 peak error.</span></div>
   </section>
   <section class="panel">
     <h2>Current boundary and next work</h2>
-    <p>The native editor shows and edits the current project's bound controls. Project import in a DAW currently uses its VST3 preset loader; direct JSON import inside the editor and deliberate slot reassignment are next. Only the first MIDI input node receives host notes for now. The earlier <a href="/standalone-fx-reaper-proof.html">Standalone FX class</a> has its own original widget editor and independent host proof.</p>
-    <p class="small">Reproduce: <code>cargo test -p manifold-vst3</code>, <code>./scripts/build-vst3.sh</code>, <code>validator -e target/vst3/ManifoldFX.vst3</code>, then run <code>scripts/probe-reaper-graph-vst3.py</code> and <code>scripts/probe-reaper-graph-vst3-gui.py</code> on an isolated Xvfb display. To export your own graph: <code>cargo run -p manifold-vst3 --example export_graph_preset -- my-graph.json my-graph.vstpreset</code>.</p>
+    <p>Direct editor import is verified in REAPER on Linux through a 513 KB embedded-sample project. The native file chooser also selected a Tone Texture JSON file; REAPER saved and reopened that imported graph with the same audio result. Other hosts may cap private VST3 message sizes. Deliberate slot reassignment and routing for multiple MIDI input nodes remain. The earlier <a href="/standalone-fx-reaper-proof.html">Standalone FX class</a> has its own original widget editor and independent host proof.</p>
+    <p class="small">Reproduce: <code>cargo test -p manifold-vst3</code>, <code>./scripts/build-vst3.sh</code>, <code>validator -e target/vst3/ManifoldFX.vst3</code>, then run <code>scripts/probe-reaper-graph-vst3.py</code> and <code>scripts/probe-reaper-graph-vst3-gui.py</code> in normal, <code>--direct-import</code>, <code>--sample-import</code>, and <code>--manual-picker</code> modes on an isolated Xvfb display. To export your own graph: <code>cargo run -p manifold-vst3 --example export_graph_preset -- my-graph.json my-graph.vstpreset</code>.</p>
   </section>
 </body>
 </html>

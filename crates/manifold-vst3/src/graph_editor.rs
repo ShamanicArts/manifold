@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+use base64::Engine;
 use crossbeam_queue::ArrayQueue;
 use vst3::{
     Class, ComPtr, ComRef, ComWrapper, Steinberg::Linux::*, Steinberg::Vst::*, Steinberg::*,
@@ -22,6 +23,15 @@ use manifold_native::parameters::{HOST_SLOT_BASE, HOST_SLOT_COUNT};
 const WIDTH: i32 = 800;
 const HEIGHT: i32 = 600;
 const MAX_MESSAGES: usize = 256;
+const MAX_PROJECT_BYTES: usize = 45 * 1024 * 1024;
+
+struct ImportAssembly {
+    name: String,
+    expected: usize,
+    bytes: Vec<u8>,
+}
+
+type ImportResult = Result<(String, Vec<u8>), &'static str>;
 
 #[derive(Clone, Copy)]
 enum Kind {
@@ -64,6 +74,7 @@ impl Session {
 struct State {
     shared: Arc<GraphShared>,
     messages: Arc<ArrayQueue<Message>>,
+    imports: Arc<ArrayQueue<ImportResult>>,
     session: Mutex<Option<Session>>,
     ready: AtomicBool,
     last_sent: AtomicU64,
@@ -74,6 +85,7 @@ impl State {
         Arc::new(Self {
             shared,
             messages: Arc::new(ArrayQueue::new(MAX_MESSAGES)),
+            imports: Arc::new(ArrayQueue::new(2)),
             session: Mutex::new(None),
             ready: AtomicBool::new(false),
             last_sent: AtomicU64::new(u64::MAX),
@@ -93,6 +105,13 @@ impl State {
     }
 
     fn tick(&self) {
+        let import_status = self.imports.pop().map(|import| match import {
+            Ok((name, bytes)) => match self.shared.import_project(&bytes) {
+                Ok(()) => format!("Loaded {name} into the DAW graph."),
+                Err(reason) => format!("Project unchanged: {reason}."),
+            },
+            Err(reason) => format!("Project unchanged: {reason}."),
+        });
         let handler = self
             .shared
             .handler
@@ -123,6 +142,14 @@ impl State {
         if self.last_sent.load(Ordering::Acquire) != current && self.send_snapshot() {
             self.last_sent.store(current, Ordering::Release);
         }
+        if let Some(message) = import_status {
+            let command = serde_json::json!({"kind":"status","message":message}).to_string();
+            if let Ok(mut session) = self.session.lock() {
+                if let Some(session) = session.as_mut() {
+                    session.send(&command);
+                }
+            }
+        }
     }
 
     fn stop(&self) {
@@ -134,6 +161,7 @@ impl State {
             }
         }
         while self.messages.pop().is_some() {}
+        while self.imports.pop().is_some() {}
     }
 }
 
@@ -232,10 +260,21 @@ impl IPlugViewTrait for View {
             return kResultFalse;
         };
         let queue = self.state.messages.clone();
+        let imports = self.state.imports.clone();
         let state = self.state.clone();
         let running = Arc::new(AtomicBool::new(true));
         let reader_running = running.clone();
         let reader = std::thread::spawn(move || {
+            let mut assembly: Option<ImportAssembly> = None;
+            let submit = |mut result: ImportResult| {
+                while reader_running.load(Ordering::Acquire) {
+                    match imports.push(result) {
+                        Ok(()) => return,
+                        Err(value) => result = value,
+                    }
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+            };
             for line in BufReader::new(stdout).lines() {
                 if !reader_running.load(Ordering::Acquire) {
                     break;
@@ -253,6 +292,67 @@ impl IPlugViewTrait for View {
                 if value["kind"] == "editor-ready" {
                     state.ready.store(true, Ordering::Release);
                     continue;
+                }
+                match value["kind"].as_str() {
+                    Some("import-start") => {
+                        assembly = None;
+                        let Some(size) = value["size"]
+                            .as_u64()
+                            .and_then(|size| usize::try_from(size).ok())
+                        else {
+                            continue;
+                        };
+                        let Some(name) = value["name"].as_str() else {
+                            continue;
+                        };
+                        if size == 0 || size > MAX_PROJECT_BYTES || name.len() > 128 {
+                            submit(Err("project exceeds import limits"));
+                            continue;
+                        }
+                        assembly = Some(ImportAssembly {
+                            name: name.to_owned(),
+                            expected: size,
+                            bytes: Vec::with_capacity(size),
+                        });
+                        continue;
+                    }
+                    Some("import-chunk") => {
+                        let Some(current) = assembly.as_mut() else {
+                            continue;
+                        };
+                        let Some(chunk) =
+                            value["data"].as_str().filter(|chunk| chunk.len() <= 3000)
+                        else {
+                            assembly = None;
+                            submit(Err("invalid project transfer"));
+                            continue;
+                        };
+                        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(chunk)
+                        else {
+                            assembly = None;
+                            submit(Err("invalid project transfer"));
+                            continue;
+                        };
+                        if current.bytes.len() + bytes.len() > current.expected {
+                            assembly = None;
+                            submit(Err("project transfer exceeded its size"));
+                            continue;
+                        }
+                        current.bytes.extend_from_slice(&bytes);
+                        continue;
+                    }
+                    Some("import-end") => {
+                        if let Some(current) = assembly.take() {
+                            let result = if current.bytes.len() == current.expected {
+                                Ok((current.name, current.bytes))
+                            } else {
+                                Err("project transfer incomplete")
+                            };
+                            submit(result);
+                        }
+                        continue;
+                    }
+                    _ => {}
                 }
                 let kind = match value["kind"].as_str() {
                     Some("gesture-begin") => Kind::Begin,

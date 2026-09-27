@@ -8,7 +8,10 @@ import { mountDropdown } from './widgets/dropdown.js';
 
 const byId = (id) => document.getElementById(id);
 const editorMode = new URLSearchParams(location.search).has('editor');
-if (editorMode) document.body.classList.add('plugin-editor');
+if (editorMode) {
+  document.body.classList.add('plugin-editor');
+  document.getElementById('graph-import-label').textContent = 'Import project JSON';
+}
 const HOST_SLOT_BASE = 0x0100_0000;
 const widgetStyles = fxLayout.module.children.filter((item) => item.type === 'Slider').map((item) => item.style);
 const dropdownStyle = fxLayout.module.children.find((item) => item.id === 'type_dropdown')?.style;
@@ -124,6 +127,7 @@ function paint(snapshot) {
 }
 
 window.manifoldEditorReceive = (snapshot) => paint(snapshot);
+window.manifoldEditorStatus = (message) => status(message);
 if (window.__manifoldPendingState) {
   paint(window.__manifoldPendingState);
   delete window.__manifoldPendingState;
@@ -138,8 +142,23 @@ byId('graph-file').addEventListener('change', async (event) => {
   if (!file) return;
   try {
     if (file.size > 45 * 1024 * 1024) throw new Error('Project exceeds 45 MB.');
-    paint(snapshotFromProject(JSON.parse(await file.text())));
-    status(`Inspecting ${file.name}. Load an exported preset in a DAW to hear it there.`);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const preview = snapshotFromProject(JSON.parse(new TextDecoder().decode(bytes)));
+    if (editorMode) {
+      if (!window.ipc?.postMessage) throw new Error('DAW editor bridge unavailable');
+      status(`Importing ${file.name}…`);
+      window.ipc.postMessage(JSON.stringify({ version: 1, kind: 'import-start', size: bytes.length,
+        name: file.name.slice(0, 128) }));
+      for (let offset = 0; offset < bytes.length; offset += 2046) {
+        const data = btoa(String.fromCharCode(...bytes.subarray(offset, offset + 2046)));
+        window.ipc.postMessage(JSON.stringify({ version: 1, kind: 'import-chunk', data }));
+        if (offset && offset % (2046 * 32) === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      window.ipc.postMessage(JSON.stringify({ version: 1, kind: 'import-end' }));
+    } else {
+      paint(preview);
+      status(`Inspecting ${file.name}. Export a VST3 preset to hear it in a DAW.`);
+    }
   } catch (error) { status(`Project unchanged: ${error.message}`); }
   finally { event.target.value = ''; }
 });

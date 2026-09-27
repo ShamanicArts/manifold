@@ -1,6 +1,7 @@
 //! VST3 component for portable browser-authored graph bundles.
 //! Preparation, JSON and asset decoding stay off the audio callback.
 
+use std::ffi::CStr;
 use std::ptr::null_mut;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, Ordering};
@@ -12,7 +13,7 @@ use manifold_native::parameters::{
     HOST_SLOT_BASE, HOST_SLOT_COUNT, HostParameter, TimedAutomation,
 };
 use manifold_native::project::{NativeProject, PreparedNativeProject};
-use vst3::{Class, ComRef, Steinberg::Vst::*, Steinberg::*, uid};
+use vst3::{Class, ComPtr, ComRef, Steinberg::Vst::*, Steinberg::*, uid};
 
 use crate::graph_contract::{DEFAULT_PROJECT, normalized_values, slot_descriptors};
 use crate::graph_controller::GraphController;
@@ -40,6 +41,7 @@ pub(crate) struct GraphProcessor {
     normalized: [AtomicU32; HOST_SLOT_COUNT],
     sidechain_active: AtomicBool,
     sidechain_arrangement: AtomicU64,
+    peer: Mutex<Option<ComPtr<IConnectionPoint>>>,
 }
 
 // VST3 serializes process calls for one component; only that callback mutates
@@ -64,6 +66,7 @@ impl GraphProcessor {
             normalized: values.map(|value| AtomicU32::new((value as f32).to_bits())),
             sidechain_active: AtomicBool::new(false),
             sidechain_arrangement: AtomicU64::new(SpeakerArr::kStereo),
+            peer: Mutex::new(None),
         }
     }
 
@@ -169,6 +172,47 @@ impl GraphProcessor {
             }
         }
     }
+
+    fn restore_bytes(&self, bytes: Vec<u8>) -> tresult {
+        let Ok(project) = NativeProject::parse(&bytes) else {
+            return kResultFalse;
+        };
+        let descriptors = slot_descriptors(&project);
+        let values = normalized_values(&descriptors);
+        self.retire_old();
+        let replacement = if self.active.load(Ordering::Acquire) {
+            let Some((rate, frames)) = self.configuration.lock().ok().and_then(|guard| *guard)
+            else {
+                return kResultFalse;
+            };
+            let Some(runtime) = Self::prepared(&bytes, rate, frames) else {
+                return kResultFalse;
+            };
+            Some(runtime)
+        } else {
+            None
+        };
+        let Ok(mut state) = self.state.lock() else {
+            return kResultFalse;
+        };
+        let Ok(mut bound) = self.descriptors.lock() else {
+            return kResultFalse;
+        };
+        *state = bytes;
+        *bound = descriptors;
+        for (slot, value) in values.iter().enumerate() {
+            self.normalized[slot].store((*value as f32).to_bits(), Ordering::Release);
+        }
+        if let Some(runtime) = replacement {
+            let previous = self.pending.swap(Box::into_raw(runtime), Ordering::AcqRel);
+            if !previous.is_null() {
+                // The callback can only acquire a pending runtime via its own
+                // atomic swap. If this swap returned it, it was never used.
+                unsafe { drop(Box::from_raw(previous)) };
+            }
+        }
+        kResultOk
+    }
 }
 
 impl Drop for GraphProcessor {
@@ -178,7 +222,12 @@ impl Drop for GraphProcessor {
 }
 
 impl Class for GraphProcessor {
-    type Interfaces = (IComponent, IAudioProcessor, IProcessContextRequirements);
+    type Interfaces = (
+        IComponent,
+        IAudioProcessor,
+        IProcessContextRequirements,
+        IConnectionPoint,
+    );
 }
 
 impl IPluginBaseTrait for GraphProcessor {
@@ -186,6 +235,9 @@ impl IPluginBaseTrait for GraphProcessor {
         kResultOk
     }
     unsafe fn terminate(&self) -> tresult {
+        if let Ok(mut peer) = self.peer.lock() {
+            *peer = None;
+        }
         self.deactivate();
         kResultOk
     }
@@ -338,43 +390,7 @@ impl IComponentTrait for GraphProcessor {
         let Some(bytes) = (unsafe { read_stream(stream) }) else {
             return kResultFalse;
         };
-        let Ok(project) = NativeProject::parse(&bytes) else {
-            return kResultFalse;
-        };
-        let descriptors = slot_descriptors(&project);
-        let values = normalized_values(&descriptors);
-        self.retire_old();
-        let replacement = if self.active.load(Ordering::Acquire) {
-            if !self.pending.load(Ordering::Acquire).is_null() {
-                return kResultFalse;
-            }
-            let Some((rate, frames)) = self.configuration.lock().ok().and_then(|guard| *guard)
-            else {
-                return kResultFalse;
-            };
-            let Some(runtime) = Self::prepared(&bytes, rate, frames) else {
-                return kResultFalse;
-            };
-            Some(runtime)
-        } else {
-            None
-        };
-        let Ok(mut state) = self.state.lock() else {
-            return kResultFalse;
-        };
-        let Ok(mut bound) = self.descriptors.lock() else {
-            return kResultFalse;
-        };
-        *state = bytes;
-        *bound = descriptors;
-        for (slot, value) in values.iter().enumerate() {
-            self.normalized[slot].store((*value as f32).to_bits(), Ordering::Release);
-        }
-        if let Some(runtime) = replacement {
-            self.pending
-                .store(Box::into_raw(runtime), Ordering::Release);
-        }
-        kResultOk
+        self.restore_bytes(bytes)
     }
     unsafe fn getState(&self, stream: *mut IBStream) -> tresult {
         let Some(bytes) = self.capture_state() else {
@@ -385,6 +401,49 @@ impl IComponentTrait for GraphProcessor {
         } else {
             kResultFalse
         }
+    }
+}
+
+impl IConnectionPointTrait for GraphProcessor {
+    unsafe fn connect(&self, other: *mut IConnectionPoint) -> tresult {
+        let Some(other) = (unsafe { ComRef::from_raw(other) }) else {
+            return kInvalidArgument;
+        };
+        let Ok(mut peer) = self.peer.lock() else {
+            return kResultFalse;
+        };
+        *peer = Some(other.to_com_ptr());
+        kResultOk
+    }
+    unsafe fn disconnect(&self, _other: *mut IConnectionPoint) -> tresult {
+        let Ok(mut peer) = self.peer.lock() else {
+            return kResultFalse;
+        };
+        *peer = None;
+        kResultOk
+    }
+    unsafe fn notify(&self, message: *mut IMessage) -> tresult {
+        let Some(message) = (unsafe { ComRef::from_raw(message) }) else {
+            return kInvalidArgument;
+        };
+        let id = unsafe { message.getMessageID() };
+        if id.is_null() || unsafe { CStr::from_ptr(id) }.to_bytes() != b"manifold.graph.import.v1" {
+            return kResultFalse;
+        }
+        let Some(attributes) = (unsafe { ComRef::from_raw(message.getAttributes()) }) else {
+            return kResultFalse;
+        };
+        let mut data: *const std::ffi::c_void = std::ptr::null();
+        let mut size = 0;
+        if unsafe { attributes.getBinary(c"project".as_ptr(), &mut data, &mut size) } != kResultOk
+            || data.is_null()
+            || size == 0
+            || size > 45 * 1024 * 1024
+        {
+            return kResultFalse;
+        }
+        let bytes = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), size as usize) };
+        self.restore_bytes(bytes.to_vec())
     }
 }
 
@@ -727,6 +786,31 @@ mod tests {
         unsafe fn addEvent(&self, _event: *mut Event) -> tresult {
             kNotImplemented
         }
+    }
+
+    #[test]
+    fn repeated_project_imports_before_a_process_block_keep_the_latest_graph() {
+        let component = GraphProcessor::new();
+        let mut setup = ProcessSetup {
+            processMode: 0,
+            symbolicSampleSize: SymbolicSampleSizes_::kSample32 as i32,
+            maxSamplesPerBlock: 128,
+            sampleRate: 48_000.,
+        };
+        assert_eq!(unsafe { component.setupProcessing(&mut setup) }, kResultOk);
+        assert_eq!(unsafe { component.setActive(1) }, kResultOk);
+        let tone = include_bytes!("../../../projects/graph-workspace/tone-texture.json");
+        assert_eq!(component.restore_bytes(tone.to_vec()), kResultOk);
+        assert_eq!(component.restore_bytes(DEFAULT_PROJECT.to_vec()), kResultOk);
+        assert_eq!(component.restore_bytes(b"{broken".to_vec()), kResultFalse);
+        component.publish_pending();
+        let saved = component.capture_state().unwrap();
+        let project = NativeProject::parse(&saved).unwrap();
+        assert_eq!(
+            slot_descriptors(&project),
+            slot_descriptors(&NativeProject::parse(DEFAULT_PROJECT).unwrap())
+        );
+        assert_eq!(unsafe { component.setActive(0) }, kResultOk);
     }
 
     #[test]

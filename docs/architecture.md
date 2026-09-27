@@ -49,6 +49,12 @@ The sampler prepares eight note slots with four `SampleRegion` cursors each. Cur
 
 The same Rust DSP crate builds to native code and Wasm. `manifold-native` wraps the graph with explicit main/sidechain buses, bounded variable blocks, timed MIDI events, and silent missing buses. Its bounded loader restores all eight authored browser graph workspace bundles, including parameters, embedded PCM, Main targets, and temporal recipes. The VST3 bundle uses the MIT/Apache `vst3` Rust bindings and now contains separate Linux Standalone FX and general Graph processor/controller pairs. Standalone FX exposes seven stable controls and embeds the original web widgets in its `IPlugView`. Graph exposes 128 fixed host slots, MIDI, optional sidechain, portable project state, and a standard `.vstpreset` export path. Both render through prepared native Rust DSP; JUCE and a Wasm interpreter are absent from the DAW callback. The browser still runs the Wasm build of the same core. The Linux VST3 editor IPC receiver queues gestures for a host UI run loop timer, outside the real-time thread. The [native boundary plan](native-vst3-boundary.md) lists the remaining host contracts and validation gates.
 
+The Graph editor also accepts browser project JSON. Bounded browser-to-companion
+chunks are reassembled off the callback, then a host-created VST3 `IMessage`
+carries the project over `IConnectionPoint` to the Rust processor. The processor
+prepares replacement state off the callback and publishes it at a block
+boundary; the controller updates visible bindings only after acceptance.
+
 The first loadable native format is now CLAP on Linux. `manifold-clap` uses the
 raw CLAP C ABI bindings and loads the authored Standalone FX project through
 `manifold-native`, with seven stable controls, stereo f32 processing, and host

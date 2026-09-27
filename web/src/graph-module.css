@@ -30,7 +30,7 @@ h1 { margin: 0; font-size: 26px; line-height: 1.1; font-weight: 600; letter-spac
 #graph-status { color: #a8bacb; min-height: 22px; margin: 18px 0 12px; }
 footer { border-top: 1px solid #253349; padding-top: 11px; color: #8297ac; font-size: 11px; }
 body.plugin-editor { min-width: 0; width: 800px; height: 600px; overflow: hidden; }
-.plugin-editor .graph-topbar a, .plugin-editor .graph-open, .plugin-editor #graph-note, .plugin-editor #graph-tone { display: none; }
+.plugin-editor .graph-topbar a, .plugin-editor #graph-note, .plugin-editor #graph-tone { display: none; }
 .plugin-editor main { padding: 15px 18px; height: 562px; overflow: auto; }
 .plugin-editor .graph-toolbar { justify-content: end; margin: 10px 0 14px; }
 .plugin-editor #graph-widget-root { grid-template-columns: repeat(2, minmax(272px, 1fr)); }

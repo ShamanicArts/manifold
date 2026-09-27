@@ -1,0 +1,14 @@
+{
+  "host": "REAPER Linux VST3",
+  "project": "tone-texture.json",
+  "projectBytes": 1471,
+  "import": "editor JSON file input",
+  "savedAndReopened": true,
+  "renderFrames": 48000,
+  "channels": 2,
+  "peak": 0.2299288511276245,
+  "reference": "preset render",
+  "peakError": 0.0,
+  "assetFrames": 0,
+  "render": "graph-vst3-reaper-direct-import.wav"
+}

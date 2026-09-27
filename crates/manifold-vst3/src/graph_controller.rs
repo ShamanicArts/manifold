@@ -1,6 +1,6 @@
 //! Fixed VST3 parameter surface for arbitrary authored graph projects.
 
-use std::ffi::c_char;
+use std::ffi::{c_char, c_void};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -19,11 +19,64 @@ pub(crate) struct GraphController {
 pub(crate) struct GraphShared {
     normalized: [AtomicU64; HOST_SLOT_COUNT],
     pub handler: Mutex<Option<ComPtr<IComponentHandler>>>,
+    host: Mutex<Option<ComPtr<IHostApplication>>>,
+    peer: Mutex<Option<ComPtr<IConnectionPoint>>>,
     presentation: Mutex<serde_json::Value>,
     version: AtomicU64,
 }
 
 impl GraphShared {
+    pub fn import_project(&self, bytes: &[u8]) -> Result<(), &'static str> {
+        let project = NativeProject::parse(bytes).map_err(|_| "invalid graph project")?;
+        let next = presentation(bytes, &project).ok_or("unsupported graph presentation")?;
+        let host = self
+            .host
+            .lock()
+            .map_err(|_| "host unavailable")?
+            .clone()
+            .ok_or("host message service unavailable")?;
+        let peer = self
+            .peer
+            .lock()
+            .map_err(|_| "processor unavailable")?
+            .clone()
+            .ok_or("processor connection unavailable")?;
+        let mut cid = IMessage_iid;
+        let mut iid = IMessage_iid;
+        let mut raw: *mut c_void = std::ptr::null_mut();
+        if unsafe { host.createInstance(&mut cid, &mut iid, &mut raw) } != kResultOk {
+            return Err("host cannot create a project message");
+        }
+        let message = unsafe { ComPtr::<IMessage>::from_raw(raw as *mut IMessage) }
+            .ok_or("host returned an empty project message")?;
+        unsafe { message.setMessageID(c"manifold.graph.import.v1".as_ptr()) };
+        let attributes = unsafe { ComRef::from_raw(message.getAttributes()) }
+            .ok_or("host message has no attributes")?;
+        let len = u32::try_from(bytes.len()).map_err(|_| "project too large")?;
+        if unsafe { attributes.setBinary(c"project".as_ptr(), bytes.as_ptr().cast(), len) }
+            != kResultOk
+        {
+            return Err("host rejected project data");
+        }
+        if unsafe { peer.notify(message.as_ptr()) } != kResultOk {
+            return Err("processor rejected project");
+        }
+        let values = normalized_values(&slot_descriptors(&project));
+        let mut current = self
+            .presentation
+            .lock()
+            .map_err(|_| "presentation unavailable")?;
+        *current = next;
+        for (slot, value) in values.iter().enumerate() {
+            self.normalized[slot].store(value.to_bits(), Ordering::Release);
+        }
+        self.version.fetch_add(1, Ordering::Release);
+        if let Some(handler) = self.handler.lock().ok().and_then(|handler| handler.clone()) {
+            unsafe { handler.restartComponent(RestartFlags_::kParamValuesChanged) };
+        }
+        Ok(())
+    }
+
     pub fn value(&self, id: u32) -> f64 {
         GraphController::slot(id)
             .map(|slot| f64::from_bits(self.normalized[slot].load(Ordering::Acquire)))
@@ -94,6 +147,8 @@ impl GraphController {
             shared: Arc::new(GraphShared {
                 normalized: defaults.map(|value| AtomicU64::new(value.to_bits())),
                 handler: Mutex::new(None),
+                host: Mutex::new(None),
+                peer: Mutex::new(None),
                 presentation: Mutex::new(
                     presentation(DEFAULT_PROJECT, &project).expect("authored graph presentation"),
                 ),
@@ -111,15 +166,48 @@ impl GraphController {
 }
 
 impl Class for GraphController {
-    type Interfaces = (IEditController,);
+    type Interfaces = (IEditController, IConnectionPoint);
 }
 
 impl IPluginBaseTrait for GraphController {
-    unsafe fn initialize(&self, _context: *mut FUnknown) -> tresult {
+    unsafe fn initialize(&self, context: *mut FUnknown) -> tresult {
+        if let Ok(mut host) = self.shared.host.lock() {
+            *host = unsafe { ComRef::from_raw(context) }
+                .and_then(|context| context.cast::<IHostApplication>());
+        }
         kResultOk
     }
     unsafe fn terminate(&self) -> tresult {
+        if let Ok(mut peer) = self.shared.peer.lock() {
+            *peer = None;
+        }
+        if let Ok(mut host) = self.shared.host.lock() {
+            *host = None;
+        }
         kResultOk
+    }
+}
+
+impl IConnectionPointTrait for GraphController {
+    unsafe fn connect(&self, other: *mut IConnectionPoint) -> tresult {
+        let Some(other) = (unsafe { ComRef::from_raw(other) }) else {
+            return kInvalidArgument;
+        };
+        let Ok(mut peer) = self.shared.peer.lock() else {
+            return kResultFalse;
+        };
+        *peer = Some(other.to_com_ptr());
+        kResultOk
+    }
+    unsafe fn disconnect(&self, _other: *mut IConnectionPoint) -> tresult {
+        let Ok(mut peer) = self.shared.peer.lock() else {
+            return kResultFalse;
+        };
+        *peer = None;
+        kResultOk
+    }
+    unsafe fn notify(&self, _message: *mut IMessage) -> tresult {
+        kResultFalse
     }
 }
 

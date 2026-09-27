@@ -4,13 +4,19 @@
 Requires DISPLAY on a disposable Xvfb server, XTEST, and a built VST3 bundle.
 """
 
+from array import array
+import base64
 import ctypes as c
+import json
+import math
 import os
 from pathlib import Path
 import signal
 import subprocess
+import sys
 import tempfile
 import time
+import wave
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +67,7 @@ class X11:
         x.XFlush.argtypes = [c.c_void_p]
         x.XFetchName.argtypes = [c.c_void_p, c.c_ulong, c.POINTER(c.c_char_p)]
         x.XRaiseWindow.argtypes = [c.c_void_p, c.c_ulong]
+        x.XSetInputFocus.argtypes = [c.c_void_p, c.c_ulong, c.c_int, c.c_ulong]
         x.XCloseDisplay.argtypes = [c.c_void_p]
 
     def children(self, window: int) -> list[int]:
@@ -129,16 +136,27 @@ class X11:
                     return
         raise AssertionError("REAPER graph FX window not found")
 
+    def window_titles(self) -> list[tuple[int, str, tuple[int, int]]]:
+        result = []
+        for window in self.children(self.root):
+            name = c.c_char_p()
+            title = ""
+            if self.lib.XFetchName(self.display, window, c.byref(name)) and name.value:
+                title = name.value.decode(errors="replace")
+                self.lib.XFree(name)
+            result.append((window, title, self.geometry(window)))
+        return result
+
     def drag(self, window: int) -> None:
         x, y = self.origin(window)
         test = c.CDLL("libXtst.so.6")
         test.XTestFakeMotionEvent.argtypes = [c.c_void_p, c.c_int, c.c_int, c.c_int, c.c_ulong]
         test.XTestFakeButtonEvent.argtypes = [c.c_void_p, c.c_uint, c.c_int, c.c_ulong]
-        assert test.XTestFakeMotionEvent(self.display, -1, x + 115, y + 197, 0)
+        assert test.XTestFakeMotionEvent(self.display, -1, x + 115, y + 211, 0)
         assert test.XTestFakeButtonEvent(self.display, 1, 1, 0)
         self.lib.XFlush(self.display)
         time.sleep(0.1)
-        assert test.XTestFakeMotionEvent(self.display, -1, x + 235, y + 197, 0)
+        assert test.XTestFakeMotionEvent(self.display, -1, x + 235, y + 211, 0)
         self.lib.XFlush(self.display)
         time.sleep(0.1)
         assert test.XTestFakeButtonEvent(self.display, 1, 0, 0)
@@ -154,6 +172,41 @@ class X11:
         assert test.XTestFakeButtonEvent(self.display, 1, 0, 0)
         self.lib.XFlush(self.display)
 
+    def choose_file(self, window: int, path: Path) -> None:
+        x, y = self.origin(window)
+        self.click(x + 90, y + 125)
+        time.sleep(0.8)
+        chooser = next((window for window, title, _ in self.window_titles()
+                        if title == "Select File"), None)
+        assert chooser, "native file chooser did not open"
+        self.lib.XSetInputFocus(self.display, chooser, 2, 0)
+        self.lib.XFlush(self.display)
+        test = c.CDLL("libXtst.so.6")
+        test.XTestFakeKeyEvent.argtypes = [c.c_void_p, c.c_uint, c.c_int, c.c_ulong]
+        self.lib.XKeysymToKeycode.argtypes = [c.c_void_p, c.c_ulong]
+        self.lib.XKeysymToKeycode.restype = c.c_ubyte
+        def key(symbol: int, down: bool) -> None:
+            code = self.lib.XKeysymToKeycode(self.display, symbol)
+            assert code, f"unmapped keysym {symbol:#x}"
+            assert test.XTestFakeKeyEvent(self.display, code, int(down), 0)
+        key(0xffe3, True)  # Control_L
+        key(ord("l"), True)
+        key(ord("l"), False)
+        key(0xffe3, False)
+        self.lib.XFlush(self.display)
+        time.sleep(0.2)
+        for character in str(path):
+            key(ord(character), True)
+            key(ord(character), False)
+        key(0xff0d, True)  # Return
+        key(0xff0d, False)
+        self.lib.XFlush(self.display)
+        time.sleep(0.3)
+        key(0xff0d, True)
+        key(0xff0d, False)
+        self.lib.XFlush(self.display)
+        time.sleep(0.8)
+
     def capture(self, window: int, name: str) -> Path:
         target = PUBLIC / name
         subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "x11grab",
@@ -166,13 +219,41 @@ class X11:
 
 
 def main() -> None:
+    sample_import = "--sample-import" in sys.argv
+    manual_picker = "--manual-picker" in sys.argv
+    direct_import = "--direct-import" in sys.argv or sample_import or manual_picker
     assert os.environ.get("MANIFOLD_ISOLATED_DISPLAY") == "1"
     assert os.environ.get("DISPLAY") and os.environ["DISPLAY"] != ":0"
     assert BUNDLE.is_dir(), "build the VST3 bundle first"
+    assert sys.byteorder == "little", "the generated PCM fixture uses little-endian floats"
     x11 = X11()
     try:
         with tempfile.TemporaryDirectory(prefix="manifold-graph-editor-reaper-") as directory:
             work = Path(directory)
+            project = work / "direct-import.rpp"
+            imported_project = ROOT / "projects/graph-workspace/tone-texture.json"
+            picker_project = Path(f"/tmp/manifoldimporttone{os.getpid()}.json")
+            if manual_picker:
+                picker_project.write_bytes(imported_project.read_bytes())
+                imported_project = picker_project
+            if direct_import:
+                if sample_import:
+                    bundle = json.loads((ROOT / "projects/graph-workspace/sample-voice.json").read_text())
+                    pcm = array("f")
+                    for frame in range(48_000):
+                        value = 0.25 * math.sin(2 * math.pi * 440 * frame / 48_000)
+                        pcm.extend((value, value))
+                    bundle["assets"] = [{"nodeId": 5, "sourceRate": 48_000,
+                                         "frames": 48_000, "label": "440 Hz source",
+                                         "pcmF32Base64": base64.b64encode(pcm.tobytes()).decode("ascii")}]
+                    imported_project = work / "sample-voice-with-source.json"
+                    imported_project.write_text(json.dumps(bundle, separators=(",", ":")))
+                else:
+                    with wave.open(str(work / "silence.wav"), "wb") as source:
+                        source.setnchannels(2)
+                        source.setsampwidth(2)
+                        source.setframerate(48_000)
+                        source.writeframes(bytes(48_000 * 4))
             preset = work / "tone-texture.vstpreset"
             subprocess.run(["cargo", "run", "-q", "-p", "manifold-vst3", "--example",
                             "export_graph_preset", "--",
@@ -181,9 +262,27 @@ def main() -> None:
             config = work / "reaper.ini"
             config.write_text(f"[reaper]\nvstpath={BUNDLE.parent}\nvstpath64={BUNDLE.parent}\n")
             script = work / "probe.lua"
+            if sample_import:
+                media_setup = """
+local item=reaper.CreateNewMIDIItemInProj(track,0,1,false)
+local take=reaper.GetActiveTake(item)
+local start=reaper.MIDI_GetPPQPosFromProjTime(take,0.125)
+local finish=reaper.MIDI_GetPPQPosFromProjTime(take,0.5)
+reaper.MIDI_InsertNote(take,false,false,start,finish,0,60,100,false)
+reaper.MIDI_Sort(take)
+"""
+            elif direct_import:
+                media_setup = (f"reaper.SetOnlyTrackSelected(track); "
+                               f"reaper.SetEditCurPos(0,false,false); "
+                               f"reaper.InsertMedia('{work}/silence.wav',0)")
+            else:
+                media_setup = ""
             script.write_text(f"""
+reaper.GetSetProjectInfo(0,'PROJECT_SRATE',48000,true)
+reaper.GetSetProjectInfo(0,'PROJECT_SRATE_USE',1,true)
 reaper.InsertTrackAtIndex(0,true)
 local track=reaper.GetTrack(0,0)
+{media_setup}
 local fx=reaper.TrackFX_AddByName(track,'VST3: Manifold Graph',false,-1)
 local out=io.open('{work}/ready.txt','w')
 if fx<0 then out:write('FAILED: Manifold Graph unavailable'); out:close(); return end
@@ -203,6 +302,20 @@ local function poll()
   elseif command=='preset' then
    local loaded=reaper.TrackFX_SetPreset(track,fx,'{preset}')
    result:write(loaded and 'done preset' or 'FAILED: preset load')
+  elseif command=='save' then
+   reaper.GetSetProjectInfo(0,'RENDER_SETTINGS',0,true)
+   reaper.GetSetProjectInfo(0,'RENDER_BOUNDSFLAG',0,true)
+   reaper.GetSetProjectInfo(0,'RENDER_STARTPOS',0,true)
+   reaper.GetSetProjectInfo(0,'RENDER_ENDPOS',1,true)
+   reaper.GetSetProjectInfo(0,'RENDER_SRATE',48000,true)
+   reaper.GetSetProjectInfo(0,'RENDER_CHANNELS',2,true)
+   reaper.GetSetProjectInfo(0,'RENDER_TAILFLAG',0,true)
+   reaper.GetSetProjectInfo(0,'RENDER_NORMALIZE',0,true)
+   reaper.GetSetProjectInfo_String(0,'RENDER_FILE','{work}',true)
+   reaper.GetSetProjectInfo_String(0,'RENDER_PATTERN','direct-import',true)
+   reaper.GetSetProjectInfo_String(0,'RENDER_FORMAT','evaw',true)
+   reaper.Main_SaveProjectEx(0,'{project}',0)
+   result:write('done saved')
   else result:write('FAILED: unknown command') end
   result:close()
  end
@@ -211,6 +324,8 @@ end
 reaper.defer(poll)
 """)
             env = {**os.environ, "GDK_BACKEND": "x11"}
+            if direct_import and not manual_picker:
+                env["MANIFOLD_GRAPH_IMPORT_PROBE"] = str(imported_project)
             with (work / "reaper.log").open("w") as log:
                 process = subprocess.Popen(
                     ["reaper", "-cfgfile", str(config), "-newinst", "-nosplash",
@@ -234,28 +349,95 @@ reaper.defer(poll)
                     x11.click(672, 360)
                     time.sleep(0.3)
                     x11.raise_fx()
-                    initial = x11.capture(window, "graph-vst3-reaper-editor-initial.png")
-                    (work / "command.txt").write_text("automate")
-                    before = float(wait_for(work / "automate.txt", "done").split()[1])
-                    assert abs(before - 0.2) < 1e-5, before
-                    time.sleep(0.3)
-                    automated = x11.capture(window, "graph-vst3-reaper-editor-automated.png")
-                    x11.drag(window)
-                    (work / "command.txt").write_text("query")
-                    after = float(wait_for(work / "query.txt", "done").split()[1])
-                    assert after > before + 0.2, f"widget drag not received by REAPER: {before} -> {after}"
-                    gesture = x11.capture(window, "graph-vst3-reaper-editor-gesture.png")
-                    (work / "command.txt").write_text("preset")
-                    wait_for(work / "preset.txt", "done")
-                    time.sleep(0.5)
-                    x11.raise_fx()
-                    imported = x11.capture(window, "graph-vst3-reaper-editor-imported.png")
-                    print(f"REAPER graph original widget: slot 0 {before:.3f} -> {after:.3f}; "
-                          f"captures: {initial}, {automated}, {gesture}, {imported}")
+                    if direct_import:
+                        if manual_picker:
+                            x11.choose_file(window, imported_project)
+                        time.sleep(1)
+                        (work / "command.txt").write_text("query")
+                        value = float(wait_for(work / "query.txt", "done").split()[1])
+                        if not sample_import:
+                            assert value < 0.1, f"direct JSON import did not reach the host: slot 0={value}"
+                        imported = x11.capture(window, "graph-vst3-reaper-editor-sample-import.png"
+                                               if sample_import else "graph-vst3-reaper-editor-direct-import.png")
+                        (work / "command.txt").write_text("save")
+                        wait_for(work / "save.txt", "done")
+                        print(f"REAPER direct JSON import: slot 0={value:.3f}; capture: {imported}")
+                    else:
+                        initial = x11.capture(window, "graph-vst3-reaper-editor-initial.png")
+                        (work / "command.txt").write_text("automate")
+                        before = float(wait_for(work / "automate.txt", "done").split()[1])
+                        assert abs(before - 0.2) < 1e-5, before
+                        time.sleep(0.3)
+                        automated = x11.capture(window, "graph-vst3-reaper-editor-automated.png")
+                        x11.drag(window)
+                        (work / "command.txt").write_text("query")
+                        after = float(wait_for(work / "query.txt", "done").split()[1])
+                        assert after > before + 0.2, f"widget drag not received by REAPER: {before} -> {after}"
+                        gesture = x11.capture(window, "graph-vst3-reaper-editor-gesture.png")
+                        (work / "command.txt").write_text("preset")
+                        wait_for(work / "preset.txt", "done")
+                        time.sleep(0.5)
+                        x11.raise_fx()
+                        imported = x11.capture(window, "graph-vst3-reaper-editor-imported.png")
+                        print(f"REAPER graph original widget: slot 0 {before:.3f} -> {after:.3f}; "
+                              f"captures: {initial}, {automated}, {gesture}, {imported}")
                 finally:
                     if process.poll() is None:
                         os.killpg(process.pid, signal.SIGTERM)
                     process.wait(timeout=5)
+            if direct_import:
+                assert project.exists(), "REAPER did not save imported graph state"
+                render_env = {key: value for key, value in env.items()
+                              if key != "MANIFOLD_GRAPH_IMPORT_PROBE"}
+                with (work / "render.log").open("w") as log:
+                    subprocess.run(["reaper", "-cfgfile", str(config), "-newinst",
+                                    "-nosplash", "-renderproject", str(project)],
+                                   env=render_env, stdout=log, stderr=subprocess.STDOUT,
+                                   timeout=45, check=True)
+                rendered = work / "direct-import.wav"
+                assert rendered.exists(), (work / "render.log").read_text()[-1500:]
+                def samples(path: Path) -> array:
+                    raw = subprocess.check_output(["ffmpeg", "-v", "error", "-i", str(path),
+                                                   "-f", "f32le", "-acodec", "pcm_f32le", "-"])
+                    result = array("f")
+                    result.frombytes(raw)
+                    return result
+                actual = samples(rendered)
+                if sample_import:
+                    native_path = work / "sample-native.f32"
+                    subprocess.run(["cargo", "run", "-q", "-p", "manifold-native",
+                                    "--example", "render_graph_midi_audio", "--",
+                                    str(imported_project), str(native_path), "1024", "6000",
+                                    "24000", "100"], cwd=ROOT, check=True, timeout=120)
+                    expected = array("f")
+                    expected.frombytes(native_path.read_bytes())
+                else:
+                    expected = samples(PUBLIC / "graph-vst3-reaper-tone.wav")
+                assert len(actual) == len(expected) == 48_000 * 2
+                peak = max(abs(value) for value in actual)
+                error = max(abs(a - b) for a, b in zip(actual, expected))
+                assert peak > 0.01 and error < 1e-7, (peak, error)
+                target = PUBLIC / ("graph-vst3-reaper-sample-import.wav" if sample_import
+                                   else "graph-vst3-reaper-direct-import.wav")
+                target.write_bytes(rendered.read_bytes())
+                reference = "native Rust" if sample_import else "preset render"
+                metrics = {
+                    "host": "REAPER Linux VST3",
+                    "project": imported_project.name if sample_import else "tone-texture.json",
+                    "projectBytes": imported_project.stat().st_size,
+                    "import": "editor JSON file input", "savedAndReopened": True,
+                    "renderFrames": 48_000, "channels": 2, "peak": peak,
+                    "reference": reference, "peakError": error,
+                    "assetFrames": 48_000 if sample_import else 0,
+                    "render": target.name,
+                }
+                (PUBLIC / ("graph-vst3-reaper-sample-import.json" if sample_import
+                           else "graph-vst3-reaper-direct-import.json")).write_text(
+                    json.dumps(metrics, indent=2) + "\n")
+                print(f"Fresh REAPER render after direct import: peak={peak:.6f}, "
+                      f"peak error vs {reference}={error:.2g}; {target}")
+            if manual_picker:
+                picker_project.unlink(missing_ok=True)
     finally:
         x11.close()
 
