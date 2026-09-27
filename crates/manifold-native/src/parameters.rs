@@ -1,5 +1,15 @@
 //! Physical parameter values and stable graph-scoped host identifiers.
 
+/// VST3-facing parameter IDs are fixed macro slots, independent of graph edits.
+pub const HOST_SLOT_COUNT: usize = 128;
+pub const HOST_SLOT_BASE: u32 = 0x0100_0000;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HostBinding {
+    pub slot: u32,
+    pub graph_parameter: u32,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HostParameter {
     /// Stable while the node ID and its local control ID remain in the project.

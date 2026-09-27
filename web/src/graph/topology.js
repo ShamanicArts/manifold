@@ -353,12 +353,52 @@ export function validateGraphTemporal(signal, assets, temporal) {
   });
 }
 
-export function captureGraphProject(signal, assets = [], targets = [], temporal = []) {
+export const HOST_SLOT_COUNT = 128;
+
+export function validateGraphHostBindings(signal, bindings) {
+  if (!Array.isArray(bindings) || bindings.length > HOST_SLOT_COUNT) throw new Error('Invalid host bindings.');
+  const targets = new Set(signal.initialParameters.map(({ nodeId, id }) => `${nodeId}:${id}`));
+  const slots = new Set();
+  const used = new Set();
+  return bindings.map((entry) => {
+    const target = `${entry?.nodeId}:${entry?.id}`;
+    if (!entry || !sameKeys(entry, ['slot', 'nodeId', 'id'])
+      || !Number.isInteger(entry.slot) || entry.slot < 0 || entry.slot >= HOST_SLOT_COUNT
+      || !Number.isInteger(entry.nodeId) || !Number.isInteger(entry.id)
+      || slots.has(entry.slot) || used.has(target) || !targets.has(target)) {
+      throw new Error('Invalid host binding.');
+    }
+    slots.add(entry.slot);
+    used.add(target);
+    return { slot: entry.slot, nodeId: entry.nodeId, id: entry.id };
+  });
+}
+
+export function deriveGraphHostBindings(signal, previous = []) {
+  const targets = new Set(signal.initialParameters.map(({ nodeId, id }) => `${nodeId}:${id}`));
+  const retained = validateGraphHostBindings(signal, previous.filter((item) => targets.has(`${item?.nodeId}:${item?.id}`)));
+  const usedSlots = new Set(retained.map(({ slot }) => slot));
+  const usedTargets = new Set(retained.map(({ nodeId, id }) => `${nodeId}:${id}`));
+  const ordered = [...signal.initialParameters].sort((a, b) => a.nodeId - b.nodeId || a.id - b.id);
+  for (const { nodeId, id } of ordered) {
+    if (retained.length >= HOST_SLOT_COUNT) break;
+    if (usedTargets.has(`${nodeId}:${id}`)) continue;
+    let slot = 0;
+    while (usedSlots.has(slot)) slot++;
+    retained.push({ slot, nodeId, id });
+    usedSlots.add(slot);
+  }
+  return retained;
+}
+
+export function captureGraphProject(signal, assets = [], targets = [], temporal = [], hostBindings = null) {
   const graph = validateTopology(signal);
   const checked = validateGraphAssets(graph, assets);
   const partials = validateGraphTargets(graph, targets);
   const motion = validateGraphTemporal(graph, checked, temporal);
+  const bindings = deriveGraphHostBindings(graph, hostBindings ?? []);
   return { format: PROJECT_FORMAT, schemaVersion: PROJECT_VERSION, projectId, signal: graph,
+    hostBindings: bindings,
     ...(checked.length ? { assets: checked.map((asset) => ({ nodeId: asset.nodeId,
       sourceRate: asset.sourceRate, frames: asset.stereo.length / 2, label: asset.label,
       pcmF32Base64: encodePcm(asset.stereo) })) } : {}),
@@ -369,7 +409,7 @@ export function captureGraphProject(signal, assets = [], targets = [], temporal 
 export function parseGraphBundle(document) {
   if (document?.format !== PROJECT_FORMAT || document.schemaVersion !== PROJECT_VERSION
     || document.projectId !== projectId
-    || !Array.from({ length: 8 }, (_, mask) => ['assets', 'targets', 'temporal']
+    || !Array.from({ length: 16 }, (_, mask) => ['assets', 'targets', 'temporal', 'hostBindings']
       .filter((_, index) => mask & (1 << index))).some((optional) =>
       sameKeys(document, ['format', 'schemaVersion', 'projectId', 'signal', ...optional]))) {
     throw new Error('This is not a supported graph workspace project.');
@@ -396,7 +436,10 @@ export function parseGraphBundle(document) {
   const checked = validateGraphAssets(signal, assets);
   return { signal, assets: checked,
     targets: validateGraphTargets(signal, document.targets ?? []),
-    temporal: validateGraphTemporal(signal, checked, document.temporal ?? []) };
+    temporal: validateGraphTemporal(signal, checked, document.temporal ?? []),
+    hostBindings: Object.hasOwn(document, 'hostBindings')
+      ? deriveGraphHostBindings(signal, validateGraphHostBindings(signal, document.hostBindings))
+      : deriveGraphHostBindings(signal) };
 }
 
 export function parseGraphProject(document) { return parseGraphBundle(document).signal; }

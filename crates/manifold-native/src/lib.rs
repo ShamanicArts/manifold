@@ -7,7 +7,9 @@ use manifold_core::graph::{ExecutionPlan, GraphDescription, GraphError, NodeId};
 pub mod parameters;
 pub mod project;
 
-use parameters::{AutomationError, HostParameter, TimedAutomation};
+use parameters::{
+    AutomationError, HOST_SLOT_BASE, HOST_SLOT_COUNT, HostParameter, TimedAutomation,
+};
 
 const MAX_SPLIT_MIDI_EVENTS: usize = 1024;
 const MAX_AUTOMATION_POINTS: usize = 1024;
@@ -39,6 +41,7 @@ pub struct NativeProcessor {
     max_frames: usize,
     silence: Vec<f32>,
     host_parameters: Vec<HostParameter>,
+    slot_bindings: [Option<u32>; HOST_SLOT_COUNT],
     event_scratch: Vec<TimedEvent>,
 }
 
@@ -58,12 +61,30 @@ impl NativeProcessor {
             max_frames,
             silence: vec![0.0; max_frames],
             host_parameters: Vec::new(),
+            slot_bindings: [None; HOST_SLOT_COUNT],
             event_scratch: Vec::with_capacity(MAX_SPLIT_MIDI_EVENTS),
         })
     }
 
     pub fn host_parameters(&self) -> &[HostParameter] {
         &self.host_parameters
+    }
+
+    /// Fixed public host slots; a slot may be unbound in a given project.
+    pub fn bound_graph_parameter(&self, slot: u32) -> Option<u32> {
+        self.slot_bindings.get(slot as usize).copied().flatten()
+    }
+
+    fn parameter_for_id(&self, id: u32, fixed_slots: bool) -> Option<&HostParameter> {
+        let graph_id = if fixed_slots {
+            let slot = id.checked_sub(HOST_SLOT_BASE)? as usize;
+            self.slot_bindings.get(slot).copied().flatten()?
+        } else {
+            id
+        };
+        self.host_parameters
+            .iter()
+            .find(|entry| entry.id == graph_id)
     }
 
     /// Prepared parameter changes may be applied between blocks. The host must
@@ -117,6 +138,26 @@ impl NativeProcessor {
         block: AudioBlock<'_>,
         automation: &[TimedAutomation],
     ) -> Result<(), NativeError> {
+        self.process_automated_impl(block, automation, false)
+    }
+
+    /// The VST3-facing automation path uses a fixed set of 128 macro IDs.
+    /// Bindings are restored with the project, so graph edits cannot renumber
+    /// host automation lanes.
+    pub fn process_host_automated(
+        &mut self,
+        block: AudioBlock<'_>,
+        automation: &[TimedAutomation],
+    ) -> Result<(), NativeError> {
+        self.process_automated_impl(block, automation, true)
+    }
+
+    fn process_automated_impl(
+        &mut self,
+        block: AudioBlock<'_>,
+        automation: &[TimedAutomation],
+        fixed_slots: bool,
+    ) -> Result<(), NativeError> {
         if automation.is_empty() {
             return self.process(block);
         }
@@ -151,9 +192,7 @@ impl NativeProcessor {
                 return Err(NativeError::Automation(AutomationError::Unsorted));
             }
             let descriptor = self
-                .host_parameters
-                .iter()
-                .find(|entry| entry.id == point.id)
+                .parameter_for_id(point.id, fixed_slots)
                 .ok_or(NativeError::Automation(AutomationError::UnknownParameter))?;
             if descriptor.from_normalized(point.normalized).is_none() {
                 return Err(NativeError::Automation(AutomationError::InvalidNormalized));
@@ -163,9 +202,7 @@ impl NativeProcessor {
         if frames == 0 {
             for point in automation {
                 let descriptor = self
-                    .host_parameters
-                    .iter()
-                    .find(|entry| entry.id == point.id)
+                    .parameter_for_id(point.id, fixed_slots)
                     .expect("validated ID");
                 let value = descriptor
                     .from_normalized(point.normalized)
@@ -187,9 +224,7 @@ impl NativeProcessor {
             while point_index < automation.len() && automation[point_index].offset == start {
                 let point = automation[point_index];
                 let descriptor = self
-                    .host_parameters
-                    .iter()
-                    .find(|entry| entry.id == point.id)
+                    .parameter_for_id(point.id, fixed_slots)
                     .expect("validated ID");
                 let value = descriptor
                     .from_normalized(point.normalized)

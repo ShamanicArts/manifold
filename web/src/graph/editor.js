@@ -1,6 +1,6 @@
 import { NODE_TYPES, SAMPLE_NODE_TYPES, addNode, removeNode, setConnection, setInitialParameter,
   setInputSource, setSidechainSource, captureGraphProject, parseGraphProject, parseGraphBundle, validateGraphAssets,
-  validateGraphTargets, validateGraphTemporal, defaultGraphTemporal } from './topology.js';
+  validateGraphTargets, validateGraphTemporal, defaultGraphTemporal, deriveGraphHostBindings } from './topology.js';
 import { parseMainVoiceBankState } from '../state/main-voice-bank.js';
 import { parseProjectDocument } from '../state/project-document.js';
 import { analyzeMainSource } from './main-source.js';
@@ -79,7 +79,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
     fileInput.disabled = disabled;
     if (updateStatus && isActive()) status.textContent = `${project.signal.nodes.length} nodes · ${project.signal.connections.length} connections · ${isRunning() ? 'parameters update live; stop audio to edit topology' : 'start audio to compile this graph in Rust'}`;
   }
-  function commit(signal, message, assets = project.graphAssets ?? [], targets = project.graphTargets ?? [], temporal = project.graphTemporal ?? []) {
+  function commit(signal, message, assets = project.graphAssets ?? [], targets = project.graphTargets ?? [], temporal = project.graphTemporal ?? [], hostBindings = project.graphHostBindings ?? []) {
     const checked = validateGraphAssets(signal, assets.filter((asset) => signal.nodes.some((node) => node.id === asset.nodeId && SAMPLE_NODE_TYPES.has(node.type))));
     const partials = validateGraphTargets(signal, targets.filter((target) => signal.nodes.some((node) => node.id === target.nodeId && node.type === 'main-voice-bank')));
     const motion = validateGraphTemporal(signal, checked, temporal.filter((entry) =>
@@ -90,6 +90,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
     project.graphAssets = checked;
     project.graphTargets = partials;
     project.graphTemporal = motion;
+    project.graphHostBindings = deriveGraphHostBindings(signal, hostBindings);
     render();
     status.textContent = message;
     onChange?.(signal);
@@ -602,14 +603,14 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   exportButton.addEventListener('click', () => {
     if (!isActive()) return;
     try {
-      const bundle = captureGraphProject(project.signal, project.graphAssets ?? [], project.graphTargets ?? [], project.graphTemporal ?? []);
+      const bundle = captureGraphProject(project.signal, project.graphAssets ?? [], project.graphTargets ?? [], project.graphTemporal ?? [], project.graphHostBindings ?? null);
       const url = URL.createObjectURL(new Blob([`${JSON.stringify(bundle, null, 2)}\n`], { type: 'application/json' }));
       const link = document.createElement('a');
       link.href = url;
       link.download = 'manifold-graph-workspace-project.json';
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      status.textContent = `Downloaded ${bundle.signal.nodes.length} nodes, ${bundle.signal.connections.length} connections, ${bundle.assets?.length ?? 0} sample assets, ${bundle.targets?.length ?? 0} partial targets, and ${bundle.temporal?.length ?? 0} motion recipes.`;
+      status.textContent = `Downloaded ${bundle.signal.nodes.length} nodes, ${bundle.signal.connections.length} connections, ${bundle.hostBindings.length} host control slots, ${bundle.assets?.length ?? 0} sample assets, ${bundle.targets?.length ?? 0} partial targets, and ${bundle.temporal?.length ?? 0} motion recipes.`;
     } catch (error) { fail(error); }
   }, { signal: listeners.signal });
   fileInput.addEventListener('change', async () => {
@@ -622,7 +623,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
       const contents = await file.text();
       if (!canEdit() || revision !== startingRevision) return;
       const bundle = parseGraphBundle(JSON.parse(contents));
-      commit(bundle.signal, `Opened ${file.name} with ${bundle.assets.length} sample assets, ${bundle.targets.length} partial targets, and ${bundle.temporal.length} motion recipes. Start audio to compile the restored graph.`, bundle.assets, bundle.targets, bundle.temporal);
+      commit(bundle.signal, `Opened ${file.name} with ${bundle.hostBindings.length} host slots, ${bundle.assets.length} sample assets, ${bundle.targets.length} partial targets, and ${bundle.temporal.length} motion recipes. Start audio to compile the restored graph.`, bundle.assets, bundle.targets, bundle.temporal, bundle.hostBindings);
     } catch (error) { if (revision === startingRevision) fail(error); }
     finally { fileInput.value = ''; }
   }, { signal: listeners.signal });

@@ -7,7 +7,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use manifold_core::graph::{Connection, GraphDescription, NodeKind, NodeSpec};
 use serde_json::Value;
 
-use crate::parameters::HostParameter;
+use crate::parameters::{HOST_SLOT_COUNT, HostBinding, HostParameter};
 use crate::{NativeError, NativeProcessor};
 
 const MAX_PROJECT_BYTES: usize = 45 * 1024 * 1024;
@@ -41,6 +41,7 @@ pub struct NativeProject {
     graph: GraphDescription,
     parameters: Vec<Parameter>,
     host_parameters: Vec<HostParameter>,
+    host_bindings: Vec<HostBinding>,
     assets: Vec<Asset>,
 }
 
@@ -128,7 +129,7 @@ impl NativeProject {
         let doc = object(
             &root,
             &["format", "schemaVersion", "projectId", "signal"],
-            &["assets", "targets", "temporal"],
+            &["assets", "targets", "temporal", "hostBindings"],
         )?;
         if required(doc, "format") != "manifold.project"
             || required(doc, "schemaVersion") != 1
@@ -328,6 +329,59 @@ impl NativeProject {
                 }
             }
         }
+        let mut host_bindings = Vec::new();
+        if let Some(raw) = doc.get("hostBindings") {
+            let entries = raw
+                .as_array()
+                .ok_or(ProjectError::Invalid("host bindings"))?;
+            if entries.len() > HOST_SLOT_COUNT {
+                return Err(ProjectError::Invalid("host binding count"));
+            }
+            let mut slots = BTreeSet::new();
+            let mut targets = BTreeSet::new();
+            for entry in entries {
+                let entry = object(entry, &["slot", "nodeId", "id"], &[])?;
+                let slot = uint(required(entry, "slot"), (HOST_SLOT_COUNT - 1) as u64)?;
+                let node = uint(required(entry, "nodeId"), 65_535)?;
+                let id = uint(required(entry, "id"), 255)?;
+                let graph_parameter = node << 8 | id;
+                if !slots.insert(slot)
+                    || !targets.insert(graph_parameter)
+                    || !host_parameters
+                        .iter()
+                        .any(|parameter| parameter.id == graph_parameter)
+                {
+                    return Err(ProjectError::Invalid("host binding target"));
+                }
+                host_bindings.push(HostBinding {
+                    slot,
+                    graph_parameter,
+                });
+            }
+        }
+        let mut ordered: Vec<_> = host_parameters
+            .iter()
+            .map(|parameter| parameter.id)
+            .collect();
+        ordered.sort_unstable();
+        for graph_parameter in ordered {
+            if host_bindings.len() >= HOST_SLOT_COUNT {
+                break;
+            }
+            if host_bindings
+                .iter()
+                .any(|binding| binding.graph_parameter == graph_parameter)
+            {
+                continue;
+            }
+            let slot = (0..HOST_SLOT_COUNT as u32)
+                .find(|slot| !host_bindings.iter().any(|binding| binding.slot == *slot))
+                .expect("free slot below capacity");
+            host_bindings.push(HostBinding {
+                slot,
+                graph_parameter,
+            });
+        }
         let encoded_assets: &[Value] = match doc.get("assets") {
             None => &[],
             Some(Value::Array(values)) => values,
@@ -395,12 +449,17 @@ impl NativeProject {
             graph,
             parameters: parsed_parameters,
             host_parameters,
+            host_bindings,
             assets,
         })
     }
 
     pub fn host_parameters(&self) -> &[HostParameter] {
         &self.host_parameters
+    }
+
+    pub fn host_bindings(&self) -> &[HostBinding] {
+        &self.host_bindings
     }
 
     /// Compile and install state on a control thread, before publishing the processor.
@@ -422,6 +481,9 @@ impl NativeProject {
             }
         }
         processor.host_parameters = self.host_parameters;
+        for binding in self.host_bindings {
+            processor.slot_bindings[binding.slot as usize] = Some(binding.graph_parameter);
+        }
         Ok(processor)
     }
 }
@@ -429,7 +491,7 @@ impl NativeProject {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parameters::{AutomationError, TimedAutomation};
+    use crate::parameters::{AutomationError, HOST_SLOT_BASE, TimedAutomation};
     use crate::{AudioBlock, NativeError};
     use manifold_core::events::{EventKind, TimedEvent};
     use serde_json::json;
@@ -507,6 +569,59 @@ mod tests {
                 .iter()
                 .any(|p| p.id == gain.id && p.node == gain.node)
         );
+        let slot = project
+            .host_bindings()
+            .iter()
+            .find(|binding| binding.graph_parameter == gain.id)
+            .unwrap()
+            .slot;
+        let other_slot = other
+            .host_bindings()
+            .iter()
+            .find(|binding| binding.graph_parameter == gain.id)
+            .unwrap()
+            .slot;
+        assert_eq!(slot, other_slot);
+    }
+
+    #[test]
+    fn explicit_fixed_slot_drives_graph_gain_and_rejects_duplicates() {
+        let mut bundle = fixture();
+        bundle["hostBindings"] = json!([{ "slot": 7, "nodeId": 9, "id": 0 }]);
+        let mut processor = parse(&bundle).unwrap().prepare(48_000.0, 128).unwrap();
+        assert_eq!(processor.bound_graph_parameter(7), Some(9 << 8));
+        assert_eq!(processor.bound_graph_parameter(127), None);
+        let main = [1.0; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        processor
+            .process_host_automated(
+                AudioBlock {
+                    main: Some([&main, &main]),
+                    sidechain: None,
+                    output: [&mut left, &mut right],
+                    events: &[],
+                },
+                &[TimedAutomation {
+                    offset: 64,
+                    id: HOST_SLOT_BASE + 7,
+                    normalized: 0.5,
+                }],
+            )
+            .unwrap();
+        assert!(
+            left[..64]
+                .iter()
+                .all(|value| (*value - 0.25).abs() < 0.0001)
+        );
+        assert!(left[127] > left[64]);
+        let mut invalid = bundle;
+        invalid["hostBindings"] = json!([{ "slot": 7, "nodeId": 9, "id": 0 },
+            { "slot": 7, "nodeId": 5, "id": 0 }]);
+        assert!(matches!(
+            parse(&invalid),
+            Err(ProjectError::Invalid("host binding target"))
+        ));
     }
 
     #[test]
