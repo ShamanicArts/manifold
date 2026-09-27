@@ -487,6 +487,9 @@ body {
 
 .midisynth-panel { position: relative; width: 1280px; height: 504px; background: #0f1726; }
 .midisynth-panel[hidden], .layers[hidden] { display: none; }
+.rack-scroll { position: relative; height: 452px; overflow-y: auto; overflow-x: hidden; scrollbar-color: #334155 #0f1726; }
+.rack-scroll-content { position: relative; width: 1280px; height: 697px; }
+#patch-jump { position: absolute; top: 2px; right: 36px; z-index: 4; height: 23px; padding: 0 9px; border: 1px solid #38bdf8; background: #1e293b; color: #bae6fd; font-size: 10px; cursor: pointer; }
 .rack-row { display: flex; height: 452px; padding-top: 25px; }
 .rack-adsr, .rack-source, .rack-filter { position: relative; flex: none; height: 220px; background: #121a2f; border: 1px solid #1f2b4d; }
 .rack-adsr { width: 236px; }
@@ -535,6 +538,28 @@ body {
 .project-dropdown-overlay[hidden] { display: none; }
 .project-dropdown-overlay canvas { width: 100%; height: 100%; display: block; }
 .rack-eq { position: absolute; left: 944px; top: 232px; width: 236px; height: 220px; background: #121a2f; border: 1px solid #1f2b4d; }
+.rack-lfo { position: absolute; left: 0; top: 465px; width: 236px; height: 220px; background: #0f172a; border: 1px solid #1e3a5f; border-radius: 10px; }
+.lfo-title, .lfo-status, .lfo-output { position: absolute; left: 12px; width: 212px; }
+.lfo-title { top: 10px; font-size: 11px; color: #38bdf8; }
+.lfo-status { top: 28px; font-size: 8px; color: #94a3b8; }
+#lfo-preview { position: absolute; left: 12px; top: 44px; width: 212px; height: 54px; background: #08111f; border: 1px solid #15304f; border-radius: 6px; }
+#lfo-shape { position: absolute; left: 12px; top: 106px; width: 92px; height: 18px; border: 0; background: #111827; color: #38bdf8; font-size: 8px; }
+.lfo-slider { position: absolute; left: 12px; width: 212px; height: 18px; cursor: ew-resize; }
+.lfo-slider canvas, .route-slider canvas { display: block; width: 100%; height: 100%; }
+#lfo-retrig { left: 112px; top: 106px; width: 112px; }
+#lfo-rate { top: 130px; } #lfo-depth { top: 152px; } #lfo-phase { top: 174px; }
+.lfo-output { top: 196px; font-size: 8px; color: #bae6fd; }
+.rack-route { position: absolute; left: 236px; top: 465px; width: 472px; height: 220px; background: #121a2f; border: 1px solid #1f2b4d; }
+.route-head::before { background: #38bdf8; }
+.route-content { padding: 8px 12px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 8px; font-size: 10px; }
+.route-content h2 { grid-column: 1 / -1; margin: 0; color: #dbeafe; font-size: 12px; font-weight: 600; }
+.route-content p { grid-column: 1 / -1; margin: 0; color: #94a3b8; font-size: 9px; }
+.route-content label { display: flex; flex-direction: column; gap: 2px; color: #94a3b8; }
+.route-content select { width: 100%; height: 20px; border: 1px solid #334155; background: #111827; color: #cbd5e1; font-size: 9px; }
+.route-slider { grid-column: span 1; height: 19px; cursor: ew-resize; }
+.route-content .route-toggle { flex-direction: row; align-items: center; color: #cbd5e1; }
+.route-content button { height: 22px; border: 1px solid #334155; background: #1e293b; color: #cbd5e1; font-size: 9px; cursor: pointer; }
+#mod-effective { grid-column: 1 / -1; color: #7dd3fc; font-size: 9px; }
 .eq-head::before { background: #22d3ee; }
 .eq-module { position: relative; width: 236px; height: 208px; }
 #eq-graph { position: absolute; left: 10px; top: 10px; width: 216px; height: 108px; background: #0a0a1a; border: 1px solid #1f2b4d; cursor: crosshair; touch-action: none; }

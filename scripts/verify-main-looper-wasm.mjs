@@ -166,6 +166,35 @@ for (const base of [fx.fx1Base, fx.fx2Base]) {
 }
 const twoFxLevel = sustainedLevel();
 assert.ok(dryFxLevel > twoFxLevel * 5, `Main two FX slots: ${dryFxLevel} / ${twoFxLevel}`);
+for (const base of [fx.fx1Base, fx.fx2Base]) assert.equal(e.manifold_looper_synth_parameter(base + fx.mixOffset, 0), 1);
+assert.equal(e.manifold_looper_synth_note(2, 0, 0), 1);
+assert.equal(e.manifold_looper_synth_parameter(ids.filterMode, 0), 1);
+assert.equal(e.manifold_looper_synth_parameter(ids.filterCutoff, 3_200), 1);
+assert.equal(e.manifold_looper_lfo_parameter(contract.modulation.lfoParameters.shape, 3), 1);
+assert.equal(e.manifold_looper_lfo_parameter(contract.modulation.lfoParameters.rate, 1), 1);
+assert.equal(e.manifold_looper_lfo_gate(0, 1), 1);
+assert.equal(e.manifold_looper_lfo_gate(0, 0), 1);
+assert.equal(e.manifold_looper_modulation_route(contract.modulation.routeParameters.target, 22), 1);
+assert.equal(e.manifold_looper_modulation_route(contract.modulation.routeParameters.amount, -.2), 1);
+assert.equal(e.manifold_looper_modulation_route(contract.modulation.routeParameters.enabled, 1), 1);
+assert.equal(e.manifold_looper_synth_note(0, 96, 100), 1);
+let cutEnergy = 0, openEnergy = 0;
+for (let index = 0; index < 31; index++) {
+  block(0);
+  if (index > 25) cutEnergy += output.subarray(0, 128).reduce((sum, sample) => sum + Math.abs(sample), 0);
+}
+const cutEffective = e.manifold_looper_lfo_status(5);
+for (let index = 0; index < 31; index++) {
+  block(0);
+  if (index > 25) openEnergy += output.subarray(0, 128).reduce((sum, sample) => sum + Math.abs(sample), 0);
+}
+const openEffective = e.manifold_looper_lfo_status(5);
+assert.ok(openEffective > cutEffective + 2_000, `Main modulation cutoff ${cutEffective} to ${openEffective}`);
+assert.ok(openEnergy > cutEnergy * 1.5, `Main modulation audio ${cutEnergy} to ${openEnergy}`);
+assert.equal(e.manifold_looper_modulation_route(contract.modulation.routeParameters.enabled, 0), 1);
+block(0);
+assert.equal(e.manifold_looper_lfo_status(5), 3_200);
 assert.equal(e.manifold_looper_synth_sample_clear(), 1);
 assert.equal(e.manifold_looper_synth_sample_frames(), 0);
+console.log(`Main LFO route: Filter cutoff ${cutEffective.toFixed(0)} → ${openEffective.toFixed(0)} Hz, sounding energy ${cutEnergy.toFixed(2)} → ${openEnergy.toFixed(2)}.`);
 console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, and Retro/Free Sample voices passed');

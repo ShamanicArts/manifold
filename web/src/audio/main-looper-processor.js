@@ -35,7 +35,8 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_looper_input_ptr(), this.capacity * 2);
           this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_looper_output_ptr(), this.capacity * 2);
           this.port.postMessage({ type: 'ready' });
-        } else if (this.transferJob && ['control', 'layer-control', 'command', 'synth-note', 'synth-parameter'].includes(data.type)) {
+        } else if (this.transferJob && ['control', 'layer-control', 'command', 'synth-note', 'synth-parameter',
+          'lfo-parameter', 'lfo-gate', 'modulation-route'].includes(data.type)) {
           this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'sample-capture' && this.engine && !this.sampleJob && !this.transferJob && this.freeSource === null) {
           const frames = this.engine.manifold_looper_sample_capture(data.source, data.bars);
@@ -181,7 +182,7 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           && this.transferJob.requestId === data.requestId) {
           const state = this.transferJob.state;
           if (this.transferJob.layer || this.transferJob.sample) throw new Error('Session PCM transfer is incomplete.');
-          if (state.version === project.sessionVersion && state.sample.frames === 0
+          if (state.version >= 2 && state.sample.frames === 0
             && this.engine.manifold_looper_synth_sample_clear() !== 1) {
             throw new Error('Saved empty Main Sample could not be restored.');
           }
@@ -219,6 +220,15 @@ class MainLooperProcessor extends AudioWorkletProcessor {
         } else if (data.type === 'synth-parameter' && this.engine) {
           const accepted = this.engine.manifold_looper_synth_parameter(data.id, data.value) === 1;
           if (!accepted) this.port.postMessage({ type: 'rejected', action: data });
+        } else if (data.type === 'lfo-parameter' && this.engine) {
+          if (this.engine.manifold_looper_lfo_parameter(data.id, data.value) !== 1)
+            this.port.postMessage({ type: 'rejected', action: data });
+        } else if (data.type === 'lfo-gate' && this.engine) {
+          if (this.engine.manifold_looper_lfo_gate(data.id, data.high) !== 1)
+            this.port.postMessage({ type: 'rejected', action: data });
+        } else if (data.type === 'modulation-route' && this.engine) {
+          if (this.engine.manifold_looper_modulation_route(data.id, data.value) !== 1)
+            this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'snapshot' && this.engine) {
           const e = this.engine;
           if (this.freeSource !== null) {
@@ -260,11 +270,15 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           const segments = bars.map((_, index) => captureStripBins(
             bars, index, spb, project.captureSeconds * sampleRate, captured,
           ).map(bin => bin ? e.manifold_looper_peak(active, 1, bin[0], bin[1]) : 0));
+          const lfo = { phase: e.manifold_looper_lfo_status(0), out: e.manifold_looper_lfo_status(1),
+            inv: e.manifold_looper_lfo_status(2), uni: e.manifold_looper_lfo_status(3),
+            eoc: e.manifold_looper_lfo_status(4), cutoff: e.manifold_looper_lfo_status(5),
+            resonance: e.manifold_looper_lfo_status(6) };
           this.port.postMessage({ type: 'snapshot', tempo: s(project.status.tempo), active,
             mode: s(project.status.mode), recording: s(project.status.recording) === 1,
             overdub: s(project.status.overdub) === 1, forwardBars: s(project.status.forwardBars),
             captured, sampleRate: s(project.status.sampleRate),
-            layers, segments, sampleFrames, samplePeaks, eqResponse });
+            layers, segments, sampleFrames, samplePeaks, eqResponse, lfo });
         }
       } catch (error) {
         if (this.sampleJob && this.engine) this.engine.manifold_looper_sample_cancel();

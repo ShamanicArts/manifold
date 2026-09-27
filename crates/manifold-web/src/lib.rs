@@ -167,6 +167,45 @@ pub extern "C" fn manifold_looper_synth_parameter(id: u32, value: f32) -> u32 {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_lfo_parameter(id: u32, value: f32) -> u32 {
+    LOOPER.with(|slot| {
+        slot.borrow_mut()
+            .as_mut()
+            .map_or(0, |e| u32::from(e.instrument.set_lfo_parameter(id, value)))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_lfo_gate(id: u32, high: u32) -> u32 {
+    if high > 1 {
+        return 0;
+    }
+    LOOPER.with(|slot| {
+        slot.borrow_mut()
+            .as_mut()
+            .map_or(0, |e| u32::from(e.instrument.set_lfo_gate(id, high == 1)))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_modulation_route(id: u32, value: f32) -> u32 {
+    LOOPER.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |e| {
+            u32::from(e.instrument.set_modulation_route(id, value))
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_lfo_status(id: u32) -> f32 {
+    LOOPER.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .map_or(0.0, |e| e.instrument.lfo_status(id))
+    })
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn manifold_looper_eq_response(frequency: f32) -> f32 {
     LOOPER.with(|slot| {
         slot.borrow()

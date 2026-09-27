@@ -7,6 +7,7 @@ import { mountMainAdsr } from './widgets/main-adsr.js';
 import { mountMainFilter } from './widgets/main-filter.js';
 import { mountMainEq } from './widgets/main-eq.js';
 import { mountMainFxSlot } from './widgets/main-fx-slot.js';
+import { mountMainLfo, DEFAULT_LFO_STATE } from './widgets/main-lfo.js';
 
 const $ = (id) => document.getElementById(id);
 const bars = project.segments;
@@ -37,6 +38,7 @@ const filter = mountMainFilter($, synthParameter, synthIds);
 const eq = mountMainEq($, synthParameter, project.eqParameters);
 const fx1 = mountMainFxSlot($('fx1-module'), synthParameter, project.fxParameters.fx1Base);
 const fx2 = mountMainFxSlot($('fx2-module'), synthParameter, project.fxParameters.fx2Base);
+const lfo = mountMainLfo($, post, project.modulation);
 const selectedSegment = id => Number($(id).querySelector('[aria-pressed="true"]').dataset.value);
 function wireSegments(id, change) {
   const group = $(id);
@@ -166,12 +168,13 @@ function restoreSource(state) {
 }
 function rackSnapshot() {
   return { source: sourceSnapshot(), adsr: adsr.snapshot(), filter: filter.snapshot(),
-    fx1: fx1.snapshot(), fx2: fx2.snapshot(), eq: eq.snapshot() };
+    fx1: fx1.snapshot(), fx2: fx2.snapshot(), eq: eq.snapshot(), lfo: lfo.snapshot() };
 }
 function restoreRack(state) {
   restoreSource(state.source);
   adsr.restore(state.adsr); filter.restore(state.filter);
   fx1.restore(state.fx1); fx2.restore(state.fx2); eq.restore(state.eq);
+  lfo.restore(state.lfo ?? DEFAULT_LFO_STATE);
 }
 drawSourceGraph();
 function resetSampleCaptureUI() {
@@ -230,6 +233,13 @@ function sizeInstrument() {
 }
 new ResizeObserver(sizeInstrument).observe($('instrument-frame'));
 sizeInstrument();
+$('patch-jump').onclick = () => {
+  const scroll = $('rack-scroll');
+  const bottom = scroll.scrollTop > 100;
+  scroll.scrollTo({ top: bottom ? 0 : 452, behavior: 'smooth' });
+  $('patch-jump').textContent = bottom ? 'PATCH ↓' : 'RACK ↑';
+  requestAnimationFrame(() => lfo.paint());
+};
 for (const tab of document.querySelectorAll('[data-main-tab]')) {
   tab.addEventListener('click', () => {
     const synth = tab.dataset.mainTab === 'midisynth';
@@ -240,7 +250,7 @@ for (const tab of document.querySelectorAll('[data-main-tab]')) {
       button.classList.toggle('active', selected);
       button.setAttribute('aria-selected', String(selected));
     }
-    requestAnimationFrame(() => { sizeInstrument(); if (synth) { paintSampleSliders(); adsr.paint(); filter.paint(); fx1.paint(); fx2.paint(); eq.paint(); } });
+    requestAnimationFrame(() => { sizeInstrument(); if (synth) { paintSampleSliders(); adsr.paint(); filter.paint(); fx1.paint(); fx2.paint(); eq.paint(); lfo.paint(); } });
   });
 }
 
@@ -449,6 +459,7 @@ const stateNames = ['Empty', 'Playing', 'Recording', 'Stopped', 'Paused'];
 const stateColors = ['#64748b', '#34d399', '#ef4444', '#fde047', '#a78bfa'];
 function render(data) {
   latest = data;
+  if (data.lfo) lfo.setStatus(data.lfo);
   latestSamplePeaks = data.samplePeaks ?? [];
   eq.setResponse(data.eqResponse);
   drawSourceGraph();
@@ -560,7 +571,7 @@ function handleTransfer(data) {
   } else if (data.type === 'import-complete' && job.kind === 'import') {
     $('target').value = Math.round(job.state.targetBpm);
     transferJob = null;
-    if (job.state.version === project.sessionVersion) {
+    if (job.state.version >= 2) {
       restoreRack(job.state.rack);
       $('sample-length').textContent = `${Math.round(job.state.sample.frames / context.sampleRate * 1000)}ms`;
     }
@@ -574,7 +585,7 @@ $('save-session').onclick = () => {
   if (transferJob || sampleJob || freeSource !== null) return;
   const id = nextRequest++;
   let rack;
-  try { rack = validateMainRackState(rackSnapshot()); }
+  try { rack = validateMainRackState(rackSnapshot(), true, project.modulation); }
   catch (error) { status(error.message); return; }
   transferJob = { kind: 'save', id, state: null, audio: null, layer: 0, offset: 0,
     sampleOffset: 0, sampleAudio: null, rack };
@@ -588,7 +599,7 @@ $('open-session').onchange = async () => {
   if (!file) return;
   try {
     const state = JSON.parse(await file.text());
-    if (state.format !== project.format || ![1, project.sessionVersion].includes(state.version) || state.id !== project.id
+    if (state.format !== project.format || ![1, 2, project.sessionVersion].includes(state.version) || state.id !== project.id
       || state.sampleRate !== context.sampleRate || !Array.isArray(state.layers) || state.layers.length !== project.layers
       || !Number.isFinite(state.tempo) || !Number.isFinite(state.targetBpm)
       || !Number.isInteger(state.activeLayer) || state.activeLayer < 0 || state.activeLayer >= project.layers
@@ -604,8 +615,8 @@ $('open-session').onchange = async () => {
       return layer.frames ? decodePcm(layer.pcmF32Base64, layer.frames) : null;
     });
     let sampleAudio = null;
-    if (state.version === project.sessionVersion) {
-      validateMainRackState(state.rack);
+    if (state.version >= 2) {
+      validateMainRackState(state.rack, state.version >= 3, project.modulation);
       if (!state.sample || !Number.isInteger(state.sample.frames)
         || state.sample.frames < 0 || state.sample.frames > Math.min(1_440_000, context.sampleRate * project.captureSeconds)
         || (state.sample.frames === 0 && state.sample.pcmF32Base64 !== '')) {
@@ -680,6 +691,7 @@ async function start() {
     filter.sendDefaults();
     fx1.sendDefaults(); fx2.sendDefaults();
     eq.sendState();
+    lfo.sendState();
     if (sourceKind === 'microphone') {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
       sourceNode = context.createMediaStreamSource(stream);

@@ -98,6 +98,19 @@ try {
   await page.locator('#filter-mode').selectOption('0');
   await page.locator('#filter-cutoff').focus();
   await page.keyboard.press('End');
+  await page.locator('#patch-jump').click();
+  await page.waitForFunction(() => document.querySelector('#rack-scroll').scrollTop > 200);
+  await page.locator('#lfo-shape').selectOption('3');
+  await page.locator('#mod-target').selectOption('22');
+  assert.equal(await page.locator('#mod-enabled').isChecked(), true);
+  await page.locator('#lfo-reset').click();
+  await page.waitForFunction(() => {
+    const match = document.querySelector('#mod-effective').textContent.match(/cutoff (\d+)/);
+    return match && Number(match[1]) < 16000;
+  });
+  await page.screenshot({ path: new URL('../web/public/main-lfo-route.png', import.meta.url).pathname, fullPage: true });
+  await page.locator('#patch-jump').click();
+  await page.waitForFunction(() => document.querySelector('#rack-scroll').scrollTop < 5);
   await page.locator('#sample-bars').focus();
   await page.keyboard.press('Home');
   await page.locator('#sample-cap').click();
@@ -164,16 +177,24 @@ try {
   const download = await downloadPromise;
   const bundle = JSON.parse(await readFile(await download.path(), 'utf8'));
   assert.equal(bundle.id, 'manifold.main-looper');
-  assert.equal(bundle.version, 2);
+  assert.equal(bundle.version, 3);
   assert.ok(bundle.sample.frames > 0 && bundle.sample.pcmF32Base64.length > 0);
   assert.equal(bundle.rack.source.waveform, 1);
   assert.equal(bundle.rack.fx2.selected, 5);
   assert.equal(bundle.rack.filter.mode, 0);
+  assert.equal(bundle.rack.lfo.shape, 3);
+  assert.equal(bundle.rack.lfo.route.target, 22);
+  assert.equal(bundle.rack.lfo.route.enabled, true);
   assert.ok(bundle.layers[0].frames > 0 && bundle.layers[1].frames > 0);
   await page.locator('#audio-button').click();
   await page.locator('#audio-button').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Running'));
   await page.locator('[data-main-tab="midisynth"]').click();
+  await page.locator('#patch-jump').click();
+  await page.waitForFunction(() => document.querySelector('#rack-scroll').scrollTop > 200);
+  await page.locator('#lfo-shape').selectOption('0');
+  await page.locator('#patch-jump').click();
+  await page.waitForFunction(() => document.querySelector('#rack-scroll').scrollTop < 5);
   await page.locator('[data-source-tab="wave"]').click();
   await page.locator('#synth-wave').selectOption('0');
   await page.locator('#filter-mode').selectOption('2');
@@ -187,7 +208,21 @@ try {
   assert.equal(await page.locator('#synth-wave').inputValue(), '1');
   assert.equal(await page.locator('#filter-mode').inputValue(), '0');
   assert.equal(await page.locator('#fx2-module-type').getAttribute('data-value'), '5');
+  assert.equal(await page.locator('#lfo-shape').inputValue(), '3');
+  assert.equal(await page.locator('#mod-enabled').isChecked(), true);
+  await page.waitForFunction(() => {
+    const match = document.querySelector('#mod-effective').textContent.match(/cutoff (\d+)/);
+    return match && Number(match[1]) < 16000;
+  }, { timeout: 2500 });
   assert.notEqual(await page.locator('#sample-length').textContent(), '0ms');
+  const v2 = { ...bundle, version: 2, rack: { ...bundle.rack } };
+  delete v2.rack.lfo;
+  await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 2 import'; });
+  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v2.json',
+    mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v2)) });
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
+  assert.equal(await page.locator('#lfo-shape').inputValue(), '0');
+  assert.equal(await page.locator('#mod-enabled').isChecked(), false);
   const legacy = { ...bundle, version: 1 };
   delete legacy.rack;
   delete legacy.sample;
@@ -245,5 +280,5 @@ try {
   assert.ok(lastSegment.x + lastSegment.width <= frame.x + frame.width + 1);
   assert.ok(await narrow.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await narrow.screenshot({ path: new URL('../web/public/main-looper-narrow.png', import.meta.url).pathname, fullPage: true });
-  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth ADSR/Source/Filter/FX1/FX2/EQ, Live/L1 Retro Cap, L1 Free Cap/STOP, traditional arm/fire, reverse scrub, session save/reopen, decoded file and Rust synth capture passed`);
+  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth ADSR/Source/Filter/FX1/FX2/EQ/LFO, live modulation route, Live/L1 Retro Cap, L1 Free Cap/STOP, traditional arm/fire, reverse scrub, v1/v2/v3 session reopen, decoded file and Rust synth capture passed`);
 } finally { await browser.close(); }

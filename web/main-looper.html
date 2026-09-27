@@ -12,6 +12,7 @@
         <div class="tabs" role="tablist" aria-label="Main instrument views"><button type="button" class="tab active" data-main-tab="looper" role="tab" aria-selected="true">Looper</button><button type="button" class="tab" data-main-tab="midisynth" role="tab" aria-selected="false">MidiSynth</button></div>
         <div id="layers" class="layers" role="tabpanel" aria-label="Looper"></div>
         <div id="midisynth-panel" class="midisynth-panel" role="tabpanel" aria-label="MidiSynth" hidden>
+          <div id="rack-scroll" class="rack-scroll"><div class="rack-scroll-content">
           <div class="rack-row">
             <section class="rack-adsr" aria-label="Main ADSR module">
               <div class="rack-shell-head adsr-head">ADSR</div>
@@ -67,11 +68,33 @@
               <label class="eq-field eq-q" for="eq-q">Q<input id="eq-q" type="number" min="0.1" max="24" step="0.05" aria-label="EQ band Q"></label>
             </div>
           </section>
+          <section class="rack-lfo" aria-label="Main LFO module">
+            <div class="lfo-title">LFO</div><div id="lfo-status" class="lfo-status">Sine  •  1.00 Hz</div>
+            <canvas id="lfo-preview" width="424" height="108" aria-label="LFO waveform and current phase"></canvas>
+            <select id="lfo-shape" aria-label="LFO shape"><option value="0">Sine</option><option value="1">Triangle</option><option value="2">Saw</option><option value="3">Square</option><option value="4">S&amp;H</option><option value="5">Noise</option></select>
+            <div id="lfo-retrig" class="lfo-slider"></div><div id="lfo-rate" class="lfo-slider"></div>
+            <div id="lfo-depth" class="lfo-slider"></div><div id="lfo-phase" class="lfo-slider"></div>
+            <div id="lfo-output" class="lfo-output">Out +0.00  •  Uni 0.50  •  Φ 0.00</div>
+          </section>
+          <section class="rack-route" aria-label="Main modulation connection">
+            <div class="rack-shell-head route-head">PATCH / SCALAR CONTROL</div>
+            <div class="route-content"><h2>LFO → Filter</h2><p>A typed control route. Audio stays in the Rust engine; these controls set the route.</p>
+              <label>Output<select id="mod-source"><option value="0">OUT · bipolar</option><option value="1">INV · bipolar</option><option value="2">UNI · unipolar</option><option value="3">EOC · trigger</option></select></label>
+              <label>Target<select id="mod-target"><option value="0">Disconnected</option><option value="22">Filter cutoff</option><option value="23">Filter resonance</option></select></label>
+              <label>Apply<select id="mod-mode"><option value="0">Add to base</option><option value="1">Replace base</option></select></label>
+              <div id="mod-amount" class="route-slider"></div><div id="mod-bias" class="route-slider"></div>
+              <label class="route-toggle"><input id="mod-enabled" type="checkbox"> Connected</label>
+              <button id="lfo-reset" type="button">Reset phase</button><label class="route-toggle"><input id="lfo-sync" type="checkbox"> Hold sync</label>
+              <output id="mod-effective">Filter cutoff 3200 Hz · Reso 0.75</output>
+            </div>
+          </section>
+          </div></div>
+          <button id="patch-jump" type="button" aria-label="Show Main modulation rack row">PATCH ↓</button>
           <div class="source-play-area"><div id="synth-keys" class="synth-keys" aria-label="Synth keyboard"></div></div>
         </div>
       </section>
     </div>
-    <div class="session"><span>Session</span><button id="save-session">Download looper session</button><label>Open session<input id="open-session" type="file" accept="application/json,.json"></label><small>Four loop takes and controls · reopen at the same audio sample rate</small></div>
+    <div class="session"><span>Session</span><button id="save-session">Download Main session</button><label>Open session<input id="open-session" type="file" accept="application/json,.json"></label><small>Four loops, Sample PCM, rack and LFO route · reopen at the same audio sample rate</small></div>
     <div class="help"><div><strong>First Loop</strong><span>Press REC, play into the input, press REC again. The first span sets tempo against Target and commits to the selected layer.</span></div><div><strong>Retrospective</strong><span>Let audio run, then click a bar segment to take recent audio without recording first. Traditional mode arms a segment; press Commit armed to fire it.</span></div><div><strong>Layers</strong><span>Select a strip or donut, drag its waveform to scrub, and drag the original style Vol and Speed knobs vertically. Input keeps feeding each layer’s capture ring.</span></div></div>
     <button id="fire" class="fire" hidden>Commit armed segment</button>
   </main>
