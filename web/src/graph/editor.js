@@ -1,6 +1,6 @@
 import { NODE_TYPES, SAMPLE_NODE_TYPES, addNode, removeNode, setConnection, setInitialParameter,
   setInputSource, captureGraphProject, parseGraphProject, parseGraphBundle, validateGraphAssets,
-  validateGraphTargets } from './topology.js';
+  validateGraphTargets, validateGraphTemporal, defaultGraphTemporal } from './topology.js';
 import { parseMainVoiceBankState } from '../state/main-voice-bank.js';
 import { parseProjectDocument } from '../state/project-document.js';
 import { analyzeMainSource } from './main-source.js';
@@ -14,9 +14,16 @@ import mainBank from '../../../projects/graph-workspace/main-bank.json';
 
 const defaultMainTargets = (nodeId) => [mainVoiceBankProject.partials, ...mainVoiceBankProject.extraPartials]
   .map((target) => ({ ...target, nodeId }));
+function temporalFromMainState(nodeId, controls) {
+  return { nodeId, mode: controls.mode === 3 ? 2 : 1,
+    speed: controls.speed, smooth: controls.smooth, contrast: controls.contrast,
+    recipe: [controls.waveform, 8, 0, 0, controls.pulseWidth,
+      controls.mode === 2 ? 1 : 0, controls.morphAmount, controls.morphDepth,
+      controls.morphCurve, controls.stretch, controls.tiltMode] };
+}
 
 // Edits a project description outside the AudioWorklet. The next start compiles it in Rust.
-export function mountGraphEditor(section, project, { isRunning, isActive, onChange, onParameter, onTemplateLoaded, decodeSample, builtinSample }) {
+export function mountGraphEditor(section, project, { isRunning, isActive, onChange, onParameter, onTemporalSpeed, onTemplateLoaded, decodeSample, builtinSample }) {
   const nodesRoot = section.querySelector('#graph-nodes');
   const status = section.querySelector('#graph-status');
   const addType = section.querySelector('#graph-add-type');
@@ -51,13 +58,17 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
     fileInput.disabled = disabled;
     if (updateStatus && isActive()) status.textContent = `${project.signal.nodes.length} nodes · ${project.signal.connections.length} connections · ${isRunning() ? 'parameters update live; stop audio to edit topology' : 'start audio to compile this graph in Rust'}`;
   }
-  function commit(signal, message, assets = project.graphAssets ?? [], targets = project.graphTargets ?? []) {
+  function commit(signal, message, assets = project.graphAssets ?? [], targets = project.graphTargets ?? [], temporal = project.graphTemporal ?? []) {
     const checked = validateGraphAssets(signal, assets.filter((asset) => signal.nodes.some((node) => node.id === asset.nodeId && SAMPLE_NODE_TYPES.has(node.type))));
     const partials = validateGraphTargets(signal, targets.filter((target) => signal.nodes.some((node) => node.id === target.nodeId && node.type === 'main-voice-bank')));
+    const motion = validateGraphTemporal(signal, checked, temporal.filter((entry) =>
+      signal.nodes.some((node) => node.id === entry.nodeId && node.type === 'main-voice-bank')
+      && checked.some((asset) => asset.nodeId === entry.nodeId)));
     revision++;
     project.signal = signal;
     project.graphAssets = checked;
     project.graphTargets = partials;
+    project.graphTemporal = motion;
     render();
     status.textContent = message;
     onChange?.(signal);
@@ -213,12 +224,67 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
               ...parsed.targets.map((target) => ({ ...target, nodeId: node.id }))];
             const assets = [...(project.graphAssets ?? []).filter((asset) => asset.nodeId !== node.id),
               { nodeId: node.id, sourceRate: source.sourceRate, stereo: source.stereo, label: source.label ?? 'Built-in two-tone source' }];
-            commit(signal, `Imported ${file.name} into Main bank ${node.id}. Its prepared targets and controls are ready; start audio to hear it.`, assets, targets);
+            const temporal = [...(project.graphTemporal ?? []).filter((entry) => entry.nodeId !== node.id),
+              ...(parsed.targetControls.active && parsed.targetControls.followPlayback
+                ? [temporalFromMainState(node.id, parsed.targetControls)] : [])];
+            commit(signal, `Imported ${file.name} into Main bank ${node.id}. Its prepared targets and controls are ready; start audio to hear it.`, assets, targets, temporal);
           } catch (error) { if (revision === startingRevision) fail(error); }
           finally { importInput.value = ''; }
         });
         importLabel.append(importInput);
         article.append(importLabel);
+        const motion = (project.graphTemporal ?? []).find((entry) => entry.nodeId === node.id);
+        const followRow = document.createElement('label');
+        followRow.className = 'graph-field';
+        const followText = document.createElement('span');
+        followText.textContent = 'Source follow';
+        followText.title = 'Each voice follows its sample position through prepared source frames in Add or Morph mode.';
+        const follow = document.createElement('input');
+        follow.type = 'checkbox';
+        follow.className = 'graph-edit';
+        follow.checked = Boolean(motion);
+        follow.setAttribute('aria-label', `Main voice bank ${node.id} follow source position`);
+        follow.addEventListener('change', () => {
+          if (!canEdit()) return;
+          try {
+            if (follow.checked && !(project.graphAssets ?? []).some((asset) => asset.nodeId === node.id)) {
+              throw new Error('Load a Main source before enabling motion.');
+            }
+            const temporal = [...(project.graphTemporal ?? []).filter((entry) => entry.nodeId !== node.id),
+              ...(follow.checked ? [motion ?? defaultGraphTemporal(node.id)] : [])];
+            commit(project.signal, `${follow.checked ? 'Enabled' : 'Disabled'} source motion for Main bank ${node.id}.`,
+              project.graphAssets, project.graphTargets, temporal);
+          } catch (error) { follow.checked = Boolean(motion); fail(error); }
+        });
+        followRow.append(followText, follow);
+        article.append(followRow);
+        if (motion) {
+          const speedRow = document.createElement('label');
+          speedRow.className = 'graph-field';
+          const speedText = document.createElement('span');
+          speedText.textContent = 'Motion speed';
+          const speed = document.createElement('input');
+          speed.type = 'number';
+          speed.min = '0';
+          speed.max = '4';
+          speed.step = '0.1';
+          speed.value = String(motion.speed);
+          speed.className = 'graph-parameter';
+          speed.setAttribute('aria-label', `Main voice bank ${node.id} motion speed`);
+          speed.addEventListener('change', () => {
+            if (!canChangeParameter()) return;
+            try {
+              const temporal = (project.graphTemporal ?? []).map((entry) => entry.nodeId === node.id
+                ? { ...entry, speed: Number(speed.value) } : entry);
+              validateGraphTemporal(project.signal, project.graphAssets ?? [], temporal);
+              if (isRunning()) onTemporalSpeed?.(node.id, Number(speed.value));
+              commit(project.signal, `Updated Main bank ${node.id} source motion to ${speed.value}×.`,
+                project.graphAssets, project.graphTargets, temporal);
+            } catch (error) { speed.value = String(motion.speed); fail(error); }
+          });
+          speedRow.append(speedText, speed);
+          article.append(speedRow);
+        }
         const targets = (project.graphTargets ?? []).filter((target) => target.nodeId === node.id);
         for (const target of targets) {
           const details = document.createElement('details');
@@ -391,21 +457,21 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
       const source = builtinSample();
       const bundle = parseGraphBundle(mainBank);
       commit(bundle.signal, 'Loaded the Main voice bank with prepared wave/source targets. Start audio and play the keyboard.',
-        [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }], bundle.targets);
+        [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }], bundle.targets, bundle.temporal);
       onTemplateLoaded?.('main-bank');
     } catch (error) { fail(error); }
   }, { signal: listeners.signal });
   exportButton.addEventListener('click', () => {
     if (!isActive()) return;
     try {
-      const bundle = captureGraphProject(project.signal, project.graphAssets ?? [], project.graphTargets ?? []);
+      const bundle = captureGraphProject(project.signal, project.graphAssets ?? [], project.graphTargets ?? [], project.graphTemporal ?? []);
       const url = URL.createObjectURL(new Blob([`${JSON.stringify(bundle, null, 2)}\n`], { type: 'application/json' }));
       const link = document.createElement('a');
       link.href = url;
       link.download = 'manifold-graph-workspace-project.json';
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      status.textContent = `Downloaded ${bundle.signal.nodes.length} nodes, ${bundle.signal.connections.length} connections, ${bundle.assets?.length ?? 0} sample assets, and ${bundle.targets?.length ?? 0} partial targets.`;
+      status.textContent = `Downloaded ${bundle.signal.nodes.length} nodes, ${bundle.signal.connections.length} connections, ${bundle.assets?.length ?? 0} sample assets, ${bundle.targets?.length ?? 0} partial targets, and ${bundle.temporal?.length ?? 0} motion recipes.`;
     } catch (error) { fail(error); }
   }, { signal: listeners.signal });
   fileInput.addEventListener('change', async () => {
@@ -418,7 +484,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
       const contents = await file.text();
       if (!canEdit() || revision !== startingRevision) return;
       const bundle = parseGraphBundle(JSON.parse(contents));
-      commit(bundle.signal, `Opened ${file.name} with ${bundle.assets.length} sample assets and ${bundle.targets.length} partial targets. Start audio to compile the restored graph.`, bundle.assets, bundle.targets);
+      commit(bundle.signal, `Opened ${file.name} with ${bundle.assets.length} sample assets, ${bundle.targets.length} partial targets, and ${bundle.temporal.length} motion recipes. Start audio to compile the restored graph.`, bundle.assets, bundle.targets, bundle.temporal);
     } catch (error) { if (revision === startingRevision) fail(error); }
     finally { fileInput.value = ''; }
   }, { signal: listeners.signal });

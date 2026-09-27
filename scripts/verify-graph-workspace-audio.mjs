@@ -35,10 +35,14 @@ cv = setConnection(cv, 6, 1, 5);
 cv = setConnection(cv, 3, 0, 6);
 
 const workspace = mkdtempSync(join(tmpdir(), 'manifold-graph-'));
+const temporalBytes = readFileSync('web/public/reference/graph-workspace/temporal-frames.f32');
+const temporalData = new Float32Array(temporalBytes.buffer.slice(
+  temporalBytes.byteOffset, temporalBytes.byteOffset + temporalBytes.byteLength));
 try {
-  for (const [mode, signal] of [['seed', seed], ['distortion', distorted], ['cv', cv], ['texture', texture], ['note-voice', noteVoice], ['sample-voice', sampleVoice], ['region-voice', regionVoice], ['granular-source', granularSource], ['granular-capture', granularCapture], ['main-bank', mainBundle.signal], ['main-bank-add', setInitialParameter(mainBundle.signal, 5, 6, 4)]]) {
+  writeFileSync(join(workspace, 'temporal-frames.f32'), temporalBytes);
+  for (const [mode, signal] of [['seed', seed], ['distortion', distorted], ['cv', cv], ['texture', texture], ['note-voice', noteVoice], ['sample-voice', sampleVoice], ['region-voice', regionVoice], ['granular-source', granularSource], ['granular-capture', granularCapture], ['main-bank', mainBundle.signal], ['main-bank-add', setInitialParameter(mainBundle.signal, 5, 6, 4)], ['main-bank-follow-add', setInitialParameter(mainBundle.signal, 5, 6, 4)], ['main-bank-follow-morph', setInitialParameter(mainBundle.signal, 5, 6, 5)]]) {
     const output = join(workspace, `${mode}.f32`);
-    const source = ['sample-voice', 'region-voice', 'granular-source', 'main-bank', 'main-bank-add'].includes(mode)
+    const source = ['sample-voice', 'region-voice', 'granular-source'].includes(mode) || mode.startsWith('main-bank')
       ? readFileSync('web/public/reference/graph-workspace/sample-source.f32') : null;
     if (source) writeFileSync(join(workspace, 'sample-source.f32'), source);
     execFileSync('cargo', ['run', '--quiet', '-p', 'manifold-core', '--example',
@@ -50,9 +54,12 @@ try {
       samples: source ? [{ nodeId: 5, sourceRate: 48000,
         stereo: new Float32Array(source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength)) }] : [],
       partials: mode.startsWith('main-bank') ? mainBundle.targets : [],
+      temporals: mode.startsWith('main-bank-follow') ? [{ nodeId: 5,
+        frames: temporalData[0], rawFrames: temporalData.slice(),
+        rawRecipe: new Float32Array([0, 1, 0, 0, 0, 0, .5, .5, .7, 2]), speed: 1 }] : [],
     } });
     assert.deepEqual(messages.at(-1), { type: 'ready' }, `${mode} prepared`);
-    if (['note-voice', 'sample-voice', 'region-voice', 'main-bank', 'main-bank-add'].includes(mode)) {
+    if (['note-voice', 'sample-voice', 'region-voice'].includes(mode) || mode.startsWith('main-bank')) {
       for (const [frame, kind, note, velocity] of [[16, 0, 60, 100], [2048, 0, 64, 96],
         [4096, 1, 60, 0], [6144, 1, 64, 0]]) {
         await processor.port.onmessage({ data: { type: 'event', nodeId: 4, frame, kind,
@@ -96,6 +103,15 @@ try {
     assert.ok(maxDifference < 1e-5, `${mode} max difference ${maxDifference}`);
     console.log(`${mode}: 8192 stereo frames, peak ${peak.toFixed(6)}, native/Wasm max ${maxDifference.toFixed(9)}, RMS ${rms.toFixed(9)}`);
   }
+  const staticAdd = readFileSync(join(workspace, 'main-bank-add.f32'));
+  const movingAdd = readFileSync(join(workspace, 'main-bank-follow-add.f32'));
+  let movingDifference = 0;
+  for (let offset = 0; offset < staticAdd.length; offset += 4) {
+    movingDifference = Math.max(movingDifference,
+      Math.abs(staticAdd.readFloatLE(offset) - movingAdd.readFloatLE(offset)));
+  }
+  assert.ok(movingDifference > .005, `source follow did not alter Add audio: ${movingDifference}`);
+  console.log(`main-bank-follow-add versus static Add: peak change ${movingDifference.toFixed(6)}`);
   for (const [type, spec] of Object.entries(NODE_TYPES).filter(([, entry]) => !entry.fixedId)) {
     let signal = addNode(seed, type);
     const nodeId = signal.nodes.at(-1).id;

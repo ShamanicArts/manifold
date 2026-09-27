@@ -2,7 +2,10 @@
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_core::granulator;
 use manifold_core::graph::{Connection, GraphDescription, NodeKind, NodeSpec};
+use manifold_core::main_voice_bank::MainTemporalRecipe;
 use manifold_core::sine_bank::{Partial, PartialSet};
+use manifold_core::spectral_targets::{AddFlavor, MorphRecipe, SpectralShape};
+use manifold_core::temporal_partials::TemporalFrame;
 use std::io::Write;
 
 fn tone_texture() -> GraphDescription {
@@ -240,6 +243,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "granular-capture",
             "main-bank",
             "main-bank-add",
+            "main-bank-follow-add",
+            "main-bank-follow-morph",
         ]
         .contains(&args[1].as_str())
     {
@@ -248,31 +253,48 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
     if args[1] == "texture" {
-        return render(tone_texture(), &args[2], false, false, false, false);
+        return render(tone_texture(), &args[2], false, false, false, false, false);
     }
     if args[1] == "note-voice" {
-        return render(note_voice(), &args[2], true, false, false, false);
+        return render(note_voice(), &args[2], true, false, false, false, false);
     }
     if args[1] == "sample-voice" {
-        return render(sample_voice(), &args[2], true, true, false, false);
+        return render(sample_voice(), &args[2], true, true, false, false, false);
     }
     if args[1] == "region-voice" {
-        return render(region_voice(), &args[2], true, true, true, false);
+        return render(region_voice(), &args[2], true, true, true, false, false);
     }
     if args[1] == "granular-source" {
-        return render(granular_source(), &args[2], false, true, false, false);
+        return render(
+            granular_source(),
+            &args[2],
+            false,
+            true,
+            false,
+            false,
+            false,
+        );
     }
     if args[1] == "granular-capture" {
-        return render(granular_capture(), &args[2], false, false, false, false);
+        return render(
+            granular_capture(),
+            &args[2],
+            false,
+            false,
+            false,
+            false,
+            false,
+        );
     }
-    if args[1] == "main-bank" || args[1] == "main-bank-add" {
+    if args[1].starts_with("main-bank") {
         return render(
             main_bank(),
             &args[2],
             true,
             true,
             false,
-            args[1] == "main-bank-add",
+            args[1] == "main-bank-add" || args[1] == "main-bank-follow-add",
+            args[1].starts_with("main-bank-follow"),
         );
     }
     let distorted = args[1] != "seed";
@@ -357,6 +379,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         false,
         false,
         false,
+        false,
     )
 }
 
@@ -367,6 +390,7 @@ fn render(
     sample_source: bool,
     sample_region: bool,
     main_add: bool,
+    main_follow: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut plan = description.compile(48_000.0, 2048)?;
     if note_events && !sample_source && !plan.set_parameter(5, 0, 7.0) {
@@ -384,7 +408,16 @@ fn render(
             (3, 2.0),
             (4, 0.0),
             (5, 0.0),
-            (6, if main_add { 4.0 } else { 0.0 }),
+            (
+                6,
+                if main_add {
+                    4.0
+                } else if main_follow {
+                    5.0
+                } else {
+                    0.0
+                },
+            ),
             (7, 0.5),
             (8, 0.5),
             (9, 0.0),
@@ -427,6 +460,65 @@ fn render(
             || !plan.load_partials_target(5, 1, main_target(&[1.0, 0.38, 0.13]))
         {
             return Err("Main bank partial target rejected".into());
+        }
+    }
+    if main_follow {
+        let bytes = std::fs::read(
+            std::path::Path::new(path)
+                .parent()
+                .unwrap()
+                .join("temporal-frames.f32"),
+        )?;
+        let values: Vec<f32> = bytes
+            .chunks_exact(4)
+            .map(|part| f32::from_le_bytes(part.try_into().unwrap()))
+            .collect();
+        let count = values[0] as usize;
+        if count < 2 || count > 128 || values.len() != 1 + count * 131 {
+            return Err("invalid graph temporal frame fixture".into());
+        }
+        let mut frames = Vec::with_capacity(count);
+        for packed in values[1..].chunks_exact(131) {
+            let active = packed[2] as usize;
+            if active > 32 {
+                return Err("invalid graph temporal partial count".into());
+            }
+            let mut partials = PartialSet {
+                fundamental: packed[1],
+                count: active,
+                ..PartialSet::default()
+            };
+            for (index, fields) in packed[3..3 + active * 4].chunks_exact(4).enumerate() {
+                partials.partials[index] = Partial {
+                    frequency: fields[0],
+                    amplitude: fields[1],
+                    phase: fields[2],
+                    decay_rate: fields[3],
+                };
+            }
+            frames.push(TemporalFrame {
+                position: packed[0],
+                source_start: 0,
+                rms: 0.0,
+                brightness: 0.0,
+                partials,
+            });
+        }
+        let recipe = MainTemporalRecipe {
+            smooth: 0.0,
+            contrast: 1.0,
+            shape: SpectralShape::default(),
+            add_flavor: AddFlavor::SelfResynthesis,
+            morph: MorphRecipe {
+                position: 0.5,
+                depth: 0.7,
+                curve: 2,
+            },
+        };
+        if !plan.load_main_temporal_frames(5, frames, recipe)
+            || !plan.set_main_temporal_speed(5, 1.0)
+        {
+            return Err("graph temporal frame upload rejected".into());
         }
     }
     let event_schedule = [

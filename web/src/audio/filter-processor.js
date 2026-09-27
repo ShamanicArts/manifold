@@ -82,6 +82,13 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           for (const partials of data.partials == null ? [] : Array.isArray(data.partials) ? data.partials : [data.partials]) {
             if (!this.uploadPartials(partials)) throw new Error('Invalid initial partial set');
           }
+          for (const temporal of data.temporals ?? []) {
+            if (!this.uploadTemporalFrames({ nodeId: temporal.nodeId, frames: temporal.frames,
+              packed: temporal.rawFrames, recipe: temporal.rawRecipe })
+              || engine.manifold_main_temporal_speed(temporal.nodeId, temporal.speed) !== 1) {
+              throw new Error('Invalid initial Main source motion');
+            }
+          }
           this.port.postMessage({ type: 'ready' });
         } else if (data.type === 'parameter-request' && this.engine) {
           const accepted = Number.isInteger(data.nodeId) && Number.isInteger(data.id)

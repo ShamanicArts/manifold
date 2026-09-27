@@ -1596,6 +1596,7 @@ function renderPrimitive(family) {
           : 'Start audio to view the processed live input.';
       },
       onParameter: (nodeId, id, value) => audio.setNodeParameter(nodeId, id, value),
+      onTemporalSpeed: (nodeId, speed) => audio.setTemporalSpeed(speed, nodeId),
       onTemplateLoaded: (caseId) => referenceLab?.selectCase(caseId),
       decodeSample: decodeFileSource,
       builtinSample: demoSample,

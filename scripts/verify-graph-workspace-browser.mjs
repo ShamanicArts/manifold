@@ -36,7 +36,7 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/?primitive=graph-workspace`);
   await page.waitForFunction(() => document.querySelector('#comparison-result').textContent === 'Match');
-  assert.equal(await page.locator('#reference-case option').count(), 11);
+  assert.equal(await page.locator('#reference-case option').count(), 13);
   assert.match(await page.locator('#reference-title').textContent(), /Native Rust/);
   assert.ok(Number(await page.locator('#max-difference').textContent()) < 1e-5);
   await page.locator('#reference-case').selectOption('distortion');
@@ -73,6 +73,12 @@ try {
   await page.locator('#reference-case').selectOption('main-bank-add');
   await page.waitForFunction(() => document.querySelector('#reference-status').textContent.includes('Add mode'));
   assert.equal(await page.locator('#comparison-result').textContent(), 'Match');
+  for (const [id, label] of [['main-bank-follow-add', 'Main Add with source motion'],
+    ['main-bank-follow-morph', 'Main Morph with source motion']]) {
+    await page.locator('#reference-case').selectOption(id);
+    await page.waitForFunction((value) => document.querySelector('#reference-status').textContent.includes(value), label);
+    assert.equal(await page.locator('#comparison-result').textContent(), 'Match');
+  }
   assert.equal(await page.locator('.graph-node').count(), 3);
   await page.locator('#audio-toggle').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running'));
@@ -385,15 +391,44 @@ try {
   const sourceProject = JSON.parse((await readFile(new URL('../projects/main-voice-bank/project.json', import.meta.url))).toString());
   const standalone = { schemaVersion: 3, projectId: sourceProject.id,
     parameters: Object.fromEntries(sourceProject.parameters.map((parameter) => [parameter.hostId, parameter.default])),
-    targetControls: { active: true, mode: 0, waveform: 0, position: .5, morphAmount: 0,
-      tiltMode: 0, stretch: 0, smooth: 0, contrast: 1, followPlayback: false, speed: 1 },
+    targetControls: { active: true, mode: 3, waveform: 0, position: .5, morphAmount: .5,
+      tiltMode: 0, stretch: 0, smooth: 0, contrast: 1, followPlayback: true, speed: 1.5 },
     targets: [sourceProject.partials, ...sourceProject.extraPartials], source: { kind: 'builtin' } };
   standalone.parameters.blend = .72;
+  standalone.parameters['blend-mode'] = 5;
   await page.locator('input[aria-label="Main voice bank 5 state"]').setInputFiles([{
     name: 'standalone-main.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(standalone)),
   }]);
   await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Imported'));
   assert.equal(await page.locator('input[data-node="5"][data-parameter="1"]').inputValue(), '0.72');
+  assert.equal(await page.locator('input[aria-label="Main voice bank 5 follow source position"]').isChecked(), true);
+  assert.equal(await page.locator('input[aria-label="Main voice bank 5 motion speed"]').inputValue(), '1.5');
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
+  await page.locator('#module-title').click();
+  await page.keyboard.down('a');
+  await page.waitForFunction(() => document.querySelector('#midi-events').textContent.includes('On · C4'));
+  await page.keyboard.up('a');
+  const speed = page.locator('input[aria-label="Main voice bank 5 motion speed"]');
+  await speed.fill('0.5');
+  await speed.press('Tab');
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('source motion to 0.5×'));
+  await page.locator('#audio-toggle').click();
+  const motionDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const motionBundle = JSON.parse((await readFile(await (await motionDownload).path())).toString());
+  assert.equal(motionBundle.temporal[0].speed, .5);
+  assert.equal(motionBundle.temporal[0].mode, 2);
+  assert.equal(motionBundle.temporal[0].recipe[6], .5);
+  await page.locator('#graph-load-tone').click();
+  await page.locator('#graph-project-file').setInputFiles([{
+    name: 'main-motion.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(motionBundle)),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
+  assert.equal(await page.locator('input[aria-label="Main voice bank 5 motion speed"]').inputValue(), '0.5');
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
+  await page.locator('#audio-toggle').click();
   await page.locator('.graph-target').first().locator('summary').click();
   const targetEdit = page.locator('textarea[aria-label="Main voice bank 5 wave target JSON"]');
   await targetEdit.fill(JSON.stringify({ fundamental: 1, values: [1, .8, 0, 0] }));
@@ -451,8 +486,19 @@ try {
   const afterSupersede = JSON.parse((await readFile(await (await raceDownload).path())).toString());
   assert.equal(afterSupersede.assets[0].label, 'Built-in two-tone source');
   await page.unroute('**/manifold_filter.wasm');
+  await page.locator('input[aria-label="Main voice bank 5 follow source position"]').check();
+  assert.match(await page.locator('#graph-status').textContent(), /Enabled source motion/);
+  await page.locator('select[data-node="5"][data-parameter="6"]').selectOption('4');
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
+  await page.locator('#audio-toggle').click();
+  await page.locator('input[aria-label="Main voice bank 5 follow source position"]').uncheck();
+  const disabledMotionDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const disabledMotion = JSON.parse((await readFile(await (await disabledMotionDownload).path())).toString());
+  assert.equal(disabledMotion.temporal, undefined);
   assert.deepEqual(errors, []);
-  console.log('Graph workspace browser: typed Audio/CV/MIDI editing, sample/region/granulator/Main nodes, Main source analysis and rejection, native/Wasm references, live controls, project reopen passed');
+  console.log('Graph workspace browser: typed editing, sample/region/granulator/Main nodes, source analysis and rejection, per-voice motion import/reopen/live speed, 13 native/Wasm references passed');
 } finally {
   await browser.close();
 }

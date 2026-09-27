@@ -774,6 +774,21 @@ export function renderWasm(engine, family, manifest, input, selected) {
       new Float32Array(engine.memory.buffer, engine.manifold_partials_ptr(), target.values.length).set(target.values);
       if (engine.manifold_partials_commit() !== 1) throw new Error('Graph workspace partial target commit failed');
     }
+    if (selected.temporalData) {
+      const frames = selected.temporalData[0];
+      if (!Number.isInteger(frames) || selected.temporalData.length !== 1 + frames * 131
+        || engine.manifold_main_temporal_raw_begin(selected.temporalNodeId, frames) !== 1) {
+        throw new Error('Graph workspace temporal frame preparation failed');
+      }
+      new Float32Array(engine.memory.buffer, engine.manifold_main_temporal_raw_ptr(), selected.temporalData.length)
+        .set(selected.temporalData);
+      new Float32Array(engine.memory.buffer, engine.manifold_main_temporal_raw_recipe_ptr(), 10)
+        .set(selected.temporalRecipe);
+      if (engine.manifold_main_temporal_raw_commit() !== 1
+        || engine.manifold_main_temporal_speed(selected.temporalNodeId, selected.temporalSpeed) !== 1) {
+        throw new Error('Graph workspace temporal frame commit failed');
+      }
+    }
   }
   if (family === 'sine-bank') {
     if (engine.manifold_partials_begin(2, selected.partials.length / 4, 440) !== 1) throw new Error('Wasm sine bank upload begin failed');
@@ -1195,6 +1210,15 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
       if (family === 'graph-workspace' && next.sample) {
         next.sampleData = await loadFloat32(family, next.sample);
         if (next.sampleData.length !== next.sampleFrames * 2) throw new Error('Invalid graph sample fixture size');
+        for (const entry of next.cases) {
+          if (!entry.temporalRawFile) continue;
+          entry.temporalData = await loadFloat32(family, entry.temporalRawFile);
+          if (!Number.isInteger(entry.temporalData[0])
+            || entry.temporalData.length !== 1 + entry.temporalData[0] * 131
+            || !Array.isArray(entry.temporalRecipe) || entry.temporalRecipe.length !== 10) {
+            throw new Error('Invalid graph temporal fixture');
+          }
+        }
       }
       if (family === 'main-sample-blend') {
         next.waveTargetData = await loadFloat32(family, next.waveTarget);

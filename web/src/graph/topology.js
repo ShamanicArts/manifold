@@ -299,21 +299,59 @@ export function validateGraphTargets(signal, targets) {
   return checked;
 }
 
-export function captureGraphProject(signal, assets = [], targets = []) {
+export function defaultGraphTemporal(nodeId) {
+  return { nodeId, mode: 1, speed: 1, smooth: 0, contrast: 1,
+    recipe: [0, 8, 0, 0, .5, 0, 0, .7, 2, 0, 0] };
+}
+
+export function validateGraphTemporal(signal, assets, temporal) {
+  if (!Array.isArray(temporal) || temporal.length > 4) throw new Error('Graph temporal recipe limit exceeded.');
+  const seen = new Set();
+  return temporal.map((entry) => {
+    const recipe = entry?.recipe;
+    if (!entry || !sameKeys(entry, ['nodeId', 'mode', 'speed', 'smooth', 'contrast', 'recipe'])
+      || !Number.isInteger(entry.nodeId) || seen.has(entry.nodeId)
+      || signal.nodes.find((node) => node.id === entry.nodeId)?.type !== 'main-voice-bank'
+      || !assets.some((asset) => asset.nodeId === entry.nodeId)
+      || ![1, 2].includes(entry.mode)
+      || typeof entry.speed !== 'number' || !Number.isFinite(entry.speed) || entry.speed < 0 || entry.speed > 4
+      || typeof entry.smooth !== 'number' || !Number.isFinite(entry.smooth) || entry.smooth < 0 || entry.smooth > 1
+      || typeof entry.contrast !== 'number' || !Number.isFinite(entry.contrast) || entry.contrast < 0 || entry.contrast > 2
+      || !Array.isArray(recipe) || recipe.length !== 11
+      || recipe.some((value) => typeof value !== 'number' || !Number.isFinite(value))
+      || !Number.isInteger(recipe[0]) || recipe[0] < 0 || recipe[0] > 7
+      || recipe[1] !== 8 || recipe[2] !== 0 || recipe[3] !== 0
+      || recipe[4] < .01 || recipe[4] > .99 || ![0, 1].includes(recipe[5])
+      || recipe[6] < 0 || recipe[6] > 1 || recipe[7] < 0 || recipe[7] > 1
+      || !Number.isInteger(recipe[8]) || recipe[8] < 0 || recipe[8] > 2
+      || recipe[9] < 0 || recipe[9] > 1
+      || !Number.isInteger(recipe[10]) || recipe[10] < 0 || recipe[10] > 2) {
+      throw new Error('Invalid graph temporal recipe.');
+    }
+    seen.add(entry.nodeId);
+    return { nodeId: entry.nodeId, mode: entry.mode, speed: entry.speed,
+      smooth: entry.smooth, contrast: entry.contrast, recipe: [...recipe] };
+  });
+}
+
+export function captureGraphProject(signal, assets = [], targets = [], temporal = []) {
   const graph = validateTopology(signal);
   const checked = validateGraphAssets(graph, assets);
   const partials = validateGraphTargets(graph, targets);
+  const motion = validateGraphTemporal(graph, checked, temporal);
   return { format: PROJECT_FORMAT, schemaVersion: PROJECT_VERSION, projectId, signal: graph,
     ...(checked.length ? { assets: checked.map((asset) => ({ nodeId: asset.nodeId,
       sourceRate: asset.sourceRate, frames: asset.stereo.length / 2, label: asset.label,
       pcmF32Base64: encodePcm(asset.stereo) })) } : {}),
-    ...(partials.length ? { targets: partials } : {}) };
+    ...(partials.length ? { targets: partials } : {}),
+    ...(motion.length ? { temporal: motion } : {}) };
 }
 
 export function parseGraphBundle(document) {
   if (document?.format !== PROJECT_FORMAT || document.schemaVersion !== PROJECT_VERSION
     || document.projectId !== projectId
-    || ![[], ['assets'], ['targets'], ['assets', 'targets']].some((optional) =>
+    || !Array.from({ length: 8 }, (_, mask) => ['assets', 'targets', 'temporal']
+      .filter((_, index) => mask & (1 << index))).some((optional) =>
       sameKeys(document, ['format', 'schemaVersion', 'projectId', 'signal', ...optional]))) {
     throw new Error('This is not a supported graph workspace project.');
   }
@@ -325,6 +363,9 @@ export function parseGraphBundle(document) {
   if (Object.hasOwn(document, 'targets') && !Array.isArray(document.targets)) {
     throw new Error('Invalid graph partial targets.');
   }
+  if (Object.hasOwn(document, 'temporal') && !Array.isArray(document.temporal)) {
+    throw new Error('Invalid graph temporal recipes.');
+  }
   const assets = (document.assets ?? []).map((asset) => {
     if (!asset || !sameKeys(asset, ['nodeId', 'sourceRate', 'frames', 'label', 'pcmF32Base64'])
       || !Number.isInteger(asset.frames) || asset.frames < 1 || asset.frames > 48000 * 30) {
@@ -333,8 +374,10 @@ export function parseGraphBundle(document) {
     return { nodeId: asset.nodeId, sourceRate: asset.sourceRate, label: asset.label,
       stereo: decodePcm(asset.pcmF32Base64, asset.frames) };
   });
-  return { signal, assets: validateGraphAssets(signal, assets),
-    targets: validateGraphTargets(signal, document.targets ?? []) };
+  const checked = validateGraphAssets(signal, assets);
+  return { signal, assets: checked,
+    targets: validateGraphTargets(signal, document.targets ?? []),
+    temporal: validateGraphTemporal(signal, checked, document.temporal ?? []) };
 }
 
 export function parseGraphProject(document) { return parseGraphBundle(document).signal; }

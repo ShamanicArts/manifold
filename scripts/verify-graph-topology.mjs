@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { addNode, removeNode, setConnection, setInitialParameter,
-  setInputSource, graphNoteTarget, captureGraphProject, parseGraphProject, parseGraphBundle, validateTopology } from '../web/src/graph/topology.js';
+  setInputSource, graphNoteTarget, captureGraphProject, parseGraphProject, parseGraphBundle,
+  validateTopology, defaultGraphTemporal } from '../web/src/graph/topology.js';
 
 const project = JSON.parse(readFileSync('projects/graph-workspace/project.json', 'utf8'));
 const texture = JSON.parse(readFileSync('projects/graph-workspace/tone-texture.json', 'utf8'));
@@ -10,6 +11,7 @@ const sampleVoice = JSON.parse(readFileSync('projects/graph-workspace/sample-voi
 const regionVoice = JSON.parse(readFileSync('projects/graph-workspace/region-voice.json', 'utf8'));
 const granularSource = JSON.parse(readFileSync('projects/graph-workspace/granular-source.json', 'utf8'));
 const mainBank = JSON.parse(readFileSync('projects/graph-workspace/main-bank.json', 'utf8'));
+const source = { nodeId: 5, sourceRate: 48000, stereo: new Float32Array([.25, -.25, .5, -.5]), label: 'Two frames' };
 assert.deepEqual(parseGraphProject(texture), texture.signal);
 assert.deepEqual(parseGraphProject(noteVoice), noteVoice.signal);
 assert.equal(graphNoteTarget(noteVoice.signal), 4);
@@ -22,11 +24,17 @@ assert.equal(graphNoteTarget(granularSource.signal), null);
 assert.deepEqual(parseGraphBundle(mainBank).targets, mainBank.targets);
 assert.equal(graphNoteTarget(mainBank.signal), 4);
 assert.deepEqual(parseGraphBundle(JSON.parse(JSON.stringify(captureGraphProject(mainBank.signal, [], mainBank.targets)))).targets, mainBank.targets);
+const motion = defaultGraphTemporal(5);
+const movingBundle = captureGraphProject(mainBank.signal, [source], mainBank.targets, [motion]);
+assert.deepEqual(parseGraphBundle(JSON.parse(JSON.stringify(movingBundle))).temporal, [motion]);
+assert.throws(() => captureGraphProject(mainBank.signal, [], mainBank.targets, [motion]), /temporal recipe/);
+assert.throws(() => parseGraphBundle({ ...movingBundle, temporal: [motion, motion] }), /temporal recipe/);
+assert.throws(() => parseGraphBundle({ ...movingBundle, temporal: [{ ...motion, recipe: [...motion.recipe.slice(0, 4), 4, ...motion.recipe.slice(5)] }] }), /temporal recipe/);
+assert.throws(() => parseGraphBundle({ ...movingBundle, temporal: null }), /temporal recipe/);
 assert.throws(() => captureGraphProject(mainBank.signal), /wave and source targets/);
 assert.throws(() => parseGraphBundle({ ...mainBank, targets: null }), /partial targets/);
 assert.throws(() => parseGraphBundle({ ...mainBank, targets: [mainBank.targets[0], mainBank.targets[0]] }), /partial target/);
 assert.throws(() => parseGraphBundle({ ...mainBank, targets: mainBank.targets.map((target) => ({ ...target, values: [1, 1e100, 0, 0] })) }), /partial target/);
-const source = { nodeId: 5, sourceRate: 48000, stereo: new Float32Array([.25, -.25, .5, -.5]), label: 'Two frames' };
 const sampleBundle = captureGraphProject(sampleVoice.signal, [source]);
 assert.deepEqual(parseGraphBundle(JSON.parse(JSON.stringify(sampleBundle))).assets, [source]);
 assert.deepEqual(parseGraphBundle(JSON.parse(JSON.stringify(captureGraphProject(regionVoice.signal, [source])))).assets, [source]);

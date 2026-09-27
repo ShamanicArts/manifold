@@ -42,6 +42,27 @@ for (let frame = 0; frame < sampleFrames; frame++) {
   sample.writeFloatLE(tone * .85, frame * 8 + 4);
 }
 writeFileSync(resolve(directory, 'sample-source.f32'), sample);
+const { instance: analyzer } = await WebAssembly.instantiate(readFileSync('web/dist/manifold_filter.wasm'), {});
+const analysis = analyzer.exports;
+if (analysis.manifold_analysis_begin(sampleFrames, 48_000) !== 1) throw new Error('Graph source analysis preparation failed');
+new Float32Array(analysis.memory.buffer, analysis.manifold_analysis_ptr(), sampleFrames * 2)
+  .set(new Float32Array(sample.buffer.slice(sample.byteOffset, sample.byteOffset + sample.byteLength)));
+if (analysis.manifold_analysis_run_temporal(0, sampleFrames, 128) !== 1) throw new Error('Graph temporal source analysis failed');
+const temporalFrames = analysis.manifold_analysis_temporal_count();
+const rawFrames = new Float32Array(1 + temporalFrames * 131);
+rawFrames[0] = temporalFrames;
+for (let index = 0; index < temporalFrames; index++) {
+  const offset = 1 + index * 131;
+  const count = analysis.manifold_analysis_temporal_frame_field(index, 5);
+  rawFrames[offset] = analysis.manifold_analysis_temporal_frame_field(index, 0);
+  rawFrames[offset + 1] = analysis.manifold_analysis_temporal_frame_field(index, 4);
+  rawFrames[offset + 2] = count;
+  rawFrames.set(new Float32Array(analysis.memory.buffer,
+    analysis.manifold_analysis_temporal_partials_ptr(index), count * 4), offset + 3);
+}
+writeFileSync(resolve(directory, 'temporal-frames.f32'),
+  Buffer.from(rawFrames.buffer, rawFrames.byteOffset, rawFrames.byteLength));
+const temporalRecipe = [0, 1, 0, 0, 0, 0, .5, .5, .7, 2];
 const notes = [
   { frame: 16, kind: 0, channel: 15, note: 60, velocity: 100 },
   { frame: 2048, kind: 0, channel: 15, note: 64, velocity: 96 },
@@ -66,6 +87,14 @@ const cases = [
   { id: 'main-bank-add', label: 'MIDI → Main voice bank Add mode → SVF',
     graph: setInitialParameter(mainBundle.signal, 5, 6, 4), events: notes,
     sampleNodeId: 5, targets: mainBundle.targets },
+  { id: 'main-bank-follow-add', label: 'MIDI → Main Add with source motion → SVF',
+    graph: setInitialParameter(mainBundle.signal, 5, 6, 4), events: notes,
+    sampleNodeId: 5, targets: mainBundle.targets, temporalNodeId: 5,
+    temporalRawFile: 'temporal-frames.f32', temporalRecipe, temporalSpeed: 1 },
+  { id: 'main-bank-follow-morph', label: 'MIDI → Main Morph with source motion → SVF',
+    graph: setInitialParameter(mainBundle.signal, 5, 6, 5), events: notes,
+    sampleNodeId: 5, targets: mainBundle.targets, temporalNodeId: 5,
+    temporalRawFile: 'temporal-frames.f32', temporalRecipe, temporalSpeed: 1 },
 ];
 for (const entry of cases) {
   entry.output = `${entry.id}.f32`;

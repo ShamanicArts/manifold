@@ -1,6 +1,7 @@
 /** Browser devices, AudioWorklet lifecycle, and control transport. */
 import { midiFrame } from './midi-timing.js';
 import { parameterRoutes } from './parameter-routing.js';
+import { analyzeMainTemporal } from '../graph/main-source.js';
 export class BrowserAudioHost {
   constructor(onStatus, onMeters = () => {}, onEqResponse = () => {}, onMidiTrace = () => {}) {
     this.onStatus = onStatus;
@@ -34,6 +35,24 @@ export class BrowserAudioHost {
       const response = await fetch(`${import.meta.env.BASE_URL}manifold_filter.wasm`);
       if (!response.ok) throw new Error('Wasm filter missing: run ./scripts/build-wasm.sh');
       const wasmBytes = await response.arrayBuffer();
+      const temporalReachable = new Set(project.signal.nodes.filter((node) => node.type === 'output').map((node) => node.id));
+      for (let changed = true; changed;) {
+        changed = false;
+        for (const edge of project.signal.connections) {
+          if (temporalReachable.has(edge.to) && !temporalReachable.has(edge.from)) {
+            temporalReachable.add(edge.from);
+            changed = true;
+          }
+        }
+      }
+      const temporalRecipes = project.id === 'manifold.graph-workspace'
+        ? (project.graphTemporal ?? []).filter((entry) => temporalReachable.has(entry.nodeId)) : [];
+      if (temporalRecipes.length) this.onStatus('Preparing Main source motion in Rust/Wasm…');
+      const temporals = await Promise.all(temporalRecipes.map(async (entry) => {
+        const source = project.graphAssets?.find((asset) => asset.nodeId === entry.nodeId);
+        if (!source) throw new Error(`Main bank ${entry.nodeId} needs a source for temporal motion.`);
+        return { nodeId: entry.nodeId, ...await analyzeMainTemporal(source, entry) };
+      }));
       const processor = new AudioWorkletNode(context, 'manifold-project', {
         numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
       });
@@ -122,8 +141,9 @@ export class BrowserAudioHost {
       const partials = project.id === 'manifold.graph-workspace'
         ? (project.graphTargets ?? []).filter((target) => reachable.has(target.nodeId))
         : project.extraPartials?.length ? [project.partials, ...project.extraPartials] : project.partials ?? null;
-      processor.port.postMessage({ type: 'init', wasmBytes, graph, samples: uploads, partials },
-        [wasmBytes, ...uploads.map((asset) => asset.stereo.buffer)]);
+      processor.port.postMessage({ type: 'init', wasmBytes, graph, samples: uploads, partials, temporals },
+        [wasmBytes, ...uploads.map((asset) => asset.stereo.buffer),
+          ...temporals.flatMap((entry) => [entry.rawFrames.buffer, entry.rawRecipe.buffer])]);
       await ready;
       this.ready = true;
       this.parameters = new Map(project.parameters.map((parameter) => [parameter.id, parameter]));
@@ -197,8 +217,8 @@ export class BrowserAudioHost {
     this.processor?.port.postMessage({ type: 'temporal-clear', nodeId: 2 });
   }
 
-  setTemporalSpeed(speed) {
-    this.processor?.port.postMessage({ type: 'temporal-speed', nodeId: 2, speed });
+  setTemporalSpeed(speed, nodeId = 2) {
+    this.processor?.port.postMessage({ type: 'temporal-speed', nodeId, speed });
   }
 
   setRoute(to, port, from) {
