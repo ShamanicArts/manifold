@@ -10,7 +10,9 @@ The public VST3-facing plan is **128 fixed macro slots**, IDs `0x01000000` throu
 
 ## Saved Main temporal parity
 
-The parity harness creates one browser bundle with embedded stereo PCM that changes pitch, two partial targets, a temporal recipe, and fixed host bindings. Native Rust parses the bundle and analyzes the PCM during preparation; browser Wasm analyzes the same PCM and uploads raw frames to the actual AudioWorklet. With one MIDI note at frame 16, all 8,192 stereo output frames match exactly. Removing the temporal recipe changes audio by 0.138147 peak sample units. Run `node scripts/verify-native-project-temporal.mjs` after `npm run build` in `web` to repeat this gate. It does not yet exercise DAW state serialization or VST3 host processing.
+The parity harness creates one browser bundle with embedded stereo PCM that changes pitch, two partial targets, a temporal recipe, and fixed host bindings. Native Rust parses the bundle and analyzes the PCM during preparation; browser Wasm analyzes the same PCM and uploads raw frames to the actual AudioWorklet. With one MIDI note at frame 16, all 8,192 stereo output frames match exactly. Removing the temporal recipe changes audio by 0.138147 peak sample units. Run `node scripts/verify-native-project-temporal.mjs` after `npm run build` in `web` to repeat this gate. It does not yet exercise VST3 host processing.
+
+`NativeProject::prepare_with_state` retains the validated browser bundle beside the processor. The processor tracks accepted physical control values, including sample-offset host automation. While processing is synchronized, `PreparedNativeProject::save_state` writes those values into `signal.initialParameters` and emits the same project schema. Tests reopen the edited gain with its fixed slot and preserve a Main bundle's PCM, partial targets, and temporal recipe. This currently saves control edits against the original sample/target state. Runtime replacement of PCM, partial targets, and recipes still needs a state-aware control-thread path before DAW preset write-back is complete.
 
 ## Contract already exercised
 
@@ -26,7 +28,7 @@ The parity harness creates one browser bundle with embedded stereo PCM that chan
 | `ProcessData` audio | `NativeProcessor::process` handles planar `f32`, missing buses, variable blocks | Wrap raw host pointers safely and support hosts that use identical input/output buffers |
 | MIDI events | `TimedEvent` reaches the graph at a frame offset | Convert VST3 event list and MIDI controller mapping to stable project routes |
 | Parameter automation | Native sampler projects have 128 fixed host slots, saved graph bindings, physical/normalized mapping, and frame-offset queues | Implement the controller's fixed slot list, test physical host queues, and persist edited parameter state |
-| Component state | Native Rust loads all eight authored browser graph bundles, including Main partial targets, temporal recipes, parameters, bindings, and embedded PCM; a saved temporal bundle renders identical native/Wasm audio | Serialize changed state and publish replacements at a block boundary |
+| Component state | Native Rust loads all eight authored browser graph bundles, saves accepted control edits into the same schema, and restores PCM, targets, recipes, and bindings; a saved temporal bundle renders identical native/Wasm audio | Record runtime asset/target changes and publish replacements at a block boundary |
 | Controller/editor | Browser JavaScript workbench exists | Implement `IEditController` and native `IPlugView` shell with a packaged web frontend and bounded control/meter transport |
 | Test host | Native unit tests and browser comparisons run | Run Steinberg validator and at least one DAW against a real `.vst3` bundle |
 
@@ -36,7 +38,7 @@ Steinberg publishes a [generated VST3 C API](https://github.com/steinbergmedia/v
 
 ## Order of work
 
-1. Add native state write-back and replacement at a block boundary. Capture old state mappings separately rather than guessing Lua execution. Saved Main temporal playback already compares identically across native and browser Wasm.
+1. Extend native write-back to runtime PCM, target, and recipe changes; publish prepared replacements at a block boundary. Capture old state mappings separately rather than guessing Lua execution. Saved Main temporal playback and control state round-trip are already covered.
 2. Implement the fixed VST3 macro-slot controller and editor bindings; persist edits, expose units in the editor, and compare native timed automation with Wasm and host queues.
 3. Implement the VST3 factory, processor, bus and event adapters using the official C API. Exercise inactive and in-place buffers, variable block sizes, flush calls, multiple instances, state round-trips, and validator checks.
 4. Implement the controller and web editor bridge. Keep rendering and file/analysis work outside the process callback.

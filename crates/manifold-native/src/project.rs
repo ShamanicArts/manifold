@@ -54,6 +54,7 @@ struct TemporalRecipe {
 
 /// A parsed v1 graph project; unsupported nodes fail explicitly.
 pub struct NativeProject {
+    document: Value,
     graph: GraphDescription,
     parameters: Vec<Parameter>,
     host_parameters: Vec<HostParameter>,
@@ -61,6 +62,42 @@ pub struct NativeProject {
     assets: Vec<Asset>,
     targets: Vec<Target>,
     temporal: Vec<TemporalRecipe>,
+}
+
+/// Keep the portable project beside its prepared processor for host state saves.
+/// Saving is a control-thread operation after the host has synchronized processing.
+pub struct PreparedNativeProject {
+    pub processor: NativeProcessor,
+    document: Value,
+}
+
+impl PreparedNativeProject {
+    pub fn save_state(&mut self) -> Result<Vec<u8>, ProjectError> {
+        let parameters = self.document["signal"]["initialParameters"]
+            .as_array_mut()
+            .ok_or(ProjectError::Invalid("parameters"))?;
+        for entry in parameters {
+            let node = entry["nodeId"]
+                .as_u64()
+                .ok_or(ProjectError::Invalid("parameter node"))?;
+            let id = entry["id"]
+                .as_u64()
+                .ok_or(ProjectError::Invalid("parameter id"))?;
+            let index = self
+                .processor
+                .host_parameters()
+                .iter()
+                .position(|parameter| parameter.node == node && u64::from(parameter.local_id) == id)
+                .ok_or(ProjectError::Invalid("parameter id"))?;
+            entry["value"] = Value::from(self.processor.current_parameter_values()[index]);
+        }
+        let bytes =
+            serde_json::to_vec(&self.document).map_err(|_| ProjectError::Invalid("JSON"))?;
+        if bytes.len() > MAX_PROJECT_BYTES {
+            return Err(ProjectError::Invalid("project size"));
+        }
+        Ok(bytes)
+    }
 }
 
 fn object<'a>(
@@ -677,6 +714,7 @@ impl NativeProject {
             });
         }
         Ok(Self {
+            document: root,
             graph,
             parameters: parsed_parameters,
             host_parameters,
@@ -701,6 +739,16 @@ impl NativeProject {
         sample_rate: f32,
         max_frames: usize,
     ) -> Result<NativeProcessor, ProjectError> {
+        self.prepare_with_state(sample_rate, max_frames)
+            .map(|prepared| prepared.processor)
+    }
+
+    pub fn prepare_with_state(
+        mut self,
+        sample_rate: f32,
+        max_frames: usize,
+    ) -> Result<PreparedNativeProject, ProjectError> {
+        let document = self.document.take();
         let mut prepared_temporal = Vec::with_capacity(self.temporal.len());
         for entry in &self.temporal {
             let source = self
@@ -763,11 +811,16 @@ impl NativeProject {
                 return Err(ProjectError::Invalid("unavailable temporal source"));
             }
         }
+        processor.current_parameter_values =
+            self.host_parameters.iter().map(|p| p.initial).collect();
         processor.host_parameters = self.host_parameters;
         for binding in self.host_bindings {
             processor.slot_bindings[binding.slot as usize] = Some(binding.graph_parameter);
         }
-        Ok(processor)
+        Ok(PreparedNativeProject {
+            processor,
+            document,
+        })
     }
 }
 
@@ -1063,6 +1116,110 @@ mod tests {
             parse(&invalid),
             Err(ProjectError::Invalid("temporal node"))
         ));
+    }
+
+    #[test]
+    fn saved_host_state_reopens_edited_controls_and_keeps_project_content() {
+        let mut bundle = fixture();
+        bundle["hostBindings"] = json!([{ "slot": 77, "nodeId": 9, "id": 0 }]);
+        let mut prepared = parse(&bundle)
+            .unwrap()
+            .prepare_with_state(48_000.0, 128)
+            .unwrap();
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        let main = [1.0; 128];
+        let slot = HOST_SLOT_BASE + 77;
+        prepared
+            .processor
+            .process_host_automated(
+                AudioBlock {
+                    main: Some([&main, &main]),
+                    sidechain: None,
+                    output: [&mut left, &mut right],
+                    events: &[],
+                },
+                &[TimedAutomation {
+                    offset: 40,
+                    id: slot,
+                    normalized: 0.5,
+                }],
+            )
+            .unwrap();
+        assert!((left[39] - 0.25).abs() < 0.001);
+        assert!(left[127] > left[39]);
+        assert!(!prepared.processor.set_parameter(9, 0, 3.0));
+        let saved = prepared.save_state().unwrap();
+        let saved_value: Value = serde_json::from_slice(&saved).unwrap();
+        assert_eq!(saved_value["hostBindings"][0]["slot"], 77);
+        assert_eq!(saved_value["signal"]["sidechainSource"], "oscillator");
+        assert_eq!(
+            saved_value["signal"]["initialParameters"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["nodeId"] == 9 && entry["id"] == 0)
+                .unwrap()["value"],
+            1.0
+        );
+        let mut reopened = NativeProject::parse(&saved)
+            .unwrap()
+            .prepare_with_state(48_000.0, 128)
+            .unwrap();
+        assert_eq!(reopened.processor.bound_graph_parameter(77), Some(9 << 8));
+        reopened
+            .processor
+            .process(AudioBlock {
+                main: Some([&main, &main]),
+                sidechain: None,
+                output: [&mut left, &mut right],
+                events: &[],
+            })
+            .unwrap();
+        assert!((left[127] - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn saved_main_state_retains_source_targets_and_temporal_recipe() {
+        let mut bundle: Value = serde_json::from_slice(include_bytes!(
+            "../../../projects/graph-workspace/main-bank.json"
+        ))
+        .unwrap();
+        let pcm: Vec<f32> = (0..8192)
+            .flat_map(|i| {
+                let sample = (i as f32 * std::f32::consts::TAU * 330.0 / 48_000.0).sin() * 0.8;
+                [sample, sample]
+            })
+            .collect();
+        let bytes: Vec<u8> = pcm.iter().flat_map(|sample| sample.to_le_bytes()).collect();
+        bundle["assets"] = json!([{ "nodeId": 5, "sourceRate": 48000, "frames": 8192,
+            "label": "Main source", "pcmF32Base64": STANDARD.encode(bytes) }]);
+        bundle["temporal"] = json!([{ "nodeId": 5, "mode": 1, "speed": 2,
+            "smooth": 0, "contrast": 1,
+            "recipe": [0, 8, 0, 0, 0.5, 0, 0, 0.7, 2, 0, 0] }]);
+        let mut prepared = parse(&bundle)
+            .unwrap()
+            .prepare_with_state(48_000.0, 128)
+            .unwrap();
+        assert!(prepared.processor.set_parameter(5, 1, 0.6));
+        let saved = prepared.save_state().unwrap();
+        let saved_value: Value = serde_json::from_slice(&saved).unwrap();
+        assert_eq!(saved_value["assets"], bundle["assets"]);
+        assert_eq!(saved_value["targets"], bundle["targets"]);
+        assert_eq!(saved_value["temporal"], bundle["temporal"]);
+        let saved_level = saved_value["signal"]["initialParameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["nodeId"] == 5 && entry["id"] == 1)
+            .unwrap()["value"]
+            .as_f64()
+            .unwrap();
+        assert!((saved_level - 0.6).abs() < 1e-6);
+        NativeProject::parse(&saved)
+            .unwrap()
+            .prepare(48_000.0, 128)
+            .unwrap();
     }
 
     #[test]

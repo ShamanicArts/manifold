@@ -44,6 +44,7 @@ pub struct NativeProcessor {
     max_frames: usize,
     silence: Vec<f32>,
     host_parameters: Vec<HostParameter>,
+    current_parameter_values: Vec<f32>,
     slot_bindings: [Option<u32>; HOST_SLOT_COUNT],
     event_scratch: Vec<TimedEvent>,
 }
@@ -64,6 +65,7 @@ impl NativeProcessor {
             max_frames,
             silence: vec![0.0; max_frames],
             host_parameters: Vec::new(),
+            current_parameter_values: Vec::new(),
             slot_bindings: [None; HOST_SLOT_COUNT],
             event_scratch: Vec::with_capacity(MAX_SPLIT_MIDI_EVENTS),
         })
@@ -71,6 +73,12 @@ impl NativeProcessor {
 
     pub fn host_parameters(&self) -> &[HostParameter] {
         &self.host_parameters
+    }
+
+    /// Current physical values in the same order as `host_parameters`.
+    /// Read this only while host processing is suspended or otherwise synchronized.
+    pub fn current_parameter_values(&self) -> &[f32] {
+        &self.current_parameter_values
     }
 
     /// Fixed public host slots; a slot may be unbound in a given project.
@@ -93,7 +101,28 @@ impl NativeProcessor {
     /// Prepared parameter changes may be applied between blocks. The host must
     /// map its stable public parameter IDs to node-local IDs before this call.
     pub fn set_parameter(&mut self, node: NodeId, parameter: u32, value: f32) -> bool {
-        self.plan.set_parameter(node, parameter, value)
+        if let Some(descriptor) = self
+            .host_parameters
+            .iter()
+            .find(|entry| entry.node == node && entry.local_id == parameter)
+        {
+            if descriptor.to_normalized(value).is_none()
+                || (descriptor.discrete && value.fract() != 0.0)
+            {
+                return false;
+            }
+        }
+        if !self.plan.set_parameter(node, parameter, value) {
+            return false;
+        }
+        if let Some(index) = self
+            .host_parameters
+            .iter()
+            .position(|entry| entry.node == node && entry.local_id == parameter)
+        {
+            self.current_parameter_values[index] = value;
+        }
+        true
     }
 
     pub fn load_sample_stereo(&mut self, node: NodeId, stereo: Vec<f32>, source_rate: f32) -> bool {
@@ -232,9 +261,9 @@ impl NativeProcessor {
                 let value = descriptor
                     .from_normalized(point.normalized)
                     .expect("validated normalized value");
-                let applied = self
-                    .plan
-                    .set_parameter(descriptor.node, descriptor.local_id, value);
+                let node = descriptor.node;
+                let local_id = descriptor.local_id;
+                let applied = self.set_parameter(node, local_id, value);
                 debug_assert!(applied);
             }
             return Ok(());
@@ -254,10 +283,17 @@ impl NativeProcessor {
                 let value = descriptor
                     .from_normalized(point.normalized)
                     .expect("validated normalized value");
-                let applied = self
-                    .plan
-                    .set_parameter(descriptor.node, descriptor.local_id, value);
+                let node = descriptor.node;
+                let local_id = descriptor.local_id;
+                let applied = self.plan.set_parameter(node, local_id, value);
                 debug_assert!(applied);
+                if let Some(index) = self
+                    .host_parameters
+                    .iter()
+                    .position(|entry| entry.node == node && entry.local_id == local_id)
+                {
+                    self.current_parameter_values[index] = value;
+                }
                 point_index += 1;
             }
             let end = automation
