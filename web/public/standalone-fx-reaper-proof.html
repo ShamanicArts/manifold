@@ -36,13 +36,14 @@
     <header><span>MANIFOLD / NATIVE HOST CHECKPOINT</span><a href="/standalone-fx-vst3-host-review.html">VST3 boundary ↗</a></header>
     <p class="eyebrow">Standalone FX · REAPER · Linux VST3</p>
     <h1>The authored editor inside a real DAW.</h1>
-    <p class="lead">REAPER loads the packaged Manifold VST3 and opens the same ported slider and XY widgets used by the browser and CLAP editors. This disposable host run exercised host parameter changes, a physical pointer gesture, project save and recall, Mix envelope playback, and Room gesture recording and replay.</p>
+    <p class="lead">REAPER loads the packaged Manifold VST3 and opens the same ported slider and XY widgets used by the browser and CLAP editors. This disposable host run exercised host parameter changes, pointer gestures, project recall, automation recording and replay, and two independent plug-in instances.</p>
     <div class="values">
       <div class="value"><b>0.72 → 0.20</b><span>Mix changed through REAPER while the editor stayed open</span></div>
       <div class="value"><b>0.50 → 0.69</b><span>Room dragged in the editor and read back from REAPER</span></div>
       <div class="value"><b>3 / 3</b><span>Selected effect, Mix, and Room restored after reopening the project</span></div>
       <div class="value"><b>0.80 → 0.20</b><span>REAPER Mix envelope drove the plug-in and open editor during playback</span></div>
       <div class="value"><b>7 points</b><span>Room gesture recorded in Write mode; replayed range 0.24–0.69</span></div>
+      <div class="value"><b>2 instances</b><span>Separate Reverb and Chorus controls survive editor switching and project reopen</span></div>
     </div>
     <h2>Four moments from the same probe</h2>
     <div class="sequence">
@@ -53,10 +54,12 @@
       <figure><img src="/reaper-automation-high.png" alt="REAPER playing an automation envelope with Manifold Mix visibly at 0.80" /><figcaption><strong>05 · Automation high</strong> REAPER plays a five-point Mix envelope. Its plug-in parameter and the open editor both show 0.80.</figcaption></figure>
       <figure><img src="/reaper-automation-low.png" alt="REAPER automation envelope after Mix returns to 0.20" /><figcaption><strong>06 · Automation low</strong> Later in the same pass, the host parameter and editor return to 0.20.</figcaption></figure>
       <figure><img src="/reaper-recorded-gesture.png" alt="REAPER playing in Write mode while the Manifold Room slider moves and a purple Room envelope is recorded" /><figcaption><strong>07 · Gesture recording</strong> REAPER Write mode records the original Room slider drag into seven envelope points. Playback of the saved curve returns the plug-in parameter through 0.24–0.69.</figcaption></figure>
+      <figure><img src="/reaper-second-instance.png" alt="Second Manifold VST3 instance on REAPER track two shows Chorus with Mix 0.91 and Rate 0.11" /><figcaption><strong>08 · Second instance</strong> A new track opens its own Chorus editor at Mix 0.91 and Rate 0.11 while Reverb remains on track one.</figcaption></figure>
+      <figure><img src="/reaper-first-again.png" alt="First Manifold VST3 editor reopened with Reverb, Mix 0.20 and Room 0.69 while two tracks remain loaded" /><figcaption><strong>09 · Editor reopen</strong> Reopening the first view still shows Reverb, Mix 0.20, and Room 0.69. A fresh process restores both tracks' distinct parameter sets.</figcaption></figure>
     </div>
     <h2>What this exposed</h2>
     <p>REAPER supplies the discrete effect selector as a widened 32-bit float. Its normalized Reverb value is approximately <code>0.349999994</code>, not an exact <code>0.35</code>. The editor previously sent that imprecision into the browser project parser as a fractional effect index. The controller now quantizes the selector to one of 21 positions, and editor snapshots serialize its project value as an integer. The repeatable probe catches this host-specific failure.</p>
-    <p class="note">This proves host loading, visible host edits, widget gestures, project recall, envelope playback, and gesture recording and replay in REAPER. Multiple simultaneous instances, editor close/reopen, varied bus configurations, and Windows/macOS hosts are subsequent gates.</p>
+    <p class="note">This proves host loading, visible host edits, widget gestures, project recall, automation recording and replay, two simultaneous instances, and editor close/reopen in REAPER. Varied bus configurations and Windows/macOS hosts are subsequent gates.</p>
     <p>Repeat locally with a disposable Xvfb/XTEST display: <code>DISPLAY=:88 MANIFOLD_ISOLATED_DISPLAY=1 python3 scripts/probe-reaper-vst3.py</code>. The script uses a temporary REAPER configuration and project and closes its isolated host process.</p>
   </main>
 </body>

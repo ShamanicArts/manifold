@@ -77,12 +77,15 @@ widget reach 0.80 and return to 0.20. Then it arms a Room envelope, switches
 the track to Write mode, and drags the original Room slider during transport.
 REAPER records seven points spanning 0.24–0.69. The probe switches to Read,
 replays the recorded interval, and observes the plug-in parameter traverse
-the same range. Captures of all seven stages are included in the review.
+the same range. Finally, it adds a second instance on another track as Chorus
+at Mix 0.91 and Rate 0.11, switches between the two native editors, and
+saves and reopens the two-track project. Reverb and Chorus retain independent
+effects and parameters. Captures of all nine stages are included in the
+review.
 
 ## Next host gates
 
-1. Test multiple instances, editor close/reopen, and varied DAW audio
-   configurations.
+1. Test varied DAW audio configurations and longer automation sessions.
 2. Export the general graph through fixed 128 macro parameters, typed MIDI
    and sidechain buses, and the authored project import path described in
    [the broader boundary map](native-vst3-boundary.md).

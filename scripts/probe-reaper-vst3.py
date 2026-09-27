@@ -229,6 +229,8 @@ local function show()
  local replay_end=0
  local replay_min,replay_max=1,0
  local replay_samples=0
+ local second_track=nil
+ local second_fx=nil
  local function poll()
   local input=io.open('{work}/command.txt','r')
   if input then
@@ -285,6 +287,34 @@ local function show()
     replay_end=last+0.3
     replay_min,replay_max,replay_samples=1,0,0
     replaying=true
+   elseif cmd=='multi' then
+    reaper.InsertTrackAtIndex(1,true)
+    second_track=reaper.GetTrack(0,1)
+    second_fx=reaper.TrackFX_AddByName(second_track,'VST3: Manifold Standalone FX',false,-1)
+    local out=io.open('{work}/multi.txt','w')
+    if second_fx<0 then
+     out:write('FAILED: second VST3 not loaded\\n')
+    else
+     reaper.TrackFX_SetParamNormalized(second_track,second_fx,0,0)
+     reaper.TrackFX_SetParamNormalized(second_track,second_fx,1,0.91)
+     reaper.TrackFX_SetParamNormalized(second_track,second_fx,2,0.11)
+     reaper.TrackFX_Show(tr,0,2)
+     reaper.TrackFX_Show(second_track,second_fx,3)
+     out:write('done ' .. tostring(reaper.TrackFX_GetParamNormalized(tr,0,0)) .. ' '
+       .. tostring(reaper.TrackFX_GetParamNormalized(second_track,second_fx,1)) .. '\\n')
+    end
+    out:close()
+   elseif cmd=='multi-first' then
+    reaper.TrackFX_Show(second_track,second_fx,2)
+    reaper.TrackFX_Show(tr,0,3)
+    local out=io.open('{work}/multi-first.txt','w')
+    out:write('done ' .. tostring(reaper.TrackFX_GetParamNormalized(tr,0,0)) .. ' '
+      .. tostring(reaper.TrackFX_GetParamNormalized(second_track,second_fx,1)) .. '\\n')
+    out:close()
+   elseif cmd=='multi-save' then
+    reaper.Main_SaveProjectEx(0,'{project}',0)
+    local out=io.open('{work}/multi-save.txt','w')
+    out:write('done saved\\n'); out:close()
    end
   end
   if running then
@@ -354,13 +384,53 @@ reaper.defer(show)
                     replayed = command(work, "replay").split()
                     replay_min, replay_max = float(replayed[1]), float(replayed[2])
                     assert replay_min < 0.4 and replay_max > 0.4, replayed
+                    multi = command(work, "multi").split()
+                    assert abs(float(multi[1]) - 0.35) < 1e-5 and abs(float(multi[2]) - 0.91) < 1e-5
+                    time.sleep(0.6)
+                    second_capture = x11.capture("reaper-second-instance.png")
+                    first = command(work, "multi-first").split()
+                    assert abs(float(first[1]) - 0.35) < 1e-5 and abs(float(first[2]) - 0.91) < 1e-5
+                    time.sleep(0.6)
+                    first_capture = x11.capture("reaper-first-again.png")
+                    command(work, "multi-save")
+                finally:
+                    stop_reaper(process)
+            verify = work / "verify-multi.lua"
+            verify.write_text(f"""
+local out=io.open('{work}/verified-multi.txt','w')
+if reaper.CountTracks(0)~=2 then out:write('FAILED: expected two tracks\\n'); out:close(); return end
+for track_id=0,1 do
+ local track=reaper.GetTrack(0,track_id)
+ if reaper.TrackFX_GetCount(track)~=1 then out:write('FAILED: missing FX\\n'); out:close(); return end
+ for id=0,2 do
+  out:write(track_id .. ':' .. id .. '=' .. tostring(reaper.TrackFX_GetParamNormalized(track,0,id)) .. '\\n')
+ end
+end
+out:write('done\\n'); out:close()
+""")
+            with (work / "verify-multi-output.log").open("w") as log:
+                process = subprocess.Popen(
+                    ["reaper", "-cfgfile", str(config), "-newinst", "-nosplash",
+                     "-noactivate", str(project), str(verify)], env=host_env(),
+                    stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
+                )
+                try:
+                    state = wait_for(work / "verified-multi.txt", "done")
+                    restored = {key: float(value) for key, value in
+                                (line.split("=", 1) for line in state.splitlines() if "=" in line)}
+                    assert abs(restored["0:0"] - 0.35) < 1e-5
+                    assert abs(restored["1:0"]) < 1e-5
+                    assert abs(restored["1:1"] - 0.91) < 1e-5
+                    assert abs(restored["1:2"] - 0.11) < 1e-5
                 finally:
                     stop_reaper(process)
             print(f"REAPER VST3: host Mix .72→.20; Room drag→{room:.3f}; saved/reopened {values}")
             print(f"automation envelope: Mix {high:.3f}→{low:.3f} during playback")
             print(f"recorded Room gesture: {count} envelope points, range {minimum:.3f}–{maximum:.3f}")
             print(f"replayed Room envelope: {replay_min:.3f}–{replay_max:.3f}")
-            for path in (initial, automated, gesture, recalled, high_capture, low_capture, record_capture):
+            print(f"two-instance project recall: {restored}")
+            for path in (initial, automated, gesture, recalled, high_capture, low_capture,
+                         record_capture, second_capture, first_capture):
                 print(path)
     finally:
         x11.close()
