@@ -37,6 +37,9 @@ try {
   assert.equal(await page.locator('#graph-capture-go').isDisabled(), true);
   const start = await page.evaluate(() => window.__captureMessages.find((message) => message.kind === 'capture-start'));
   assert.deepEqual(start, { version: 1, kind: 'capture-start', nodeId: 10, seconds: 0.2 });
+  await page.waitForTimeout(150);
+  assert.equal(await page.evaluate(() => window.__captureMessages.some((message) => message.kind === 'capture-finish')), false);
+  await page.evaluate(() => window.manifoldEditorStatus('Freezing the selected source…'));
   await page.waitForFunction(() => window.__captureMessages.some((message) => message.kind === 'capture-finish'));
   const finish = await page.evaluate(() => window.__captureMessages.find((message) => message.kind === 'capture-finish'));
   assert.deepEqual(finish, { version: 1, kind: 'capture-finish', instrumentId: 5 });

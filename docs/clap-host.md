@@ -81,6 +81,17 @@ the completed in-place reset and coherent live-save implementation.
 The [Graph reset review](../web/public/graph-clap-reset-proof.html) collects
 authored graph, external CLAP, validator, and large-asset timing evidence.
 
+The [native host capture review](../web/public/native-host-capture-review.html)
+records one REAPER Graph CLAP editor run that saved a 96,000-frame retrospective
+take and rendered the reopened project. Direct adapter tests also cover main
+and sidechain buses, mailbox completion, saved state, and MIDI playback.
+Repeated isolated REAPER editor runs can leave later `on_main_thread` capture
+actions pending after a project import. REAPER reported timer support in this
+probe but delivered only one timer callback; that path has not been adopted.
+The successful host render peak differed from the VST3/native reference by
+the source WAV level (0.125). That suggests a dry path through REAPER, but the
+CLAP host's routing must be measured before treating this as audio parity evidence.
+
 ## Standalone FX
 
 The Linux CLAP module is the first loadable native host for the authored

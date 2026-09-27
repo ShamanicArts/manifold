@@ -1,0 +1,11 @@
+{
+  "host": "REAPER Linux CLAP",
+  "editorGesture": "Capture to instrument",
+  "sourceNode": 6,
+  "instrumentNode": 5,
+  "captureFrames": 96000,
+  "capturePeak": 0.5,
+  "savedAndReopened": true,
+  "freshRenderFrames": 288000,
+  "freshRenderPeak": 0.22342514991760254
+}

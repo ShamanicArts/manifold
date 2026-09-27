@@ -11,6 +11,16 @@ Standalone FX graph through this native processor. The CLAP validator passes
 33 applicable tests with no failures. VST3 is a separate adapter with its own
 processor/controller, state, and automation contracts.
 
+The [native host capture review](../web/public/native-host-capture-review.html)
+now includes a live REAPER VST3 Graph editor run. The packaged editor imported
+`retrospective-multisource.json`, requested a two-second main-input window,
+and saved a 96,000-frame PCM asset in the REAPER project. A fresh host render
+reopened that state and matched direct native Rust for the first second within
+`5.96e-8` peak sample error; the pre-note region was silent. The isolated test
+uses a private REAPER profile and mutes only that process's PulseAudio stream.
+The editor capture starts polling for completion after the host acknowledges
+that it has accepted the freeze request.
+
 `manifold_native::project::NativeProject::parse` accepts the browser's `manifold.project` schema v1 for all eight authored graph workspace bundles. The `project.json` in that directory is an older standalone format, not a graph workspace bundle. The loader validates graph shape, node arguments, routes, parameter IDs and ranges, asset limits, source rate, frame count, base64 byte count, finite PCM, Main partial targets, and optional temporal source recipes. `prepare` compiles and installs parameters, PCM, partial targets, and analyzed temporal frames away from the audio callback. The supported node kinds are `input.raw`, `input.sidechain`, `output`, `midi-input`, `midi-transpose`, `voice-synth`, `gain`, `sum2`, `svf`, `loop-capture`, `sample-instrument`, `sample-region`, `granulator`, `oscillator`, `noise`, `lfo`, `modulated-gain`, and `main-voice-bank`. Tests render audible native output from the note, region, granular, texture, and Main bank routes. An embedded Main sample and a temporal recipe also restore and sound. Browser source recipes are metadata, since the native host supplies its own main and sidechain buses. A saved temporal bundle now has matching native and Wasm audio output.
 
 Each restored control has an internal graph-scoped 32-bit ID, `(nodeId << 8) | localParameterId`, plus physical minimum, maximum, initial value, and discrete or continuous mapping. `NativeProcessor::process_automated` accepts ordered normalized points at frame offsets, validates the complete queue before touching output, then renders audio and MIDI in bounded segments. It reuses event scratch reserved in `prepare` and accepts up to 1024 MIDI events when automation splits a block. A zero-frame call can flush parameter changes.

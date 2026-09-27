@@ -22,6 +22,7 @@ const controls = new Map();
 const gestures = new Set();
 let captureTimer = null;
 let captureInstrument = null;
+let captureStarted = false;
 const status = (message) => { byId('graph-status').textContent = message; };
 const send = (kind, id, value) => {
   if (!editorMode) return;
@@ -58,6 +59,7 @@ function paint(snapshot) {
   if (captureTimer && nextSignature !== signature) {
     clearInterval(captureTimer);
     captureTimer = null;
+    captureStarted = false;
     byId('graph-capture-go').disabled = false;
     status('Capture interrupted by a project change.');
   }
@@ -178,10 +180,14 @@ function paint(snapshot) {
 }
 
 window.manifoldEditorReceive = (snapshot) => paint(snapshot);
-window.manifoldEditorStatus = (message) => status(message);
+window.manifoldEditorStatus = (message) => {
+  status(message);
+  if (captureTimer && message.startsWith('Freezing')) captureStarted = true;
+};
 window.manifoldCaptureResult = (ok, message) => {
   if (captureTimer) clearInterval(captureTimer);
   captureTimer = null;
+  captureStarted = false;
   byId('graph-capture-go').disabled = false;
   status(message || (ok ? 'Capture published.' : 'Capture failed.'));
 };
@@ -191,7 +197,6 @@ if (window.__manifoldPendingState) {
 } else {
   paint(snapshotFromProject(noteVoice));
 }
-if (editorMode) send('editor-ready');
 byId('graph-note').addEventListener('click', () => paint(snapshotFromProject(noteVoice)));
 byId('graph-tone').addEventListener('click', () => paint(snapshotFromProject(toneTexture)));
 byId('graph-capture-go').addEventListener('click', () => {
@@ -204,6 +209,7 @@ byId('graph-capture-go').addEventListener('click', () => {
   }
   if (captureTimer) clearInterval(captureTimer);
   byId('graph-capture-go').disabled = true;
+  captureStarted = false;
   window.ipc.postMessage(JSON.stringify({ version: 1, kind: 'capture-start', nodeId, seconds }));
   status(`Capturing ${seconds} seconds from node ${nodeId}…`);
   const deadline = Date.now() + 15_000;
@@ -212,7 +218,9 @@ byId('graph-capture-go').addEventListener('click', () => {
       window.manifoldCaptureResult(false, 'Capture timed out. Keep the DAW processing audio and try again.');
       return;
     }
-    window.ipc.postMessage(JSON.stringify({ version: 1, kind: 'capture-finish', instrumentId: captureInstrument }));
+    if (captureStarted) {
+      window.ipc.postMessage(JSON.stringify({ version: 1, kind: 'capture-finish', instrumentId: captureInstrument }));
+    }
   }, 100);
 });
 byId('graph-file').addEventListener('change', async (event) => {
@@ -240,3 +248,4 @@ byId('graph-file').addEventListener('change', async (event) => {
   } catch (error) { status(`Project unchanged: ${error.message}`); }
   finally { event.target.value = ''; }
 });
+if (editorMode) send('editor-ready');

@@ -117,7 +117,19 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    let probe_capture = if graph {
+        std::env::var("MANIFOLD_GRAPH_CAPTURE_PROBE").ok()
+    } else {
+        None
+    };
     gtk::glib::timeout_add_local(Duration::from_millis(16), move || {
+        if let Some(path) = probe_capture.as_deref() {
+            if Path::new(path).exists() {
+                let _ = fs::remove_file(path);
+                let _ = webview
+                    .evaluate_script("document.getElementById('graph-capture-go')?.click();");
+            }
+        }
         while let Ok(line) = receiver.try_recv() {
             let Ok(command) = serde_json::from_str::<serde_json::Value>(&line) else {
                 continue;
@@ -151,6 +163,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 Some("status") => {
                     if let Some(message) = command["message"].as_str() {
+                        if let Some(path) = probe_capture.as_deref() {
+                            let _ = fs::write(format!("{path}.status"), message);
+                        }
                         let encoded = serde_json::to_string(message).unwrap_or_default();
                         let _ = webview
                             .evaluate_script(&format!("window.manifoldEditorStatus?.({encoded});"));
@@ -158,6 +173,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 Some("capture-result") => {
                     if let Some(message) = command["message"].as_str() {
+                        if let Some(path) = probe_capture.as_deref() {
+                            let _ = fs::write(format!("{path}.result"), message);
+                        }
                         let encoded = serde_json::to_string(message).unwrap_or_default();
                         let ok = command["ok"].as_bool().unwrap_or(false);
                         let _ = webview.evaluate_script(&format!(
