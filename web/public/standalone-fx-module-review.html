@@ -17,6 +17,7 @@
     h1 { font: 400 clamp(38px, 6vw, 66px) Georgia, serif; margin: 28px 0 12px; }
     .lead { max-width: 730px; color: #b9c9cf; line-height: 1.6; }
     .primary { display: inline-block; margin-top: 17px; padding: 12px 18px; background: #266965; border: 1px solid #5ed5c4; color: white; }
+    .capture { width: 100%; height: auto; display: block; margin: 22px 0 10px; border: 1px solid #3c535d; }
     h2 { font: 400 30px Georgia, serif; margin: 48px 0 16px; }
     .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
     .card { padding: 17px; border: 1px solid #3c535d; background: #192630; }
@@ -35,9 +36,10 @@
   <main>
     <header><div class="brand">MANIFOLD / CHECKPOINT</div><a href="/">Primitive workbench ↗</a></header>
     <p class="eyebrow">Authored module reconstruction · Standalone FX</p>
-    <h1>Primitives assembled into a project.</h1>
-    <p class="lead">The legacy Standalone FX shell now runs as a dedicated browser module. Its Chorus configuration brings the old control surface together with a Rust/Wasm effect graph, so you can test a project as a whole rather than inspect isolated controls.</p>
+    <h1>Standalone FX, in progress.</h1>
+    <p class="lead">The old FX slot geometry, compact slider and dropdown display lists, and XY/filter draw commands have been transcribed from the authored widget source. The module connects those controls to a Rust/Wasm effect graph. This capture shows the current browser output at the split layout.</p>
     <a class="primary" href="/fx-module.html">Open the live FX module ↗</a>
+    <img class="capture" src="/standalone-fx-slider-port.png" alt="Current Standalone FX browser output with source filled compact sliders" />
 
     <h2>What crossed the boundary</h2>
     <div class="grid">
@@ -51,13 +53,14 @@
       <tr><td>Standalone_FX export shell</td><td>472 × 220 device frame</td><td>Desktop layout inspected at source dimensions</td></tr>
       <tr><td>FX slot dropdown + per-type labels</td><td>21 effect choices, dynamic controls</td><td>Chorus has five controls; Reverb has two</td></tr>
       <tr><td>XY panel + X/Y assignments</td><td>Canvas pad + axis selectors</td><td>Pointer drag changes both linked sliders</td></tr>
-      <tr><td>Compact slider widgets</td><td>Colored browser controls</td><td>Values reach the Rust/Wasm graph</td></tr>
+      <tr><td><code>manifold/ui/widgets/dropdown.lua</code></td><td>Canvas main and popup display lists, row selection and scroll</td><td>Effect popup selection and keyboard selection checked</td></tr>
+      <tr><td><code>manifold/ui/widgets/slider.lua</code></td><td>Canvas draws the source compact display list: full-width background and fill, hover scrim, two text-shadow passes, source colors and two-decimal values</td><td>Source click/drag mapping and 0.01 snapping; browser pixel and interaction checks</td></tr>
       <tr><td>Slot parameters and state</td><td>Portable v2 JSON state</td><td>Type switches remember values; reset and file roundtrip work</td></tr>
     </tbody></table>
 
     <h2>Verified in the browser</h2>
     <ul><li>Production Vite build; desktop and mobile layouts without horizontal overflow.</li><li>Twenty-one selector entries, live Chorus/Reverb controls, XY dragging, remembered values, reset, JSON download/open.</li><li>Rust/Wasm AudioWorklet started from the module and produced a measured oscillator output without page errors.</li></ul>
-    <p class="caveat">The Filter/SVF graph visual and pagination mode from the legacy widget are still pending. The audio path currently uses the selected-only slot; its type-switch tails and gain envelope differ from the old persistent graph. Legacy plug-in preset import and VST3 hosting remain separate work.</p>
+    <p class="caveat">The widget drawing rules are ported from source, but this browser capture has not been pixel compared with a running JUCE/ImGui export. Font rasterization and host settings may still differ. The browser path uses a persistent effect graph; complete exported plug-in parity and legacy preset import remain unproven.</p>
   </main>
 </body>
 </html>

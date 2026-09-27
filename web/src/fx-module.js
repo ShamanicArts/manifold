@@ -1,135 +1,70 @@
 import "./fx-module.css";
-import project from "../../projects/standalone-fx-slice/project.json";
+import project from "../../projects/standalone-fx-module/project.json";
+import layout from "../../projects/standalone-fx-module/ui.json";
 import { BrowserAudioHost } from "./audio/browser-host.js";
 import {
   captureStandaloneFxState,
   parseStandaloneFxState,
 } from "./state/standalone-fx.js";
+import { mountProjectUi } from "./widgets/project-ui.js";
+import { DEFAULTS, LABELS, VISUAL_NAMES } from "./widgets/fx-slot-data.js";
+import { drawText, fillRoundedRect } from "./widgets/compact-slider.js";
 
-// Labels and initial slot values come from the legacy FX widget behavior and
-// the corresponding Rust EffectSlot defaults. The DSP remains in Rust/Wasm.
-const LABELS = [
-  ["Rate", "Depth", "Feedback", "Spread", "Voices"],
-  ["Rate", "Depth", "Feedback", "Spread", "Stages"],
-  ["Drive", "Curve", "Output", "Bias"],
-  ["Threshold", "Ratio", "Attack", "Release", "Knee"],
-  ["Width", "MonoLow"],
-  ["Cutoff", "Reso"],
-  ["Cutoff", "Reso", "Drive"],
-  ["Room", "Damp"],
-  ["Time", "Feedback"],
-  ["Taps", "Feedback"],
-  ["Pitch", "Window", "Feedback"],
-  ["Grain", "Density", "Position", "Spray"],
-  ["Freq", "Depth", "Spread"],
-  ["Vowel", "Shift", "Reso", "Drive"],
-  ["Low", "High", "Mid"],
-  ["Threshold", "Drive", "Release", "SoftClip"],
-  ["Attack", "Sustain", "Sensitivity"],
-  ["Bits", "Rate", "Output"],
-  ["Size", "Pitch", "Feedback", "Filter"],
-  ["Time", "Window", "Feedback"],
-  ["Length", "Gate", "Prob", "Filter"],
-];
-const TYPE_NAMES = [
-  "Chorus",
-  "Phaser",
-  "WaveShaper",
-  "Compressor",
-  "Stereo Widener",
-  "Filter",
-  "SVF Filter",
-  "Reverb",
-  "Stereo Delay",
-  "Multitap",
-  "Pitch Shift",
-  "Granulator",
-  "Ring Mod",
-  "Formant",
-  "EQ",
-  "Limiter",
-  "Transient",
-  "BitCrusher",
-  "Shimmer",
-  "Reverse Delay",
-  "Stutter",
-];
-const DEFAULTS = [
-  [.5, .5, .2, .6, .4],
-  [.5, .5, .4, .5, .4],
-  [.3, 0, .7, .5, .5],
-  [.4, .3, .1, .3, .5],
-  [.6, .4, .5, .5, .5],
-  [.5, .2, .5, .5, .5],
-  [.5, .4, .1, .5, .5],
-  [.5, .4, .5, .5, .5],
-  [.3, .3, .5, .5, .5],
-  [.3, .3, .5, .5, .5],
-  [.5, .5, .2, .5, .5],
-  [.3, .4, .6, .25, .5],
-  [.3, 1, .2, .5, .5],
-  [0, .5, .4, .3, .5],
-  [.5, .5, .5, .5, .5],
-  [.5, .3, .4, .4, .5],
-  [.5, .5, .5, .5, .5],
-  [.3, .12, .55, .5, .5],
-  [.6, .75, .7, .5, .5],
-  [.2, .25, .47, .5, .5],
-  [.05, .8, .8, .25, .5],
-];
-const COLORS = [
-  ["#4ade80", "#102317"],
-  ["#22d3ee", "#08212a"],
-  ["#38bdf8", "#0b1c2e"],
-  ["#a78bfa", "#1e1b33"],
-  ["#f472b6", "#2b1020"],
-  ["#fbbf24", "#2b2008"],
-];
 const byId = (id) => document.getElementById(id);
-const status = byId("status");
-const typeSelect = byId("effect-type");
-const xSelect = byId("x-axis");
-const ySelect = byId("y-axis");
-const pad = byId("xy-pad");
-const canvas = byId("xy-canvas");
+const ui = mountProjectUi(byId("plugin-content"), layout);
+const typeSelect = ui.control("type_dropdown");
+const typeNames = ui.spec("type_dropdown").options;
+const xSelect = ui.control("xy_x_dropdown");
+const ySelect = ui.control("xy_y_dropdown");
+const pad = ui.element("xy_pad");
+const graph = ui.element("filter_graph");
+const dots = ui.element("visual_mode_dots");
 const values = new Map(
   project.parameters.map((parameter) => [parameter.id, parameter.default]),
 );
 let typeValues = new Map(DEFAULTS.map((entry, type) => [type, [...entry]]));
+let view = innerWidth < 620 ? "compact" : "split";
+let visualMode = "xy";
 let xAxis = 0;
 let yAxis = 1;
 let dragging = false;
 let busy = false;
-const audio = new BrowserAudioHost((message) => {
-  status.textContent = message;
-});
 const meterSamples = new Float32Array(1024);
+const audio = new BrowserAudioHost((message) => {
+  byId("status").textContent = message;
+});
+const clamp = (value) => Math.max(0, Math.min(1, Number(value)));
+const currentType = () => values.get(0);
+const labels = () => LABELS[currentType()];
+const current = (index) => values.get(index + 2);
+const hasGraph = () => currentType() === 5 || currentType() === 6;
+const accent = () =>
+  currentType() === 5 ? "#a78bfa" : currentType() === 6 ? "#4ade80" : "#22d3ee";
+const status = (message) => {
+  byId("status").textContent = message;
+};
 
-function currentType() {
-  return values.get(0);
-}
-function currentLabels() {
-  return LABELS[currentType()];
-}
-function currentControl(index) {
-  return values.get(index + 2);
-}
-function clamp(value) {
-  return Math.min(1, Math.max(0, Number(value)));
-}
-function displayValue(index, normalized) {
-  if (currentType() === 0 && index === 0) {
-    return `${(0.08 + 2.32 * normalized).toFixed(2)} Hz`;
+function applyLayout() {
+  const width = layout.widths[view];
+  const available = byId("plugin-stage").clientWidth - 28;
+  const scale = Math.max(0.5, Math.min(1.7, available / width));
+  byId("plugin-viewport").style.width = `${Math.round(width * scale)}px`;
+  byId("plugin-viewport").style.height = `${
+    Math.round(layout.height * scale)
+  }px`;
+  byId("plugin-shell").style.width = `${width}px`;
+  byId("plugin-shell").style.transform = `scale(${scale})`;
+  ui.layout(view);
+  for (const button of document.querySelectorAll("[data-view]")) {
+    button.setAttribute("aria-pressed", String(button.dataset.view === view));
   }
-  if (currentType() === 0 && index === 4) {
-    return String(
-      Math.min(4, Math.max(1, Math.floor(1 + 5 * normalized + .5))),
-    );
-  }
-  return `${Math.round(normalized * 100)}%`;
+  byId("plugin-shell").dataset.view = view;
+  syncVisualMode();
 }
-function setStatus(message) {
-  status.textContent = message;
+
+function syncSlider(id) {
+  ui.control(id === 1 ? "mix_knob" : `param${id - 1}`)
+    .setValue(values.get(id));
 }
 
 function writeControl(id, value) {
@@ -137,152 +72,266 @@ function writeControl(id, value) {
   values.set(id, normalized);
   if (id >= 2) typeValues.get(currentType())[id - 2] = normalized;
   audio.setParameter(id, normalized);
-  const row = byId(`control-${id}`);
-  if (row) {
-    const range = row.querySelector("input");
-    range.value = String(normalized);
-    range.style.setProperty("--fill", `${normalized * 100}%`);
-    row.querySelector("output").textContent = id === 1
-      ? `${Math.round(normalized * 100)}%`
-      : displayValue(id - 2, normalized);
-  }
-  drawPad();
+  syncSlider(id);
+  drawVisuals();
 }
 
-function addControl(id, label, index) {
-  const row = document.createElement("div");
-  row.className = "compact-control";
-  row.id = `control-${id}`;
-  const [accent, tint] = COLORS[index];
-  row.style.setProperty("--accent", accent);
-  row.style.setProperty("--tint", tint);
-  const controlLabel = document.createElement("label");
-  controlLabel.htmlFor = `range-${id}`;
-  controlLabel.textContent = label;
-  controlLabel.title = label;
-  const range = document.createElement("input");
-  range.type = "range";
-  range.id = `range-${id}`;
-  range.min = "0";
-  range.max = "1";
-  range.step = "0.001";
-  range.value = String(values.get(id));
-  range.style.setProperty("--fill", `${values.get(id) * 100}%`);
-  range.setAttribute("aria-label", label);
-  const output = document.createElement("output");
-  output.htmlFor = range.id;
-  output.textContent = id === 1
-    ? `${Math.round(values.get(id) * 100)}%`
-    : displayValue(id - 2, values.get(id));
-  range.addEventListener("input", () => writeControl(id, range.value));
-  row.append(controlLabel, range, output);
-  return row;
-}
-
-function renderControls() {
-  const labels = currentLabels();
-  for (const [select, current] of [[xSelect, xAxis], [ySelect, yAxis]]) {
-    select.replaceChildren(...labels.map((label, index) => {
-      const option = new Option(label, String(index));
-      return option;
-    }));
-    select.value = String(Math.min(current, labels.length - 1));
+function syncWidgetValues() {
+  const names = labels();
+  typeSelect.setSelected(currentType());
+  for (const [select, axis] of [[xSelect, xAxis], [ySelect, yAxis]]) {
+    select.setOptions(names);
+    select.setSelected(Math.min(axis, names.length - 1));
   }
-  xAxis = Number(xSelect.value);
-  yAxis = Number(ySelect.value);
-  byId("control-list").replaceChildren(
-    addControl(1, "Mix", 0),
-    ...labels.map((label, index) => addControl(index + 2, label, index + 1)),
-  );
-  byId("visual-title").textContent = TYPE_NAMES[currentType()].toUpperCase();
-  drawPad();
+  xAxis = xSelect.selected();
+  yAxis = ySelect.selected();
+  syncSlider(1);
+  for (let index = 0; index < 5; index++) {
+    const id = index + 2;
+    const widget = ui.element(`param${index + 1}`);
+    ui.control(`param${index + 1}`)
+      .setLabel(names[index] ?? `P${index + 1}`);
+    widget.dataset.unused = String(index >= names.length);
+    syncSlider(id);
+  }
+  syncVisualMode();
 }
 
 function selectType(type) {
-  if (!Number.isInteger(type) || type < 0 || type >= LABELS.length) return;
-  typeValues.set(currentType(), [0, 1, 2, 3, 4].map(currentControl));
+  if (!Number.isInteger(type) || type < 0 || type >= typeNames.length) return;
+  const previousHadGraph = hasGraph();
+  typeValues.set(currentType(), [0, 1, 2, 3, 4].map(current));
   values.set(0, type);
-  typeSelect.value = String(type);
   audio.setParameter(0, type);
-  const restored = typeValues.get(type);
-  for (let index = 0; index < 5; index++) {
-    values.set(index + 2, restored[index]);
-    audio.setParameter(index + 2, restored[index]);
-  }
-  renderControls();
-  setStatus(
-    `${TYPE_NAMES[type]} selected · settings restored for this effect.`,
-  );
+  typeValues.get(type).forEach((value, index) => {
+    values.set(index + 2, value);
+    audio.setParameter(index + 2, value);
+  });
+  if (hasGraph() && !previousHadGraph) visualMode = "graph";
+  if (!hasGraph()) visualMode = "xy";
+  syncWidgetValues();
+  status(`${typeNames[type]} selected.`);
 }
 
-function drawPad() {
-  const width = pad.clientWidth;
-  const height = pad.clientHeight;
-  if (!width || !height) return;
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = Math.round(width * dpr);
-  canvas.height = Math.round(height * dpr);
-  const ctx = canvas.getContext("2d");
-  ctx.scale(dpr, dpr);
-  const x = currentControl(xAxis) * width;
-  const y = (1 - currentControl(yAxis)) * height;
+function syncVisualMode() {
+  graph.hidden = !hasGraph() || visualMode !== "graph";
+  pad.hidden = hasGraph() && visualMode !== "xy";
+  dots.hidden = !hasGraph();
+  for (const dot of dots.querySelectorAll("button")) {
+    dot.dataset.active = String(dot.dataset.mode === visualMode);
+  }
+  drawVisuals();
+}
+
+function contextFor(element) {
+  const canvas = element.querySelector("canvas");
+  const width = element.clientWidth;
+  const height = element.clientHeight;
+  if (!width || !height) return null;
+  const scale = element.getBoundingClientRect().width / width;
+  const ratio = Math.min((devicePixelRatio || 1) * scale, 3);
+  canvas.width = Math.round(width * ratio);
+  canvas.height = Math.round(height * ratio);
+  const context = canvas.getContext("2d");
+  context.scale(ratio, ratio);
+  return { context, width, height };
+}
+
+function line(ctx, x1, y1, x2, y2, color, thickness = 1) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = thickness;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+}
+
+function panelBackground(ctx, width, height) {
   ctx.fillStyle = "#0d1420";
   ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = "#24334a";
+  ctx.strokeStyle = "#1a1a3a";
   ctx.lineWidth = 1;
-  for (let i = 1; i < 4; i++) {
-    ctx.beginPath();
-    ctx.moveTo(width * i / 4, 0);
-    ctx.lineTo(width * i / 4, height);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(0, height * i / 4);
-    ctx.lineTo(width, height * i / 4);
-    ctx.stroke();
-  }
-  ctx.fillStyle = "#22d3ee1e";
-  ctx.fillRect(0, y, x, height - y);
-  ctx.strokeStyle = "#22d3ee80";
-  ctx.beginPath();
-  ctx.moveTo(x, 0);
-  ctx.lineTo(x, height);
-  ctx.moveTo(0, y);
-  ctx.lineTo(width, y);
-  ctx.stroke();
-  ctx.fillStyle = dragging ? "#22d3ee" : "#f5ffff";
-  ctx.beginPath();
-  ctx.arc(x, y, dragging ? 8 : 6, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#86d2dc";
-  ctx.font = "10px ui-monospace, monospace";
-  ctx.fillText(
-    `${currentLabels()[xAxis]}: ${Math.round(currentControl(xAxis) * 100)}%`,
-    7,
-    height - 8,
-  );
-  ctx.textAlign = "right";
-  ctx.fillText(
-    `${currentLabels()[yAxis]}: ${Math.round(currentControl(yAxis) * 100)}%`,
-    width - 7,
-    31,
-  );
+  ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
 }
 
-function applyPad(event) {
-  const bounds = pad.getBoundingClientRect();
+function drawXY() {
+  const surface = contextFor(pad);
+  if (!surface) return;
+  const { context: ctx, width: w, height: h } = surface;
+  const xValue = current(xAxis), yValue = current(yAxis);
+  const x = Math.floor(xValue * w);
+  const y = Math.floor((1 - yValue) * h);
+  const color = accent();
+  panelBackground(ctx, w, h);
+  drawText(ctx, VISUAL_NAMES[currentType()], 4, 2, w - 8, 16,
+    color, "left", 11);
+  for (let i = 1; i < 4; i++) {
+    line(ctx, Math.floor(w * i / 4), 0, Math.floor(w * i / 4), h, "#1a1a3a");
+    line(ctx, 0, Math.floor(h * i / 4), w, Math.floor(h * i / 4), "#1a1a3a");
+  }
+  line(ctx, x, 0, x, h, `${color}44`);
+  line(ctx, 0, y, w, y, `${color}44`);
+  ctx.fillStyle = `${color}18`;
+  ctx.fillRect(0, y, x, h - y);
+  const radius = dragging ? 8 : 6;
+  if (dragging) fillRoundedRect(ctx, x - radius - 3, y - radius - 3,
+    (radius + 3) * 2, (radius + 3) * 2, radius + 3, `${color}33`);
+  fillRoundedRect(ctx, x - radius, y - radius, radius * 2, radius * 2,
+    radius, dragging ? color : "#ffffff");
+  drawText(ctx, `${labels()[xAxis]}: ${Math.floor(xValue * 100 + .5)}%`,
+    4, h - 14, Math.floor(w * .5), 12, `${color}88`, "left", 9);
+  drawText(ctx, `${labels()[yAxis]}: ${Math.floor(yValue * 100 + .5)}%`,
+    Math.floor(w * .5), 2, Math.floor(w * .5) - 4, 12,
+    `${color}88`, "left", 9);
+}
+
+function magnitude(freq, cutoff, resonance) {
+  const omega = freq / cutoff;
+  if (omega < 0.1) return 1;
+  if (omega > 10) return 0;
+  const q = Math.max(0.5, resonance * 2);
+  return 1 /
+    Math.sqrt(Math.max(1e-10, (1 - omega ** 2) ** 2 + (omega / q) ** 2));
+}
+
+function drawGraph() {
+  if (!hasGraph()) return;
+  const surface = contextFor(graph);
+  if (!surface) return;
+  const { context: ctx, width: w, height: h } = surface;
+  const low = Math.log(80), high = Math.log(16000), dbRange = 14;
+  const cutoff = Math.exp(low + current(0) * (high - low));
+  const resonance = 0.1 + current(1) * 1.9;
+  panelBackground(ctx, w, h);
+  const color = accent();
+  drawText(ctx, VISUAL_NAMES[currentType()], 4, 2, w - 8, 16,
+    color, "left", 11);
+  for (const freq of [100, 500, 1000, 5000, 10000]) {
+    const x = Math.floor((Math.log(freq) - low) / (high - low) * w);
+    line(ctx, x, 0, x, h, "#1a1a3a");
+  }
+  for (const db of [-24, -12, 0, 12, 24]) {
+    const y = Math.floor(h * 0.5 - db / dbRange * h * 0.45);
+    if (y >= 0 && y <= h) {
+      line(ctx, 0, y, w, y, db === 0 ? "#1f2b4d" : "#1a1a3a");
+    }
+  }
+  const cutoffX = Math.floor(current(0) * w);
+  line(ctx, cutoffX, 0, cutoffX, h, `${color}60`);
+  const count = Math.max(60, Math.min(w, 200));
+  const zeroY = Math.floor(h * .5);
+  let previous;
+  for (let i = 0; i <= count; i++) {
+    const x = Math.floor(i / count * w);
+    const freq = Math.exp(low + x / w * (high - low));
+    const db = Math.max(
+      -dbRange,
+      Math.min(
+        dbRange,
+        20 * Math.log10(magnitude(freq, cutoff, resonance) + 1e-10),
+      ),
+    );
+    const y = Math.max(1, Math.min(h - 1, h * 0.5 - db / dbRange * h * 0.45));
+    const pixelY = Math.floor(y);
+    if (i > 0) line(ctx, x, pixelY, x, zeroY, `${color}20`, Math.max(1, Math.ceil(w / count)));
+    if (previous) line(ctx, previous.x, previous.y, x, pixelY, color, 2);
+    previous = { x, y: pixelY };
+  }
+  const peak = Math.max(
+    -dbRange,
+    Math.min(
+      dbRange,
+      20 * Math.log10(magnitude(cutoff, cutoff, resonance) + 1e-10),
+    ),
+  );
+  const y = Math.floor(h * .5 - peak / dbRange * h * .45);
+  const radius = dragging ? 7 : 5;
+  if (dragging) fillRoundedRect(ctx, cutoffX - radius - 3, y - radius - 3,
+    (radius + 3) * 2, (radius + 3) * 2, radius + 3, `${color}44`);
+  fillRoundedRect(ctx, cutoffX - radius, y - radius, radius * 2, radius * 2,
+    radius, dragging ? color : "#ffffff");
+}
+
+function drawVisuals() {
+  drawXY();
+  drawGraph();
+}
+function applySurface(event, element) {
+  const bounds = element.getBoundingClientRect();
   writeControl(xAxis + 2, (event.clientX - bounds.left) / bounds.width);
   writeControl(yAxis + 2, 1 - (event.clientY - bounds.top) / bounds.height);
 }
+for (const surface of [pad, graph]) {
+  surface.addEventListener("pointerdown", (event) => {
+    dragging = true;
+    surface.setPointerCapture(event.pointerId);
+    applySurface(event, surface);
+  });
+  surface.addEventListener("pointermove", (event) => {
+    if (dragging) applySurface(event, surface);
+  });
+  for (const name of ["pointerup", "pointercancel"]) {
+    surface.addEventListener(name, () => {
+      dragging = false;
+      drawVisuals();
+    });
+  }
+  surface.addEventListener("keydown", (event) => {
+    const amount = event.shiftKey ? .05 : .01;
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      writeControl(
+        xAxis + 2,
+        current(xAxis) + (event.key === "ArrowRight" ? amount : -amount),
+      );
+    } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      writeControl(
+        yAxis + 2,
+        current(yAxis) + (event.key === "ArrowUp" ? amount : -amount),
+      );
+    } else return;
+    event.preventDefault();
+  });
+}
+for (const dot of dots.querySelectorAll("button")) {
+  dot.addEventListener("click", () => {
+    visualMode = dot.dataset.mode;
+    syncVisualMode();
+  });
+}
+typeSelect.onChange((type) => selectType(type));
+xSelect.onChange((axis) => {
+  xAxis = axis;
+  drawVisuals();
+});
+ySelect.onChange((axis) => {
+  yAxis = axis;
+  drawVisuals();
+});
+for (let id = 1; id <= 6; id++) {
+  ui.control(id === 1 ? "mix_knob" : `param${id - 1}`)
+    .onChange((value) => writeControl(id, value));
+}
+for (const button of document.querySelectorAll("[data-view]")) {
+  button.addEventListener("click", () => {
+    view = button.dataset.view;
+    applyLayout();
+  });
+}
+new ResizeObserver(applyLayout).observe(byId("plugin-stage"));
+byId("settings-toggle").addEventListener("click", () => {
+  byId("settings-overlay").hidden = !byId("settings-overlay").hidden;
+});
+byId("settings-close").addEventListener("click", () => {
+  byId("settings-overlay").hidden = true;
+});
 
 function syncEngine() {
   const running = audio.running;
   byId("audio-toggle").textContent = running ? "Stop audio" : "Start audio";
   byId("engine-indicator").textContent = running ? "Rust/Wasm live" : "Idle";
-  byId("engine-indicator").dataset.running = String(running);
   byId("input-source").disabled = running;
   byId("open-state").disabled = running;
 }
-
 function drawMeter() {
   if (audio.running && audio.analyser) {
     audio.analyser.getFloatTimeDomainData(meterSamples);
@@ -302,68 +351,19 @@ function drawMeter() {
   }
   requestAnimationFrame(drawMeter);
 }
-
-typeSelect.replaceChildren(
-  ...TYPE_NAMES.map((label, type) => new Option(label, String(type))),
-);
-typeSelect.value = "0";
-typeSelect.addEventListener(
-  "change",
-  () => selectType(Number(typeSelect.value)),
-);
-xSelect.addEventListener("change", () => {
-  xAxis = Number(xSelect.value);
-  drawPad();
-});
-ySelect.addEventListener("change", () => {
-  yAxis = Number(ySelect.value);
-  drawPad();
-});
-pad.addEventListener("pointerdown", (event) => {
-  dragging = true;
-  pad.setPointerCapture(event.pointerId);
-  applyPad(event);
-});
-pad.addEventListener("pointermove", (event) => {
-  if (dragging) applyPad(event);
-});
-pad.addEventListener("pointerup", () => {
-  dragging = false;
-  drawPad();
-});
-pad.addEventListener("pointercancel", () => {
-  dragging = false;
-  drawPad();
-});
-pad.addEventListener("keydown", (event) => {
-  const amount = event.shiftKey ? .05 : .01;
-  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-    writeControl(
-      xAxis + 2,
-      currentControl(xAxis) + (event.key === "ArrowRight" ? amount : -amount),
-    );
-  } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-    writeControl(
-      yAxis + 2,
-      currentControl(yAxis) + (event.key === "ArrowUp" ? amount : -amount),
-    );
-  } else return;
-  event.preventDefault();
-});
-new ResizeObserver(drawPad).observe(pad);
 byId("audio-toggle").addEventListener("click", async () => {
   if (busy) return;
   busy = true;
   try {
     if (audio.running) {
       await audio.stop();
-      setStatus("Audio stopped. State can be opened now.");
+      status("Audio stopped.");
     } else {
-      setStatus("Preparing Rust/Wasm effect graph…");
+      status("Preparing Rust/Wasm effect graph…");
       await audio.start(byId("input-source").value, values, project);
     }
   } catch (error) {
-    setStatus(`Audio could not start: ${error.message}`);
+    status(`Audio could not start: ${error.message}`);
   } finally {
     busy = false;
     syncEngine();
@@ -378,10 +378,8 @@ byId("save-state").addEventListener("click", () => {
   link.href = url;
   link.download = "manifold-standalone-fx.json";
   link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1_000);
-  setStatus(
-    `Saved ${TYPE_NAMES[currentType()]} and the settings for all 21 effects.`,
-  );
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  status("Standalone FX state saved.");
 });
 byId("open-state").addEventListener("change", async (event) => {
   const file = event.target.files?.[0];
@@ -396,14 +394,14 @@ byId("open-state").addEventListener("change", async (event) => {
     );
     values.set(0, state.hostParameters.type);
     values.set(1, state.hostParameters.mix);
-    for (let index = 0; index < 5; index++) {
-      values.set(index + 2, state.hostParameters[`p/${index}`]);
+    for (let i = 0; i < 5; i++) {
+      values.set(i + 2, state.hostParameters[`p/${i}`]);
     }
-    typeSelect.value = String(currentType());
-    renderControls();
-    setStatus(`Opened ${file.name} · ${TYPE_NAMES[currentType()]} selected.`);
+    visualMode = hasGraph() ? "graph" : "xy";
+    syncWidgetValues();
+    status(`Opened ${file.name}.`);
   } catch (error) {
-    setStatus(`State rejected: ${error.message}`);
+    status(`State rejected: ${error.message}`);
   } finally {
     event.target.value = "";
   }
@@ -414,17 +412,15 @@ byId("reset-state").addEventListener("click", () => {
   values.set(1, 0);
   audio.setParameter(0, 0);
   audio.setParameter(1, 0);
-  DEFAULTS[0].forEach((value, index) => {
-    values.set(index + 2, value);
-    audio.setParameter(index + 2, value);
+  DEFAULTS[0].forEach((value, i) => {
+    values.set(i + 2, value);
+    audio.setParameter(i + 2, value);
   });
-  typeSelect.value = "0";
-  renderControls();
-  setStatus(
-    "Original Standalone FX defaults restored. Raise Mix to audition Chorus.",
-  );
+  visualMode = "xy";
+  syncWidgetValues();
+  status("Original Chorus defaults restored. Raise Mix to hear the effect.");
 });
-
-renderControls();
+syncWidgetValues();
+applyLayout();
 syncEngine();
 drawMeter();

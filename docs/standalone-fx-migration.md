@@ -2,62 +2,295 @@
 
 ## Browser module reconstruction
 
-The [dedicated Standalone FX page](../web/fx-module.html) assembles the legacy 472 × 220 `Standalone_FX` shell as a working browser module. Its source is `UserScripts/projects/Standalone_FX/ui/main.ui.lua`, which embeds `Main/ui/components/export_fx_slot.ui.lua` and `Main/ui/behaviors/fx_slot.lua` from the old checkout. The page retains the original 21 type IDs, per-type control labels, compact slider colors, assignable XY control, public dry/wet mix, and remembered normalized settings. The browser host adds source selection, output metering, and state import/export around the module. It loads the existing `standalone-fx-slice` project and sends controls to the Rust/Wasm effect slot in an AudioWorklet. Chorus is the default, with the original dry mix and five default values.
+The [dedicated Standalone FX page](../web/fx-module.html) renders the
+[versioned widget descriptor](../projects/standalone-fx-module/ui.json) through
+reusable JavaScript Panel, Label, Dropdown, Slider, Canvas, and PaginationDots
+primitives. The descriptor transcribes `Standalone_FX/ui/main.ui.lua`,
+`Main/lib/export_plugin_shell.lua`, `Main/ui/components/export_fx_slot.ui.lua`,
+and `Main/ui/behaviors/fx_slot.lua` from the old checkout. It preserves widget
+IDs, exact 472 × 220 split and 236 × 220 compact geometry, source colors, 21
+type IDs and names, context-dependent labels, assignable XY control, filter
+response visual mode, wet mix, and remembered normalized settings. The original
+`SET` button opens an adapted settings surface; OSC and web remote services are
+explicitly unavailable in this browser host. Test input, metering, and state
+controls sit outside the authored plug-in surface.
 
-This demonstrates a complete usable **Chorus configuration** of an authored module, rather than only isolated primitives. The browser page also exposes all 21 effect control sets, but it currently draws the XY visual for every type. The old Filter and SVF configurations can show a filter graph instead, with pagination controls; that visual mode has not been reconstructed here. The page also uses the selected-only Rust slot, whose effect-switch tail and gain behavior differ from the persistent old graph as detailed below. The JSON state format is v2's portable Standalone FX state; it is not an importer for old plug-in presets.
+The compact Slider is now a direct port of
+`manifold/ui/widgets/slider.lua`'s retained display list and interaction
+mapping. It paints the source full-width background/fill, hover and drag color
+changes, black text scrim, two shadow/text passes, and two-decimal value text
+into a scaled canvas. Pointer input spans the entire width, snaps to 0.01,
+and double-click restores the descriptor default. The browser element exposes
+slider keyboard and accessibility semantics. This removes the previous native
+range-input track and thumb. The dropdown main/popup display lists and the
+FX slot's XY/filter draw commands are also transcribed from source. Browser
+font rasterization and the adapted settings surface still need direct visual
+comparison against a running JUCE/ImGui export before claiming pixel parity.
 
-Browser verification exercised all 21 selector entries, Chorus/Reverb control sets, XY drag, remembered values on type switches, reset, JSON download/open, and live oscillator audio through Rust/Wasm with a measured output meter. The workbench links to the dedicated page, and the page links back to the workbench.
+The page loads the separate
+[Standalone FX module project](../projects/standalone-fx-module/project.json).
+Its prepared `effect-slot-legacy` graph keeps visited effects processing behind
+their output gates, unlike the workbench's selected-only `standalone-fx-slice`
+study. It preserves persistent effect tails and the old dry/wet routing
+calculation, subject to the isolated comparison limits below. The JSON state
+file still uses v2's portable Standalone FX control schema; it is not an
+importer for old plug-in presets or a snapshot of delay/reverb buffers.
 
-The old `UserScripts/projects/Standalone_FX/manifold.project.json5` exports a **single swappable effects slot**, not a chain. Its public host parameters are `type` (0–20), `mix` (0–1), and five normalized context-dependent controls `p/0`–`p/4`. Type 0 is Chorus. The default mix is zero, so its initial output is dry. The Lua `fx_slot.lua` instantiates the selected effect on demand, gates unselected instances, and combines dry/wet through gain and mixer nodes. `fx_definitions.lua` maps the same normalized controls to different physical units for each effect.
+`node web/tests/fx-module.browser.mjs` verifies source widget bounds, all 21
+selector entries, Filter/SVF graph and page dots, compact mode, remembered
+controls, settings, JSON state roundtrip, and live oscillator audio through the
+Rust/Wasm AudioWorklet. Headless browser and screenshots also checked output,
+pointer mapping on the scaled filter graph, and mobile overflow. The workbench
+links to the dedicated page, and the page links back to the workbench.
 
-Type 0 uses `ChorusNode`, type 1 uses `PhaserNode`, type 2 uses `WaveShaperNode`, and types 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, and 20 use `CompressorNode`, `StereoWidenerNode`, `FilterNode`, `SVFNode`, `ReverbNode`, `StereoDelayNode`, `MultitapDelayNode`, `PitchShifterNode`, `GranulatorNode`, `RingModulatorNode`, `FormantFilterNode`, `EQNode`, `LimiterNode`, `TransientShaperNode`, `BitCrusherNode`, `ShimmerNode`, `ReverseDelayNode`, and `StutterNode`, respectively. These now have individual Rust ports. The WaveShaper is a separate primitive from v2's older `DistortionNode`. The v2 [FX chain project](../projects/fx-chain/project.json) deliberately wires `Distortion → StereoDelay → SVF` for composition testing and is not a Standalone FX preset or a substitute for type selection. Its four offline cases compare native Rust with Rust/Wasm because this exact chain has no old C++ fixture.
+The old `UserScripts/projects/Standalone_FX/manifold.project.json5` exports a
+**single swappable effects slot**, not a chain. Its public host parameters are
+`type` (0–20), `mix` (0–1), and five normalized context-dependent controls
+`p/0`–`p/4`. Type 0 is Chorus. The default mix is zero, so its initial output is
+dry. The Lua `fx_slot.lua` instantiates the selected effect on demand, gates
+unselected instances, and combines dry/wet through gain and mixer nodes.
+`fx_definitions.lua` maps the same normalized controls to different physical
+units for each effect.
 
-The current [slot slice](../projects/standalone-fx-slice/project.json) preserves type IDs 0 through 20, wet mix, and normalized `p/0`–`p/4` paths. The current workbench shows all twenty-one original types and runs the selected-only mode. Its startup type, mix, and five public defaults now match the old `Standalone_FX` manifest: Chorus, dry output, and `[0.5, 0.5, 0.2, 0.6, 0.4]`. All kernels are prepared in advance, so the unused delay and reverb lines still occupy memory. Switching types clears the newly selected effect state and drops its previous tail. Seventy-nine offline cases compare native Rust with Rust/Wasm, not the complete old plug-in.
+Type 0 uses `ChorusNode`, type 1 uses `PhaserNode`, type 2 uses
+`WaveShaperNode`, and types 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+18, 19, and 20 use `CompressorNode`, `StereoWidenerNode`, `FilterNode`,
+`SVFNode`, `ReverbNode`, `StereoDelayNode`, `MultitapDelayNode`,
+`PitchShifterNode`, `GranulatorNode`, `RingModulatorNode`, `FormantFilterNode`,
+`EQNode`, `LimiterNode`, `TransientShaperNode`, `BitCrusherNode`, `ShimmerNode`,
+`ReverseDelayNode`, and `StutterNode`, respectively. These now have individual
+Rust ports. The WaveShaper is a separate primitive from v2's older
+`DistortionNode`. The v2 [FX chain project](../projects/fx-chain/project.json)
+deliberately wires `Distortion → StereoDelay → SVF` for composition testing and
+is not a Standalone FX preset or a substitute for type selection. Its four
+offline cases compare native Rust with Rust/Wasm because this exact chain has no
+old C++ fixture.
 
-The Lua wrapper retains each instantiated effect in the graph. Its input stays connected and processing continues even while its output gain gate is closed; switching back can expose a tail that advanced while another effect was selected. The workbench's selected-only mode processes one effect per callback and resets it on selection. This bounds DSP work but changes tail continuity. The old dry, wet, and per-effect gates also use smoothed Gain nodes and Mixer nodes, so the exact transition envelope may differ from the v2 single smoothed public mix. Those routing differences need a separate full-project reference and a deliberate compatibility choice before claiming plug-in parity.
+The current [slot slice](../projects/standalone-fx-slice/project.json) preserves
+type IDs 0 through 20, wet mix, and normalized `p/0`–`p/4` paths. The current
+workbench shows all twenty-one original types and runs the selected-only mode.
+Its startup type, mix, and five public defaults now match the old
+`Standalone_FX` manifest: Chorus, dry output, and `[0.5, 0.5, 0.2, 0.6, 0.4]`.
+All kernels are prepared in advance, so the unused delay and reverb lines still
+occupy memory. Switching types clears the newly selected effect state and drops
+its previous tail. Seventy-nine offline cases compare native Rust with
+Rust/Wasm, not the complete old plug-in.
 
-An isolated [routing probe](standalone-fx-routing.md) now measures the old C++ Gain/Mixer envelope against a separate native Rust routing module. Identity-effect output matches sample for sample across dry-to-wet and two type switches. Centered Mixer pan gives the old slot's internal dry branch a `0.707` factor and its wet branch a `0.5` factor before trim; the selected-only v2 mode uses unity dry and a direct wet blend. That first identity-effect probe has not measured the complete plug-in output path.
+The Lua wrapper retains each instantiated effect in the graph. Its input stays
+connected and processing continues even while its output gain gate is closed;
+switching back can expose a tail that advanced while another effect was
+selected. The workbench's selected-only mode processes one effect per callback
+and resets it on selection. This bounds DSP work but changes tail continuity.
+The old dry, wet, and per-effect gates also use smoothed Gain nodes and Mixer
+nodes, so the exact transition envelope may differ from the v2 single smoothed
+public mix. Those routing differences need a separate full-project reference and
+a deliberate compatibility choice before claiming plug-in parity.
 
-The [follow-up Chorus/Delay probe](standalone-fx-routing.md) connects real old C++ effect kernels to those gates and compares persistent Rust kernels. It matches within `4.47e-8` maximum sample difference over 32,768 frames. Pausing and resetting the hidden Delay removes a returning tail, with a maximum output difference of `0.184` after reselecting it. These isolated captures establish the kernel and routing combination for two types; they are not yet full-project parity. The prepared Rust/Wasm slot and a separate host-switch slot are both exposed in the workbench. The host-switch slot matches reconstructed old C++ graph captures for Delay → Chorus → Delay, Delay → Phaser → Delay, Delay → SVF → Delay → SVF, Delay → Reverb → Delay → Reverb, Delay → Compressor → Delay → Compressor, Delay → Ring → Delay → Ring, Delay → Transient → Delay → Transient, Delay → BitCrusher → Delay → BitCrusher, and Delay → Widener → Delay → Widener, and Delay → Filter → Delay → Filter. Graph recompilation resets Phaser phase and all-pass state, refreshes Compressor attack/release coefficients while keeping its envelope, preserves SVF filter state, clears Reverb tails, resets the Ring oscillator phase, clears Transient Shaper fast and slow envelopes, clears BitCrusher held samples and counters, resets Widener low-band filters and correlation, clears Filter integrators, and preserves the reused Delay ring. The reconstructed old graph also gives Ring an unconnected but present second input view; at its default full depth and wet mix this selects a silent external modulator bus, so the old slot output is silent. The normal v2 slot intentionally uses Ring’s audible internal oscillator; only the host-comparison mode reproduces the old empty-bus behavior. BitCrusher's Normal mode ignores the empty second bus. Reverb uses prepared validity stamps to clear its tail in constant time at a type switch, trading about 111 KB of stamp storage and roughly 3.4 µs per 128-frame Reverb callback in the measured Node/Wasm probe. These probes use the old C++ graph runtime and nodes with a reconstructed Lua layout; they do not execute the Lua binding or deferred graph worker.
+An isolated [routing probe](standalone-fx-routing.md) now measures the old C++
+Gain/Mixer envelope against a separate native Rust routing module.
+Identity-effect output matches sample for sample across dry-to-wet and two type
+switches. Centered Mixer pan gives the old slot's internal dry branch a `0.707`
+factor and its wet branch a `0.5` factor before trim; the selected-only v2 mode
+uses unity dry and a direct wet blend. That first identity-effect probe has not
+measured the complete plug-in output path.
 
-Type 0 maps normalized controls to Chorus rate `0.08…2.4 Hz`, depth `0.05…1`, feedback `0…0.35`, spread `0…1`, and voices `round(1 + 5p/4)` clamped to the C++ node’s maximum of four. Its waveform is sine and internal mix is fully wet; the slot applies the old `1.4` wet gain before the public mix. A type switch restarts Chorus phase and drops its delay tail by invalidating the prepared ring in constant time. See the [individual Chorus comparison](chorus-migration.md) for C++ parity; the slot’s normalized mapping has native Rust/Wasm cases.
+The [follow-up Chorus/Delay probe](standalone-fx-routing.md) connects real old
+C++ effect kernels to those gates and compares persistent Rust kernels. It
+matches within `4.47e-8` maximum sample difference over 32,768 frames. Pausing
+and resetting the hidden Delay removes a returning tail, with a maximum output
+difference of `0.184` after reselecting it. These isolated captures establish
+the kernel and routing combination for two types; they are not yet full-project
+parity. The prepared Rust/Wasm slot and a separate host-switch slot are both
+exposed in the workbench. The host-switch slot matches reconstructed old C++
+graph captures for Delay → Chorus → Delay, Delay → Phaser → Delay, Delay → SVF →
+Delay → SVF, Delay → Reverb → Delay → Reverb, Delay → Compressor → Delay →
+Compressor, Delay → Ring → Delay → Ring, Delay → Transient → Delay → Transient,
+Delay → BitCrusher → Delay → BitCrusher, and Delay → Widener → Delay → Widener,
+and Delay → Filter → Delay → Filter. Graph recompilation resets Phaser phase and
+all-pass state, refreshes Compressor attack/release coefficients while keeping
+its envelope, preserves SVF filter state, clears Reverb tails, resets the Ring
+oscillator phase, clears Transient Shaper fast and slow envelopes, clears
+BitCrusher held samples and counters, resets Widener low-band filters and
+correlation, clears Filter integrators, and preserves the reused Delay ring. The
+reconstructed old graph also gives Ring an unconnected but present second input
+view; at its default full depth and wet mix this selects a silent external
+modulator bus, so the old slot output is silent. The normal v2 slot
+intentionally uses Ring’s audible internal oscillator; only the host-comparison
+mode reproduces the old empty-bus behavior. BitCrusher's Normal mode ignores the
+empty second bus. Reverb uses prepared validity stamps to clear its tail in
+constant time at a type switch, trading about 111 KB of stamp storage and
+roughly 3.4 µs per 128-frame Reverb callback in the measured Node/Wasm probe.
+These probes use the old C++ graph runtime and nodes with a reconstructed Lua
+layout; they do not execute the Lua binding or deferred graph worker.
 
-Type 1 maps normalized controls to Phaser rate `0.05…2.8 Hz` (clamped by the node to at least 0.1 Hz), depth `0.05…1`, feedback `0…0.8`, and six or twelve stages after the original rounded `2…12` request. The old wrapper passes spread `0…1` directly to `setSpread`, which measures **degrees**; this slice preserves that small stereo spread. The standalone Phaser workbench exposes the node’s physical `0…180°` range. Switching into type 1 resets the all-pass state and phase without heap allocation. Three slot cases cover modulation and type switches.
+Type 0 maps normalized controls to Chorus rate `0.08…2.4 Hz`, depth `0.05…1`,
+feedback `0…0.35`, spread `0…1`, and voices `round(1 + 5p/4)` clamped to the C++
+node’s maximum of four. Its waveform is sine and internal mix is fully wet; the
+slot applies the old `1.4` wet gain before the public mix. A type switch
+restarts Chorus phase and drops its delay tail by invalidating the prepared ring
+in constant time. See the [individual Chorus comparison](chorus-migration.md)
+for C++ parity; the slot’s normalized mapping has native Rust/Wasm cases.
 
-Type 2 maps normalized `p/0` to drive `0.75…18 dB`, `p/1` to one of seven rounded curve IDs, `p/2` to output `0.25…1 dB`, and `p/3` to bias `−0.5…0.5`. `p/4` is unused. The old slot holds pre and post filters off, internal mix fully wet, and legacy coefficient mode at 2×. Its separate [WaveShaper comparison](waveshaper-migration.md) has eleven C++ cases; four slot cases cover normalized controls and switching.
+Type 1 maps normalized controls to Phaser rate `0.05…2.8 Hz` (clamped by the
+node to at least 0.1 Hz), depth `0.05…1`, feedback `0…0.8`, and six or twelve
+stages after the original rounded `2…12` request. The old wrapper passes spread
+`0…1` directly to `setSpread`, which measures **degrees**; this slice preserves
+that small stereo spread. The standalone Phaser workbench exposes the node’s
+physical `0…180°` range. Switching into type 1 resets the all-pass state and
+phase without heap allocation. Three slot cases cover modulation and type
+switches.
 
-Type 3 maps normalized controls to threshold `−40…−2 dB`, ratio `1.5…20`, attack `1…40 ms`, release `20…250 ms`, and knee `0…12 dB`, matching the old Lua definition. Its old scalar C++ node ignores knee and only calculates attack/release coefficients when prepared. Selected-only mode builds a fresh compressor from the stored normalized values. Host-switch mode refreshes attack/release coefficients on a graph switch without clearing the detector envelope. Changes to threshold and ratio take effect while running; attack and release changes require switching away and back, or restarting audio with the current selection. The browser now sends the selected type and its five values at graph preparation, so a stopped workbench restart uses the displayed timing settings. The individual [Compressor comparison](compressor-migration.md) has C++ fixtures; the slot comparison remains native Rust versus Wasm because old project-level routing has no fixture here.
+Type 2 maps normalized `p/0` to drive `0.75…18 dB`, `p/1` to one of seven
+rounded curve IDs, `p/2` to output `0.25…1 dB`, and `p/3` to bias `−0.5…0.5`.
+`p/4` is unused. The old slot holds pre and post filters off, internal mix fully
+wet, and legacy coefficient mode at 2×. Its separate
+[WaveShaper comparison](waveshaper-migration.md) has eleven C++ cases; four slot
+cases cover normalized controls and switching.
 
-Type 4 maps normalized `p/0` to width `0…2` and `p/1` to mono low cutoff `40…320 Hz`. The old slot keeps mono low enabled and applies 1.1× wet gain before the public mix; `p/2`–`p/4` are unused. Four slot cases cover width, cutoff, and type switches. The separate [Stereo widener comparison](stereo-widener-migration.md) captures both C++ stereo output and per-block correlation. The host switch comparison also captures a Delay → Widener → Delay → Widener graph: the old `prepare()` clears low-band filters and correlation on return, and the Rust host mode now does the same.
+Type 3 maps normalized controls to threshold `−40…−2 dB`, ratio `1.5…20`, attack
+`1…40 ms`, release `20…250 ms`, and knee `0…12 dB`, matching the old Lua
+definition. Its old scalar C++ node ignores knee and only calculates
+attack/release coefficients when prepared. Selected-only mode builds a fresh
+compressor from the stored normalized values. Host-switch mode refreshes
+attack/release coefficients on a graph switch without clearing the detector
+envelope. Changes to threshold and ratio take effect while running; attack and
+release changes require switching away and back, or restarting audio with the
+current selection. The browser now sends the selected type and its five values
+at graph preparation, so a stopped workbench restart uses the displayed timing
+settings. The individual [Compressor comparison](compressor-migration.md) has
+C++ fixtures; the slot comparison remains native Rust versus Wasm because old
+project-level routing has no fixture here.
 
-The old Lua `connectMixerInput()` changes a mixer's active input count as types are created. A lower-numbered bus after Delay can therefore reduce that count. In the old `GraphRuntime`, routes above the last active bus are clamped onto that bus, not dropped. A separate Delay → Reverb → Delay → Reverb capture with the mixer's input count reduced to Reverb's eight buses is byte-identical to the preceding capture with all buses active. These cases use the Lua slot's uniform gain 1 and pan 0 on every bus. Arbitrary per-bus gain or pan would need its own capture before generalizing the result.
+Type 4 maps normalized `p/0` to width `0…2` and `p/1` to mono low cutoff
+`40…320 Hz`. The old slot keeps mono low enabled and applies 1.1× wet gain
+before the public mix; `p/2`–`p/4` are unused. Four slot cases cover width,
+cutoff, and type switches. The separate
+[Stereo widener comparison](stereo-widener-migration.md) captures both C++
+stereo output and per-block correlation. The host switch comparison also
+captures a Delay → Widener → Delay → Widener graph: the old `prepare()` clears
+low-band filters and correlation on return, and the Rust host mode now does the
+same.
 
-Type 5 maps normalized `p/0` exponentially to cutoff `80…12000 Hz` and `p/1` to resonance `0…1`; `p/2`–`p/4` are unused. Internal mix is fully wet and the slot wet branch has unity gain. It uses the original two-pole `FilterNode`, which is distinct from type 6’s SVF. The separate [FilterNode comparison](filter-node-migration.md) has seven default Highway cases and one scalar case; four slot cases cover normalized controls and switching. The host switch comparison adds Delay → Filter → Delay → Filter and confirms that old graph preparation clears both Filter integrators on return.
+The old Lua `connectMixerInput()` changes a mixer's active input count as types
+are created. A lower-numbered bus after Delay can therefore reduce that count.
+In the old `GraphRuntime`, routes above the last active bus are clamped onto
+that bus, not dropped. A separate Delay → Reverb → Delay → Reverb capture with
+the mixer's input count reduced to Reverb's eight buses is byte-identical to the
+preceding capture with all buses active. These cases use the Lua slot's uniform
+gain 1 and pan 0 on every bus. Arbitrary per-bus gain or pan would need its own
+capture before generalizing the result.
 
-Type 7 maps normalized `p/0` to room size `0.15…0.95` and `p/1` to damping `0…1`; `p/2`–`p/4` are unused. The old wrapper keeps internal wet at 1, dry at 0, and stereo width at 1; the public slot mix blends the resulting tail with the original input at unity wet gain. Its prepared delay lines are cleared on selection without allocating. The separate [Reverb comparison](reverb-migration.md) has eight C++ cases; four slot cases cover normalized controls and switching.
+Type 5 maps normalized `p/0` exponentially to cutoff `80…12000 Hz` and `p/1` to
+resonance `0…1`; `p/2`–`p/4` are unused. Internal mix is fully wet and the slot
+wet branch has unity gain. It uses the original two-pole `FilterNode`, which is
+distinct from type 6’s SVF. The separate
+[FilterNode comparison](filter-node-migration.md) has seven default Highway
+cases and one scalar case; four slot cases cover normalized controls and
+switching. The host switch comparison adds Delay → Filter → Delay → Filter and
+confirms that old graph preparation clears both Filter integrators on return.
 
-Type 9 maps normalized `p/0` to a rounded tap count of `2…8` and `p/1` to feedback `0…0.95`. It keeps internal mix fully wet, sets the first four tap times/gains/pans to the authored Lua values, and leaves taps five through eight at the original node defaults. The slot applies 1.4× wet gain before the public mix. Switching into type 9 invalidates the prepared delay ring in constant time. The separate [Multitap comparison](multitap-migration.md) has seven C++ cases; four slot cases cover controls and switching.
+Type 7 maps normalized `p/0` to room size `0.15…0.95` and `p/1` to damping
+`0…1`; `p/2`–`p/4` are unused. The old wrapper keeps internal wet at 1, dry at
+0, and stereo width at 1; the public slot mix blends the resulting tail with the
+original input at unity wet gain. Its prepared delay lines are cleared on
+selection without allocating. The separate
+[Reverb comparison](reverb-migration.md) has eight C++ cases; four slot cases
+cover normalized controls and switching.
 
-Type 10 maps normalized `p/0` to pitch `−12…12` semitones, `p/1` to head window `30…180 ms`, and `p/2` to feedback `0…0.75`; `p/3`–`p/4` are unused. The original slot sets internal mix fully wet. The separate [PitchShifter comparison](pitch-shifter-migration.md) has eight C++ captures; four slot cases cover controls and switching.
+Type 9 maps normalized `p/0` to a rounded tap count of `2…8` and `p/1` to
+feedback `0…0.95`. It keeps internal mix fully wet, sets the first four tap
+times/gains/pans to the authored Lua values, and leaves taps five through eight
+at the original node defaults. The slot applies 1.4× wet gain before the public
+mix. Switching into type 9 invalidates the prepared delay ring in constant time.
+The separate [Multitap comparison](multitap-migration.md) has seven C++ cases;
+four slot cases cover controls and switching.
 
-Type 11 maps normalized `p/0` to grain size `12…280 ms`, `p/1` to density `2…64` grains/s, `p/2` to capture position, and `p/3` to spray; `p/4` is unused. Its pitch is fixed at 0 st, envelope Hann, internal mix fully wet, and freeze off. The separate [Granulator comparison](granulator-migration.md) has eleven zero-spray C++ captures, including three preloaded-source cases and four native slot cases. The standalone Granulator view also accepts a decoded file; type 11 remains a live capture effect in the slot.
+Type 10 maps normalized `p/0` to pitch `−12…12` semitones, `p/1` to head window
+`30…180 ms`, and `p/2` to feedback `0…0.75`; `p/3`–`p/4` are unused. The
+original slot sets internal mix fully wet. The separate
+[PitchShifter comparison](pitch-shifter-migration.md) has eight C++ captures;
+four slot cases cover controls and switching.
 
-Type 12 maps normalized `p/0` exponentially to oscillator frequency `20…2000 Hz`, `p/1` to depth `0…1`, and `p/2` to stereo spread `0…180°`; `p/3`–`p/4` are unused. Internal mix remains fully wet. The normal v2 slot uses its internal oscillator. In the reconstructed old graph, GraphRuntime passes a silent second input view even though Lua connects only the carrier, so Ring takes the external-bus path and outputs silence at full depth/wet mix. The host-comparison mode reproduces this legacy quirk; it is not the behavior chosen for the normal v2 slot. The separate [Ring Modulator comparison](ring-modulator-migration.md) covers both input modes with seven C++ cases; four slot cases cover controls and switching.
+Type 11 maps normalized `p/0` to grain size `12…280 ms`, `p/1` to density `2…64`
+grains/s, `p/2` to capture position, and `p/3` to spray; `p/4` is unused. Its
+pitch is fixed at 0 st, envelope Hann, internal mix fully wet, and freeze off.
+The separate [Granulator comparison](granulator-migration.md) has eleven
+zero-spray C++ captures, including three preloaded-source cases and four native
+slot cases. The standalone Granulator view also accepts a decoded file; type 11
+remains a live capture effect in the slot.
 
-Type 13 maps normalized `p/0` to vowel position `0…4`, `p/1` to shift `−12…12` semitones, `p/2` to resonance `2…16`, and `p/3` to drive `0.8…4`; `p/4` is unused. It holds internal mix fully wet and applies 1.5× wet gain before the public slot mix. The separate [FormantFilter comparison](formant-migration.md) has eight C++ captures; four slot cases cover controls and switching.
+Type 12 maps normalized `p/0` exponentially to oscillator frequency
+`20…2000 Hz`, `p/1` to depth `0…1`, and `p/2` to stereo spread `0…180°`;
+`p/3`–`p/4` are unused. Internal mix remains fully wet. The normal v2 slot uses
+its internal oscillator. In the reconstructed old graph, GraphRuntime passes a
+silent second input view even though Lua connects only the carrier, so Ring
+takes the external-bus path and outputs silence at full depth/wet mix. The
+host-comparison mode reproduces this legacy quirk; it is not the behavior chosen
+for the normal v2 slot. The separate
+[Ring Modulator comparison](ring-modulator-migration.md) covers both input modes
+with seven C++ cases; four slot cases cover controls and switching.
 
-Type 14 maps normalized `p/0` to low gain `−12…12 dB`, `p/1` to high gain `−12…12 dB`, and `p/2` to mid gain `−6…6 dB`. The old slot fixes low frequency at 120 Hz, mid frequency at 900 Hz, mid Q at 0.8, high frequency at 8000 Hz, output at 0 dB, and internal mix fully wet. `p/3` and `p/4` are unused. The separate [three-band EQNode comparison](eq-node-migration.md) has eight C++ captures; four slot cases cover the normalized controls and switching.
+Type 13 maps normalized `p/0` to vowel position `0…4`, `p/1` to shift `−12…12`
+semitones, `p/2` to resonance `2…16`, and `p/3` to drive `0.8…4`; `p/4` is
+unused. It holds internal mix fully wet and applies 1.5× wet gain before the
+public slot mix. The separate [FormantFilter comparison](formant-migration.md)
+has eight C++ captures; four slot cases cover controls and switching.
 
-Type 15 maps normalized `p/0` to limiter threshold `−20…−1 dB`, `p/1` to a separate input gain `0.6…2`, `p/2` to release `10…200 ms`, and `p/3` to soft clip `0…1`. `p/4` has no setter in the old definition. Input gain smooths over 10 ms before linked peak detection; the limiter's own makeup remains zero and internal mix remains fully wet. The slot's public dry/wet mix then blends this result with the original input. The individual [Limiter comparison](limiter-migration.md) has C++ fixtures; the four new slot cases compare native Rust with Wasm, including pre gain changes and type switches.
+Type 14 maps normalized `p/0` to low gain `−12…12 dB`, `p/1` to high gain
+`−12…12 dB`, and `p/2` to mid gain `−6…6 dB`. The old slot fixes low frequency
+at 120 Hz, mid frequency at 900 Hz, mid Q at 0.8, high frequency at 8000 Hz,
+output at 0 dB, and internal mix fully wet. `p/3` and `p/4` are unused. The
+separate [three-band EQNode comparison](eq-node-migration.md) has eight C++
+captures; four slot cases cover the normalized controls and switching.
 
-Type 16 maps normalized `p/0` and `p/1` to attack and sustain amounts `−1…1`, and `p/2` to sensitivity `0.2…4`; `p/3`–`p/4` are unused. The internal mix remains fully wet, while the public slot mix blends its output with dry input. The separate [Transient Shaper comparison](transient-shaper-migration.md) captures audio and the block transient meter from C++; four slot cases cover controls and switches.
+Type 15 maps normalized `p/0` to limiter threshold `−20…−1 dB`, `p/1` to a
+separate input gain `0.6…2`, `p/2` to release `10…200 ms`, and `p/3` to soft
+clip `0…1`. `p/4` has no setter in the old definition. Input gain smooths over
+10 ms before linked peak detection; the limiter's own makeup remains zero and
+internal mix remains fully wet. The slot's public dry/wet mix then blends this
+result with the original input. The individual
+[Limiter comparison](limiter-migration.md) has C++ fixtures; the four new slot
+cases compare native Rust with Wasm, including pre gain changes and type
+switches.
 
-Type 17 maps normalized `p/0` to rounded bit depth `2…16`, `p/1` to rounded sample hold `1…64`, and `p/2` to output gain `0.25…2`; `p/3`–`p/4` are unused. It holds internal mix fully wet and logic mode at Normal. The separate [BitCrusher comparison](bitcrusher-migration.md) captures default Highway and scalar C++ paths, optional bus B logic modes, and rate/bit changes; four slot cases cover normalized controls and switches.
+Type 16 maps normalized `p/0` and `p/1` to attack and sustain amounts `−1…1`,
+and `p/2` to sensitivity `0.2…4`; `p/3`–`p/4` are unused. The internal mix
+remains fully wet, while the public slot mix blends its output with dry input.
+The separate [Transient Shaper comparison](transient-shaper-migration.md)
+captures audio and the block transient meter from C++; four slot cases cover
+controls and switches.
 
-Type 18 maps normalized `p/0` to size `0.1…1`, `p/1` to pitch `−12…12` semitones, `p/2` to feedback `0…0.99`, and `p/3` exponentially to filter cutoff `100…12000 Hz`; `p/4` is unused. Internal mix stays at `0.5`, modulation at `0.25`, and the slot applies 1.4× wet gain. See the [Shimmer comparison](shimmer-migration.md) for eight C++ cases and four native slot cases.
+Type 17 maps normalized `p/0` to rounded bit depth `2…16`, `p/1` to rounded
+sample hold `1…64`, and `p/2` to output gain `0.25…2`; `p/3`–`p/4` are unused.
+It holds internal mix fully wet and logic mode at Normal. The separate
+[BitCrusher comparison](bitcrusher-migration.md) captures default Highway and
+scalar C++ paths, optional bus B logic modes, and rate/bit changes; four slot
+cases cover normalized controls and switches.
 
-Type 19 maps normalized `p/0` to delay time `50…2000 ms`, `p/1` to reverse window `20…400 ms`, and `p/2` to feedback `0…0.95`; `p/3`–`p/4` are unused. Internal mix is fully wet and the slot applies 1.2× wet gain before its public mix. The prepared stereo ring uses generation stamps for constant-time reset on selection. The separate [Reverse Delay comparison](reverse-delay-migration.md) has eight C++ captures; four slot cases cover controls and switching.
+Type 18 maps normalized `p/0` to size `0.1…1`, `p/1` to pitch `−12…12`
+semitones, `p/2` to feedback `0…0.99`, and `p/3` exponentially to filter cutoff
+`100…12000 Hz`; `p/4` is unused. Internal mix stays at `0.5`, modulation at
+`0.25`, and the slot applies 1.4× wet gain. See the
+[Shimmer comparison](shimmer-migration.md) for eight C++ cases and four native
+slot cases.
 
-Type 20 maps normalized `p/0` to beat length `0.125…8`, `p/1` to gate, `p/2` to probability, and `p/3` to filter decay; `p/4` is unused. The original node defaults retain pitch decay 0.2, all eight pattern steps on, tempo 120 BPM, and internal mix fully wet. Its prepared stereo ring resets in constant time on selection. The separate [Stutter comparison](stutter-migration.md) has eight C++ captures; four slot cases cover controls and switching.
+Type 19 maps normalized `p/0` to delay time `50…2000 ms`, `p/1` to reverse
+window `20…400 ms`, and `p/2` to feedback `0…0.95`; `p/3`–`p/4` are unused.
+Internal mix is fully wet and the slot applies 1.2× wet gain before its public
+mix. The prepared stereo ring uses generation stamps for constant-time reset on
+selection. The separate [Reverse Delay comparison](reverse-delay-migration.md)
+has eight C++ captures; four slot cases cover controls and switching.
 
-The browser now has a [v2 JSON state roundtrip](standalone-fx-state.md) for public host controls and remembered per-type values. A host-facing Standalone FX adapter still needs a plug-in state format and a legacy preset importer. The current graph cannot replace a live plan or migrate a delay buffer, so that state contract must precede a host-facing preset migration. The old checkout remains the behavior reference and is not edited here.
+Type 20 maps normalized `p/0` to beat length `0.125…8`, `p/1` to gate, `p/2` to
+probability, and `p/3` to filter decay; `p/4` is unused. The original node
+defaults retain pitch decay 0.2, all eight pattern steps on, tempo 120 BPM, and
+internal mix fully wet. Its prepared stereo ring resets in constant time on
+selection. The separate [Stutter comparison](stutter-migration.md) has eight C++
+captures; four slot cases cover controls and switching.
+
+The browser now has a [v2 JSON state roundtrip](standalone-fx-state.md) for
+public host controls and remembered per-type values. A host-facing Standalone FX
+adapter still needs a plug-in state format and a legacy preset importer. The
+current graph cannot replace a live plan or migrate a delay buffer, so that
+state contract must precede a host-facing preset migration. The old checkout
+remains the behavior reference and is not edited here.

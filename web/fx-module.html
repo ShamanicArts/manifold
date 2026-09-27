@@ -1,31 +1,47 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#11161d" />
-  <title>Manifold · Standalone FX module</title>
-</head>
-<body>
-  <header class="site-bar"><a class="brand" href="/"><span class="brand-mark">M</span> Manifold</a><span class="site-divider">/</span><span>Standalone FX</span><a class="workbench-link" href="/?primitive=standalone-fx">Primitive workbench ↗</a></header>
-  <main class="module-page">
-    <div class="page-heading"><div><p class="eyebrow">Reconstructed project / Legacy widget system</p><h1>Standalone FX</h1><p class="lede">The original compact FX slot rebuilt with browser controls and the Rust/Wasm effect graph. Select Chorus or Reverb to hear two of the old modules in the same surface.</p></div><div class="source-tag">Original shell <strong>472 × 220</strong><span>21 effect types · 5 shared controls</span></div></div>
-    <div class="stage">
-      <section class="device" aria-label="Standalone FX module">
-        <div class="device-header"><span class="device-name">MANIFOLD <b>Effect</b></span><span class="device-route"><i></i> IN <span>→</span> OUT <i></i></span></div>
-        <div class="device-body">
-          <div class="visual-pane"><div id="xy-pad" class="xy-pad" tabindex="0" role="group" aria-label="XY control. Drag to change selected X and Y parameters"><canvas id="xy-canvas"></canvas></div><div class="visual-caption"><span id="visual-title">CHORUS</span><span>XY CONTROL</span></div></div>
-          <div class="control-pane">
-            <label class="effect-select"><span class="sr-only">Effect type</span><select id="effect-type" aria-label="Effect type"></select></label>
-            <div class="axis-row"><label>X <select id="x-axis" aria-label="X axis parameter"></select></label><label>Y <select id="y-axis" aria-label="Y axis parameter"></select></label></div>
-            <div id="control-list" class="control-list"></div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b1220" />
+    <title>Manifold · Standalone FX</title>
+  </head>
+  <body>
+    <header
+      class="topbar"><a class="brand" href="/">Manifold</a><span>/</span><strong>Standalone FX</strong><a class="workbench-link" href="/?primitive=standalone-fx">Workbench ↗</a></header>
+    <main>
+      <div class="view-heading">
+        <div>
+          <p class="eyebrow">Authored project / browser reconstruction</p>
+          <h1>Standalone FX</h1>
+        </div>
+        <div class="mode-switch" role="group"
+          aria-label="Original plugin view mode"><button type="button" data-view="split" aria-pressed="true">Split · 472</button><button type="button" data-view="compact" aria-pressed="false">Compact · 236</button></div>
+      </div>
+      <section id="plugin-stage" class="plugin-stage"
+        aria-label="Standalone FX project surface">
+        <div id="plugin-viewport">
+          <div id="plugin-shell">
+            <div
+              class="plugin-header"><span class="plugin-accent"></span><span class="plugin-title">Effect</span><button id="settings-toggle" type="button" aria-label="Open plugin settings">SET</button></div>
+            <div id="plugin-content"></div>
+            <div id="settings-overlay"
+              hidden><span class="settings-heading">Settings</span><button id="settings-close" type="button" aria-label="Close plugin settings">×</button><div class="settings-section">OSC / OSCQuery</div><div class="settings-row"><span>OSC</span><strong>Unavailable in browser host</strong><span>Query</span><strong>Unavailable</strong></div><div class="settings-section remote">Web Remote</div><div class="settings-row"><span>Host</span><strong>—</strong><span>Status</span><strong>Offline</strong></div><p>The original shell exposes OSC and web remote settings here. This browser study uses the controls below the module.</p></div>
           </div>
         </div>
       </section>
-      <section class="host-panel" aria-label="Browser host controls"><div class="host-heading"><span class="eyebrow">Browser host</span><span id="engine-indicator" class="engine-indicator">Idle</span></div><div class="host-input"><label for="input-source">Audio source</label><select id="input-source"><option value="oscillator">Test oscillator</option><option value="microphone">Microphone</option></select><button id="audio-toggle" type="button">Start audio</button></div><div class="meter-row"><span>Output</span><div class="meter-track"><div id="output-meter" class="meter-fill"></div></div><output id="output-db">−∞ dB</output></div><p id="status" class="status" role="status">Choose a source, then start audio. Raise Wet mix to hear the effect.</p><div class="state-actions"><button id="save-state" type="button">Download state</button><label class="file-button">Open state<input id="open-state" type="file" accept="application/json,.json" /></label><button id="reset-state" type="button">Reset</button></div></section>
-    </div>
-    <section class="module-notes"><div><h2>What this assembles</h2><p>The source panel supplies the FX selector, assignable XY pad, compact sliders, wet mix, and remembered settings per effect. Each control sends a normalized value to the prepared Rust effect slot in the AudioWorklet. State files use the same Standalone FX schema as the primitive workbench.</p></div><div class="mapping"><div><span>Old Lua widgets</span><strong>Dropdown · Panel · Slider</strong></div><div><span>New front end</span><strong>JavaScript · Canvas · CSS</strong></div><div><span>Audio processing</span><strong>Rust/Wasm · 21 FX types</strong></div></div></section>
-  </main>
-  <script type="module" src="/src/fx-module.js"></script>
-</body>
+      <section class="host-strip" aria-label="Browser audio host">
+        <div
+          class="host-control"><label for="input-source">Source</label><select id="input-source"><option value="oscillator">Test oscillator</option><option value="microphone">Microphone</option></select><button id="audio-toggle" type="button">Start audio</button></div>
+        <div
+          class="host-meter"><span id="engine-indicator">Idle</span><div class="meter-track"><div id="output-meter"></div></div><output id="output-db">−∞ dB</output></div>
+        <div
+          class="state-actions"><button id="save-state" type="button">Save state</button><label class="file-button">Open state<input id="open-state" type="file" accept="application/json,.json" /></label><button id="reset-state" type="button">Reset</button></div>
+      </section>
+      <p id="status" class="status"
+        role="status">Start audio, then raise Mix to audition the effect.</p>
+      <footer><span>Source: Standalone_FX / Main FX slot widgets</span><span>Rust/Wasm audio · JavaScript widget renderer</span></footer>
+    </main>
+    <script type="module" src="/src/fx-module.js"></script>
+  </body>
 </html>
