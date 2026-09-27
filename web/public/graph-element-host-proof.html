@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manifold · Graph VST3 in a second host</title>
+  <style>
+    :root { color-scheme: dark; background: #11151b; color: #e8edf2; font: 15px/1.55 system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { max-width: 1050px; margin: 0 auto; padding: 44px 24px 80px; }
+    a { color: #a8d5ed; }
+    h1 { margin: 8px 0 16px; max-width: 850px; font-size: clamp(2rem, 5vw, 3.35rem); line-height: 1.06; letter-spacing: -.045em; }
+    h2 { font-size: 1.18rem; margin: 0 0 12px; }
+    p { color: #bdc9d3; margin: 0 0 15px; }
+    .eyebrow { color: #8dcab9; font-size: .73rem; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; }
+    .lead { max-width: 790px; font-size: 1.15rem; }
+    .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 26px 0; }
+    .metric, section { border: 1px solid #34414d; border-radius: 8px; background: #19212a; }
+    .metric { padding: 18px; }
+    .metric strong { display: block; font-size: 1.6rem; line-height: 1.2; }
+    .metric span { color: #a9bac7; font-size: .85rem; }
+    section { padding: 22px; margin: 16px 0; }
+    figure { margin: 15px 0 0; }
+    img { display: block; max-width: 100%; height: auto; border: 1px solid #43515f; border-radius: 5px; }
+    figcaption { color: #aebdc9; font-size: .86rem; margin-top: 7px; }
+    code { font: .93em ui-monospace, SFMono-Regular, monospace; color: #d0dce6; }
+    @media (max-width: 720px) { .metrics { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="eyebrow">Manifold v2 · Second VST3 host checkpoint</div>
+  <h1>The Graph editor and project import work in Element.</h1>
+  <p class="lead">Element 1.2.0 ran with a private home on an isolated X display. Its VST3 scanner discovered both Manifold classes. It instantiated Graph, displayed the original compact widgets, and accepted the authored Tone Texture project through the native editor's file chooser.</p>
+  <div class="metrics">
+    <div class="metric"><strong>2 hosts</strong><span>REAPER and Element load the Graph VST3 class</span></div>
+    <div class="metric"><strong>8 nodes</strong><span>Tone Texture after editor import in Element</span></div>
+    <div class="metric"><strong>12 controls</strong><span>original compact sliders and dropdowns shown</span></div>
+  </div>
+  <section>
+    <h2>Discovery and instance creation</h2>
+    <p>Element's own plug-in manager lists Manifold Graph and Manifold Standalone FX as VST3 plug-ins. Dragging Graph into its patch created an instance; opening that node showed the default six-node graph in the packaged native editor.</p>
+    <figure><img src="/graph-vst3-element-plugin-scan.png" alt="Element plug-in manager listing both Manifold VST3 classes"><figcaption>Actual Element VST3 scan in the private host profile.</figcaption></figure>
+  </section>
+  <section>
+    <h2>Direct browser project import</h2>
+    <p>The editor's Import project JSON button opened the system file chooser. Selecting the authored <code>projects/graph-workspace/tone-texture.json</code> changed the live panel to eight nodes and twelve bound controls. The screen below is Element hosting the real plug-in editor; it is not a recreated browser mockup.</p>
+    <figure><img src="/graph-vst3-element-tone-import.png" alt="Element hosting Manifold Graph after direct Tone Texture JSON import, with original compact slider and dropdown controls"><figcaption>Oscillator, Noise, SVF, CV gain, and LFO controls rendered by the packaged original-widget editor after import.</figcaption></figure>
+  </section>
+  <section>
+    <h2>What remains to verify in Element</h2>
+    <p>This run verifies discovery, instance creation, editor display, and live JSON import. The isolated Element session did not expose a working save dialog, so saved-session recall and audio parity in Element remain open. The <a href="/graph-large-import-proof.html">REAPER import review</a> covers saved-project reopen and native Rust audio comparison, including the full 32 MiB sample asset allowance.</p>
+  </section>
+</body>
+</html>

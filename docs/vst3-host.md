@@ -113,6 +113,10 @@ source, actual REAPER WAV renders, plots, and machine-readable measurements.
    10-second sources, and four sources filling the full 32 MiB aggregate PCM
    allowance in 44.74 MB of JSON. Each survived REAPER save and reopen; its
    first-second output matched direct Rust.
+   A [second-host review](../web/public/graph-element-host-proof.html) shows
+   Element discovering both Manifold VST3 classes, opening the Graph editor,
+   and importing Tone Texture JSON. Element session recall and audio are still
+   unverified.
    [Browser and native editor slot reassignment](../web/public/graph-host-slot-proof.html)
    now survives REAPER save and changes audio through a fixed host ID. An
    existing REAPER envelope also follows its occupied slot after two controls
