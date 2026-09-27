@@ -41,8 +41,6 @@ pub(super) struct GuiMessage {
 enum Action {
     Import(String, Vec<u8>),
     Assign(u32, u32),
-    CaptureStart(u32, f64),
-    CaptureFinish(u32),
     Error(&'static str),
 }
 struct Assembly {
@@ -171,28 +169,6 @@ impl GuiState {
                         }
                     } else {
                         self.status("Host slot unchanged: invalid binding.");
-                    }
-                }
-                Action::CaptureStart(node, seconds) => {
-                    if instance.request_capture_seconds(node, seconds) {
-                        self.status("Freezing the selected source…");
-                    } else {
-                        self.capture_result(
-                            false,
-                            "Capture could not start for this source and window.",
-                        );
-                    }
-                }
-                Action::CaptureFinish(instrument) => {
-                    if let Some(result) = instance.finish_capture(instrument, "DAW capture") {
-                        if result {
-                            self.capture_result(true, "Captured source published. New notes use this take; compatible capture history was retained.");
-                        } else {
-                            self.capture_result(
-                                false,
-                                "Capture failed; the project was not changed.",
-                            );
-                        }
                     }
                 }
                 Action::Error(reason) => self.status(reason),
@@ -368,9 +344,14 @@ fn receive(instance: &Instance, reader: impl BufRead) {
                 let seconds = message["seconds"].as_f64();
                 if let (Some(node), Some(seconds)) = (node, seconds) {
                     if node > 0 && seconds.is_finite() && (0.05..=30.0).contains(&seconds) {
-                        instance
-                            .gui
-                            .submit(instance.host, Action::CaptureStart(node, seconds));
+                        if instance.request_capture_seconds(node, seconds) {
+                            instance.gui.status("Freezing the selected source…");
+                        } else {
+                            instance.gui.capture_result(
+                                false,
+                                "Capture could not start for this source and window.",
+                            );
+                        }
                     }
                 }
             }
@@ -380,9 +361,17 @@ fn receive(instance: &Instance, reader: impl BufRead) {
                     .and_then(|id| u32::try_from(id).ok())
                     .filter(|id| *id > 0)
                 {
-                    instance
-                        .gui
-                        .submit(instance.host, Action::CaptureFinish(instrument));
+                    if let Some(result) = instance.finish_capture(instrument, "DAW capture") {
+                        if result {
+                            instance.gui.snapshot(instance);
+                            instance.gui.capture_result(true, "Captured source published. New notes use this take; compatible capture history was retained.");
+                        } else {
+                            instance.gui.capture_result(
+                                false,
+                                "Capture failed; the project was not changed.",
+                            );
+                        }
+                    }
                 }
             }
             Some("gesture-begin" | "parameter" | "gesture-end") => {

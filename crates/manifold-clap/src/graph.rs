@@ -68,6 +68,7 @@ pub(crate) struct Instance {
     pending: AtomicPtr<Runtime>,
     retired: AtomicPtr<Runtime>,
     active: AtomicBool,
+    control: Mutex<()>,
     configuration: Mutex<Option<(f32, usize)>>,
     state: Mutex<Vec<u8>>,
     capture_mailbox: Mutex<Option<Arc<CaptureMailbox>>>,
@@ -82,8 +83,9 @@ pub(crate) struct Instance {
     gui_retry: UnsafeCell<Option<GuiMessage>>,
 }
 
-// CLAP serializes processing for an instance. The main thread owns state and
-// retirement; the callback owns the published runtime while active.
+// CLAP serializes processing for an instance. The control mutex serializes
+// host lifecycle and editor project changes; the audio callback owns the
+// published runtime while active.
 unsafe impl Sync for Instance {}
 
 fn slots(project: &NativeProject) -> [Option<HostParameter>; HOST_SLOT_COUNT] {
@@ -163,6 +165,7 @@ impl Instance {
             pending: AtomicPtr::new(null_mut()),
             retired: AtomicPtr::new(null_mut()),
             active: AtomicBool::new(false),
+            control: Mutex::new(()),
             configuration: Mutex::new(None),
             state: Mutex::new(DEFAULT.to_vec()),
             capture_mailbox: Mutex::new(None),
@@ -240,6 +243,9 @@ impl Instance {
     }
 
     pub(super) fn request_capture_seconds(&self, node: u32, seconds: f64) -> bool {
+        let Ok(_control) = self.control.lock() else {
+            return false;
+        };
         let Some(rate) = self
             .configuration
             .lock()
@@ -255,6 +261,7 @@ impl Instance {
     }
 
     pub(super) fn finish_capture(&self, instrument: u32, label: &str) -> Option<bool> {
+        let _control = self.control.lock().ok()?;
         let mailbox = self
             .capture_mailbox
             .lock()
@@ -282,7 +289,9 @@ impl Instance {
         ) else {
             return Some(false);
         };
-        Some(self.restore_with_history(bytes, true))
+        // A capture only changes PCM and capture metadata. Keep the fixed host
+        // slots and avoid calling CLAP host methods from the editor IPC thread.
+        Some(self.restore_locked(bytes, true, false))
     }
 
     fn snapshot(&self, runtime: &Runtime) {
@@ -341,10 +350,18 @@ impl Instance {
     }
 
     pub(super) fn restore(&self, bytes: Vec<u8>) -> bool {
-        self.restore_with_history(bytes, false)
+        let Ok(_control) = self.control.lock() else {
+            return false;
+        };
+        self.restore_locked(bytes, false, true)
     }
 
-    fn restore_with_history(&self, bytes: Vec<u8>, preserve_capture_history: bool) -> bool {
+    fn restore_locked(
+        &self,
+        bytes: Vec<u8>,
+        preserve_capture_history: bool,
+        notify_host: bool,
+    ) -> bool {
         let Ok(project) = NativeProject::parse(&bytes) else {
             return false;
         };
@@ -353,6 +370,29 @@ impl Instance {
             return false;
         };
         let descriptors = slots(&project);
+        if !notify_host {
+            let Ok(current) = self.descriptors.lock() else {
+                return false;
+            };
+            if !descriptors
+                .iter()
+                .zip(current.iter())
+                .all(|(next, previous)| match (next, previous) {
+                    (None, None) => true,
+                    (Some(next), Some(previous)) => {
+                        next.id == previous.id
+                            && next.node == previous.node
+                            && next.local_id == previous.local_id
+                            && next.min == previous.min
+                            && next.max == previous.max
+                            && next.discrete == previous.discrete
+                    }
+                    _ => false,
+                })
+            {
+                return false;
+            }
+        }
         let values = std::array::from_fn::<_, HOST_SLOT_COUNT, _>(|slot| {
             descriptors[slot]
                 .and_then(|parameter| parameter.to_normalized(parameter.initial))
@@ -405,7 +445,7 @@ impl Instance {
         drop(bound);
         drop(state);
         drop(mailbox);
-        if !self.host.is_null() {
+        if notify_host && !self.host.is_null() {
             if let Some(get) = unsafe { (*self.host).get_extension } {
                 let extension = unsafe { get(self.host, CLAP_EXT_PARAMS.as_ptr()) };
                 if !extension.is_null() {
@@ -417,7 +457,9 @@ impl Instance {
             }
         }
         #[cfg(target_os = "linux")]
-        self.gui.request_refresh(self.host);
+        if notify_host {
+            self.gui.request_refresh(self.host);
+        }
         true
     }
 
@@ -428,6 +470,12 @@ impl Instance {
         }
     }
     fn deactivate(&self) {
+        let Ok(_control) = self.control.lock() else {
+            return;
+        };
+        self.deactivate_locked();
+    }
+    fn deactivate_locked(&self) {
         self.active.store(false, Ordering::Release);
         if let Ok(mut mailbox) = self.capture_mailbox.lock() {
             *mailbox = None;
@@ -499,6 +547,9 @@ unsafe extern "C" fn activate(plugin: *const clap_plugin, rate: f64, _min: u32, 
     let Some(instance) = (unsafe { get(plugin) }) else {
         return false;
     };
+    let Ok(_control) = instance.control.lock() else {
+        return false;
+    };
     if !rate.is_finite()
         || !(1_000. ..=768_000.).contains(&rate)
         || max == 0
@@ -527,7 +578,7 @@ unsafe extern "C" fn activate(plugin: *const clap_plugin, rate: f64, _min: u32, 
     if let Ok(mut config) = instance.configuration.lock() {
         *config = Some((rate as f32, max as usize));
     } else {
-        instance.deactivate();
+        instance.deactivate_locked();
         return false;
     }
     instance.active.store(true, Ordering::Release);

@@ -1,6 +1,6 @@
 # CLAP host proof
 
-## Graph instrument checkpoint
+## Graph host checkpoint
 
 The same Linux `.clap` module now exports a second class,
 `arts.shamanic.manifold.graph`. It accepts the authored graph project JSON
@@ -82,15 +82,24 @@ The [Graph reset review](../web/public/graph-clap-reset-proof.html) collects
 authored graph, external CLAP, validator, and large-asset timing evidence.
 
 The [native host capture review](../web/public/native-host-capture-review.html)
-records one REAPER Graph CLAP editor run that saved a 96,000-frame retrospective
+records a packaged Graph CLAP editor run that saved a 96,000-frame retrospective
 take and rendered the reopened project. Direct adapter tests also cover main
 and sidechain buses, mailbox completion, saved state, and MIDI playback.
-Repeated isolated REAPER editor runs can leave later `on_main_thread` capture
-actions pending after a project import. REAPER reported timer support in this
-probe but delivered only one timer callback; that path has not been adopted.
-The successful host render peak differed from the VST3/native reference by
-the source WAV level (0.125). That suggests a dry path through REAPER, but the
-CLAP host's routing must be measured before treating this as audio parity evidence.
+Capture start and publication now execute on the editor IPC reader, serialized
+with host lifecycle and project restoration by a control mutex. Capture may
+only change PCM and capture metadata; publication verifies the fixed host slot
+descriptors and avoids CLAP host callbacks from that reader. The audio callback
+never acquires the control mutex. This removes reliance on REAPER scheduling
+`on_main_thread` after a project import. REAPER reported timer support in the
+earlier probe but delivered only one timer callback, so a timer was not used.
+
+Graph advertises the CLAP `audio-effect` feature because it accepts main and
+sidechain audio as well as note events. In an isolated REAPER test, advertising
+only `instrument` let the 0.125 source WAV through as dry audio before the note.
+With `audio-effect`, the reopened host render has zero pre-note peak, 0.098425
+signal peak, and at most `5.96e-8` sample error against the direct native Rust
+render over the first second. The host probe asserts those parity thresholds
+for both CLAP and VST3.
 
 ## Standalone FX
 

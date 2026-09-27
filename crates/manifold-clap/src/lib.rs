@@ -23,9 +23,7 @@ use clap_sys::ext::state::{CLAP_EXT_STATE, clap_plugin_state};
 use clap_sys::factory::plugin_factory::{CLAP_PLUGIN_FACTORY_ID, clap_plugin_factory};
 use clap_sys::host::clap_host;
 use clap_sys::plugin::{clap_plugin, clap_plugin_descriptor};
-use clap_sys::plugin_features::{
-    CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_INSTRUMENT, CLAP_PLUGIN_FEATURE_STEREO,
-};
+use clap_sys::plugin_features::{CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_STEREO};
 use clap_sys::version::{CLAP_VERSION, clap_version_is_compatible};
 
 pub(crate) const SOURCE_PROJECT: &[u8] =
@@ -86,7 +84,9 @@ static DESCRIPTOR: clap_plugin_descriptor = clap_plugin_descriptor {
 };
 const GRAPH_ID: &CStr = c"arts.shamanic.manifold.graph";
 static GRAPH_FEATURES: Features = Features([
-    CLAP_PLUGIN_FEATURE_INSTRUMENT.as_ptr(),
+    // Graph accepts audio inputs as well as notes. REAPER routes track audio
+    // around a class advertised solely as an instrument, producing a dry mix.
+    CLAP_PLUGIN_FEATURE_AUDIO_EFFECT.as_ptr(),
     CLAP_PLUGIN_FEATURE_STEREO.as_ptr(),
     null(),
 ]);

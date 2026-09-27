@@ -182,8 +182,6 @@ reaper.defer(poll)
                     assert command("play").startswith("play 1"), "REAPER transport did not start"
                     mute_host_stream(process.pid)
                     time.sleep(3)
-                    if args.format == "clap":
-                        command("stop")
                     (work / "capture-go.status").unlink(missing_ok=True)
                     (work / "capture-go").write_text("go")
                     if args.format == "vst3":
@@ -191,7 +189,8 @@ reaper.defer(poll)
                         command("stop")
                     status = wait_for(work / "capture-go.status", 15)
                     assert status.startswith("Freezing"), status
-                    command("play")
+                    if args.format == "vst3":
+                        command("play")
                     time.sleep(3)
                     command("stop")
                     deadline = time.monotonic() + 30
@@ -249,8 +248,7 @@ reaper.defer(poll)
         parity_error = max(abs(actual - reference)
                            for actual, reference in zip(samples, expected))
         lead_peak = max(abs(sample) for sample in samples[:4800 * 2])
-        if args.format == "vst3":
-            assert lead_peak < 1e-6 and parity_error < 1e-5, (lead_peak, parity_error)
+        assert lead_peak < 1e-6 and parity_error < 1e-5, (lead_peak, parity_error)
         result = {"host": f"REAPER Linux {args.format.upper()}", "editorGesture": "Capture to instrument",
                   "sourceNode": 6, "instrumentNode": 5, "captureFrames": asset["frames"],
                   "capturePeak": peak, "savedAndReopened": True,
