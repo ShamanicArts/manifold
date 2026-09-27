@@ -1,5 +1,6 @@
 //! Native output for graphs assembled by the browser topology editor.
 use manifold_core::events::{EventKind, TimedEvent};
+use manifold_core::granulator;
 use manifold_core::graph::{Connection, GraphDescription, NodeKind, NodeSpec};
 use std::io::Write;
 
@@ -152,6 +153,49 @@ fn region_voice() -> GraphDescription {
     description
 }
 
+fn granular_source() -> GraphDescription {
+    let mut params = granulator::DEFAULTS;
+    params[1] = 50.0;
+    params[2] = 0.01;
+    params[4] = 0.0;
+    let nodes = vec![
+        NodeSpec {
+            id: 1,
+            kind: NodeKind::InputRaw,
+        },
+        NodeSpec {
+            id: 3,
+            kind: NodeKind::Output,
+        },
+        NodeSpec {
+            id: 5,
+            kind: NodeKind::Granulator { params },
+        },
+        NodeSpec {
+            id: 6,
+            kind: NodeKind::Svf,
+        },
+    ];
+    let connections = [(5, 6, 0), (6, 3, 0)]
+        .map(|(from, to, input_port)| Connection {
+            from,
+            to,
+            input_port,
+        })
+        .to_vec();
+    GraphDescription { nodes, connections }
+}
+
+fn granular_capture() -> GraphDescription {
+    let mut description = granular_source();
+    description.connections.push(Connection {
+        from: 1,
+        to: 5,
+        input_port: 0,
+    });
+    description
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
     if args.len() != 3
@@ -163,11 +207,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "note-voice",
             "sample-voice",
             "region-voice",
+            "granular-source",
+            "granular-capture",
         ]
         .contains(&args[1].as_str())
     {
         return Err(
-            "usage: render_graph_workspace seed|distortion|cv|texture|note-voice|sample-voice|region-voice OUTPUT".into(),
+            "usage: render_graph_workspace seed|distortion|cv|texture|note-voice|sample-voice|region-voice|granular-source|granular-capture OUTPUT".into(),
         );
     }
     if args[1] == "texture" {
@@ -181,6 +227,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if args[1] == "region-voice" {
         return render(region_voice(), &args[2], true, true, true);
+    }
+    if args[1] == "granular-source" {
+        return render(granular_source(), &args[2], false, true, false);
+    }
+    if args[1] == "granular-capture" {
+        return render(granular_capture(), &args[2], false, false, false);
     }
     let distorted = args[1] != "seed";
     let cv = args[1] == "cv";
@@ -273,7 +325,7 @@ fn render(
     sample_source: bool,
     sample_region: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut plan = description.compile(48_000.0, 128)?;
+    let mut plan = description.compile(48_000.0, 2048)?;
     if note_events && !sample_source && !plan.set_parameter(5, 0, 7.0) {
         return Err("MIDI transpose parameter unavailable".into());
     }

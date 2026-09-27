@@ -1,7 +1,8 @@
 // Browser authoring contract for a subset of Rust's prepared typed graph.
 // Rust compilation remains the final authority when playback starts.
 import { encodePcm, decodePcm } from '../state/stereo-source.js';
-export const SAMPLE_NODE_TYPES = new Set(['sample-instrument', 'sample-region']);
+export const SAMPLE_NODE_TYPES = new Set(['sample-instrument', 'sample-region', 'granulator']);
+const NOTE_NODE_TYPES = new Set(['voice-synth', 'sample-instrument', 'sample-region']);
 export const NODE_TYPES = {
   'input.raw': { label: 'Live input', code: 0, output: 'audio', inputs: [], fixedId: 1 },
   output: { label: 'Output', code: 7, output: null, inputs: ['audio'], fixedId: 3 },
@@ -65,6 +66,20 @@ export const NODE_TYPES = {
       { id: 4, label: 'Loop start', min: 0, max: 1, default: 0 },
       { id: 5, label: 'Loop end', min: 0, max: 1, default: 1 },
       { id: 8, label: 'Crossfade', min: 0, max: .5, default: .08 },
+    ] },
+  granulator: { label: 'Granulator', code: 51, output: 'audio', inputs: ['audio'],
+    parameters: [
+      { id: 0, label: 'Grain size', min: 1, max: 500, default: 80 },
+      { id: 1, label: 'Density', min: 1, max: 100, default: 20 },
+      { id: 2, label: 'Position', min: 0, max: 1, default: .5 },
+      { id: 3, label: 'Pitch', min: -24, max: 24, default: 0 },
+      { id: 4, label: 'Spray', min: 0, max: 1, default: .2 },
+      { id: 5, label: 'Wet mix', min: 0, max: 1, default: 1 },
+      { id: 6, label: 'Freeze', choices: ['Capture', 'Freeze'], default: 0 },
+      { id: 7, label: 'Envelope', choices: ['Hann', 'Triangle', 'Blackman', 'Tukey', 'Rectangle'], default: 0 },
+      { id: 8, label: 'Enabled', choices: ['Off', 'On'], default: 1 },
+      { id: 9, label: 'Region start', min: 0, max: 1, default: 0 },
+      { id: 10, label: 'Region end', min: 0, max: 1, default: 1 },
     ] },
 };
 
@@ -209,7 +224,7 @@ export function graphNoteTarget(signal) {
     }
   } while (changed);
   return signal.nodes.find((node) => node.type === 'midi-input' && reachable.has(node.id))?.id
-    ?? signal.nodes.find((node) => (node.type === 'voice-synth' || SAMPLE_NODE_TYPES.has(node.type)) && reachable.has(node.id))?.id ?? null;
+    ?? signal.nodes.find((node) => NOTE_NODE_TYPES.has(node.type) && reachable.has(node.id))?.id ?? null;
 }
 
 export function validateGraphAssets(signal, assets) {

@@ -4,6 +4,7 @@ import toneTexture from '../../../projects/graph-workspace/tone-texture.json';
 import noteVoice from '../../../projects/graph-workspace/note-voice.json';
 import sampleVoice from '../../../projects/graph-workspace/sample-voice.json';
 import regionVoice from '../../../projects/graph-workspace/region-voice.json';
+import granularSource from '../../../projects/graph-workspace/granular-source.json';
 
 // Edits a project description outside the AudioWorklet. The next start compiles it in Rust.
 export function mountGraphEditor(section, project, { isRunning, isActive, onChange, onParameter, onTemplateLoaded, decodeSample, builtinSample }) {
@@ -16,6 +17,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   const loadNote = section.querySelector('#graph-load-note');
   const loadSample = section.querySelector('#graph-load-sample');
   const loadRegion = section.querySelector('#graph-load-region');
+  const loadGranular = section.querySelector('#graph-load-granular');
   const fileInput = section.querySelector('#graph-project-file');
   const exportButton = section.querySelector('#graph-project-export');
   const listeners = new AbortController();
@@ -102,7 +104,8 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
         const source = document.createElement('label');
         source.className = 'sample-file graph-sample-file';
         source.textContent = asset ? `Source: ${asset.label} · ${(asset.stereo.length / 2 / asset.sourceRate).toFixed(2)} s · replace file`
-          : 'No source loaded · choose audio file';
+          : node.type === 'granulator' ? 'Live input capture · choose a file to use a fixed source'
+            : 'No source loaded · choose audio file';
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'audio/*,.wav,.aiff,.aif,.flac,.mp3,.ogg';
@@ -125,6 +128,19 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
         });
         source.append(input);
         article.appendChild(source);
+        if (asset) {
+          const clear = document.createElement('button');
+          clear.type = 'button';
+          clear.className = 'graph-edit graph-remove';
+          clear.textContent = 'Remove source';
+          clear.setAttribute('aria-label', `Remove source from ${spec.label} ${node.id}`);
+          clear.addEventListener('click', () => {
+            if (!canEdit()) return;
+            commit(project.signal, `Removed source from ${spec.label.toLowerCase()} ${node.id}. Start audio to compile.`,
+              project.graphAssets.filter((item) => item.nodeId !== node.id));
+          });
+          article.appendChild(clear);
+        }
       }
       for (let port = 0; port < spec.inputs.length; port++) {
         const kind = spec.inputs[port];
@@ -248,6 +264,16 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
       commit(signal, 'Loaded the sample region study. Notes retrigger one region playhead.',
         [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
       onTemplateLoaded?.('region-voice');
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadGranular.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      const source = builtinSample();
+      const signal = parseGraphProject(granularSource);
+      commit(signal, 'Loaded the granulator with a built-in source. Start audio to hear its grains.',
+        [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
+      onTemplateLoaded?.('granular-source');
     } catch (error) { fail(error); }
   }, { signal: listeners.signal });
   exportButton.addEventListener('click', () => {

@@ -697,6 +697,7 @@ function prepareGraphWorkspace(engine, selected) {
 
 export function renderWasm(engine, family, manifest, input, selected) {
   const block = selected.blockSize ?? manifest.blockSize;
+  const prepareFrames = family === 'graph-workspace' ? manifest.prepareFrames ?? block : block;
   const graphDeferred = family === 'graph-workspace' ? prepareGraphWorkspace(engine, selected) : [];
   if (family === 'crossfader') prepareCrossfader(engine, manifest, selected);
   if (family === 'mixer') prepareMixer(engine, selected);
@@ -752,7 +753,7 @@ export function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'slew-audio') prepareSlewAudio(engine, selected);
   if (family === 'slew-modulation') prepareSlewModulation(engine, selected);
   if (family === 'cv-rack') prepareCvRack(engine, selected);
-  if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
+  if (engine.manifold_prepare(manifest.sampleRate, prepareFrames) !== 1) throw new Error('Wasm prepare failed');
   for (const parameter of graphDeferred) {
     if (engine.manifold_set_node_parameter(parameter.nodeId, parameter.id, parameter.value) !== 1) {
       throw new Error(`Graph workspace parameter ${parameter.nodeId}/${parameter.id} failed`);
@@ -891,8 +892,8 @@ export function renderWasm(engine, family, manifest, input, selected) {
       if (engine.manifold_set_node_parameter(4, id, value) !== 1) throw new Error(`Wasm FX chain filter parameter ${id} failed`);
     }
   }
-  const inputView = new Float32Array(engine.memory.buffer, engine.manifold_input_ptr(), block * 2);
-  const outputView = new Float32Array(engine.memory.buffer, engine.manifold_output_ptr(), block * 2);
+  const inputView = new Float32Array(engine.memory.buffer, engine.manifold_input_ptr(), prepareFrames * 2);
+  const outputView = new Float32Array(engine.memory.buffer, engine.manifold_output_ptr(), prepareFrames * 2);
   const rendered = new Float32Array(input.length);
   const meterCount = family === 'fft-spectrum' ? 33 : family === 'spectrum-analyzer' ? 8 : family === 'cv-rack' ? 4 : ['envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'stereo-widener', 'transient-shaper'].includes(family) || family === 'main-sample-blend' && selected.followerMeter ? 1 : 0;
   const meterSnapshots = meterCount ? new Float32Array(Math.ceil(manifest.frames / block) * meterCount) : null;
@@ -1110,7 +1111,7 @@ export function renderWasm(engine, family, manifest, input, selected) {
     }
     for (let frame = 0; frame < count; frame++) {
       inputView[frame] = input[(offset + frame) * 2];
-      inputView[block + frame] = input[(offset + frame) * 2 + 1];
+      inputView[prepareFrames + frame] = input[(offset + frame) * 2 + 1];
     }
     if (engine.manifold_process(count) !== 1) throw new Error('Wasm process failed');
     if (meterSnapshots) {
@@ -1123,7 +1124,7 @@ export function renderWasm(engine, family, manifest, input, selected) {
     }
     for (let frame = 0; frame < count; frame++) {
       rendered[(offset + frame) * 2] = outputView[frame];
-      rendered[(offset + frame) * 2 + 1] = outputView[block + frame];
+      rendered[(offset + frame) * 2 + 1] = outputView[prepareFrames + frame];
     }
   }
   if (meterSnapshots) rendered.meters = meterSnapshots;

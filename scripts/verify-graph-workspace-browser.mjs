@@ -36,7 +36,7 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/?primitive=graph-workspace`);
   await page.waitForFunction(() => document.querySelector('#comparison-result').textContent === 'Match');
-  assert.equal(await page.locator('#reference-case option').count(), 7);
+  assert.equal(await page.locator('#reference-case option').count(), 9);
   assert.match(await page.locator('#reference-title').textContent(), /Native Rust/);
   assert.ok(Number(await page.locator('#max-difference').textContent()) < 1e-5);
   await page.locator('#reference-case').selectOption('distortion');
@@ -57,6 +57,14 @@ try {
   assert.ok(Number(await page.locator('#max-difference').textContent()) < 1e-5);
   await page.locator('#reference-case').selectOption('region-voice');
   await page.waitForFunction(() => document.querySelector('#reference-status').textContent.includes('retriggered sample region'));
+  assert.equal(await page.locator('#comparison-result').textContent(), 'Match');
+  assert.ok(Number(await page.locator('#max-difference').textContent()) < 1e-5);
+  await page.locator('#reference-case').selectOption('granular-source');
+  await page.waitForFunction(() => document.querySelector('#reference-status').textContent.includes('Prepared source → granulator'));
+  assert.equal(await page.locator('#comparison-result').textContent(), 'Match');
+  assert.ok(Number(await page.locator('#max-difference').textContent()) < 1e-5);
+  await page.locator('#reference-case').selectOption('granular-capture');
+  await page.waitForFunction(() => document.querySelector('#reference-status').textContent.includes('Live input → capture granulator'));
   assert.equal(await page.locator('#comparison-result').textContent(), 'Match');
   assert.ok(Number(await page.locator('#max-difference').textContent()) < 1e-5);
   assert.equal(await page.locator('.graph-node').count(), 3);
@@ -301,8 +309,46 @@ try {
   await page.locator('#audio-toggle').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
   await page.locator('#audio-toggle').click();
+  await page.locator('#graph-load-granular').click();
+  assert.equal(await page.locator('.graph-node').count(), 4);
+  assert.match(await page.locator('input[aria-label="Granulator 5 audio file"]').locator('..').textContent(), /Built-in two-tone source/);
+  assert.equal(await page.locator('#keyboard-section').isHidden(), true);
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
+  const density = page.locator('input[data-node="5"][data-parameter="1"]');
+  await density.fill('35');
+  await density.press('Tab');
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('in Rust and project state'));
+  await page.locator('#audio-toggle').click();
+  const granularDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const granularBundle = JSON.parse((await readFile(await (await granularDownload).path())).toString());
+  assert.equal(granularBundle.signal.nodes.find((node) => node.id === 5).type, 'granulator');
+  assert.equal(granularBundle.signal.initialParameters.find((entry) => entry.nodeId === 5 && entry.id === 1).value, 35);
+  assert.equal(granularBundle.assets[0].nodeId, 5);
+  await page.locator('#graph-load-tone').click();
+  await page.locator('#graph-project-file').setInputFiles([{
+    name: 'granular-source.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(granularBundle)),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
+  assert.equal(await page.locator('input[data-node="5"][data-parameter="1"]').inputValue(), '35');
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
+  await page.locator('#audio-toggle').click();
+  await page.locator('button[aria-label="Remove source from Granulator 5"]').click();
+  assert.match(await page.locator('input[aria-label="Granulator 5 audio file"]').locator('..').textContent(), /Live input capture/);
+  await page.locator('select[data-to="5"][data-port="0"]').selectOption('1');
+  await page.locator('#graph-source-mode').selectOption('external');
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · test oscillator'));
+  await page.locator('#audio-toggle').click();
+  const liveDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const liveBundle = JSON.parse((await readFile(await (await liveDownload).path())).toString());
+  assert.equal(liveBundle.assets, undefined);
+  assert.equal(liveBundle.signal.connections.find((edge) => edge.to === 5 && edge.inputPort === 0).from, 1);
   assert.deepEqual(errors, []);
-  console.log('Graph workspace browser: typed Audio/CV/MIDI editing, sample voice and region assets, native/Wasm references, live controls, project reopen passed');
+  console.log('Graph workspace browser: typed Audio/CV/MIDI editing, sample voice, region and granulator source modes, native/Wasm references, live controls, project reopen passed');
 } finally {
   await browser.close();
 }

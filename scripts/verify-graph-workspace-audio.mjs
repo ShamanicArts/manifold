@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { NODE_TYPES, addNode, setConnection, setInitialParameter } from '../web/src/graph/topology.js';
+import { NODE_TYPES, addNode, setConnection, setInitialParameter, setInputSource } from '../web/src/graph/topology.js';
 
 const messages = [];
 let Processor;
@@ -21,6 +21,8 @@ const texture = JSON.parse(readFileSync('projects/graph-workspace/tone-texture.j
 const noteVoice = JSON.parse(readFileSync('projects/graph-workspace/note-voice.json', 'utf8')).signal;
 const sampleVoice = JSON.parse(readFileSync('projects/graph-workspace/sample-voice.json', 'utf8')).signal;
 const regionVoice = JSON.parse(readFileSync('projects/graph-workspace/region-voice.json', 'utf8')).signal;
+const granularSource = JSON.parse(readFileSync('projects/graph-workspace/granular-source.json', 'utf8')).signal;
+const granularCapture = setInputSource(setConnection(granularSource, 5, 0, 1), 'external');
 let distorted = addNode(seed, 'distortion');
 distorted = setConnection(distorted, 4, 0, 2);
 distorted = setConnection(distorted, 3, 0, 4);
@@ -33,9 +35,9 @@ cv = setConnection(cv, 3, 0, 6);
 
 const workspace = mkdtempSync(join(tmpdir(), 'manifold-graph-'));
 try {
-  for (const [mode, signal] of [['seed', seed], ['distortion', distorted], ['cv', cv], ['texture', texture], ['note-voice', noteVoice], ['sample-voice', sampleVoice], ['region-voice', regionVoice]]) {
+  for (const [mode, signal] of [['seed', seed], ['distortion', distorted], ['cv', cv], ['texture', texture], ['note-voice', noteVoice], ['sample-voice', sampleVoice], ['region-voice', regionVoice], ['granular-source', granularSource], ['granular-capture', granularCapture]]) {
     const output = join(workspace, `${mode}.f32`);
-    const source = ['sample-voice', 'region-voice'].includes(mode)
+    const source = ['sample-voice', 'region-voice', 'granular-source'].includes(mode)
       ? readFileSync('web/public/reference/graph-workspace/sample-source.f32') : null;
     if (source) writeFileSync(join(workspace, 'sample-source.f32'), source);
     execFileSync('cargo', ['run', '--quiet', '-p', 'manifold-core', '--example',

@@ -1,11 +1,12 @@
 {
   "version": 1,
   "reference": "native Rust authored graph topology",
-  "sourceSha256": "8e1ea2ca2168be2281f4b820bcf7fb2930aa64280eed73cddbd225316d9eb784",
+  "sourceSha256": "193815397cdff6574cd54c8354807e1fb3cc887a3c6e91355da84e8531934b67",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 8192,
   "blockSize": 128,
+  "prepareFrames": 2048,
   "stepFrame": 4096,
   "input": "input.f32",
   "sample": "sample-source.f32",
@@ -820,6 +821,236 @@
       ],
       "sampleNodeId": 5,
       "output": "region-voice.f32"
+    },
+    {
+      "id": "granular-source",
+      "label": "Prepared source → granulator → SVF",
+      "graph": {
+        "inputs": 2,
+        "outputs": 2,
+        "inputSource": "none",
+        "nodes": [
+          {
+            "id": 1,
+            "type": "input.raw"
+          },
+          {
+            "id": 3,
+            "type": "output"
+          },
+          {
+            "id": 5,
+            "type": "granulator"
+          },
+          {
+            "id": 6,
+            "type": "svf"
+          }
+        ],
+        "connections": [
+          {
+            "from": 5,
+            "to": 6,
+            "inputPort": 0
+          },
+          {
+            "from": 6,
+            "to": 3,
+            "inputPort": 0
+          }
+        ],
+        "initialParameters": [
+          {
+            "nodeId": 5,
+            "id": 0,
+            "value": 80
+          },
+          {
+            "nodeId": 5,
+            "id": 1,
+            "value": 50
+          },
+          {
+            "nodeId": 5,
+            "id": 2,
+            "value": 0.01
+          },
+          {
+            "nodeId": 5,
+            "id": 3,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 4,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 5,
+            "value": 1
+          },
+          {
+            "nodeId": 5,
+            "id": 6,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 7,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 8,
+            "value": 1
+          },
+          {
+            "nodeId": 5,
+            "id": 9,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 10,
+            "value": 1
+          },
+          {
+            "nodeId": 6,
+            "id": 0,
+            "value": 0
+          },
+          {
+            "nodeId": 6,
+            "id": 1,
+            "value": 3200
+          },
+          {
+            "nodeId": 6,
+            "id": 2,
+            "value": 0.75
+          }
+        ]
+      },
+      "sampleNodeId": 5,
+      "output": "granular-source.f32"
+    },
+    {
+      "id": "granular-capture",
+      "label": "Live input → capture granulator → SVF",
+      "graph": {
+        "inputs": 2,
+        "outputs": 2,
+        "inputSource": "external",
+        "nodes": [
+          {
+            "id": 1,
+            "type": "input.raw"
+          },
+          {
+            "id": 3,
+            "type": "output"
+          },
+          {
+            "id": 5,
+            "type": "granulator"
+          },
+          {
+            "id": 6,
+            "type": "svf"
+          }
+        ],
+        "connections": [
+          {
+            "from": 5,
+            "to": 6,
+            "inputPort": 0
+          },
+          {
+            "from": 6,
+            "to": 3,
+            "inputPort": 0
+          },
+          {
+            "from": 1,
+            "to": 5,
+            "inputPort": 0
+          }
+        ],
+        "initialParameters": [
+          {
+            "nodeId": 5,
+            "id": 0,
+            "value": 80
+          },
+          {
+            "nodeId": 5,
+            "id": 1,
+            "value": 50
+          },
+          {
+            "nodeId": 5,
+            "id": 2,
+            "value": 0.01
+          },
+          {
+            "nodeId": 5,
+            "id": 3,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 4,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 5,
+            "value": 1
+          },
+          {
+            "nodeId": 5,
+            "id": 6,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 7,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 8,
+            "value": 1
+          },
+          {
+            "nodeId": 5,
+            "id": 9,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 10,
+            "value": 1
+          },
+          {
+            "nodeId": 6,
+            "id": 0,
+            "value": 0
+          },
+          {
+            "nodeId": 6,
+            "id": 1,
+            "value": 3200
+          },
+          {
+            "nodeId": 6,
+            "id": 2,
+            "value": 0.75
+          }
+        ]
+      },
+      "output": "granular-capture.f32"
     }
   ]
 }

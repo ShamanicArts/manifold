@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { addNode, setConnection, setInitialParameter } from '../web/src/graph/topology.js';
+import { addNode, setConnection, setInitialParameter, setInputSource } from '../web/src/graph/topology.js';
 
 const directory = resolve('web/public/reference/graph-workspace');
 mkdirSync(directory, { recursive: true });
@@ -11,6 +11,8 @@ const texture = JSON.parse(readFileSync('projects/graph-workspace/tone-texture.j
 const noteVoice = JSON.parse(readFileSync('projects/graph-workspace/note-voice.json', 'utf8')).signal;
 const sampleVoice = JSON.parse(readFileSync('projects/graph-workspace/sample-voice.json', 'utf8')).signal;
 const regionVoice = JSON.parse(readFileSync('projects/graph-workspace/region-voice.json', 'utf8')).signal;
+const granularSource = JSON.parse(readFileSync('projects/graph-workspace/granular-source.json', 'utf8')).signal;
+const granularCapture = setInputSource(setConnection(granularSource, 5, 0, 1), 'external');
 let distorted = addNode(seed, 'distortion');
 distorted = setConnection(distorted, 4, 0, 2);
 distorted = setConnection(distorted, 3, 0, 4);
@@ -55,6 +57,9 @@ const cases = [
     sampleNodeId: 5 },
   { id: 'region-voice', label: 'MIDI → retriggered sample region → SVF', graph: regionVoice, events: notes,
     sampleNodeId: 5 },
+  { id: 'granular-source', label: 'Prepared source → granulator → SVF', graph: granularSource,
+    sampleNodeId: 5 },
+  { id: 'granular-capture', label: 'Live input → capture granulator → SVF', graph: granularCapture },
 ];
 for (const entry of cases) {
   entry.output = `${entry.id}.f32`;
@@ -64,7 +69,7 @@ for (const entry of cases) {
 const manifest = {
   version: 1, reference: 'native Rust authored graph topology',
   sourceSha256: createHash('sha256').update(readFileSync('crates/manifold-core/examples/render_graph_workspace.rs')).digest('hex'),
-  sampleRate: 48_000, channels: 2, frames: 8192, blockSize: 128, stepFrame: 4096,
+  sampleRate: 48_000, channels: 2, frames: 8192, blockSize: 128, prepareFrames: 2048, stepFrame: 4096,
   input: 'input.f32', sample: 'sample-source.f32', sampleFrames, sampleSourceRate: 48_000, cases,
 };
 writeFileSync(resolve(directory, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);

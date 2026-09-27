@@ -1,0 +1,36 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 3, "type": "output" },
+      { "id": 5, "type": "granulator" },
+      { "id": 6, "type": "svf" }
+    ],
+    "connections": [
+      { "from": 5, "to": 6, "inputPort": 0 },
+      { "from": 6, "to": 3, "inputPort": 0 }
+    ],
+    "initialParameters": [
+      { "nodeId": 5, "id": 0, "value": 80 },
+      { "nodeId": 5, "id": 1, "value": 50 },
+      { "nodeId": 5, "id": 2, "value": 0.01 },
+      { "nodeId": 5, "id": 3, "value": 0 },
+      { "nodeId": 5, "id": 4, "value": 0 },
+      { "nodeId": 5, "id": 5, "value": 1 },
+      { "nodeId": 5, "id": 6, "value": 0 },
+      { "nodeId": 5, "id": 7, "value": 0 },
+      { "nodeId": 5, "id": 8, "value": 1 },
+      { "nodeId": 5, "id": 9, "value": 0 },
+      { "nodeId": 5, "id": 10, "value": 1 },
+      { "nodeId": 6, "id": 0, "value": 0 },
+      { "nodeId": 6, "id": 1, "value": 3200 },
+      { "nodeId": 6, "id": 2, "value": 0.75 }
+    ]
+  }
+}
