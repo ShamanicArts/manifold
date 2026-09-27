@@ -6,7 +6,7 @@ use manifold_core::effect_slot;
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_core::graph::{Connection, ExecutionPlan, GraphDescription, NodeKind, NodeSpec};
 use manifold_core::limiter;
-use manifold_core::main_looper::MainLooper;
+use manifold_core::main_instrument::MainInstrument;
 use manifold_core::main_voice_bank::{MAX_MAIN_TEMPORAL_TARGETS, MainTemporalRecipe};
 use manifold_core::phaser;
 use manifold_core::sample_analysis::{PEAK_BINS, SampleSummary, analyze_stereo};
@@ -37,7 +37,7 @@ struct WorkletEngine {
 }
 
 struct LooperEngine {
-    instrument: MainLooper,
+    instrument: MainInstrument,
     capacity: usize,
     input: Vec<f32>,
     output: Vec<f32>,
@@ -86,7 +86,7 @@ pub extern "C" fn manifold_looper_prepare(sample_rate: f32, capacity: u32) -> u3
     }
     LOOPER.with(|slot| {
         *slot.borrow_mut() = Some(LooperEngine {
-            instrument: MainLooper::new(sample_rate),
+            instrument: MainInstrument::new(sample_rate, capacity as usize),
             capacity: capacity as usize,
             input: vec![0.0; capacity as usize * 2],
             output: vec![0.0; capacity as usize * 2],
@@ -130,19 +130,52 @@ pub extern "C" fn manifold_looper_process(frames: u32) -> u32 {
         1
     })
 }
+/// Main voice bank events use the same prepared Rust instrument as the looper.
+/// 0 = note on, 1 = note off, 2 = all notes off.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_synth_note(kind: u32, note: u32, velocity: u32) -> u32 {
+    let event = match kind {
+        0 if note <= 127 && (1..=127).contains(&velocity) => EventKind::NoteOn {
+            channel: 0,
+            note: note as u8,
+            velocity: velocity as u8,
+        },
+        1 if note <= 127 => EventKind::NoteOff {
+            channel: 0,
+            note: note as u8,
+        },
+        2 => EventKind::AllNotesOff,
+        _ => return 0,
+    };
+    LOOPER.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |e| {
+            e.instrument.synth_event(event);
+            1
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_synth_parameter(id: u32, value: f32) -> u32 {
+    LOOPER.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |e| {
+            u32::from(e.instrument.set_synth_parameter(id, value))
+        })
+    })
+}
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_looper_control(id: u32, value: f32) -> u32 {
     LOOPER.with(|slot| {
         slot.borrow_mut()
             .as_mut()
-            .map_or(0, |e| u32::from(e.instrument.set_control(id, value)))
+            .map_or(0, |e| u32::from(e.instrument.looper_mut().set_control(id, value)))
     })
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_looper_layer_control(layer: u32, id: u32, value: f32) -> u32 {
     LOOPER.with(|slot| {
         slot.borrow_mut().as_mut().map_or(0, |e| {
-            u32::from(e.instrument.set_layer_control(layer as usize, id, value))
+            u32::from(e.instrument.looper_mut().set_layer_control(layer as usize, id, value))
         })
     })
 }
@@ -152,7 +185,7 @@ pub extern "C" fn manifold_looper_layer_control(layer: u32, id: u32, value: f32)
 pub extern "C" fn manifold_looper_command(id: u32, value: f32) -> u32 {
     LOOPER.with(|slot| {
         slot.borrow_mut().as_mut().map_or(0, |e| {
-            let l = &mut e.instrument;
+            let l = e.instrument.looper_mut();
             match id {
                 0 => {
                     l.start_recording();
@@ -192,7 +225,7 @@ pub extern "C" fn manifold_looper_command(id: u32, value: f32) -> u32 {
 pub extern "C" fn manifold_looper_status(id: u32, layer: u32) -> f32 {
     LOOPER.with(|slot| {
         slot.borrow().as_ref().map_or(0.0, |e| {
-            let l = &e.instrument;
+            let l = e.instrument.looper();
             let index = layer as usize;
             match id {
                 0 => l.tempo(),
@@ -221,7 +254,7 @@ pub extern "C" fn manifold_looper_status(id: u32, layer: u32) -> f32 {
 pub extern "C" fn manifold_looper_peak(layer: u32, kind: u32, start: u32, end: u32) -> f32 {
     LOOPER.with(|slot| {
         slot.borrow().as_ref().map_or(0.0, |e| {
-            e.instrument
+            e.instrument.looper()
                 .peak(layer as usize, kind, start as usize, end as usize)
         })
     })
@@ -241,7 +274,7 @@ pub extern "C" fn manifold_looper_export_chunk(layer: u32, offset: u32, frames: 
     }
     LOOPER.with(|slot| {
         slot.borrow_mut().as_mut().map_or(0, |e| {
-            e.instrument.copy_loop_interleaved(
+            e.instrument.looper().copy_loop_interleaved(
                 layer as usize,
                 offset as usize,
                 &mut e.transfer[..frames as usize * 2],
@@ -259,7 +292,7 @@ pub extern "C" fn manifold_looper_import_begin(
 ) -> u32 {
     LOOPER.with(|slot| {
         slot.borrow_mut().as_mut().map_or(0, |e| {
-            u32::from(e.instrument.begin_layer_load(
+            u32::from(e.instrument.looper_mut().begin_layer_load(
                 layer as usize,
                 frames as usize,
                 bars,
@@ -276,7 +309,7 @@ pub extern "C" fn manifold_looper_import_chunk(layer: u32, offset: u32, frames: 
     }
     LOOPER.with(|slot| {
         slot.borrow_mut().as_mut().map_or(0, |e| {
-            u32::from(e.instrument.load_layer_chunk(
+            u32::from(e.instrument.looper_mut().load_layer_chunk(
                 layer as usize,
                 offset as usize,
                 &e.transfer[..frames as usize * 2],
@@ -288,7 +321,7 @@ pub extern "C" fn manifold_looper_import_chunk(layer: u32, offset: u32, frames: 
 pub extern "C" fn manifold_looper_import_finish(layer: u32) -> u32 {
     LOOPER.with(|slot| {
         slot.borrow_mut().as_mut().map_or(0, |e| {
-            u32::from(e.instrument.finish_layer_load(layer as usize))
+            u32::from(e.instrument.looper_mut().finish_layer_load(layer as usize))
         })
     })
 }
@@ -296,7 +329,7 @@ pub extern "C" fn manifold_looper_import_finish(layer: u32) -> u32 {
 pub extern "C" fn manifold_looper_import_cancel(layer: u32) {
     LOOPER.with(|slot| {
         if let Some(e) = slot.borrow_mut().as_mut() {
-            e.instrument.cancel_layer_load(layer as usize);
+            e.instrument.looper_mut().cancel_layer_load(layer as usize);
         }
     });
 }

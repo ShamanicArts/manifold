@@ -19,7 +19,7 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_looper_input_ptr(), this.capacity * 2);
           this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_looper_output_ptr(), this.capacity * 2);
           this.port.postMessage({ type: 'ready' });
-        } else if (this.transferJob && ['control', 'layer-control', 'command'].includes(data.type)) {
+        } else if (this.transferJob && ['control', 'layer-control', 'command', 'synth-note', 'synth-parameter'].includes(data.type)) {
           this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'save-start' && this.engine && !this.transferJob) {
           const e = this.engine, s = (id, layer = 0) => e.manifold_looper_status(id, layer);
@@ -110,6 +110,12 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           if (!accepted) this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'command' && this.engine) {
           const accepted = this.engine.manifold_looper_command(data.id, data.value ?? 0) === 1;
+          if (!accepted) this.port.postMessage({ type: 'rejected', action: data });
+        } else if (data.type === 'synth-note' && this.engine) {
+          const accepted = this.engine.manifold_looper_synth_note(data.kind, data.note ?? 0, data.velocity ?? 0) === 1;
+          if (!accepted) this.port.postMessage({ type: 'rejected', action: data });
+        } else if (data.type === 'synth-parameter' && this.engine) {
+          const accepted = this.engine.manifold_looper_synth_parameter(data.id, data.value) === 1;
           if (!accepted) this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'snapshot' && this.engine) {
           const e = this.engine;

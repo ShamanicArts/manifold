@@ -24,4 +24,19 @@ assert.equal(e.manifold_looper_command(7, .25), 1);
 for (let i = 0; i < 20; i++) block(0);
 assert.equal(e.manifold_looper_status(8, 1), 4_000);
 assert.ok(block(0) > .25);
-console.log('Main looper Wasm: First Loop tempo/audio and second-layer retrospective audio passed');
+assert.equal(e.manifold_looper_command(5, 0), 1); // clear the earlier dry-input loops
+for (let i = 0; i < 20; i++) block(0);
+assert.equal(e.manifold_looper_synth_parameter(0, 0), 1); // original wave branch, sine
+assert.equal(e.manifold_looper_synth_parameter(1, -1), 1); // wave only; no sample loaded
+assert.equal(e.manifold_looper_synth_note(0, 60, 100), 1);
+let synthPeak = 0;
+for (let i = 0; i < 20; i++) synthPeak = Math.max(synthPeak, Math.abs(block(0)));
+assert.ok(synthPeak > .001, `synth output peak ${synthPeak}`);
+assert.equal(e.manifold_looper_synth_note(1, 60, 0), 1);
+assert.equal(e.manifold_looper_control(0, 2), 1); // L2 receives the synth send
+assert.equal(e.manifold_looper_command(7, .0625), 1);
+for (let i = 0; i < 20; i++) block(0);
+assert.equal(e.manifold_looper_status(8, 2), 1_000);
+assert.ok(e.manifold_looper_peak(2, 0, 0, 1_000) > .001);
+assert.equal(e.manifold_looper_status(8, 0), 0);
+console.log('Main looper Wasm: First Loop, retrospective dry input, and Rust synth-to-layer capture passed');

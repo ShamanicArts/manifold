@@ -11,6 +11,7 @@ try {
   await page.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html`);
   assert.equal(await page.locator('.layer').count(), 4);
   assert.equal(await page.locator('.segment').count(), 9);
+  await page.locator('#source').selectOption('oscillator');
   await page.locator('#audio-button').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Running'), { timeout: 25000 });
   await page.locator('#rec').click();
@@ -70,6 +71,20 @@ try {
   await page.waitForTimeout(150);
   await page.locator('.segment').nth(8).click();
   await page.waitForFunction(() => document.querySelector('.layer[data-layer="0"] .state').textContent === 'Playing');
+  await page.locator('#audio-button').click();
+  await page.locator('#source').selectOption('synth');
+  await page.locator('#audio-button').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Main synth voice'));
+  const key = await page.locator('.synth-key').first().boundingBox();
+  await page.mouse.move(key.x + key.width / 2, key.y + key.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(500);
+  await page.mouse.up();
+  await page.locator('.donut').nth(2).click();
+  await page.locator('.segment').nth(8).click();
+  await page.waitForFunction(() => document.querySelector('.layer[data-layer="2"] .state').textContent === 'Playing', { timeout: 10000 });
+  assert.match(await page.locator('.layer[data-layer="2"] .bars').textContent(), /1\/16 bar/);
+  await page.screenshot({ path: new URL('../web/public/main-looper-live.png', import.meta.url).pathname, fullPage: true });
   assert.deepEqual(errors, []);
-  console.log(`Main looper browser: four strips, first loop ${inferredTempo} BPM, retrospective layer, traditional arm/fire, reverse scrub, session save/reopen, decoded file source passed`);
+  console.log(`Main looper browser: four strips, first loop ${inferredTempo} BPM, retrospective layer, traditional arm/fire, reverse scrub, session save/reopen, decoded file and Rust synth capture passed`);
 } finally { await browser.close(); }

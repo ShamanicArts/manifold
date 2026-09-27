@@ -22,6 +22,7 @@ pub mod lfo;
 pub mod limiter;
 pub mod loop_capture;
 pub mod main_directional;
+pub mod main_instrument;
 pub mod main_looper;
 pub mod main_pitch;
 pub mod main_voice_allocator;

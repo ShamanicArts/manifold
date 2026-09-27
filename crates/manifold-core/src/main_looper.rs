@@ -587,16 +587,30 @@ impl MainLooper {
         peak.min(1.0)
     }
     pub fn process(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
-        let [left, right] = input;
+        self.process_routed(input, input, output);
+    }
+
+    /// Main routes dry host input plus the synth send to every capture ring,
+    /// while the audible synth branch has its own downstream gain.
+    pub fn process_routed(
+        &mut self,
+        capture: [&[f32]; 2],
+        monitor: [&[f32]; 2],
+        output: [&mut [f32]; 2],
+    ) {
+        let [left, right] = capture;
+        let [monitor_left, monitor_right] = monitor;
         let [out_left, out_right] = output;
         assert_eq!(left.len(), right.len());
+        assert_eq!(left.len(), monitor_left.len());
+        assert_eq!(left.len(), monitor_right.len());
         assert_eq!(left.len(), out_left.len());
         assert_eq!(left.len(), out_right.len());
         for layer in &mut self.layers {
             layer.copy_commit();
         }
         for frame in 0..left.len() {
-            let mut sum = [left[frame], right[frame]];
+            let mut sum = [monitor_left[frame], monitor_right[frame]];
             for layer in &mut self.layers {
                 let sample = layer.sample();
                 sum[0] += sample[0];
