@@ -1,5 +1,6 @@
 //! Main's synth-to-looper routing, with all scratch prepared before processing.
 
+use crate::Filter;
 use crate::events::EventKind;
 use crate::main_looper::LAYERS;
 use crate::main_looper::MainLooper;
@@ -10,11 +11,14 @@ use crate::sample_region::ValidatedStereo;
 pub struct MainInstrument {
     looper: MainLooper,
     synth: MainVoiceBank,
+    filter: Filter,
     sample_capture: MainSampleCapture,
     layer_taps: [Vec<f32>; LAYERS],
     sample_rate: f32,
     synth_left: Vec<f32>,
     synth_right: Vec<f32>,
+    filtered_left: Vec<f32>,
+    filtered_right: Vec<f32>,
     capture_left: Vec<f32>,
     capture_right: Vec<f32>,
     monitor_left: Vec<f32>,
@@ -26,11 +30,14 @@ impl MainInstrument {
         Self {
             looper: MainLooper::new(sample_rate),
             synth: MainVoiceBank::new(sample_rate, max_frames, 9),
+            filter: Filter::new(sample_rate),
             sample_capture: MainSampleCapture::new(sample_rate),
             layer_taps: std::array::from_fn(|_| vec![0.0; max_frames * 2]),
             sample_rate,
             synth_left: vec![0.0; max_frames],
             synth_right: vec![0.0; max_frames],
+            filtered_left: vec![0.0; max_frames],
+            filtered_right: vec![0.0; max_frames],
             capture_left: vec![0.0; max_frames],
             capture_right: vec![0.0; max_frames],
             monitor_left: vec![0.0; max_frames],
@@ -47,7 +54,10 @@ impl MainInstrument {
     }
 
     pub fn set_synth_parameter(&mut self, id: u32, value: f32) -> bool {
-        self.synth.set_parameter(id, value)
+        match id {
+            21..=23 => self.filter.set_parameter(id - 21, value),
+            _ => self.synth.set_parameter(id, value),
+        }
     }
 
     pub fn synth_event(&mut self, event: EventKind) {
@@ -127,14 +137,21 @@ impl MainInstrument {
             &mut self.synth_left[..frames],
             &mut self.synth_right[..frames],
         ]);
+        self.filter.process_planar(
+            [&self.synth_left[..frames], &self.synth_right[..frames]],
+            [
+                &mut self.filtered_left[..frames],
+                &mut self.filtered_right[..frames],
+            ],
+        );
         for frame in 0..frames {
             // Main/dsp/main.lua routes host input to the capture and monitor
             // branches. midisynth_integration.lua sends `spec` to every
             // capture input, and its audible `out` applies a gain of 0.8.
-            self.capture_left[frame] = dry[0][frame] + self.synth_left[frame];
-            self.capture_right[frame] = dry[1][frame] + self.synth_right[frame];
-            self.monitor_left[frame] = dry[0][frame] + self.synth_left[frame] * 0.8;
-            self.monitor_right[frame] = dry[1][frame] + self.synth_right[frame] * 0.8;
+            self.capture_left[frame] = dry[0][frame] + self.filtered_left[frame];
+            self.capture_right[frame] = dry[1][frame] + self.filtered_right[frame];
+            self.monitor_left[frame] = dry[0][frame] + self.filtered_left[frame] * 0.8;
+            self.monitor_right[frame] = dry[1][frame] + self.filtered_right[frame] * 0.8;
         }
         self.looper.process_routed_with_taps(
             [&self.capture_left[..frames], &self.capture_right[..frames]],
@@ -150,6 +167,50 @@ impl MainInstrument {
 mod tests {
     use super::*;
     use crate::sample_region::StereoSampleUpload;
+
+    #[test]
+    fn shared_svf_filters_the_synth_before_main_capture_without_filtering_dry_input() {
+        fn note_level(cutoff: f32) -> (f32, f32) {
+            let mut main = MainInstrument::new(48_000.0, 128);
+            assert!(main.set_synth_parameter(0, 2.0));
+            assert!(main.set_synth_parameter(1, -1.0));
+            assert!(main.set_synth_parameter(22, cutoff));
+            main.synth_event(EventKind::NoteOn {
+                channel: 0,
+                note: 96,
+                velocity: 100,
+            });
+            let silence = [0.0; 128];
+            let mut left = [0.0; 128];
+            let mut right = [0.0; 128];
+            let mut energy = 0.0;
+            for block in 0..240 {
+                main.process([&silence, &silence], [&mut left, &mut right]);
+                if block >= 200 {
+                    energy += left.iter().map(|sample| sample.abs()).sum::<f32>();
+                }
+            }
+            (energy / (40 * 128) as f32, main.looper().peak(0, 1, 0, 512))
+        }
+        let (low_monitor, low_capture) = note_level(80.0);
+        let (open_monitor, open_capture) = note_level(16_000.0);
+        assert!(
+            open_monitor > low_monitor * 5.0,
+            "monitor: low={low_monitor}, open={open_monitor}"
+        );
+        assert!(
+            open_capture > low_capture * 5.0,
+            "capture: low={low_capture}, open={open_capture}"
+        );
+
+        let mut main = MainInstrument::new(48_000.0, 128);
+        assert!(main.set_synth_parameter(22, 80.0));
+        let dry = [0.25; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        main.process([&dry, &dry], [&mut left, &mut right]);
+        assert!(left.iter().all(|sample| (*sample - 0.25).abs() < 1e-6));
+    }
 
     #[test]
     fn layer_sample_source_taps_playback_gate_before_volume() {

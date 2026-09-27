@@ -30,6 +30,7 @@ try {
   const rackBounds = await page.locator('#midisynth-panel').boundingBox();
   assert.equal(Math.round(rackBounds.y - tabBounds.y), 34);
   assert.equal(await page.locator('.rack-adsr').count(), 1);
+  assert.equal(await page.locator('.rack-filter').count(), 1);
   assert.equal(await page.locator('#adsr-attack').getAttribute('aria-valuenow'), '50');
   await page.locator('#adsr-attack').focus();
   await page.keyboard.press('ArrowRight');
@@ -40,6 +41,19 @@ try {
   await page.mouse.move(adsrGraph.x + 40, adsrGraph.y + 22, { steps: 5 });
   await page.mouse.up();
   assert.ok(Number(await page.locator('#adsr-attack').getAttribute('aria-valuenow')) > 51);
+  await page.locator('#filter-mode').selectOption('2');
+  assert.equal(await page.locator('#filter-mode').inputValue(), '2');
+  const filterGraph = await page.locator('#filter-graph').boundingBox();
+  await page.mouse.move(filterGraph.x + filterGraph.width * .5, filterGraph.y + filterGraph.height * .35);
+  await page.mouse.down();
+  await page.mouse.move(filterGraph.x + filterGraph.width * .65, filterGraph.y + filterGraph.height * .35, { steps: 5 });
+  await page.mouse.up();
+  assert.ok(Number(await page.locator('#filter-cutoff').getAttribute('aria-valuenow')) > 1000);
+  assert.ok(Number(await page.locator('#filter-resonance').getAttribute('aria-valuenow')) > .75);
+  await page.screenshot({ path: new URL('../web/public/main-filter-rack.png', import.meta.url).pathname, fullPage: true });
+  await page.locator('#filter-mode').selectOption('0');
+  await page.locator('#filter-cutoff').focus();
+  await page.keyboard.press('End');
   await page.locator('#sample-bars').focus();
   await page.keyboard.press('Home');
   await page.locator('#sample-cap').click();
@@ -166,5 +180,5 @@ try {
   assert.ok(lastSegment.x + lastSegment.width <= frame.x + frame.width + 1);
   assert.ok(await narrow.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await narrow.screenshot({ path: new URL('../web/public/main-looper-narrow.png', import.meta.url).pathname, fullPage: true });
-  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth ADSR and Source, Live/L1 Retro Cap, L1 Free Cap/STOP, traditional arm/fire, reverse scrub, session save/reopen, decoded file and Rust synth capture passed`);
+  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth ADSR/Source/Filter, Live/L1 Retro Cap, L1 Free Cap/STOP, traditional arm/fire, reverse scrub, session save/reopen, decoded file and Rust synth capture passed`);
 } finally { await browser.close(); }

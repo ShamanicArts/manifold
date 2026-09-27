@@ -10,6 +10,6 @@
   "controls": { "activeLayer": 0, "mode": 1, "tempo": 2, "targetBpm": 3, "overdub": 4, "overdubLengthPolicy": 5 },
   "layerControls": { "volume": 0, "speed": 1, "mute": 2, "play": 3, "seek": 4 },
   "commands": { "record": 0, "stopRecord": 1, "play": 2, "pause": 3, "stop": 4, "clearAll": 5, "commit": 6, "segment": 7, "fireForward": 8, "clearLayer": 9 },
-  "synthParameters": { "waveform": 0, "blend": 1, "sampleRoot": 2, "keytrack": 3, "samplePitch": 4, "pitchMode": 5, "blendMode": 6, "blendDepth": 7, "attack": 11, "decay": 12, "sustain": 13, "release": 14, "output": 15, "timeStretch": 16, "addWave": 19, "sampleXfade": 20 },
+  "synthParameters": { "waveform": 0, "blend": 1, "sampleRoot": 2, "keytrack": 3, "samplePitch": 4, "pitchMode": 5, "blendMode": 6, "blendDepth": 7, "attack": 11, "decay": 12, "sustain": 13, "release": 14, "output": 15, "timeStretch": 16, "addWave": 19, "sampleXfade": 20, "filterMode": 21, "filterCutoff": 22, "filterResonance": 23 },
   "status": { "tempo": 0, "activeLayer": 1, "mode": 2, "recording": 3, "overdub": 4, "forwardBars": 5, "samplesPerBar": 6, "layerState": 7, "layerLength": 8, "layerPosition": 9, "layerBars": 10, "layerPending": 11, "capturedFrames": 12, "layerVolume": 13, "layerSpeed": 14, "layerMute": 15, "layerPlaying": 16, "targetBpm": 17, "overdubLengthPolicy": 18, "sampleRate": 19 }
 }

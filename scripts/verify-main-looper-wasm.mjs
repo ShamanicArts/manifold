@@ -104,4 +104,23 @@ assert.equal(e.manifold_looper_synth_note(0, 60, 100), 1);
 let freeSamplePeak = 0;
 for (let i = 0; i < 4; i++) freeSamplePeak = Math.max(freeSamplePeak, Math.abs(block(0)));
 assert.ok(freeSamplePeak > .01, `Free sample output peak ${freeSamplePeak}`);
-console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR attack, Rust synth-to-layer capture, and Retro/Free Sample voices passed');
+assert.equal(e.manifold_looper_command(5, 0), 1);
+assert.equal(e.manifold_looper_synth_note(2, 0, 0), 1);
+assert.equal(e.manifold_looper_synth_parameter(ids.blend, -1), 1);
+assert.equal(e.manifold_looper_synth_parameter(ids.waveform, 2), 1);
+assert.equal(e.manifold_looper_synth_parameter(ids.filterCutoff, 80), 1);
+assert.equal(e.manifold_looper_synth_parameter(ids.filterMode, 0), 1);
+assert.equal(e.manifold_looper_synth_note(0, 96, 100), 1);
+let lowpassLevel = 0;
+for (let index = 0; index < 100; index++) {
+  block(0);
+  if (index >= 80) lowpassLevel += output.subarray(0, 128).reduce((sum, sample) => sum + Math.abs(sample), 0);
+}
+assert.equal(e.manifold_looper_synth_parameter(ids.filterMode, 2), 1);
+let highpassLevel = 0;
+for (let index = 0; index < 80; index++) {
+  block(0);
+  if (index >= 60) highpassLevel += output.subarray(0, 128).reduce((sum, sample) => sum + Math.abs(sample), 0);
+}
+assert.ok(highpassLevel > lowpassLevel * 5, `Main SVF: lowpass ${lowpassLevel}, highpass ${highpassLevel}`);
+console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, shared SVF, synth-to-layer capture, and Retro/Free Sample voices passed');
