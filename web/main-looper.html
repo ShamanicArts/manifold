@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Main · Looper — Manifold v2</title></head>
+<body>
+  <main class="page">
+    <header class="intro"><div><a href="/">← Workbench</a><span class="eyebrow">MAIN / LOOPER</span><h1>Four-layer looper</h1><p>The Main looper’s shared transport, retrospective capture plane, and four layer strips, running on the Rust audio engine.</p></div><div class="device"><label for="source">Input</label><select id="source"><option value="oscillator">Test tone</option><option value="microphone">Microphone</option><option value="file">Audio file</option></select><label id="pitch-label">Tone Hz<input id="pitch" type="number" min="60" max="1200" value="220"></label><label id="file-label" hidden>Choose audio file<input id="file" type="file" accept="audio/*"></label><button id="audio-button" class="start">Start audio</button></div></header>
+    <p id="status" class="status" role="status">Start audio. The selected input feeds the live monitor and all four capture rings.</p>
+    <section class="instrument" aria-label="Main looper instrument">
+      <div class="transport"><select id="mode" aria-label="Recording mode"><option value="0">First Loop</option><option value="1">Free Mode</option><option value="2">Traditional</option></select><button id="rec" class="red">● REC</button><button id="play" class="green">▶ PLAY</button><button id="stop">⏹ STOP</button><button id="overdub">Overdub</button><button id="clear-all" class="clear">Clear</button><div id="donuts" class="donuts"></div><span class="link">○ link</span><label class="number">BPM<input id="tempo" type="number" min="40" max="240" value="120"></label><label class="number target">Target<input id="target" type="number" min="40" max="240" value="120"></label></div>
+      <div id="capture" class="capture" aria-label="Retrospective capture plane"></div>
+      <div class="tabs"><span class="tab active">Looper</span><span class="tab disabled">MidiSynth</span></div>
+      <div id="layers" class="layers"></div>
+    </section>
+    <div class="session"><span>Session</span><button id="save-session">Download looper session</button><label>Open session<input id="open-session" type="file" accept="application/json,.json"></label><small>Four loop takes and controls · reopen at the same audio sample rate</small></div>
+    <div class="help"><div><strong>First Loop</strong><span>Press REC, play into the input, press REC again. The first span sets tempo against Target and commits to the selected layer.</span></div><div><strong>Retrospective</strong><span>Let audio run, then click a bar segment to take recent audio without recording first. Traditional mode arms a segment; press Commit armed to fire it.</span></div><div><strong>Layers</strong><span>Select a strip or donut, drag its waveform to scrub, and drag the original style Vol and Speed knobs vertically. Input keeps feeding each layer’s capture ring.</span></div></div>
+    <button id="fire" class="fire" hidden>Commit armed segment</button>
+  </main>
+  <script type="module" src="/src/main-looper.js"></script>
+</body>
+</html>

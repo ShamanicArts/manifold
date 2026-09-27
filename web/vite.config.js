@@ -8,6 +8,7 @@ export default defineConfig({
         workbench: resolve(import.meta.dirname, "index.html"),
         fxModule: resolve(import.meta.dirname, "fx-module.html"),
         graphModule: resolve(import.meta.dirname, "graph-module.html"),
+        mainLooper: resolve(import.meta.dirname, "main-looper.html"),
       },
     },
   },

@@ -1,0 +1,75 @@
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { readFile } from 'node:fs/promises';
+const requireFromWeb = createRequire(new URL('../web/package.json', import.meta.url));
+const { chromium } = requireFromWeb('playwright-core');
+const browser = await chromium.launch({ executablePath: process.env.MANIFOLD_CHROMIUM ?? '/usr/bin/chromium',
+  headless: true, args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required'] });
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1100 }, acceptDownloads: true });
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  await page.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html`);
+  assert.equal(await page.locator('.layer').count(), 4);
+  assert.equal(await page.locator('.segment').count(), 9);
+  await page.locator('#audio-button').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Running'), { timeout: 25000 });
+  await page.locator('#rec').click();
+  await page.waitForFunction(() => document.querySelector('#rec').textContent.includes('REC*'));
+  await page.waitForTimeout(1000);
+  await page.locator('#rec').click();
+  await page.waitForFunction(() => document.querySelector('.layer[data-layer="0"] .state').textContent === 'Playing', { timeout: 10000 });
+  const inferredTempo = Number(await page.locator('#tempo').inputValue());
+  assert.ok(inferredTempo > 90 && inferredTempo < 160, `First Loop tempo: ${inferredTempo}`);
+  await page.locator('.donut').nth(1).click();
+  await page.waitForFunction(() => document.querySelector('.layer[data-layer="1"]').classList.contains('active'));
+  await page.locator('.segment').nth(6).click(); // recent 1/4 bar to layer 1
+  await page.waitForFunction(() => document.querySelector('.layer[data-layer="1"] .state').textContent === 'Playing', { timeout: 10000 });
+  assert.match(await page.locator('.layer[data-layer="1"] .bars').textContent(), /1\/4 bar/);
+  await page.locator('#mode').selectOption('2');
+  await page.locator('.segment').nth(7).click();
+  await page.waitForFunction(() => !document.querySelector('#fire').hidden);
+  await page.locator('#fire').click();
+  await page.waitForFunction(() => document.querySelector('#fire').hidden);
+  await page.waitForFunction(() => document.querySelector('.layer[data-layer="1"] .state').textContent === 'Playing');
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#save-session').click();
+  const download = await downloadPromise;
+  const bundle = JSON.parse(await readFile(await download.path(), 'utf8'));
+  assert.equal(bundle.id, 'manifold.main-looper');
+  assert.ok(bundle.layers[0].frames > 0 && bundle.layers[1].frames > 0);
+  await page.locator('#audio-button').click();
+  await page.locator('#audio-button').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Running'));
+  await page.locator('#open-session').setInputFiles({ name: 'main-looper.json',
+    mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(bundle)) });
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
+  await page.waitForFunction(() => document.querySelector('.layer[data-layer="0"] .bars').textContent.includes('bar')
+    && document.querySelector('.layer[data-layer="1"] .bars').textContent.includes('bar'));
+  assert.match(await page.locator('.layer[data-layer="0"] .bars').textContent(), /bar/);
+  assert.match(await page.locator('.layer[data-layer="1"] .bars').textContent(), /bar/);
+  const wave = await page.locator('.layer[data-layer="0"] .wave').boundingBox();
+  await page.mouse.move(wave.x + wave.width * .6, wave.y + wave.height * .5);
+  await page.mouse.down();
+  await page.mouse.move(wave.x + wave.width * .4, wave.y + wave.height * .5, { steps: 8 });
+  await page.waitForFunction(() => Number(document.querySelectorAll('.layer[data-layer="0"] .knob')[1].dataset.value) < 0);
+  await page.mouse.up();
+  await page.waitForFunction(() => Number(document.querySelectorAll('.layer[data-layer="0"] .knob')[1].dataset.value) > 0);
+  await page.locator('#audio-button').click();
+  const frames = 48_000, wav = Buffer.alloc(44 + frames * 2);
+  wav.write('RIFF', 0); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(48_000, 24); wav.writeUInt32LE(96_000, 28);
+  wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36);
+  wav.writeUInt32LE(frames * 2, 40);
+  for (let frame = 0; frame < frames; frame++) wav.writeInt16LE(Math.round(Math.sin(frame * 2 * Math.PI * 220 / 48_000) * 8000), 44 + frame * 2);
+  await page.locator('#source').selectOption('file');
+  await page.locator('#file').setInputFiles({ name: 'tone.wav', mimeType: 'audio/wav', buffer: wav });
+  await page.locator('#audio-button').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('looping audio file'));
+  await page.locator('#mode').selectOption('0');
+  await page.waitForTimeout(150);
+  await page.locator('.segment').nth(8).click();
+  await page.waitForFunction(() => document.querySelector('.layer[data-layer="0"] .state').textContent === 'Playing');
+  assert.deepEqual(errors, []);
+  console.log(`Main looper browser: four strips, first loop ${inferredTempo} BPM, retrospective layer, traditional arm/fire, reverse scrub, session save/reopen, decoded file source passed`);
+} finally { await browser.close(); }

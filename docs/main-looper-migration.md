@@ -1,0 +1,23 @@
+# Main looper migration
+
+The behavior and visual references are read-only files under `/home/shamanic/dev/my-plugin`:
+
+- `UserScripts/projects/Main/dsp/looper_baseline.lua` defines four layers, First Loop tempo inference, Free Mode quantization, transport, overdub, and capture-plane commands.
+- `manifold/primitives/scripting/dsp_host/DSPHostLoopLayerBundle.cpp` assembles capture, playback, gate, gain, quantizer, record mode, and forward scheduler nodes. `dsp/core/nodes/LoopPlaybackNode.cpp` defines buffer replacement, repeat versus commit-length-wins overdub, and the 4,410-frame tail crossfade.
+- `UserScripts/projects/Main/ui/main.ui.lua`, `ui/components/shared_transport.ui.lua`, `shared_capture_plane.ui.lua`, `looper_view.ui.lua`, and `looper_layer_strip.ui.lua` define the current Main page geometry. `manifold/ui/widgets/knob.lua` defines the rotary arc, pointer, and text layout.
+
+## Ported behavior
+
+`crates/manifold-core/src/main_looper.rs` owns the four prepared layers and all timing and audio rules. Each layer keeps a continuously updating 30-second stereo ring. REC marks the active layer and frame; stop either infers the closest legal bar count to target BPM or quantizes at the current BPM. Clicking a capture-plane region commits recent audio; in Traditional mode it arms a region until fired. Commits copy at most 4,096 stereo frames per process block to the inactive loop, then publish it. Existing playback continues during copying. This bounds callback work but makes a 30-second commit take about 0.94 seconds at 48 kHz with 128-frame blocks. The original C++ bundle copies in a single control call.
+
+Layer output mixes with the monitored input. Per-layer volume, mute, signed speed/reverse, seek, play/pause, stop, clear, and the two original overdub length policies are present. Forward playback uses the old fixed 4,410-frame tail/head crossfade. The Rust core is compiled directly to native and Wasm; `crates/manifold-web` only exposes a pointer/message ABI.
+
+The prepared capture ring plus two loop buffers per layer cost about 132 MiB of stereo `f32` PCM at 48 kHz, before other Wasm memory. This preserves independent 30-second layer histories and uninterrupted playback during commits. Pooling or more compact inactive-loop storage needs an explicit continuity and callback-cost study before replacing this boundary.
+
+`web/main-looper.html` follows the current shared transport, nine capture regions, and four strip layout. The rotary controls draw the geometry in `knob.lua`; the browser has no Lua runtime. Microphone permission is requested only when selected. Test tone and decoded audio file inputs work without MIDI permission. The versioned `projects/main-looper/project.json` defines stable IDs consumed by the browser adapter. Session files carry four PCM loops and controls, with bounded 4,096-frame transfers; reopen currently requires the same device sample rate. An import publishes layers one by one, so it is not yet an atomic four-layer state switch.
+
+## Validation and open boundaries
+
+Native Rust tests probe First Loop output and tempo, Free Mode length, retrospective commits across two layers, Traditional arm/fire, both overdub length policies, and loop import. A direct Node/Wasm signal test checks First Loop and a second-layer retrospective output. The Chromium check exercises the assembled page, first loop, capture-plane commit, arm/fire, waveform scrub, decoded file input, and saved-session reopen. These verify the browser path; they do not establish physical-device underrun rates.
+
+The remaining Main boundary is routing the ported MidiSynth into the same capture and output graph, then native CLAP/VST3 packaging and host transport/Link. The general graph also needs a composite loop layer and state migration if this instrument is to become an editable graph product. Legacy Main preset import and sample-rate conversion for saved sessions remain open. The old retrospective buffer is always on, so a live input reaches all four captures even when no loop is playing.
