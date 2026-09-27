@@ -432,3 +432,25 @@ footer a:hover { text-decoration: underline; }
     display: none;
   }
 }
+
+body.plugin-editor {
+  width: 500px;
+  min-width: 500px;
+  overflow: hidden;
+}
+body.plugin-editor .topbar,
+body.plugin-editor .view-heading,
+body.plugin-editor .host-strip,
+body.plugin-editor .status,
+body.plugin-editor footer { display: none; }
+body.plugin-editor main {
+  width: 500px;
+  margin: 0;
+  padding: 0;
+}
+body.plugin-editor .plugin-stage {
+  width: 500px;
+  min-height: 246px;
+  padding: 13px 14px;
+  border: 0;
+}

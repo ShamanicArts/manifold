@@ -25,6 +25,14 @@ process. The CLAP module owns the GUI extension and the bounded control bridge;
 the companion owns the webview, browser assets, and its GTK event loop. The
 process boundary also prevents the DSP module from requiring a GTK loop.
 
+A browser preview is now available at `fx-module.html?editor=1`. It mounts the
+same `project-ui.js` controls in a 500 × 246 shell, accepts a host project
+snapshot through `window.manifoldEditorReceive(...)`, and emits versioned
+parameter messages through `window.ipc.postMessage(...)`. The current preview
+shares the full browser page bundle, although it does not start browser audio;
+the packaged native editor build still needs its own entrypoint so it can omit
+browser audio code entirely.
+
 ```text
 DAW main thread: CLAP GUI extension ── X11 parent ── editor companion
                  CLAP params flush  ← bounded IPC → exact browser widgets

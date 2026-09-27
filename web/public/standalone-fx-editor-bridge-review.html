@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Manifold · Native editor bridge checkpoint</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; background: #0b1220; color: #dce5ed; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(840px, calc(100% - 32px)); margin: auto; padding: 32px 0 70px; }
+    header { display: flex; justify-content: space-between; gap: 16px; border-bottom: 1px solid #34475a; padding-bottom: 14px; font: 12px ui-monospace, monospace; }
+    a { color: #91e1e0; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    h1 { font-size: clamp(26px, 5vw, 44px); font-weight: 500; letter-spacing: -.04em; margin: 30px 0 10px; }
+    h2 { font-size: 18px; font-weight: 500; margin: 32px 0 9px; }
+    p { max-width: 700px; color: #adbdcb; line-height: 1.6; }
+    .lead { font-size: 16px; }
+    .frame { display: inline-block; max-width: 100%; margin-top: 16px; padding: 8px; border: 1px solid #354758; background: #111b2b; }
+    img { display: block; max-width: 100%; height: auto; }
+    dl { display: grid; grid-template-columns: 150px 1fr; gap: 0 18px; max-width: 760px; }
+    dt, dd { margin: 0; padding: 12px 0; border-top: 1px solid #34475a; font-size: 13px; line-height: 1.5; }
+    dt { color: #94adbf; }
+    dd { color: #d1dce4; }
+    .note { border-left: 2px solid #d4a977; padding-left: 14px; }
+    @media(max-width:560px) { dl { grid-template-columns: 1fr; } dt { padding-bottom: 0; } dd { border: 0; padding-top: 4px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header><span>MANIFOLD / EDITOR BRIDGE</span><a href="/fx-module.html?editor=1">Open live editor mode ↗</a></header>
+    <h1>The same widgets inside an editor-sized surface.</h1>
+    <p class="lead">The Standalone FX browser module now has a 500 × 246 editor mode. It mounts the same authored <code>ui.json</code>, Canvas compact sliders, dropdown, XY pad, and filter graph as the full browser page. The preview receives host project state and emits versioned parameter messages through <code>window.ipc</code>.</p>
+    <div class="frame"><img src="/standalone-fx-editor-mode.png" width="500" height="246" alt="Standalone FX editor mode showing original compact widget renderer and Chorus controls" /></div>
+    <h2>What is proven</h2>
+    <dl>
+      <dt>Widget identity</dt><dd>The editor mode and browser module execute the same <code>project-ui.js</code> widget renderer. No HTML range control replaces the ported compact slider.</dd>
+      <dt>Host input</dt><dd>A host project JSON snapshot restores the selected effect and all remembered controls in the editor surface.</dd>
+      <dt>Host output</dt><dd>Moving a slider produces a versioned message with stable public parameter ID and normalized value. The browser test captures and checks that message.</dd>
+      <dt>Audio boundary</dt><dd>Editor mode does not start a browser audio context. The loadable CLAP module continues to process audio through native Rust.</dd>
+    </dl>
+    <h2>Next connection</h2>
+    <p class="note">This is a browser preview of the editor bridge. The CLAP module does not yet expose the GUI extension or embed the page in a DAW. The companion WebKitGTK process, host gesture/automation return path, and X11 lifecycle remain to implement and validate.</p>
+    <p><a href="/standalone-fx-host-review.html">View the CLAP audio and state proof ↗</a></p>
+  </main>
+</body>
+</html>

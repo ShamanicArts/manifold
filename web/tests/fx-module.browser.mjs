@@ -108,6 +108,27 @@ try {
   await page.waitForFunction(() =>
     Number(document.querySelector("#widget-param1").getAttribute("aria-valuenow")).toFixed(2) === "0.83"
   );
+  const editor = await browser.newPage({ viewport: { width: 500, height: 246 } });
+  await editor.addInitScript(() => {
+    window.__ipcMessages = [];
+    window.ipc = { postMessage: (message) => window.__ipcMessages.push(JSON.parse(message)) };
+  });
+  await editor.goto(new URL("/fx-module.html?editor=1", address).href);
+  assert.equal((await editor.locator("#plugin-shell").boundingBox()).width, 472);
+  assert.equal(await editor.locator("#widget-param1 canvas").count(), 1);
+  assert.equal(await editor.locator(".project-slider input[type=range]").count(), 0);
+  assert.equal(await editor.locator(".topbar").isVisible(), false);
+  const editorSlider = editor.locator("#widget-param1");
+  const editorBox = await editorSlider.boundingBox();
+  await editorSlider.click({ position: { x: editorBox.width * .7, y: editorBox.height / 2 } });
+  const messages = await editor.evaluate(() => window.__ipcMessages);
+  assert.equal(messages.at(-1).kind, "parameter");
+  assert.equal(messages.at(-1).id, 2);
+  assert.ok(Math.abs(messages.at(-1).value - .7) < .02);
+  await editor.evaluate((document) => window.manifoldEditorReceive(document), hostProject);
+  assert.equal(Number(await editorSlider.getAttribute("aria-valuenow")).toFixed(2), "0.83");
+  await editor.screenshot({ path: "/tmp/manifold-fx-editor-mode.png" });
+  await editor.close();
   await page.locator("#settings-toggle").click();
   assert.equal(await page.locator("#settings-overlay").isVisible(), true);
   await page.locator("#settings-close").click();

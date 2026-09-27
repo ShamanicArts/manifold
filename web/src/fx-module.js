@@ -2,6 +2,7 @@ import "./fx-module.css";
 import project from "../../projects/standalone-fx-module/project.json";
 import layout from "../../projects/standalone-fx-module/ui.json";
 import { BrowserAudioHost } from "./audio/browser-host.js";
+import { PluginControlHost } from "./audio/plugin-control-host.js";
 import {
   captureStandaloneFxState,
   captureFxProjectState,
@@ -13,6 +14,8 @@ import { DEFAULTS, LABELS, VISUAL_NAMES } from "./widgets/fx-slot-data.js";
 import { drawText, fillRoundedRect } from "./widgets/compact-slider.js";
 
 const byId = (id) => document.getElementById(id);
+const editorMode = new URLSearchParams(location.search).has("editor");
+if (editorMode) document.body.classList.add("plugin-editor");
 const ui = mountProjectUi(byId("plugin-content"), layout);
 const typeSelect = ui.control("type_dropdown");
 const typeNames = ui.spec("type_dropdown").options;
@@ -25,14 +28,14 @@ const values = new Map(
   project.parameters.map((parameter) => [parameter.id, parameter.default]),
 );
 let typeValues = new Map(DEFAULTS.map((entry, type) => [type, [...entry]]));
-let view = innerWidth < 620 ? "compact" : "split";
+let view = editorMode ? "split" : innerWidth < 620 ? "compact" : "split";
 let visualMode = "xy";
 let xAxis = 0;
 let yAxis = 1;
 let dragging = false;
 let busy = false;
 const meterSamples = new Float32Array(1024);
-const audio = new BrowserAudioHost((message) => {
+const audio = editorMode ? new PluginControlHost() : new BrowserAudioHost((message) => {
   byId("status").textContent = message;
 });
 const clamp = (value) => Math.max(0, Math.min(1, Number(value)));
@@ -49,7 +52,7 @@ const status = (message) => {
 function applyLayout() {
   const width = layout.widths[view];
   const available = byId("plugin-stage").clientWidth - 28;
-  const scale = Math.max(0.5, Math.min(1.7, available / width));
+  const scale = editorMode ? 1 : Math.max(0.5, Math.min(1.7, available / width));
   byId("plugin-viewport").style.width = `${Math.round(width * scale)}px`;
   byId("plugin-viewport").style.height = `${
     Math.round(layout.height * scale)
@@ -107,7 +110,7 @@ function selectType(type) {
   audio.setParameter(0, type);
   typeValues.get(type).forEach((value, index) => {
     values.set(index + 2, value);
-    audio.setParameter(index + 2, value);
+    if (!editorMode) audio.setParameter(index + 2, value);
   });
   if (hasGraph() && !previousHadGraph) visualMode = "graph";
   if (!hasGraph()) visualMode = "xy";
@@ -389,6 +392,27 @@ byId("save-host-state").addEventListener("click", () => {
   downloadState(captureFxProjectState(project, values, typeValues), "manifold-standalone-fx-host.json");
   status("Host project saved. Its JSON state can also be reopened here.");
 });
+function applySavedState(state) {
+  typeValues = new Map(
+    Object.entries(state.typeParameters).map((
+      [type, controls],
+    ) => [Number(type), [...controls]]),
+  );
+  values.set(0, state.hostParameters.type);
+  values.set(1, state.hostParameters.mix);
+  for (let i = 0; i < 5; i++) {
+    values.set(i + 2, state.hostParameters[`p/${i}`]);
+  }
+  visualMode = hasGraph() ? "graph" : "xy";
+  syncWidgetValues();
+}
+if (editorMode) {
+  window.manifoldEditorReceive = (document) => {
+    const state = document.id === "manifold.standalone-fx-module"
+      ? parseFxProjectState(document) : parseStandaloneFxState(document);
+    applySavedState(state);
+  };
+}
 byId("open-state").addEventListener("change", async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -397,18 +421,7 @@ byId("open-state").addEventListener("change", async (event) => {
     const document = JSON.parse(await file.text());
     const state = document.id === "manifold.standalone-fx-module"
       ? parseFxProjectState(document) : parseStandaloneFxState(document);
-    typeValues = new Map(
-      Object.entries(state.typeParameters).map((
-        [type, controls],
-      ) => [Number(type), [...controls]]),
-    );
-    values.set(0, state.hostParameters.type);
-    values.set(1, state.hostParameters.mix);
-    for (let i = 0; i < 5; i++) {
-      values.set(i + 2, state.hostParameters[`p/${i}`]);
-    }
-    visualMode = hasGraph() ? "graph" : "xy";
-    syncWidgetValues();
+    applySavedState(state);
     status(`Opened ${file.name}.`);
   } catch (error) {
     status(`State rejected: ${error.message}`);
@@ -432,5 +445,7 @@ byId("reset-state").addEventListener("click", () => {
 });
 syncWidgetValues();
 applyLayout();
-syncEngine();
-drawMeter();
+if (!editorMode) {
+  syncEngine();
+  drawMeter();
+}
