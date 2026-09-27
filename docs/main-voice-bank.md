@@ -142,6 +142,18 @@ note ownership follows the old UI's note-only policy across channels.
   4096; native/Wasm is bit-exact. The old UI-rate envelope and vocoder are
   excluded. New Rust voices now seed the first prepared target before
   resetting phase, which closed a large mixed-Morph onset mismatch.
+- `MANIFOLD_TEMPORAL_SOURCE=rhythmic` runs the same generator and verifier
+  against four harmonic bursts and changing stereo balance. Original and Rust
+  extraction each yield 45 frames, with matching partial counts and amplitude
+  differences under 0.00000072, checked by
+  `scripts/verify-main-temporal-source-frames.mjs`. Frozen Add/Morph routes still agree within
+  0.0004, while moving routes differ by up to 0.02538 settled peak and
+  0.005964 RMS. Native Rust/Wasm remains exact. This is a documented open
+  temporal target/rendering gap, not a parity result. Naive interpolation
+  between prepared targets reduced some rhythmic errors but caused a new
+  double-speed wraparound spike in the gradual source, so it was reverted.
+  The two-source [review](../web/public/main-temporal-source-review.html)
+  exposes the captures and measurements.
 - `scripts/verify-main-temporal-worklet.mjs` checks table upload, invalid
   upload rejection, clear, staggered voices, and audible movement in the real
   AudioWorklet adapter. `scripts/verify-main-temporal-browser.mjs` opens the

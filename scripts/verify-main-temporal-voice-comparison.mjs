@@ -4,7 +4,9 @@ import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { renderWasm } from '../web/src/reference/comparison.js';
 
-const root = 'web/public/reference/main-temporal-voice/';
+const sourceVariant = process.env.MANIFOLD_TEMPORAL_SOURCE ?? 'harmonic';
+assert.ok(['harmonic', 'rhythmic'].includes(sourceVariant), 'Unknown temporal source variant');
+const root = `web/public/reference/main-temporal-${sourceVariant === 'harmonic' ? 'voice' : 'rhythmic'}/`;
 const floats = (name) => {
   const bytes = readFileSync(`${root}${name}`);
   return new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
@@ -15,6 +17,7 @@ const hash = (names) => {
   return digest.digest('hex');
 };
 const manifest = JSON.parse(readFileSync(`${root}manifest.json`, 'utf8'));
+assert.equal(manifest.sourceVariant, sourceVariant);
 assert.equal(hash([
   'crates/manifold-core/src/main_voice_bank.rs', 'crates/manifold-core/src/sample_analysis.rs',
   'crates/manifold-core/src/sine_bank.rs', 'crates/manifold-core/src/graph.rs',
@@ -67,11 +70,21 @@ for (const selected of manifest.cases) {
     }
     const settledRms = Math.sqrt(oldErrorEnergy / (original.length - start));
     const oldSignalRms = Math.sqrt(oldSignalEnergy / (original.length - start));
-    assert.ok(oldMax < .0007, `${selected.id}: old/Rust settled max ${oldMax}`);
-    assert.ok(settledRms < .0002, `${selected.id}: old/Rust settled RMS ${settledRms}`);
+    const parity = oldMax < .0007 && settledRms < .0002;
+    if (sourceVariant === 'rhythmic' && !selected.id.endsWith('-static')) {
+      // This source intentionally exposes the remaining interpolation gap.
+      // Keep its measured limit separate from the harmonic parity gate.
+      assert.ok(oldMax > .01 && oldMax < .03,
+        `${selected.id}: rhythmic gap changed; inspect the original and prepared frames`);
+      assert.ok(settledRms < .007, `${selected.id}: rhythmic RMS gap widened`);
+      assert.equal(parity, false, `${selected.id}: update the parity claim if the gap closes`);
+    } else {
+      assert.ok(parity, `${selected.id}: old/Rust settled max ${oldMax}, RMS ${settledRms}`);
+    }
     assert.ok(oldSignalRms > .05, `${selected.id}: original route silent`);
-    assert.ok(onsetMax > .005, `${selected.id}: old UI envelope distinction missing`);
-    row.settledOldVsNative = { max: oldMax, rms: settledRms, referenceRms: oldSignalRms };
+    assert.ok(onsetMax > (sourceVariant === 'rhythmic' ? .001 : .005),
+      `${selected.id}: old UI envelope distinction missing`);
+    row.settledOldVsNative = { max: oldMax, rms: settledRms, referenceRms: oldSignalRms, parity };
     row.onsetOldVsNative = { max: onsetMax };
     console.log(`${selected.id}: old/Rust settled max ${oldMax.toExponential(3)}, RMS ${settledRms.toExponential(3)}; onset ${onsetMax.toExponential(3)}; native/Wasm max ${max.toExponential(3)}`);
   } else {
@@ -106,4 +119,4 @@ for (const name of ['add', 'morph']) {
 if (process.argv[2]) writeFileSync(process.argv[2], `${JSON.stringify({
   schemaVersion: 1, scope: manifest.scope, results,
 }, null, 2)}\n`);
-console.log('Main temporal bank: six two-voice native/Wasm renders, six original C++ temporal routes, and motion controls passed');
+console.log(`Main temporal ${sourceVariant}: six two-voice native/Wasm renders and six original C++ routes checked${sourceVariant === 'rhythmic' ? '; moving-route parity remains open' : ''}`);

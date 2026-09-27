@@ -5,7 +5,9 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const root = 'web/public/reference/main-temporal-voice';
+const sourceVariant = process.env.MANIFOLD_TEMPORAL_SOURCE ?? 'harmonic';
+assert.ok(['harmonic', 'rhythmic'].includes(sourceVariant), 'Unknown temporal source variant');
+const root = `web/public/reference/main-temporal-${sourceVariant === 'harmonic' ? 'voice' : 'rhythmic'}`;
 mkdirSync(root, { recursive: true });
 const hash = (names) => {
   const digest = createHash('sha256');
@@ -20,11 +22,22 @@ const sample = new Float32Array(sampleFrames * 2);
 for (let frame = 0; frame < sampleFrames; frame++) {
   const time = frame / rate;
   const position = frame / (sampleFrames - 1);
-  const fundamental = .4 * Math.sin(2 * Math.PI * 220 * time);
-  const second = (.08 + .28 * position) * Math.sin(2 * Math.PI * 440 * time);
-  const fourth = (.3 - .27 * position) * Math.sin(2 * Math.PI * 880 * time);
-  sample[frame * 2] = fundamental + second + fourth;
-  sample[frame * 2 + 1] = (fundamental + second + fourth) * .8;
+  if (sourceVariant === 'rhythmic') {
+    const beat = (position * 4) % 1;
+    const burst = Math.max(0, 1 - Math.abs(beat - .18) / .18);
+    const fundamental = .32 * Math.sin(2 * Math.PI * 220 * time);
+    const second = (.06 + .22 * burst) * Math.sin(2 * Math.PI * 440 * time);
+    const fourth = (.04 + .19 * burst) * Math.sin(2 * Math.PI * 880 * time);
+    const fifth = .08 * burst * Math.sin(2 * Math.PI * 1100 * time);
+    sample[frame * 2] = fundamental + second + fourth + fifth;
+    sample[frame * 2 + 1] = .85 * fundamental + .65 * second + .95 * fourth + .4 * fifth;
+  } else {
+    const fundamental = .4 * Math.sin(2 * Math.PI * 220 * time);
+    const second = (.08 + .28 * position) * Math.sin(2 * Math.PI * 440 * time);
+    const fourth = (.3 - .27 * position) * Math.sin(2 * Math.PI * 880 * time);
+    sample[frame * 2] = fundamental + second + fourth;
+    sample[frame * 2 + 1] = (fundamental + second + fourth) * .8;
+  }
 }
 writeFileSync(join(root, 'sample.f32'), bytes(sample));
 writeFileSync(join(root, 'input.f32'), Buffer.alloc(frames * 8));
@@ -121,8 +134,8 @@ for (const [name, mode] of [['add', 4], ['morph', 5]]) {
   }
 }
 writeFileSync(join(root, 'manifest.json'), `${JSON.stringify({
-  version: 2, reference: 'original Main C++ temporal Add/Morph route versus native Rust and Wasm',
-  scope: 'original C++ source temporal interpolation and assembled Add/Morph routing compared with 256-position v2 prepared table; old UI envelope and vocoder omitted',
+  version: 2, sourceVariant, reference: 'original Main C++ temporal Add/Morph route versus native Rust and Wasm',
+  scope: `original C++ source temporal interpolation and assembled Add/Morph routing compared with 256-position v2 prepared table; old UI envelope and vocoder omitted${sourceVariant === 'rhythmic' ? '; moving-route parity gap remains open' : ''}`,
   sourceSha256: hash([
     'crates/manifold-core/src/main_voice_bank.rs', 'crates/manifold-core/src/sample_analysis.rs',
     'crates/manifold-core/src/sine_bank.rs', 'crates/manifold-core/src/graph.rs',
