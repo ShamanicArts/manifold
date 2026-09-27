@@ -15,5 +15,15 @@
   "nativeBlockFrames": 1024,
   "hostVsNativePeakError": 5.960464477539063e-08,
   "hostVsNativeRmsError": 2.5746493197824346e-08,
-  "render": "graph-vst3-reaper-note.wav"
+  "render": "graph-vst3-reaper-note.wav",
+  "importedPreset": {
+    "project": "tone-texture.json",
+    "presetLoaded": true,
+    "tonePeak": 0.2299288511276245,
+    "toneRms": 0.0920321358309386,
+    "hostVsNativePeakError": 5.960464477539063e-08,
+    "hostVsNativeRmsError": 3.464036495227414e-08,
+    "preset": "graph-tone-texture.vstpreset",
+    "render": "graph-vst3-reaper-tone.wav"
+  }
 }

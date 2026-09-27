@@ -104,7 +104,9 @@ source, actual REAPER WAV renders, plots, and machine-readable measurements.
    of the product behavior.
 2. The second class, [Manifold Graph](../web/public/graph-vst3-host-proof.html),
    now exposes fixed 128 macro parameters, MIDI and sidechain buses, and
-   portable project state. Its native widget editor and user-facing project
-   import workflow remain to build; see [the broader boundary map](native-vst3-boundary.md).
+   portable project state. A [Rust preset exporter](graph-vst3-preset.md) lets
+   a DAW load browser-authored project bundles; REAPER restores Tone Texture
+   and renders audio matching native Rust. Its native widget editor and direct
+   in-editor project import remain to build; see [the broader boundary map](native-vst3-boundary.md).
 3. Build Windows and macOS bundles and run their host validation. Audio Unit
    remains a separate host adapter.

@@ -44,17 +44,23 @@
     <p class="small">Peak before note: 0.0 · peak during note: 0.101638 · RMS during note: 0.061535. The entire REAPER render differs from the native Rust reference by at most 5.96e-8 with 1,024-frame native blocks. <a href="/graph-vst3-reaper-note.json">Machine readable measurements</a> · <a href="/graph-vst3-reaper-note.wav">Download WAV</a></p>
   </section>
   <section class="panel">
+    <h2>Load a different browser graph in the DAW</h2>
+    <p>The Rust exporter wraps a validated portable project in a standard VST3 preset. REAPER loaded this <a href="/graph-tone-texture.vstpreset">Tone Texture preset</a> by path, replacing the default note graph with its oscillator, noise, filter, LFO, and modulated gain route.</p>
+    <audio controls preload="metadata" src="/graph-vst3-reaper-tone.wav"></audio>
+    <p class="small">This is the actual REAPER Tone Texture render from a silent media item. Peak: 0.229929 · RMS: 0.092032. All 48,000 stereo frames match direct native Rust within 5.96e-8 peak sample error. <a href="/graph-vst3-reaper-tone.wav">Download WAV</a> · <a href="/graph-tone-texture.vstpreset">Download preset</a></p>
+  </section>
+  <section class="panel">
     <h2>What this proves</h2>
     <div class="row"><span>Factory</span><span>REAPER finds Manifold Graph alongside the original Standalone FX class in one bundle. Steinberg's validator exercises both classes.</span></div>
     <div class="row"><span>Signal path</span><span>A VST3 note event reaches the Rust graph at frame 16 and produces the same 128 frame stereo output as direct native rendering, sample for sample.</span></div>
     <div class="row"><span>Full host render</span><span>A one second MIDI item in REAPER matches direct native Rust audio over all 48,000 stereo frames to 24-bit WAV quantization. The repeatable probe saves the WAV and measurements.</span></div>
-    <div class="row"><span>Project state</span><span>The component accepts and saves a portable graph bundle. A test loads a sidechain to output route and verifies the VST3 sidechain bus produces the expected stereo samples.</span></div>
+    <div class="row"><span>Project state</span><span>The component accepts and saves a portable graph bundle. A test loads a sidechain to output route and verifies the VST3 sidechain bus produces the expected stereo samples. REAPER also loads a second authored graph via a standard preset file.</span></div>
     <div class="row"><span>Host parameters</span><span>All 128 public IDs stay fixed while project bindings change. REAPER reports 131 parameters because it adds three host controls.</span></div>
   </section>
   <section class="panel">
     <h2>Current boundary and next work</h2>
-    <p>This general graph class currently uses the host's generic controls. Its native graph editor and a user facing browser project import path are next. Only the first MIDI input node receives host notes for now. The earlier <a href="/standalone-fx-reaper-proof.html">Standalone FX class</a> retains its original widget editor and independent host proof.</p>
-    <p class="small">Reproduce: <code>cargo test -p manifold-vst3</code>, <code>./scripts/build-vst3.sh</code>, <code>validator -e target/vst3/ManifoldFX.vst3</code>, then run <code>scripts/probe-reaper-graph-vst3.py</code> on an isolated Xvfb display.</p>
+    <p>This general graph class currently uses the host's generic controls. Its native graph editor and direct in-editor project import are next. Only the first MIDI input node receives host notes for now. The earlier <a href="/standalone-fx-reaper-proof.html">Standalone FX class</a> retains its original widget editor and independent host proof.</p>
+    <p class="small">Reproduce: <code>cargo test -p manifold-vst3</code>, <code>./scripts/build-vst3.sh</code>, <code>validator -e target/vst3/ManifoldFX.vst3</code>, then run <code>scripts/probe-reaper-graph-vst3.py</code> on an isolated Xvfb display. To export your own graph: <code>cargo run -p manifold-vst3 --example export_graph_preset -- my-graph.json my-graph.vstpreset</code>.</p>
   </section>
 </body>
 </html>

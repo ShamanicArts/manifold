@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import wave
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +36,111 @@ def wait_for(path: Path) -> str:
                 return result
         time.sleep(0.1)
     raise TimeoutError(f"REAPER setup did not complete: {path}")
+
+
+def render_imported_tone(work: Path, config: Path, env: dict[str, str]) -> dict:
+    preset = work / "tone-texture.vstpreset"
+    subprocess.run([
+        "cargo", "run", "-q", "-p", "manifold-vst3", "--example",
+        "export_graph_preset", "--",
+        str(ROOT / "projects/graph-workspace/tone-texture.json"), str(preset),
+    ], cwd=ROOT, check=True, timeout=120)
+    with wave.open(str(work / "silence.wav"), "wb") as source:
+        source.setnchannels(2)
+        source.setsampwidth(2)
+        source.setframerate(RATE)
+        source.writeframes(bytes(RATE * 4))
+    report = work / "tone-setup.txt"
+    project = work / "tone.rpp"
+    script = work / "tone-setup.lua"
+    script.write_text(f"""
+reaper.GetSetProjectInfo(0,'PROJECT_SRATE',{RATE},true)
+reaper.GetSetProjectInfo(0,'PROJECT_SRATE_USE',1,true)
+reaper.InsertTrackAtIndex(0,true)
+local track=reaper.GetTrack(0,0)
+reaper.SetOnlyTrackSelected(track)
+reaper.SetEditCurPos(0,false,false)
+reaper.InsertMedia('{work}/silence.wav',0)
+local fx=reaper.TrackFX_AddByName(track,'VST3: Manifold Graph',false,-1)
+local out=io.open('{report}','w')
+if fx<0 then out:write('FAILED: graph unavailable\\n'); out:close(); return end
+local loaded=reaper.TrackFX_SetPreset(track,fx,'{preset}')
+if not loaded then out:write('FAILED: preset not loaded\\n'); out:close(); return end
+local begun=reaper.time_precise()
+local function finish_setup()
+ if reaper.time_precise()-begun<1 then reaper.defer(finish_setup); return end
+ local ok,name=reaper.TrackFX_GetPreset(track,fx)
+ reaper.GetSetProjectInfo(0,'RENDER_SETTINGS',0,true)
+ reaper.GetSetProjectInfo(0,'RENDER_BOUNDSFLAG',0,true)
+ reaper.GetSetProjectInfo(0,'RENDER_STARTPOS',0,true)
+ reaper.GetSetProjectInfo(0,'RENDER_ENDPOS',1,true)
+ reaper.GetSetProjectInfo(0,'RENDER_SRATE',{RATE},true)
+ reaper.GetSetProjectInfo(0,'RENDER_CHANNELS',2,true)
+ reaper.GetSetProjectInfo(0,'RENDER_TAILFLAG',0,true)
+ reaper.GetSetProjectInfo(0,'RENDER_NORMALIZE',0,true)
+ reaper.GetSetProjectInfo_String(0,'RENDER_FILE','{work}',true)
+ reaper.GetSetProjectInfo_String(0,'RENDER_PATTERN','tone',true)
+ reaper.GetSetProjectInfo_String(0,'RENDER_FORMAT','evaw',true)
+ reaper.Main_SaveProjectEx(0,'{project}',0)
+ out:write('preset=' .. tostring(ok) .. ' ' .. tostring(name) .. '\\n')
+ out:write('done\\n'); out:close()
+end
+reaper.defer(finish_setup)
+""")
+    with (work / "tone-setup.log").open("w") as log:
+        process = subprocess.Popen(
+            ["reaper", "-cfgfile", str(config), "-newinst", "-nosplash",
+             "-noactivate", str(script)], env=env, stdout=log,
+            stderr=subprocess.STDOUT, start_new_session=True,
+        )
+        try:
+            setup = wait_for(report)
+        finally:
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGTERM)
+            process.wait(timeout=5)
+    assert f"preset=true {preset}" in setup, setup
+    with (work / "tone-render.log").open("w") as log:
+        subprocess.run(
+            ["reaper", "-cfgfile", str(config), "-newinst", "-nosplash",
+             "-renderproject", str(project)], env=env, stdout=log,
+            stderr=subprocess.STDOUT, timeout=45, check=True,
+        )
+    rendered = work / "tone.wav"
+    assert rendered.exists(), (work / "tone-render.log").read_text()[-1500:]
+    raw = subprocess.check_output([
+        "ffmpeg", "-v", "error", "-i", str(rendered), "-f", "f32le",
+        "-acodec", "pcm_f32le", "-",
+    ])
+    samples = array("f")
+    samples.frombytes(raw)
+    assert len(samples) == RATE * 2, len(samples)
+    peak = max(abs(sample) for sample in samples)
+    rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples))
+    assert peak > 0.01 and rms > 0.001, (peak, rms)
+    native_path = work / "native-tone.f32"
+    subprocess.run([
+        "cargo", "run", "-q", "-p", "manifold-native", "--example",
+        "render_graph_midi_audio", "--",
+        str(ROOT / "projects/graph-workspace/tone-texture.json"),
+        str(native_path), str(NATIVE_BLOCK), "0", "0", "0",
+    ], cwd=ROOT, check=True, timeout=120)
+    native = array("f")
+    native.frombytes(native_path.read_bytes())
+    assert len(native) == len(samples)
+    errors = [host - direct for host, direct in zip(samples, native)]
+    parity_peak = max(abs(error) for error in errors)
+    parity_rms = math.sqrt(sum(error * error for error in errors) / len(errors))
+    assert parity_peak < 1e-7, (parity_peak, parity_rms)
+    target = REVIEW / "graph-vst3-reaper-tone.wav"
+    target.write_bytes(rendered.read_bytes())
+    preset_target = REVIEW / "graph-tone-texture.vstpreset"
+    preset_target.write_bytes(preset.read_bytes())
+    return {"project": "tone-texture.json", "presetLoaded": True,
+            "tonePeak": peak, "toneRms": rms,
+            "hostVsNativePeakError": parity_peak,
+            "hostVsNativeRmsError": parity_rms,
+            "preset": preset_target.name, "render": target.name}
 
 
 def main() -> None:
@@ -153,6 +259,7 @@ reaper.defer(finish_setup)
             "hostVsNativeRmsError": parity_rms,
             "render": target.name,
         }
+        metrics["importedPreset"] = render_imported_tone(work, config, env)
         (REVIEW / "graph-vst3-reaper-note.json").write_text(json.dumps(metrics, indent=2) + "\n")
         print(json.dumps(metrics, indent=2))
 
