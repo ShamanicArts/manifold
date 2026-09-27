@@ -1540,6 +1540,45 @@ pub extern "C" fn manifold_capture_length(node_id: u32) -> u32 {
     })
 }
 
+/// The retrospective ring's next write offset. `u32::MAX` means unavailable;
+/// zero is a valid offset at startup and after wrapping.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_capture_write_offset(node_id: u32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|engine| engine.plan.retrospective_cursor(node_id.into()))
+            .and_then(|(offset, _)| u32::try_from(offset).ok())
+            .unwrap_or(u32::MAX)
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_capture_capacity(node_id: u32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|engine| engine.plan.retrospective_cursor(node_id.into()))
+            .and_then(|(_, capacity)| u32::try_from(capacity).ok())
+            .unwrap_or(0)
+    })
+}
+
+/// The original free trigger measures one circular span between two cursor
+/// reads. The host reads and stages both on the AudioWorklet thread.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_capture_free_frames(start: u32, end: u32, capacity: u32) -> u32 {
+    if start >= capacity || end >= capacity {
+        return 0;
+    }
+    manifold_core::capture_timing::free_frames_from_offsets(
+        i64::from(start),
+        i64::from(end),
+        capacity,
+    )
+    .unwrap_or(0)
+}
+
 /// Preallocate a bounded capture window before audio starts.
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_capture_stage_reserve(node_id: u32, frames: u32) -> u32 {

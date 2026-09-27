@@ -136,8 +136,10 @@ export function validateTopology(signal) {
     || (signal.inputSource !== undefined && !['external', 'none'].includes(signal.inputSource))
     || (signal.sidechainSource !== undefined && !['none', 'oscillator', 'microphone'].includes(signal.sidechainSource))
     || (signal.captureWindowSeconds !== undefined && (typeof signal.captureWindowSeconds !== 'number'
-      || !Number.isFinite(signal.captureWindowSeconds) || signal.captureWindowSeconds < .05 || signal.captureWindowSeconds > 30))
-    || (signal.captureWindowMode !== undefined && !['seconds', 'bars'].includes(signal.captureWindowMode))
+      || !Number.isFinite(signal.captureWindowSeconds)
+      || signal.captureWindowSeconds < (signal.captureWindowMode === 'free' ? 0 : .05)
+      || signal.captureWindowSeconds === 0 || signal.captureWindowSeconds > 30))
+    || (signal.captureWindowMode !== undefined && !['seconds', 'bars', 'free'].includes(signal.captureWindowMode))
     || (signal.captureWindowBars !== undefined && (typeof signal.captureWindowBars !== 'number'
       || !Number.isFinite(signal.captureWindowBars) || signal.captureWindowBars < .0625 || signal.captureWindowBars > 16))
     || (signal.captureTempoBpm !== undefined && (typeof signal.captureTempoBpm !== 'number'

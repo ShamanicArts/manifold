@@ -40,7 +40,7 @@ function temporalFromMainState(nodeId, controls) {
 }
 
 // Edits a project description outside the AudioWorklet. The next start compiles it in Rust.
-export function mountGraphEditor(section, project, { isRunning, isActive, onChange, onParameter, onTemporalSpeed, onCapturePublish, onTemplateLoaded, decodeSample, builtinSample }) {
+export function mountGraphEditor(section, project, { isRunning, isActive, onChange, onParameter, onTemporalSpeed, onCapturePublish, onCaptureArm, onCaptureCancel, onTemplateLoaded, decodeSample, builtinSample }) {
   const nodesRoot = section.querySelector('#graph-nodes');
   const status = section.querySelector('#graph-status');
   const addType = section.querySelector('#graph-add-type');
@@ -65,6 +65,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   let destroyed = false;
   let revision = 0;
   let sourceRequest = 0;
+  let freeCaptureArmed = null;
   const pendingParameters = new Set();
 
   project.graphHostBindings = deriveGraphHostBindings(project.signal, project.graphHostBindings ?? []);
@@ -75,6 +76,14 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   const canEdit = () => !destroyed && isActive() && !isRunning() && !busy;
   const canChangeParameter = () => !destroyed && isActive() && !busy;
   function refreshRunning(updateStatus = true) {
+    if (!isRunning() && freeCaptureArmed !== null) {
+      onCaptureCancel();
+      freeCaptureArmed = null;
+      for (const button of section.querySelectorAll('button[aria-label^="Stop free capture"]')) {
+        button.textContent = 'Arm free capture';
+        button.setAttribute('aria-label', button.getAttribute('aria-label').replace('Stop free capture', 'Arm free capture'));
+      }
+    }
     const disabled = !canEdit();
     section.querySelectorAll('.graph-edit').forEach((control) => { control.disabled = disabled; });
     section.querySelectorAll('.graph-parameter').forEach((control) => {
@@ -254,6 +263,10 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
             if (!canChangeParameter()) return;
             const chosen = selectedCapture();
             if (!chosen) return;
+            if (freeCaptureArmed !== null) {
+              onCaptureCancel();
+              freeCaptureArmed = null;
+            }
             commit({ ...project.signal, selectedCaptureNodeId: chosen.id }, `${sourceName(chosen)} selected for the next capture.`);
           });
           const windowSeconds = document.createElement('input');
@@ -282,13 +295,20 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
           windowMode.setAttribute('aria-label', `Capture window unit for sample instrument ${node.id}`);
           windowMode.add(new Option('Seconds', 'seconds'));
           windowMode.add(new Option('Bars at tempo', 'bars'));
+          windowMode.add(new Option('Free start / stop', 'free'));
           windowMode.value = project.signal.captureWindowMode ?? 'seconds';
           windowMode.addEventListener('change', () => {
             if (!canChangeParameter()) return;
+            if (freeCaptureArmed !== null) {
+              onCaptureCancel();
+              freeCaptureArmed = null;
+            }
             const signal = { ...project.signal, captureWindowMode: windowMode.value,
+              ...(windowMode.value !== 'free' && (project.signal.captureWindowSeconds ?? 2) < .05
+                ? { captureWindowSeconds: 2 } : {}),
               ...(windowMode.value === 'bars' ? { captureWindowBars: project.signal.captureWindowBars ?? 1,
                 captureTempoBpm: project.signal.captureTempoBpm ?? 120 } : {}) };
-            commit(signal, `Capture window uses ${windowMode.value === 'bars' ? 'bars at the chosen tempo' : 'seconds'}.`);
+            commit(signal, `Capture window uses ${windowMode.value === 'bars' ? 'bars at the chosen tempo' : windowMode.value === 'free' ? 'two presses' : 'seconds'}.`);
           });
           const windowBars = document.createElement('input');
           windowBars.type = 'number';
@@ -379,14 +399,17 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
           const syncCaptureControls = () => {
             const retrospective = selectedCapture()?.type === 'retrospective-capture';
             const bars = windowMode.value === 'bars';
+            const free = windowMode.value === 'free';
             windowMode.hidden = !retrospective;
-            windowLabel.hidden = !retrospective || bars;
+            windowLabel.hidden = !retrospective || bars || free;
             barsLabel.hidden = !retrospective || !bars;
             tempoLabel.hidden = !retrospective || !bars;
             meterLabel.hidden = !retrospective || !bars;
             publish.hidden = retrospective;
-            publishLive.textContent = retrospective ? 'Capture recent window' : 'Use current recording';
-            publishLive.setAttribute('aria-label', `${retrospective ? 'Capture recent window' : 'Use current recording'} for sample instrument ${node.id}`);
+            const action = retrospective ? free ? freeCaptureArmed === Number(source.value)
+              ? 'Stop free capture' : 'Arm free capture' : 'Capture recent window' : 'Use current recording';
+            publishLive.textContent = action;
+            publishLive.setAttribute('aria-label', `${action} for sample instrument ${node.id}`);
           };
           source.addEventListener('change', syncCaptureControls);
           syncCaptureControls();
@@ -394,13 +417,14 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
             if (!isRunning() || !canChangeParameter()) return;
             const startingRevision = revision;
             const retrospective = selectedCapture()?.type === 'retrospective-capture';
+            const freeMode = retrospective && windowMode.value === 'free';
             const seconds = retrospective ? Number(windowSeconds.value) : 0;
             const barsMode = retrospective && windowMode.value === 'bars';
             const bars = Number(windowBars.value);
             const tempo = Number(tempoBpm.value);
             const numerator = Number(meterNumerator.value);
             const denominator = Number(meterDenominator.value);
-            if (retrospective && !barsMode && (!Number.isFinite(seconds) || seconds < .05 || seconds > 30)) {
+            if (retrospective && !barsMode && !freeMode && (!Number.isFinite(seconds) || seconds < .05 || seconds > 30)) {
               fail(new Error('Choose a capture window from 0.05 to 30 seconds.'));
               return;
             }
@@ -414,28 +438,51 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
             }
             busy = true;
             refreshRunning(false);
-            status.textContent = `Publishing ${retrospective ? 'recent history' : live ? 'recording window' : 'stopped take'} ${source.value} to sample instrument ${node.id}…`;
+            status.textContent = `Publishing ${freeMode ? 'free capture' : retrospective ? 'recent history' : live ? 'recording window' : 'stopped take'} ${source.value} to sample instrument ${node.id}…`;
             try {
-              const window = barsMode ? { windowBars: bars, tempoBpm: tempo,
+              const window = freeMode ? { freeStop: true } : barsMode ? { windowBars: bars, tempoBpm: tempo,
                 meterNumerator: numerator, meterDenominator: denominator } : seconds;
               const asset = await onCapturePublish(Number(source.value), node.id, live, window);
               if (destroyed || revision !== startingRevision || !isActive() || !isRunning()) return;
-              const label = `${retrospective ? 'Recent history' : live ? 'Recording window' : 'Loop take'} ${source.value}`;
+              if (freeMode) freeCaptureArmed = null;
+              const label = `${freeMode ? 'Free capture' : retrospective ? 'Recent history' : live ? 'Recording window' : 'Loop take'} ${source.value}`;
               const assets = [...(project.graphAssets ?? []).filter((item) => item.nodeId !== node.id),
                 { nodeId: node.id, sourceRate: asset.sourceRate, stereo: asset.stereo,
                   label }];
               const signal = { ...project.signal, selectedCaptureNodeId: Number(source.value),
-                ...(retrospective ? barsMode ? { captureWindowMode: 'bars', captureWindowBars: bars,
+                ...(retrospective ? freeMode ? { captureWindowMode: 'free',
+                  captureWindowSeconds: asset.frames / asset.sourceRate } : barsMode ? { captureWindowMode: 'bars', captureWindowBars: bars,
                   captureTempoBpm: tempo, captureTimeSignatureNumerator: numerator,
                   captureTimeSignatureDenominator: denominator,
                   captureWindowSeconds: asset.stereo.length / 2 / asset.sourceRate }
                   : { captureWindowMode: 'seconds', captureWindowSeconds: seconds } : {}) };
               commit(signal, `${label} is now the source for new notes. Held notes keep their previous source; project bundle includes the take.`, assets);
-            } catch (error) { if (revision === startingRevision) fail(error); }
-            finally { busy = false; refreshRunning(false); }
+            } catch (error) {
+              if (freeMode) {
+                onCaptureCancel();
+                freeCaptureArmed = null;
+                syncCaptureControls();
+              }
+              if (revision === startingRevision) fail(error);
+            } finally { busy = false; refreshRunning(false); }
           };
           publish.addEventListener('click', () => useCapture(false));
-          publishLive.addEventListener('click', () => useCapture(true));
+          publishLive.addEventListener('click', async () => {
+            if (selectedCapture()?.type !== 'retrospective-capture' || windowMode.value !== 'free'
+              || freeCaptureArmed === Number(source.value)) {
+              useCapture(true);
+              return;
+            }
+            if (!isRunning() || !canChangeParameter()) return;
+            busy = true;
+            refreshRunning(false);
+            try {
+              await onCaptureArm(Number(source.value));
+              freeCaptureArmed = Number(source.value);
+              status.textContent = `Free capture armed at source ${source.value}; press Stop free capture to publish the span.`;
+            } catch (error) { fail(error); }
+            finally { busy = false; refreshRunning(false); syncCaptureControls(); }
+          });
           row.append(source, windowMode, windowLabel, barsLabel, tempoLabel, meterLabel, publish, publishLive);
           article.append(row);
         }

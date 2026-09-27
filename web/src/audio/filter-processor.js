@@ -4,6 +4,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
     super();
     this.engine = null;
     this.captureCommit = null;
+    this.freeCapture = null;
     this.inputView = null;
     this.outputView = null;
     this.capacity = 2048;
@@ -21,6 +22,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
         if (data.type === 'init') {
           this.pendingCount = 0;
           this.captureCommit = null;
+          this.freeCapture = null;
           const module = await WebAssembly.compile(data.wasmBytes);
           const instance = await WebAssembly.instantiate(module, {});
           const engine = instance.exports;
@@ -185,25 +187,42 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 4);
           this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
           this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted });
+        } else if (data.type === 'capture-free-arm' && this.engine) {
+          const startOffset = this.engine.manifold_capture_write_offset(data.captureId);
+          const capacity = this.engine.manifold_capture_capacity(data.captureId);
+          const accepted = capacity > 0 && startOffset < capacity;
+          if (accepted) this.freeCapture = { captureId: data.captureId, startOffset, capacity };
+          this.port.postMessage({ type: 'capture-free-armed', requestId: data.requestId,
+            accepted, startOffset, capacity });
+        } else if (data.type === 'capture-free-cancel') {
+          this.freeCapture = null;
         } else if (data.type === 'capture-publish-live' && this.engine) {
+          const free = data.freeStop ? this.freeCapture : null;
+          const endOffset = free?.captureId === data.captureId
+            ? this.engine.manifold_capture_write_offset(data.captureId) : 0;
+          const freeFrames = free && endOffset < free.capacity
+            ? this.engine.manifold_capture_free_frames(free.startOffset, endOffset, free.capacity) : 0;
           const barsRequested = data.windowBars !== undefined;
           const numerator = data.meterNumerator ?? 4;
           const denominator = data.meterDenominator ?? 4;
-          const requestedFrames = barsRequested
+          const requestedFrames = data.freeStop ? freeFrames : barsRequested
             ? this.engine.manifold_capture_meter_frames(sampleRate, data.tempoBpm,
               numerator, denominator, data.windowBars)
             : Number.isFinite(data.windowSeconds) && data.windowSeconds > 0
               ? Math.round(Math.min(30, data.windowSeconds) * sampleRate) : 0;
-          const validWindow = !barsRequested || (Number.isFinite(data.tempoBpm) && data.tempoBpm >= 20
+          const validWindow = data.freeStop ? freeFrames > 0 : !barsRequested || (Number.isFinite(data.tempoBpm) && data.tempoBpm >= 20
             && data.tempoBpm <= 300 && Number.isFinite(data.windowBars)
             && data.windowBars >= .0625 && data.windowBars <= 16
             && Number.isInteger(numerator) && numerator >= 1 && numerator <= 128
             && Number.isInteger(denominator) && denominator >= 1 && denominator <= 128
             && requestedFrames > 0 && requestedFrames <= Math.round(30 * sampleRate));
           const accepted = validWindow && this.engine.manifold_capture_stage_begin(data.captureId, requestedFrames) === 1;
+          if (accepted && data.freeStop) this.freeCapture = null;
           this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 4);
           this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
-          this.port.postMessage({ type: 'capture-stage-started', requestId: data.requestId, accepted });
+          this.port.postMessage({ type: 'capture-stage-started', requestId: data.requestId, accepted,
+            freeWindow: accepted && data.freeStop ? { startOffset: free.startOffset,
+              endOffset, capacity: free.capacity, frames: requestedFrames } : undefined });
         } else if (data.type === 'capture-stage-status' && this.engine) {
           const state = this.engine.manifold_capture_stage_status(data.captureId);
           const frames = state === 2 ? this.engine.manifold_capture_stage_length(data.captureId) : 0;
@@ -267,7 +286,9 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           if (this.captureCommit?.captureId === data.captureId) this.captureCommit = null;
         }
       } catch (error) {
-        if (data.type === 'capture-publish-live' || data.type === 'capture-publish'
+        if (data.type === 'capture-free-arm') {
+          this.port.postMessage({ type: 'capture-free-armed', requestId: data.requestId, accepted: false });
+        } else if (data.type === 'capture-publish-live' || data.type === 'capture-publish'
           || data.type === 'capture-stage-status' || data.type === 'capture-stage-chunk' || data.type === 'capture-stage-commit'
           || data.type === 'capture-stage-commit-bounded' || data.type === 'capture-stage-commit-status'
           || data.type === 'capture-stage-commit-final') {

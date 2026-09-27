@@ -25,6 +25,7 @@ export class BrowserAudioHost {
     this.nextParameterRequest = 1;
     this.pendingPublishes = new Map();
     this.nextPublishRequest = 1;
+    this.pendingFreeArm = null;
     this.ready = false;
   }
 
@@ -96,6 +97,13 @@ export class BrowserAudioHost {
               data.accepted ? pending.resolve() : pending.reject(new Error('Rust rejected this node parameter.'));
             }
           }
+          if (data.type === 'capture-free-armed' && this.pendingFreeArm?.requestId === data.requestId) {
+            const pending = this.pendingFreeArm;
+            this.pendingFreeArm = null;
+            clearTimeout(pending.timeout);
+            data.accepted ? pending.resolve({ startOffset: data.startOffset, capacity: data.capacity })
+              : pending.reject(new Error('The selected retrospective source is unavailable.'));
+          }
           if (data.type === 'capture-published') {
             const pending = this.pendingPublishes.get(data.requestId);
             if (pending) {
@@ -106,7 +114,8 @@ export class BrowserAudioHost {
                 type: 'capture-stage-cancel', captureId: pending.captureId,
               });
               data.accepted
-                ? pending.resolve(pending.live ? { sourceRate: data.sourceRate, stereo: pending.stereo } : undefined)
+                ? pending.resolve(pending.live ? { sourceRate: data.sourceRate, stereo: pending.stereo,
+                  ...pending.freeWindow } : undefined)
                 : pending.reject(new Error(data.message ?? (pending.live
                   ? 'Rust rejected the recording window publication.'
                   : 'Rust rejected the capture publication. Stop recording and try again.')));
@@ -141,7 +150,10 @@ export class BrowserAudioHost {
             const pending = this.pendingPublishes.get(data.requestId);
             if (pending?.live) {
               if (data.type === 'capture-stage-started') {
-                if (data.accepted) this.processor.port.postMessage({ type: 'capture-stage-status', requestId: data.requestId, captureId: pending.captureId });
+                if (data.accepted) {
+                  pending.freeWindow = data.freeWindow;
+                  this.processor.port.postMessage({ type: 'capture-stage-status', requestId: data.requestId, captureId: pending.captureId });
+                }
                 else {
                   this.pendingPublishes.delete(data.requestId);
                   clearTimeout(pending.timeout);
@@ -392,6 +404,24 @@ export class BrowserAudioHost {
     return this.publishCaptureRequest(captureId, instrumentId, true, window);
   }
 
+  armFreeCapture(captureId) {
+    if (!this.processor || !this.ready) return Promise.reject(new Error('Start audio before arming free capture.'));
+    if (this.pendingFreeArm) return Promise.reject(new Error('Free capture is already being armed.'));
+    return new Promise((resolve, reject) => {
+      const requestId = this.nextPublishRequest++;
+      const timeout = setTimeout(() => {
+        if (this.pendingFreeArm?.requestId === requestId) this.pendingFreeArm = null;
+        reject(new Error('Free capture arm timed out.'));
+      }, 10_000);
+      this.pendingFreeArm = { requestId, resolve, reject, timeout };
+      this.processor.port.postMessage({ type: 'capture-free-arm', requestId, captureId });
+    });
+  }
+
+  cancelFreeCapture() {
+    this.processor?.port.postMessage({ type: 'capture-free-cancel' });
+  }
+
   publishCaptureRequest(captureId, instrumentId, live, window = 0) {
     if (!this.processor || !this.ready) return Promise.reject(new Error('Start audio before publishing a take.'));
     if (live && [...this.pendingPublishes.values()].some((pending) => pending.live)) {
@@ -428,6 +458,11 @@ export class BrowserAudioHost {
       pending.reject(new Error('Audio stopped during capture publication.'));
     }
     this.pendingPublishes.clear();
+    if (this.pendingFreeArm) {
+      clearTimeout(this.pendingFreeArm.timeout);
+      this.pendingFreeArm.reject(new Error('Audio stopped while arming free capture.'));
+      this.pendingFreeArm = null;
+    }
     this.ready = false;
     if (this.pendingCapture) {
       clearTimeout(this.pendingCapture.timeout);

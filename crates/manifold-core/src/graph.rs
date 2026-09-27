@@ -1863,6 +1863,16 @@ impl ExecutionPlan {
             })
     }
 
+    pub fn retrospective_cursor(&self, node: NodeId) -> Option<(usize, usize)> {
+        self.nodes
+            .iter()
+            .find(|entry| entry.id == node)
+            .and_then(|entry| match &entry.kernel {
+                Kernel::LoopCapture(loop_node) => loop_node.retrospective_cursor(),
+                _ => None,
+            })
+    }
+
     pub fn begin_capture_staging(&mut self, node: NodeId, requested_frames: usize) -> bool {
         self.nodes
             .iter_mut()

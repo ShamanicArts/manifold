@@ -136,6 +136,10 @@ impl NativeProcessor {
         self.plan.capture_staging_status(node)
     }
 
+    pub fn retrospective_cursor(&self, node: NodeId) -> Option<(usize, usize)> {
+        self.plan.retrospective_cursor(node)
+    }
+
     pub fn capture_staged_length(&self, node: NodeId) -> Option<usize> {
         self.plan.capture_staged_length(node)
     }

@@ -165,6 +165,12 @@ impl LoopCapture {
         self.length
     }
 
+    /// The next write position and ring size for the legacy free-capture
+    /// start/stop decision. Read between processing blocks.
+    pub fn retrospective_cursor(&self) -> Option<(usize, usize)> {
+        self.retrospective.then_some((self.write, self.left.len()))
+    }
+
     /// Start a frozen window. Allocation is confined to the caller's control path.
     pub fn begin_staged_snapshot(&mut self) -> bool {
         self.begin_staged_snapshot_recent(0)
@@ -509,12 +515,14 @@ mod tests {
     #[test]
     fn retrospective_capture_runs_without_record_control_and_pads_early_history() {
         let mut capture = LoopCapture::new_retrospective(100.0, 1.0);
+        assert_eq!(capture.retrospective_cursor(), Some((0, 100)));
         assert!(!capture.set_parameter(0, 0.0));
         let mut left = [0.; 3];
         let mut right = [0.; 3];
         capture.process_planar([&[1., 2., 3.], &[4., 5., 6.]], [&mut left, &mut right]);
         assert_eq!(left, [1., 2., 3.]);
         assert_eq!(right, [4., 5., 6.]);
+        assert_eq!(capture.retrospective_cursor(), Some((3, 100)));
         assert!(capture.begin_staged_snapshot_recent(5));
         capture.process_planar([&[7., 8., 9.], &[7., 8., 9.]], [&mut left, &mut right]);
         assert_eq!(

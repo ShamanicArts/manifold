@@ -697,11 +697,26 @@ impl NativeProject {
             return Err(ProjectError::Invalid("source recipe"));
         }
         if let Some(seconds) = signal.get("captureWindowSeconds") {
-            float(seconds, 0.05, 30.0)?;
+            let minimum = if signal
+                .get("captureWindowMode")
+                .is_some_and(|mode| mode == "free")
+            {
+                0.0
+            } else {
+                0.05
+            };
+            float(seconds, minimum, 30.0)?;
+            if signal
+                .get("captureWindowMode")
+                .is_some_and(|mode| mode == "free")
+                && seconds.as_f64().is_some_and(|value| value == 0.0)
+            {
+                return Err(ProjectError::Invalid("capture free length"));
+            }
         }
         if signal
             .get("captureWindowMode")
-            .is_some_and(|mode| mode != "seconds" && mode != "bars")
+            .is_some_and(|mode| mode != "seconds" && mode != "bars" && mode != "free")
         {
             return Err(ProjectError::Invalid("capture window mode"));
         }
@@ -1617,6 +1632,19 @@ mod tests {
         assert!(parse(&document).is_err());
         document["signal"]["captureTempoBpm"] = serde_json::json!(120);
         assert!(parse(&document).is_ok());
+    }
+
+    #[test]
+    fn browser_free_capture_accepts_one_frame_and_rejects_zero_duration() {
+        let mut document: Value = serde_json::from_slice(include_bytes!(
+            "../../../projects/graph-workspace/retrospective-multisource.json"
+        ))
+        .unwrap();
+        document["signal"]["captureWindowMode"] = serde_json::json!("free");
+        document["signal"]["captureWindowSeconds"] = serde_json::json!(1.0 / 48_000.0);
+        parse(&document).unwrap().prepare(48_000.0, 128).unwrap();
+        document["signal"]["captureWindowSeconds"] = serde_json::json!(0.0);
+        assert!(parse(&document).is_err());
     }
 
     #[test]

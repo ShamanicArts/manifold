@@ -703,21 +703,39 @@ try {
   assert.equal(meterBundle.signal.captureTimeSignatureNumerator, 3);
   assert.equal(meterBundle.signal.captureTimeSignatureDenominator, 4);
   assert.equal(meterBundle.signal.captureWindowSeconds, .15);
+  await page.locator('select[aria-label="Capture window unit for sample instrument 5"]').selectOption('free');
+  assert.equal(await page.locator('input[aria-label="Recent window seconds for sample instrument 5"]').isHidden(), true);
+  await page.locator('button[aria-label="Arm free capture for sample instrument 5"]').click();
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('Free capture armed at source 10'));
+  await page.waitForTimeout(220);
+  await page.locator('button[aria-label="Stop free capture for sample instrument 5"]').click();
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('Free capture 10 is now the source'));
+  const freeDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const freeBundle = JSON.parse((await readFile(await (await freeDownload).path())).toString());
+  assert.equal(freeBundle.signal.captureWindowMode, 'free');
+  assert.equal(freeBundle.signal.selectedCaptureNodeId, 10);
+  assert.equal(freeBundle.assets[0].label, 'Free capture 10');
+  assert.ok(freeBundle.assets[0].frames > 1000 && freeBundle.assets[0].frames < 48_000);
+  assert.ok(Math.abs(freeBundle.signal.captureWindowSeconds * freeBundle.assets[0].sourceRate
+    - freeBundle.assets[0].frames) < .001);
+  const freeHz = sourceHz(freeBundle.assets[0]);
+  assert.ok(freeHz > 300 && freeHz < 360, `free sidechain capture should be 330 Hz, got ${freeHz}`);
+  await page.locator('#graph-workspace-section').screenshot({ path: 'web/public/graph-free-sampler-controls.png' });
   await page.locator('#audio-toggle').click();
-  await page.locator('#graph-workspace-section').screenshot({ path: 'web/public/graph-multisource-sampler-controls.png' });
   await page.locator('#graph-load-tone').click();
   await page.locator('#graph-project-file').setInputFiles([{
-    name: 'retrospective-multisource.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(meterBundle)),
+    name: 'retrospective-multisource.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(freeBundle)),
   }]);
   await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
   assert.equal(await page.locator('#graph-sidechain-mode').inputValue(), 'oscillator');
   assert.equal(await sourceSelect.inputValue(), '10');
-  assert.equal(await page.locator('select[aria-label="Capture window unit for sample instrument 5"]').inputValue(), 'bars');
+  assert.equal(await page.locator('select[aria-label="Capture window unit for sample instrument 5"]').inputValue(), 'free');
   assert.equal(await page.locator('input[aria-label="Capture length bars for sample instrument 5"]').inputValue(), '0.1');
   assert.equal(await meterNumerator.inputValue(), '3');
-  assert.match(await page.locator('input[aria-label="Sample instrument 5 audio file"]').locator('..').textContent(), /Recent history 10/);
+  assert.match(await page.locator('input[aria-label="Sample instrument 5 audio file"]').locator('..').textContent(), /Free capture 10/);
   assert.deepEqual(errors, []);
-  console.log(`Graph workspace browser: live, sidechain (${capturedHz.toFixed(1)} Hz), retrospective and two-source sampler capture (${mainHz.toFixed(1)}/${sideHz.toFixed(1)} Hz), source analysis and 14 native/Wasm references passed`);
+  console.log(`Graph workspace browser: live, sidechain (${capturedHz.toFixed(1)} Hz), retrospective, bars and free sampler capture (${mainHz.toFixed(1)}/${sideHz.toFixed(1)}/${freeHz.toFixed(1)} Hz), source analysis and 14 native/Wasm references passed`);
 } finally {
   await browser.close();
 }
