@@ -55,6 +55,7 @@ pub mod stutter;
 pub mod temporal_partials;
 pub mod transient_shaper;
 pub mod voice;
+pub mod wave_add_oscillator;
 pub mod waveshaper;
 
 use std::f32::consts::PI;

@@ -21,8 +21,9 @@ assert.equal(hashFiles(['SampleRegionPlaybackNode.cpp', 'OscillatorNode.cpp', 'S
   'GainNode.cpp', 'CrossfaderNode.cpp', 'MixerNode.cpp'].map((file) => join(legacy, 'dsp/core/nodes', file))), manifest.legacySourceSha256);
 assert.equal(hashFiles(['tools/legacy-main-add-morph-voice-reference.cpp',
   'scripts/build-legacy-main-add-morph-voice-reference.sh']), manifest.referenceHarnessSha256);
-assert.equal(hashFiles(['main_voice_bank.rs', 'sample_region.rs', 'oscillator.rs', 'sine_bank.rs', 'graph.rs']
-  .map((file) => join('crates/manifold-core/src', file))), manifest.rustSourceSha256);
+assert.equal(hashFiles([...['main_voice_bank.rs', 'sample_region.rs', 'oscillator.rs', 'wave_add_oscillator.rs', 'sine_bank.rs', 'graph.rs',
+  'spectral_targets.rs'].map((file) => join('crates/manifold-core/src', file)),
+  'crates/manifold-core/examples/emit_main_wave_recipe.rs']), manifest.rustSourceSha256);
 const wasmBytes = readFileSync('web/dist/manifold_filter.wasm');
 assert.equal(createHash('sha256').update(wasmBytes).digest('hex'), manifest.wasmSha256);
 manifest.sampleData = floats(`${root}${manifest.sample}`);

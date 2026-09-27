@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <string>
 #include <vector>
 
 namespace juce {
@@ -34,16 +35,19 @@ int main(int argc, char** argv) {
     node.setFrequency(freqBefore);
     node.setAmplitude(ampBefore);
     node.setWaveform(waveform);
-    node.prepare(sampleRate, blockSize);
-    node.disableSIMD();
     std::vector<float> sync;
-    if (argc == 12) {
+    if (argc == 12 && std::string(argv[11]) == "--additive") {
+        node.setRenderMode(1);
+        node.setAdditivePartials(8);
+    } else if (argc == 12) {
         sync.resize(static_cast<size_t>(frames));
         std::ifstream input(argv[11], std::ios::binary);
         input.read(reinterpret_cast<char*>(sync.data()), static_cast<std::streamsize>(sync.size() * sizeof(float)));
         if (!input || input.peek() != EOF) return 2;
         node.setSyncEnabled(true);
     }
+    node.prepare(sampleRate, blockSize);
+    node.disableSIMD();
     std::vector<float> result(static_cast<size_t>(frames) * 2);
     for (int offset = 0; offset < frames; offset += blockSize) {
         if (offset == stepFrame) {

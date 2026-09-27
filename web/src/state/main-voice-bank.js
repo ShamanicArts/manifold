@@ -1,7 +1,7 @@
 // Portable snapshot of the eight-voice Main bank: source, two prepared targets, and controls.
 import { encodePcm, decodePcm } from './stereo-source.js';
 
-const VERSION = 2;
+const VERSION = 3;
 const MAX_FRAMES = 48_000 * 30;
 const MAX_LABEL = 200;
 const MAX_F32 = 3.4028235e38;
@@ -34,28 +34,30 @@ function checkTargetControls(target, version) {
     || !validNumber(target.stretch, 0, 1)
     || !validNumber(target.smooth, 0, 1)
     || !validNumber(target.contrast, 0, 2)
-    || (version === 2 && (typeof target.followPlayback !== 'boolean'
+    || (version >= 2 && (typeof target.followPlayback !== 'boolean'
       || !validNumber(target.speed, 0, 4)))) throw new Error('Invalid target controls.');
   return { active: target.active, mode: target.mode, waveform: target.waveform,
     tiltMode: target.tiltMode, position: target.position,
     morphAmount: target.morphAmount, stretch: target.stretch,
     smooth: target.smooth, contrast: target.contrast,
-    followPlayback: version === 2 ? target.followPlayback : false,
-    speed: version === 2 ? target.speed : 1 };
+    followPlayback: version >= 2 ? target.followPlayback : false,
+    speed: version >= 2 ? target.speed : 1 };
 }
 
 export function parseMainVoiceBankState(document, project) {
-  if (![1, VERSION].includes(document?.schemaVersion) || document.projectId !== project.id) {
+  if (![1, 2, VERSION].includes(document?.schemaVersion) || document.projectId !== project.id) {
     throw new Error('This state belongs to a different Manifold v2 project.');
   }
   const parameters = document.parameters;
   if (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)
-    || Object.keys(parameters).length !== project.parameters.length) {
-    throw new Error(`State needs ${project.parameters.length} parameter values.`);
+    || Object.keys(parameters).length !== (document.schemaVersion < VERSION
+      ? project.parameters.length - 1 : project.parameters.length)) {
+    throw new Error(`State needs ${document.schemaVersion < VERSION ? project.parameters.length - 1 : project.parameters.length} parameter values.`);
   }
   const checkedParameters = {};
   for (const parameter of project.parameters) {
-    const value = parameters[parameter.hostId];
+    const value = document.schemaVersion < VERSION && parameter.hostId === 'add-wave-source'
+      ? parameter.default : parameters[parameter.hostId];
     const valid = parameter.kind === 'toggle' ? value === 0 || value === 1
       : parameter.kind === 'select' || parameter.kind === 'choice'
         ? (parameter.choiceValues ?? parameter.choices.map((_, index) => index)).includes(value)

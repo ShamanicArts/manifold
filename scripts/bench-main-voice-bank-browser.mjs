@@ -20,6 +20,7 @@ const scenarios = [
   ['Normal · 8 voices', 8, 0, 0], ['Ring · 8 voices', 8, 1, 0],
   ['FM · 8 voices', 8, 2, 0], ['Sync · 8 voices', 8, 3, 0],
   ['Add · 8 voices', 8, 4, 0], ['Morph · 8 voices', 8, 5, 0],
+  ['Add square · 8 voices', 8, 4, 0, 2, 1],
   ['Vocoder · 8 voices', 8, 0, 1],
 ];
 const browser = await chromium.launch({ executablePath, headless: true,
@@ -32,9 +33,9 @@ cdp.on('WebAudio.contextCreated', ({ context }) => contexts.push(context));
 await page.goto(origin, { waitUntil: 'domcontentloaded' });
 const results = [];
 try {
-  for (const [label, voices, mode, pitchMode] of scenarios) {
+  for (const [label, voices, mode, pitchMode, waveform = 0, addWaveSource = 0] of scenarios) {
     const before = contexts.length;
-    const setup = await page.evaluate(async ({ asset, signal, partials, voices, mode, pitchMode }) => {
+    const setup = await page.evaluate(async ({ asset, signal, partials, voices, mode, pitchMode, waveform, addWaveSource }) => {
       const context = new AudioContext({ sampleRate: 48_000, latencyHint: 'interactive' });
       await context.resume();
       await context.audioWorklet.addModule(`/assets/${asset}`);
@@ -66,7 +67,7 @@ try {
         sample: { nodeId: 2, sourceRate: rate, stereo: sample }, partials },
       [wasmBytes, sample.buffer]);
       await ready;
-      for (const [id, value] of [[1, 0], [5, pitchMode], [6, mode], [7, .85], [17, .5]]) {
+      for (const [id, value] of [[0, waveform], [1, 0], [5, pitchMode], [6, mode], [7, .85], [17, .5], [19, addWaveSource]]) {
         node.port.postMessage({ type: 'parameter', nodeId: 2, id, value });
       }
       for (let index = 0; index < voices; index++) {
@@ -76,7 +77,7 @@ try {
       window.manifoldBrowserBench = { context, node, gain };
       return { rate, baseLatency: context.baseLatency, outputLatency: context.outputLatency };
     }, { asset, signal: project.signal,
-      partials: [project.partials, ...project.extraPartials], voices, mode, pitchMode });
+      partials: [project.partials, ...project.extraPartials], voices, mode, pitchMode, waveform, addWaveSource });
     assert.equal(contexts.length, before + 1, `${label}: missing AudioContext event`);
     const context = contexts.at(-1);
     assert.equal(context.contextType, 'realtime');
@@ -102,7 +103,7 @@ try {
       `${label}: context did not render continuously`);
     const capacities = samples.map((sample) => sample.renderCapacity).sort((a, b) => a - b);
     const at = (fraction) => capacities[Math.floor((capacities.length - 1) * fraction)];
-    results.push({ label, voices, mode, pitchMode, activeVoices,
+    results.push({ label, voices, mode, pitchMode, waveform, addWaveSource, activeVoices,
       sampleRate: setup.rate, callbackBufferFrames: context.callbackBufferSize,
       baseLatencySeconds: setup.baseLatency, outputLatencySeconds: setup.outputLatency,
       sampledRenderCapacity: { p50: at(.5), p95: at(.95), max: capacities.at(-1) },

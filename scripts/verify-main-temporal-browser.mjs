@@ -31,7 +31,7 @@ try {
   const download = await downloadPromise;
   const bytes = await readFile(await download.path());
   const state = JSON.parse(bytes.toString());
-  assert.equal(state.schemaVersion, 2);
+  assert.equal(state.schemaVersion, 3);
   assert.equal(state.parameters['blend-mode'], 4);
   assert.equal(state.targetControls.followPlayback, true);
   assert.equal(state.targetControls.speed, 1.5);
@@ -49,7 +49,7 @@ try {
   await page.waitForTimeout(350);
   assert.deepEqual(errors, []);
   assert.ok((await page.locator('#status').textContent()).startsWith('Audio running'));
-  console.log('Main temporal browser: Add mode, prepared follow table, worklet note, v2 state save/reopen, automatic table restore passed');
+  console.log('Main temporal browser: Add mode, prepared follow table, worklet note, v3 state save/reopen, automatic table restore passed');
 } finally {
   await browser.close();
 }

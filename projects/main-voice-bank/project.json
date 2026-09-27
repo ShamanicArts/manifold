@@ -36,6 +36,7 @@
     { "id": 15, "nodeId": 2, "nodeParameterId": 15, "hostId": "output", "label": "Output", "kind": "float", "min": 0, "max": 2, "default": 1 },
     { "id": 16, "nodeId": 2, "nodeParameterId": 16, "hostId": "time-stretch", "label": "Vocoder time", "kind": "float", "min": 0.25, "max": 4, "default": 1 },
     { "id": 17, "nodeId": 2, "nodeParameterId": 17, "hostId": "phrase-amount", "label": "Phrase contour", "kind": "float", "min": 0, "max": 1, "default": 0 },
-    { "id": 18, "nodeId": 2, "nodeParameterId": 18, "hostId": "phrase-reference", "label": "Phrase reference", "kind": "float", "min": 0.05, "max": 0.6, "default": 0.2 }
+    { "id": 18, "nodeId": 2, "nodeParameterId": 18, "hostId": "phrase-reference", "label": "Phrase reference", "kind": "float", "min": 0.05, "max": 0.6, "default": 0.2 },
+    { "id": 19, "nodeId": 2, "nodeParameterId": 19, "hostId": "add-wave-source", "label": "Add wave source", "kind": "select", "choices": ["Prepared partials", "Original additive"], "default": 0 }
   ]
 }

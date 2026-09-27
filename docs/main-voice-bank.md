@@ -87,11 +87,12 @@ note ownership follows the old UI's note-only policy across channels.
   exceeded the 2.667 ms interval. This is not a browser audio-thread or
   hardware underrun measurement. The raw data and method are in
   `web/public/reference/main-voice-bank/bench-node.json`.
-- `scripts/bench-main-voice-bank-browser.mjs` runs nine held-chord cases in
+- `scripts/bench-main-voice-bank-browser.mjs` runs ten held-chord cases in
   headless Chromium through the actual AudioWorklet and Wasm graph. It samples
   Chromium's WebAudio render-capacity estimate 24 times per case after warmup.
-  The checkpoint-132 sampled p95 was 3.51% for Normal eight voices and 27.03% for vocoder
-  eight voices; the largest sampled value was 29.66%. Chromium reported a
+  The refreshed sampled p95 was 3.20% for Normal eight voices, 8.59% for
+  original square Add eight voices, and 27.11% for vocoder eight voices; the
+  largest sampled value was 36.08%. Chromium reported a
   512-frame output callback buffer at 48 kHz. These are sampled rolling
   capacity estimates, not per-callback timings or physical device underrun
   counts. The raw capture includes browser and Wasm versions in
@@ -117,14 +118,19 @@ note ownership follows the old UI's note-only policy across channels.
   0.000003263 after frame 512; native Rust and Wasm are bit-exact. Depth zero
   and three wet positions are covered. The same vocoder and envelope scope
   applies.
-- `scripts/verify-main-add-morph-voice-comparison.mjs` checks six assembled
+- `scripts/verify-main-add-morph-voice-comparison.mjs` checks eleven assembled
   original C++ Add/Morph routes against native Rust and Wasm. The old
   `SineBankNode` runs spectral Add/Morph mode from a fixed published source
   spectrum; the original additive oscillator, sample player, crossfaders,
   gains, branch mixer and voice mixer also render. After frame 4096, the
   largest old/Rust sample difference is 0.000002444; native/Wasm is bit-exact.
-  The fixture uses a sine wave recipe and excludes temporal source changes,
-  vocoder processing, and the old UI-rate envelope.
+  Five extra cases select the original band-limited additive wavetable for
+  saw, square, triangle, and sine/saw blend. Their largest settled old/Rust
+  difference is 0.0000000615. The Main parameter `add-wave-source` selects
+  the authored prepared partial bank or the original additive oscillator;
+  saved states from versions 1 and 2 migrate with prepared partials selected.
+  The fixture excludes temporal source changes, vocoder processing, and the
+  old UI-rate envelope.
 - `scripts/verify-main-temporal-voice-comparison.mjs` checks six analyzed
   two-voice captures: Add and Morph with frozen, normal, and double speed
   motion. Native Rust and Wasm are bit-exact in all six; motion differs from
@@ -139,15 +145,15 @@ note ownership follows the old UI's note-only policy across channels.
 - `scripts/verify-main-temporal-worklet.mjs` checks table upload, invalid
   upload rejection, clear, staggered voices, and audible movement in the real
   AudioWorklet adapter. `scripts/verify-main-temporal-browser.mjs` opens the
-  workbench in headless Chromium, enables follow, plays a note, saves v2
+  workbench in headless Chromium, enables follow, plays a note, saves v3
   state, reopens it, rebuilds the table, and plays again.
-- `scripts/verify-main-voice-bank-state.mjs` round-trips 19 controls, separate
+- `scripts/verify-main-voice-bank-state.mjs` round-trips 20 controls, separate
   wave and source targets, and embedded or built-in source choices. It rejects
   malformed controls, target addresses, partials, and PCM. A headless Chromium
   workbench check opened edited embedded state, waited for source analysis,
   downloaded identical targets and PCM, and started the restored AudioWorklet.
   `scripts/verify-main-sample-blend-state.mjs` still passes after extracting
-  shared PCM encoding. The bank state schema is version 2 with follow and
+  shared PCM encoding. The bank state schema is version 3 with follow and
   speed controls; a saved source rebuilds its temporal table on reopen. This
   is bank state, not old preset migration.
 

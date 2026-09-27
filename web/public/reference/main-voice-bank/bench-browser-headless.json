@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "method": "Headless Chromium actual AudioWorklet graph; WebAudio.getRealtimeData rolling render capacity samples",
   "limitation": "Headless virtual output; render capacity and callback interval do not count physical device underruns",
-  "capturedAt": "2026-09-27T00:10:55.112Z",
+  "capturedAt": "2026-09-27T00:30:30.764Z",
   "browserVersion": "152.0.7977.82",
   "platform": "linux",
   "arch": "x64",
   "cpu": "AMD Ryzen 9 3900X 12-Core Processor",
-  "wasmSha256": "706225418be0cbea810d8c4427f5b288860a8a94b097cec8916a259dfe28c6c7",
+  "wasmSha256": "624dbb6c0ab381285788c0a3fc2748fd400ea9272765ab9a0f1aa1ac37f17ef8",
   "processorAsset": "filter-processor-DHM1T089.js",
   "source": "four-second deterministic stereo 220/330 Hz tone; notes 48..55 held",
   "warmupMilliseconds": 500,
@@ -19,115 +19,117 @@
       "voices": 1,
       "mode": 0,
       "pitchMode": 0,
+      "waveform": 0,
+      "addWaveSource": 0,
       "activeVoices": 1,
       "sampleRate": 48000,
       "callbackBufferFrames": 512,
       "baseLatencySeconds": 0.010666666666666666,
       "outputLatencySeconds": 0.04,
       "sampledRenderCapacity": {
-        "p50": 0.013452914798206279,
-        "p95": 0.029048981051126205,
-        "max": 0.11295645693601619
+        "p50": 0.010779667317163833,
+        "p95": 0.016124415609197595,
+        "max": 0.018093184587981627
       },
-      "callbackIntervalMeanSeconds": 0.010662502316371902,
-      "callbackIntervalVariance": 1.077971386160092e-7,
-      "contextTimeAdvancedSeconds": 2.3466666666666667,
+      "callbackIntervalMeanSeconds": 0.010667554774429292,
+      "callbackIntervalVariance": 1.865902250290899e-7,
+      "contextTimeAdvancedSeconds": 2.336,
       "samples": [
         {
-          "currentTime": 0.5546666666666666,
-          "renderCapacity": 0.016772863568215893
+          "currentTime": 0.544,
+          "renderCapacity": 0.006599126312854356
         },
         {
           "currentTime": 0.6506666666666666,
-          "renderCapacity": 0.005935268478160067
+          "renderCapacity": 0.011352610130021347
         },
         {
-          "currentTime": 0.7573333333333333,
-          "renderCapacity": 0.008876430740481197
+          "currentTime": 0.7466666666666667,
+          "renderCapacity": 0.007784264664998609
         },
         {
-          "currentTime": 0.864,
-          "renderCapacity": 0.013452914798206279
+          "currentTime": 0.8533333333333334,
+          "renderCapacity": 0.014246367176370024
         },
         {
-          "currentTime": 0.9706666666666667,
-          "renderCapacity": 0.027996921300750433
+          "currentTime": 0.9493333333333334,
+          "renderCapacity": 0.016124415609197595
         },
         {
-          "currentTime": 1.0666666666666667,
-          "renderCapacity": 0.03473240469208211
+          "currentTime": 1.056,
+          "renderCapacity": 0.017014840722185464
         },
         {
-          "currentTime": 1.1733333333333333,
-          "renderCapacity": 0.11295645693601619
+          "currentTime": 1.152,
+          "renderCapacity": 0.01136470367239598
         },
         {
-          "currentTime": 1.28,
-          "renderCapacity": 0.01849358111141036
+          "currentTime": 1.2586666666666666,
+          "renderCapacity": 0.010779667317163833
         },
         {
-          "currentTime": 1.376,
-          "renderCapacity": 0.01183320811419985
+          "currentTime": 1.3546666666666667,
+          "renderCapacity": 0.010639299500988606
         },
         {
-          "currentTime": 1.4826666666666666,
-          "renderCapacity": 0.029048981051126205
+          "currentTime": 1.4613333333333334,
+          "renderCapacity": 0.006325581395348837
         },
         {
-          "currentTime": 1.5786666666666667,
-          "renderCapacity": 0.012447389630160293
+          "currentTime": 1.5573333333333332,
+          "renderCapacity": 0.011119487372785525
         },
         {
-          "currentTime": 1.6853333333333333,
-          "renderCapacity": 0.023458117486071742
+          "currentTime": 1.664,
+          "renderCapacity": 0.006651676972081694
         },
         {
-          "currentTime": 1.7813333333333334,
-          "renderCapacity": 0.016860735910572893
+          "currentTime": 1.76,
+          "renderCapacity": 0.015028355387523628
         },
         {
-          "currentTime": 1.888,
-          "renderCapacity": 0.024358376108259448
+          "currentTime": 1.8666666666666667,
+          "renderCapacity": 0.01473922902494331
         },
         {
-          "currentTime": 1.9946666666666666,
-          "renderCapacity": 0.012249032971081231
+          "currentTime": 1.9626666666666666,
+          "renderCapacity": 0.005771737106684044
         },
         {
-          "currentTime": 2.0906666666666665,
-          "renderCapacity": 0.006639857850930516
+          "currentTime": 2.0693333333333332,
+          "renderCapacity": 0.006474617622220137
         },
         {
-          "currentTime": 2.1866666666666665,
-          "renderCapacity": 0.008727477477477477
+          "currentTime": 2.1653333333333333,
+          "renderCapacity": 0.008248968878890138
         },
         {
-          "currentTime": 2.2933333333333334,
-          "renderCapacity": 0.012032336905433351
+          "currentTime": 2.272,
+          "renderCapacity": 0.006468547857879441
         },
         {
-          "currentTime": 2.4,
-          "renderCapacity": 0.014909977494373592
+          "currentTime": 2.368,
+          "renderCapacity": 0.011402186204297022
         },
         {
-          "currentTime": 2.496,
-          "renderCapacity": 0.016493299597038703
+          "currentTime": 2.474666666666667,
+          "renderCapacity": 0.012003000750187547
         },
         {
-          "currentTime": 2.6026666666666665,
-          "renderCapacity": 0.012004466778336123
+          "currentTime": 2.570666666666667,
+          "renderCapacity": 0.015013054830287208
         },
         {
-          "currentTime": 2.6986666666666665,
-          "renderCapacity": 0.011130857730801608
+          "currentTime": 2.6773333333333333,
+          "renderCapacity": 0.018093184587981627
         },
         {
-          "currentTime": 2.8053333333333335,
-          "renderCapacity": 0.020243673851921273
+          "currentTime": 2.7733333333333334,
+          "renderCapacity": 0.009665915915915915
         },
         {
-          "currentTime": 2.9013333333333335,
-          "renderCapacity": 0.01119262603461249
+          "currentTime": 2.88,
+          "renderCapacity": 0.005806986819061665
         }
       ]
     },
@@ -136,115 +138,117 @@
       "voices": 4,
       "mode": 0,
       "pitchMode": 0,
+      "waveform": 0,
+      "addWaveSource": 0,
       "activeVoices": 4,
       "sampleRate": 48000,
       "callbackBufferFrames": 512,
       "baseLatencySeconds": 0.010666666666666666,
       "outputLatencySeconds": 0.04,
       "sampledRenderCapacity": {
-        "p50": 0.01739618406285073,
-        "p95": 0.021864103289039673,
-        "max": 0.028576835730507195
+        "p50": 0.017268887846081653,
+        "p95": 0.023449809991658174,
+        "max": 0.026423902894491126
       },
-      "callbackIntervalMeanSeconds": 0.010670718647218972,
-      "callbackIntervalVariance": 1.2169247794938932e-7,
-      "contextTimeAdvancedSeconds": 2.3360000000000003,
+      "callbackIntervalMeanSeconds": 0.010663687932438277,
+      "callbackIntervalVariance": 1.8738834550375388e-7,
+      "contextTimeAdvancedSeconds": 2.325333333333333,
       "samples": [
         {
-          "currentTime": 0.5653333333333334,
-          "renderCapacity": 0.014233542466523084
+          "currentTime": 0.5546666666666666,
+          "renderCapacity": 0.013895365103049518
         },
         {
-          "currentTime": 0.672,
-          "renderCapacity": 0.013366984483080952
+          "currentTime": 0.6506666666666666,
+          "renderCapacity": 0.0190503003003003
         },
         {
-          "currentTime": 0.768,
-          "renderCapacity": 0.013967534918837296
+          "currentTime": 0.7573333333333333,
+          "renderCapacity": 0.014239909468125237
         },
         {
-          "currentTime": 0.8746666666666667,
-          "renderCapacity": 0.01408983451536643
+          "currentTime": 0.8586666666666667,
+          "renderCapacity": 0.026423902894491126
         },
         {
-          "currentTime": 0.9706666666666667,
-          "renderCapacity": 0.021864103289039673
+          "currentTime": 0.96,
+          "renderCapacity": 0.013613745188245234
         },
         {
-          "currentTime": 1.0773333333333333,
-          "renderCapacity": 0.021800947867298578
+          "currentTime": 1.064,
+          "renderCapacity": 0.012873134328358208
         },
         {
-          "currentTime": 1.1733333333333333,
-          "renderCapacity": 0.01316661930472672
+          "currentTime": 1.1626666666666667,
+          "renderCapacity": 0.023449809991658174
         },
         {
-          "currentTime": 1.2693333333333334,
-          "renderCapacity": 0.017874030641195388
+          "currentTime": 1.2586666666666666,
+          "renderCapacity": 0.014035744362309347
         },
         {
-          "currentTime": 1.376,
-          "renderCapacity": 0.016055259964529077
+          "currentTime": 1.3653333333333333,
+          "renderCapacity": 0.01914635285327356
         },
         {
-          "currentTime": 1.4826666666666666,
-          "renderCapacity": 0.014542742612100307
+          "currentTime": 1.4613333333333334,
+          "renderCapacity": 0.01608503433355282
         },
         {
-          "currentTime": 1.5786666666666667,
-          "renderCapacity": 0.013131976362442547
+          "currentTime": 1.568,
+          "renderCapacity": 0.014533258803801005
         },
         {
-          "currentTime": 1.6853333333333333,
-          "renderCapacity": 0.028576835730507195
+          "currentTime": 1.664,
+          "renderCapacity": 0.024750163444475577
         },
         {
-          "currentTime": 1.7813333333333334,
-          "renderCapacity": 0.021282606648460305
+          "currentTime": 1.7706666666666666,
+          "renderCapacity": 0.01784205089679782
         },
         {
-          "currentTime": 1.888,
-          "renderCapacity": 0.01948051948051948
+          "currentTime": 1.8666666666666667,
+          "renderCapacity": 0.017268887846081653
         },
         {
-          "currentTime": 1.984,
-          "renderCapacity": 0.014204279973834222
+          "currentTime": 1.9733333333333334,
+          "renderCapacity": 0.01679489585288046
         },
         {
-          "currentTime": 2.0906666666666665,
-          "renderCapacity": 0.017407580720636407
+          "currentTime": 2.0693333333333332,
+          "renderCapacity": 0.012812180856002229
         },
         {
-          "currentTime": 2.1866666666666665,
-          "renderCapacity": 0.019272351226849675
+          "currentTime": 2.176,
+          "renderCapacity": 0.023401231643770722
         },
         {
-          "currentTime": 2.2933333333333334,
-          "renderCapacity": 0.016802016241949033
+          "currentTime": 2.272,
+          "renderCapacity": 0.021571213262999246
         },
         {
-          "currentTime": 2.3893333333333335,
-          "renderCapacity": 0.022028496437945255
+          "currentTime": 2.3786666666666667,
+          "renderCapacity": 0.018800188946622578
         },
         {
-          "currentTime": 2.496,
-          "renderCapacity": 0.01739618406285073
+          "currentTime": 2.474666666666667,
+          "renderCapacity": 0.019003498156377047
         },
         {
-          "currentTime": 2.592,
-          "renderCapacity": 0.01528140141632501
+          "currentTime": 2.5813333333333333,
+          "renderCapacity": 0.01998311286236983
         },
         {
-          "currentTime": 2.6986666666666665,
-          "renderCapacity": 0.019826283987915406
+          "currentTime": 2.6773333333333333,
+          "renderCapacity": 0.01934327231553123
         },
         {
-          "currentTime": 2.7946666666666666,
-          "renderCapacity": 0.021747246593242488
+          "currentTime": 2.784,
+          "renderCapacity": 0.014268395038701856
         },
         {
-          "currentTime": 2.9013333333333335,
-          "renderCapacity": 0.01888742717534298
+          "currentTime": 2.88,
+          "renderCapacity": 0.013318326767960985
         }
       ]
     },
@@ -253,115 +257,117 @@
       "voices": 8,
       "mode": 0,
       "pitchMode": 0,
+      "waveform": 0,
+      "addWaveSource": 0,
       "activeVoices": 8,
       "sampleRate": 48000,
       "callbackBufferFrames": 512,
       "baseLatencySeconds": 0.010666666666666666,
       "outputLatencySeconds": 0.04,
       "sampledRenderCapacity": {
-        "p50": 0.028888267635821453,
-        "p95": 0.03506627808592648,
-        "max": 0.04061768834815161
+        "p50": 0.02418745275888133,
+        "p95": 0.031966053748231964,
+        "max": 0.05473055010740638
       },
-      "callbackIntervalMeanSeconds": 0.010658392100519498,
-      "callbackIntervalVariance": 7.379677506545186e-8,
+      "callbackIntervalMeanSeconds": 0.010656093765644156,
+      "callbackIntervalVariance": 2.740464080045721e-7,
       "contextTimeAdvancedSeconds": 2.3253333333333335,
       "samples": [
         {
-          "currentTime": 0.544,
-          "renderCapacity": 0.028888267635821453
+          "currentTime": 0.5653333333333334,
+          "renderCapacity": 0.02210151713804083
         },
         {
-          "currentTime": 0.6506666666666666,
-          "renderCapacity": 0.031802785095972896
+          "currentTime": 0.6613333333333333,
+          "renderCapacity": 0.02752124122644994
         },
         {
-          "currentTime": 0.7466666666666667,
-          "renderCapacity": 0.03257575757575758
+          "currentTime": 0.768,
+          "renderCapacity": 0.02544742729306488
         },
         {
-          "currentTime": 0.8533333333333334,
-          "renderCapacity": 0.02633058470764618
+          "currentTime": 0.864,
+          "renderCapacity": 0.024056912852195078
         },
         {
-          "currentTime": 0.9493333333333334,
-          "renderCapacity": 0.0372415083746608
+          "currentTime": 0.9706666666666667,
+          "renderCapacity": 0.021678451804986974
         },
         {
-          "currentTime": 1.056,
-          "renderCapacity": 0.031693783504185086
+          "currentTime": 1.0666666666666667,
+          "renderCapacity": 0.021492257156264665
         },
         {
-          "currentTime": 1.152,
-          "renderCapacity": 0.03397873955960516
+          "currentTime": 1.1733333333333333,
+          "renderCapacity": 0.026687892124730783
         },
         {
-          "currentTime": 1.2586666666666666,
-          "renderCapacity": 0.03506627808592648
+          "currentTime": 1.2693333333333334,
+          "renderCapacity": 0.032832392074279695
         },
         {
-          "currentTime": 1.3546666666666667,
-          "renderCapacity": 0.025771256583897666
+          "currentTime": 1.376,
+          "renderCapacity": 0.031966053748231964
         },
         {
-          "currentTime": 1.4613333333333334,
-          "renderCapacity": 0.03491224759388564
+          "currentTime": 1.472,
+          "renderCapacity": 0.05473055010740638
         },
         {
-          "currentTime": 1.5573333333333332,
-          "renderCapacity": 0.029515500278448112
+          "currentTime": 1.5786666666666667,
+          "renderCapacity": 0.02516731077387124
         },
         {
-          "currentTime": 1.664,
-          "renderCapacity": 0.030591114457831324
+          "currentTime": 1.6746666666666667,
+          "renderCapacity": 0.026202953787517864
         },
         {
-          "currentTime": 1.76,
-          "renderCapacity": 0.026352677319876647
+          "currentTime": 1.7813333333333334,
+          "renderCapacity": 0.021648239338474404
         },
         {
-          "currentTime": 1.8666666666666667,
-          "renderCapacity": 0.02580523639103409
+          "currentTime": 1.8773333333333333,
+          "renderCapacity": 0.022944913245472643
         },
         {
-          "currentTime": 1.9626666666666666,
-          "renderCapacity": 0.026651756593048182
+          "currentTime": 1.984,
+          "renderCapacity": 0.02354375762123628
         },
         {
-          "currentTime": 2.0693333333333332,
-          "renderCapacity": 0.021425966447848284
+          "currentTime": 2.08,
+          "renderCapacity": 0.022591927403346253
         },
         {
-          "currentTime": 2.1653333333333333,
-          "renderCapacity": 0.02935384038263153
+          "currentTime": 2.1866666666666665,
+          "renderCapacity": 0.03035748061282391
         },
         {
-          "currentTime": 2.2666666666666666,
-          "renderCapacity": 0.028400597907324368
+          "currentTime": 2.2826666666666666,
+          "renderCapacity": 0.02751778360164732
         },
         {
-          "currentTime": 2.368,
-          "renderCapacity": 0.02413470533208606
+          "currentTime": 2.3893333333333335,
+          "renderCapacity": 0.02594383485214804
         },
         {
-          "currentTime": 2.464,
-          "renderCapacity": 0.025138354750961447
+          "currentTime": 2.485333333333333,
+          "renderCapacity": 0.022354694485842024
         },
         {
-          "currentTime": 2.570666666666667,
-          "renderCapacity": 0.02500936680404646
+          "currentTime": 2.592,
+          "renderCapacity": 0.02231678486997636
         },
         {
-          "currentTime": 2.6666666666666665,
-          "renderCapacity": 0.029175715229912188
+          "currentTime": 2.688,
+          "renderCapacity": 0.02418745275888133
         },
         {
-          "currentTime": 2.7733333333333334,
-          "renderCapacity": 0.04061768834815161
+          "currentTime": 2.7946666666666666,
+          "renderCapacity": 0.02565553669119034
         },
         {
-          "currentTime": 2.8693333333333335,
-          "renderCapacity": 0.025485436893203886
+          "currentTime": 2.8906666666666667,
+          "renderCapacity": 0.022614244158768886
         }
       ]
     },
@@ -370,115 +376,117 @@
       "voices": 8,
       "mode": 1,
       "pitchMode": 0,
+      "waveform": 0,
+      "addWaveSource": 0,
       "activeVoices": 8,
       "sampleRate": 48000,
       "callbackBufferFrames": 512,
       "baseLatencySeconds": 0.010666666666666666,
-      "outputLatencySeconds": 0.008,
+      "outputLatencySeconds": 0.04,
       "sampledRenderCapacity": {
-        "p50": 0.03428140892823507,
-        "p95": 0.05490308412107324,
-        "max": 0.057230312586958536
+        "p50": 0.027344119595042102,
+        "p95": 0.03244166192373364,
+        "max": 0.03299278282875621
       },
-      "callbackIntervalMeanSeconds": 0.010653890916588962,
-      "callbackIntervalVariance": 9.110361814671123e-8,
+      "callbackIntervalMeanSeconds": 0.01066280400307089,
+      "callbackIntervalVariance": 1.7495974864448186e-7,
       "contextTimeAdvancedSeconds": 2.325333333333333,
       "samples": [
         {
           "currentTime": 0.5546666666666666,
-          "renderCapacity": 0.02636517170200788
+          "renderCapacity": 0.03244166192373364
         },
         {
           "currentTime": 0.6506666666666666,
-          "renderCapacity": 0.057230312586958536
+          "renderCapacity": 0.025399196937155664
         },
         {
           "currentTime": 0.7573333333333333,
-          "renderCapacity": 0.055062334718549294
+          "renderCapacity": 0.027176979499717886
         },
         {
           "currentTime": 0.8533333333333334,
-          "renderCapacity": 0.030627583615182263
+          "renderCapacity": 0.0247376311844078
         },
         {
           "currentTime": 0.96,
-          "renderCapacity": 0.03428140892823507
+          "renderCapacity": 0.028622540250447227
         },
         {
           "currentTime": 1.056,
-          "renderCapacity": 0.03824880472485235
+          "renderCapacity": 0.027344119595042102
         },
         {
           "currentTime": 1.1626666666666667,
-          "renderCapacity": 0.03543453935098844
+          "renderCapacity": 0.027465316835395576
         },
         {
           "currentTime": 1.2586666666666666,
-          "renderCapacity": 0.0463613374543411
+          "renderCapacity": 0.02694808254028079
         },
         {
           "currentTime": 1.3653333333333333,
-          "renderCapacity": 0.031334767561500325
+          "renderCapacity": 0.029359347153175126
         },
         {
           "currentTime": 1.4613333333333334,
-          "renderCapacity": 0.034577491474043195
+          "renderCapacity": 0.0285231750797523
         },
         {
-          "currentTime": 1.568,
-          "renderCapacity": 0.03211610486891386
+          "currentTime": 1.56,
+          "renderCapacity": 0.02617997560289012
         },
         {
           "currentTime": 1.664,
-          "renderCapacity": 0.034417727487034415
+          "renderCapacity": 0.03299278282875621
         },
         {
-          "currentTime": 1.7706666666666666,
-          "renderCapacity": 0.03228515442754502
+          "currentTime": 1.76,
+          "renderCapacity": 0.03221577074358494
         },
         {
           "currentTime": 1.8666666666666667,
-          "renderCapacity": 0.03464654931545124
+          "renderCapacity": 0.025280898876404494
         },
         {
-          "currentTime": 1.9733333333333334,
-          "renderCapacity": 0.030647739024160948
+          "currentTime": 1.9626666666666666,
+          "renderCapacity": 0.031655081720834116
         },
         {
           "currentTime": 2.0693333333333332,
-          "renderCapacity": 0.03558651854641311
+          "renderCapacity": 0.031106959364782815
         },
         {
-          "currentTime": 2.176,
-          "renderCapacity": 0.03550962893377173
+          "currentTime": 2.1653333333333333,
+          "renderCapacity": 0.027227490376490467
         },
         {
           "currentTime": 2.272,
-          "renderCapacity": 0.03091823430806482
+          "renderCapacity": 0.027034664657121323
         },
         {
-          "currentTime": 2.3786666666666667,
-          "renderCapacity": 0.0480787796871983
+          "currentTime": 2.368,
+          "renderCapacity": 0.032603632976245925
         },
         {
           "currentTime": 2.474666666666667,
-          "renderCapacity": 0.028606495468277943
+          "renderCapacity": 0.026536181424673008
         },
         {
-          "currentTime": 2.5813333333333333,
-          "renderCapacity": 0.05490308412107324
+          "currentTime": 2.570666666666667,
+          "renderCapacity": 0.027824938690813053
         },
         {
           "currentTime": 2.6773333333333333,
-          "renderCapacity": 0.026890756302521007
+          "renderCapacity": 0.02622523946805543
         },
         {
-          "currentTime": 2.784,
-          "renderCapacity": 0.026047034573222147
+          "currentTime": 2.7733333333333334,
+          "renderCapacity": 0.025710800412874168
         },
         {
           "currentTime": 2.88,
-          "renderCapacity": 0.029278855206175864
+          "renderCapacity": 0.027474595408355288
         }
       ]
     },
@@ -487,115 +495,117 @@
       "voices": 8,
       "mode": 2,
       "pitchMode": 0,
+      "waveform": 0,
+      "addWaveSource": 0,
       "activeVoices": 8,
       "sampleRate": 48000,
       "callbackBufferFrames": 512,
       "baseLatencySeconds": 0.010666666666666666,
-      "outputLatencySeconds": 0.008,
+      "outputLatencySeconds": 0.04,
       "sampledRenderCapacity": {
-        "p50": 0.02465345613545446,
-        "p95": 0.03071510079878281,
-        "max": 0.04120098503504452
+        "p50": 0.02758881330309902,
+        "p95": 0.04008596524014203,
+        "max": 0.04224698235840297
       },
-      "callbackIntervalMeanSeconds": 0.010656531863485775,
-      "callbackIntervalVariance": 6.480573031580688e-8,
-      "contextTimeAdvancedSeconds": 2.325333333333333,
+      "callbackIntervalMeanSeconds": 0.010658723694557785,
+      "callbackIntervalVariance": 2.245799682356848e-7,
+      "contextTimeAdvancedSeconds": 2.3253333333333335,
       "samples": [
         {
-          "currentTime": 0.5546666666666666,
-          "renderCapacity": 0.03071510079878281
+          "currentTime": 0.5653333333333334,
+          "renderCapacity": 0.023681277860326897
         },
         {
-          "currentTime": 0.6506666666666666,
-          "renderCapacity": 0.022029680154852984
+          "currentTime": 0.6613333333333333,
+          "renderCapacity": 0.022907900888265546
         },
         {
-          "currentTime": 0.7573333333333333,
-          "renderCapacity": 0.024107643431134366
+          "currentTime": 0.768,
+          "renderCapacity": 0.022418990203466466
         },
         {
-          "currentTime": 0.8533333333333334,
-          "renderCapacity": 0.022249228755725905
+          "currentTime": 0.864,
+          "renderCapacity": 0.02758881330309902
         },
         {
-          "currentTime": 0.9493333333333334,
-          "renderCapacity": 0.024196562032884904
+          "currentTime": 0.9706666666666667,
+          "renderCapacity": 0.022184779556304407
         },
         {
-          "currentTime": 1.056,
-          "renderCapacity": 0.02465345613545446
+          "currentTime": 1.0666666666666667,
+          "renderCapacity": 0.022275849266753293
         },
         {
-          "currentTime": 1.152,
-          "renderCapacity": 0.024733992906477507
+          "currentTime": 1.1733333333333333,
+          "renderCapacity": 0.04102321174798674
         },
         {
-          "currentTime": 1.2586666666666666,
-          "renderCapacity": 0.023185957007415752
+          "currentTime": 1.2693333333333334,
+          "renderCapacity": 0.04008596524014203
         },
         {
-          "currentTime": 1.3546666666666667,
-          "renderCapacity": 0.025749063670411985
+          "currentTime": 1.376,
+          "renderCapacity": 0.032811059907834096
         },
         {
-          "currentTime": 1.4613333333333334,
-          "renderCapacity": 0.02526058784862428
+          "currentTime": 1.472,
+          "renderCapacity": 0.039274924471299086
         },
         {
-          "currentTime": 1.5573333333333332,
-          "renderCapacity": 0.025178504321683576
+          "currentTime": 1.5786666666666667,
+          "renderCapacity": 0.04224698235840297
         },
         {
-          "currentTime": 1.664,
-          "renderCapacity": 0.023255813953488372
+          "currentTime": 1.6746666666666667,
+          "renderCapacity": 0.03297220913801225
         },
         {
-          "currentTime": 1.76,
-          "renderCapacity": 0.02476547842401501
+          "currentTime": 1.7813333333333334,
+          "renderCapacity": 0.022290617422122738
         },
         {
-          "currentTime": 1.8666666666666667,
-          "renderCapacity": 0.033345892991710625
+          "currentTime": 1.8773333333333333,
+          "renderCapacity": 0.03218028378002411
         },
         {
-          "currentTime": 1.9626666666666666,
-          "renderCapacity": 0.023901021651513733
+          "currentTime": 1.984,
+          "renderCapacity": 0.033449215446772526
         },
         {
-          "currentTime": 2.0693333333333332,
-          "renderCapacity": 0.04120098503504452
+          "currentTime": 2.08,
+          "renderCapacity": 0.023003553394426782
         },
         {
-          "currentTime": 2.1653333333333333,
-          "renderCapacity": 0.023340832395950504
+          "currentTime": 2.1866666666666665,
+          "renderCapacity": 0.026085336314514623
         },
         {
-          "currentTime": 2.272,
-          "renderCapacity": 0.026394052044609664
+          "currentTime": 2.2826666666666666,
+          "renderCapacity": 0.03078677309007982
         },
         {
-          "currentTime": 2.368,
-          "renderCapacity": 0.022084390564796542
+          "currentTime": 2.3893333333333335,
+          "renderCapacity": 0.03644603908979322
         },
         {
-          "currentTime": 2.474666666666667,
-          "renderCapacity": 0.026928471248246846
+          "currentTime": 2.485333333333333,
+          "renderCapacity": 0.025169499396303516
         },
         {
-          "currentTime": 2.570666666666667,
-          "renderCapacity": 0.0222201561918929
+          "currentTime": 2.592,
+          "renderCapacity": 0.02992824773413897
         },
         {
-          "currentTime": 2.6773333333333333,
-          "renderCapacity": 0.02464392803598201
+          "currentTime": 2.688,
+          "renderCapacity": 0.02569633311450811
         },
         {
-          "currentTime": 2.7733333333333334,
-          "renderCapacity": 0.02560269108577836
+          "currentTime": 2.7946666666666666,
+          "renderCapacity": 0.03220354896253873
         },
         {
-          "currentTime": 2.88,
-          "renderCapacity": 0.030334335086401203
+          "currentTime": 2.8906666666666667,
+          "renderCapacity": 0.026113094119857225
         }
       ]
     },
@@ -604,115 +614,117 @@
       "voices": 8,
       "mode": 3,
       "pitchMode": 0,
+      "waveform": 0,
+      "addWaveSource": 0,
       "activeVoices": 8,
       "sampleRate": 48000,
       "callbackBufferFrames": 512,
       "baseLatencySeconds": 0.010666666666666666,
       "outputLatencySeconds": 0.04,
       "sampledRenderCapacity": {
-        "p50": 0.028989534129850888,
-        "p95": 0.038396386222473176,
-        "max": 0.044210924926630694
+        "p50": 0.026216876526968615,
+        "p95": 0.031490819141851395,
+        "max": 0.040015064494868656
       },
-      "callbackIntervalMeanSeconds": 0.010659463880716952,
-      "callbackIntervalVariance": 7.960932891192518e-8,
-      "contextTimeAdvancedSeconds": 2.3253333333333335,
+      "callbackIntervalMeanSeconds": 0.010663221377766494,
+      "callbackIntervalVariance": 1.631170666363567e-7,
+      "contextTimeAdvancedSeconds": 2.325333333333333,
       "samples": [
         {
-          "currentTime": 0.544,
-          "renderCapacity": 0.0239880059970015
+          "currentTime": 0.5546666666666666,
+          "renderCapacity": 0.02583543948329121
         },
         {
-          "currentTime": 0.64,
-          "renderCapacity": 0.025386416861826695
+          "currentTime": 0.6506666666666666,
+          "renderCapacity": 0.02247714978548778
         },
         {
-          "currentTime": 0.7466666666666667,
-          "renderCapacity": 0.030125602039852678
+          "currentTime": 0.7573333333333333,
+          "renderCapacity": 0.022123071202825806
         },
         {
-          "currentTime": 0.8426666666666667,
-          "renderCapacity": 0.03427230046948357
+          "currentTime": 0.8533333333333334,
+          "renderCapacity": 0.025202269134195106
         },
         {
-          "currentTime": 0.9493333333333334,
-          "renderCapacity": 0.023596343965678047
+          "currentTime": 0.96,
+          "renderCapacity": 0.02706766917293233
         },
         {
-          "currentTime": 1.0453333333333332,
-          "renderCapacity": 0.023164212698114976
+          "currentTime": 1.056,
+          "renderCapacity": 0.02398036253776435
         },
         {
-          "currentTime": 1.152,
-          "renderCapacity": 0.031989523898606306
+          "currentTime": 1.1626666666666667,
+          "renderCapacity": 0.028067211114240122
         },
         {
-          "currentTime": 1.248,
-          "renderCapacity": 0.02919639504318438
+          "currentTime": 1.2586666666666666,
+          "renderCapacity": 0.0267848810079328
         },
         {
-          "currentTime": 1.3546666666666667,
-          "renderCapacity": 0.028989534129850888
+          "currentTime": 1.3653333333333333,
+          "renderCapacity": 0.028124417954926432
         },
         {
-          "currentTime": 1.4506666666666668,
-          "renderCapacity": 0.029835294117647057
+          "currentTime": 1.4613333333333334,
+          "renderCapacity": 0.027934008248968877
         },
         {
-          "currentTime": 1.5573333333333332,
-          "renderCapacity": 0.0229459659511473
+          "currentTime": 1.568,
+          "renderCapacity": 0.040015064494868656
         },
         {
-          "currentTime": 1.6533333333333333,
-          "renderCapacity": 0.029060472115113326
+          "currentTime": 1.664,
+          "renderCapacity": 0.022011702424073555
         },
         {
-          "currentTime": 1.76,
-          "renderCapacity": 0.03532811334824758
+          "currentTime": 1.7706666666666666,
+          "renderCapacity": 0.03377163939078611
         },
         {
-          "currentTime": 1.856,
-          "renderCapacity": 0.024017262407355286
+          "currentTime": 1.8666666666666667,
+          "renderCapacity": 0.026423141108844795
         },
         {
-          "currentTime": 1.952,
-          "renderCapacity": 0.026841858282496484
+          "currentTime": 1.9626666666666666,
+          "renderCapacity": 0.02300230946882217
         },
         {
-          "currentTime": 2.058666666666667,
-          "renderCapacity": 0.02888354008516941
+          "currentTime": 2.0693333333333332,
+          "renderCapacity": 0.026216876526968615
         },
         {
-          "currentTime": 2.1546666666666665,
-          "renderCapacity": 0.02897056066004125
+          "currentTime": 2.1653333333333333,
+          "renderCapacity": 0.022990636877723188
         },
         {
-          "currentTime": 2.2613333333333334,
-          "renderCapacity": 0.04371636294967425
+          "currentTime": 2.272,
+          "renderCapacity": 0.031490819141851395
         },
         {
-          "currentTime": 2.3573333333333335,
-          "renderCapacity": 0.037639973652018446
+          "currentTime": 2.368,
+          "renderCapacity": 0.027712541099107563
         },
         {
-          "currentTime": 2.464,
-          "renderCapacity": 0.02883799830364716
+          "currentTime": 2.474666666666667,
+          "renderCapacity": 0.03022906496432595
         },
         {
-          "currentTime": 2.56,
-          "renderCapacity": 0.03798996841909716
+          "currentTime": 2.570666666666667,
+          "renderCapacity": 0.024812030075187973
         },
         {
-          "currentTime": 2.6666666666666665,
-          "renderCapacity": 0.038396386222473176
+          "currentTime": 2.6773333333333333,
+          "renderCapacity": 0.02430260047281324
         },
         {
           "currentTime": 2.7733333333333334,
-          "renderCapacity": 0.044210924926630694
+          "renderCapacity": 0.024284638554216868
         },
         {
-          "currentTime": 2.8693333333333335,
-          "renderCapacity": 0.026674180520334368
+          "currentTime": 2.88,
+          "renderCapacity": 0.027447306791569086
         }
       ]
     },
@@ -721,115 +733,117 @@
       "voices": 8,
       "mode": 4,
       "pitchMode": 0,
+      "waveform": 0,
+      "addWaveSource": 0,
       "activeVoices": 8,
       "sampleRate": 48000,
       "callbackBufferFrames": 512,
       "baseLatencySeconds": 0.010666666666666666,
       "outputLatencySeconds": 0.04,
       "sampledRenderCapacity": {
-        "p50": 0.09605472776684473,
-        "p95": 0.10445954752816311,
-        "max": 0.1589603540823053
+        "p50": 0.0964259121370067,
+        "p95": 0.13252002235053084,
+        "max": 0.15454545454545454
       },
-      "callbackIntervalMeanSeconds": 0.010655418109176085,
-      "callbackIntervalVariance": 1.2376857590113495e-7,
-      "contextTimeAdvancedSeconds": 2.325333333333333,
+      "callbackIntervalMeanSeconds": 0.01065845929664245,
+      "callbackIntervalVariance": 2.4215887530033945e-7,
+      "contextTimeAdvancedSeconds": 2.3253333333333335,
       "samples": [
         {
-          "currentTime": 0.5546666666666666,
-          "renderCapacity": 0.1495909259947936
+          "currentTime": 0.5653333333333334,
+          "renderCapacity": 0.08612260248213614
         },
         {
-          "currentTime": 0.6506666666666666,
-          "renderCapacity": 0.09358866047122877
+          "currentTime": 0.6613333333333333,
+          "renderCapacity": 0.0950631241756171
         },
         {
-          "currentTime": 0.7573333333333333,
-          "renderCapacity": 0.09371771997370644
+          "currentTime": 0.768,
+          "renderCapacity": 0.08976157082748949
         },
         {
-          "currentTime": 0.8533333333333334,
-          "renderCapacity": 0.09403712732045752
+          "currentTime": 0.864,
+          "renderCapacity": 0.0900749063670412
         },
         {
-          "currentTime": 0.96,
-          "renderCapacity": 0.0916588566073102
+          "currentTime": 0.9706666666666667,
+          "renderCapacity": 0.14185981569394024
         },
         {
-          "currentTime": 1.056,
-          "renderCapacity": 0.09842075578116187
+          "currentTime": 1.0666666666666667,
+          "renderCapacity": 0.09262387387387387
         },
         {
-          "currentTime": 1.1626666666666667,
-          "renderCapacity": 0.0992767915844839
+          "currentTime": 1.1733333333333333,
+          "renderCapacity": 0.09683831881862931
         },
         {
-          "currentTime": 1.2586666666666666,
-          "renderCapacity": 0.10271281571562207
+          "currentTime": 1.2693333333333334,
+          "renderCapacity": 0.10265553157549029
         },
         {
-          "currentTime": 1.3653333333333333,
-          "renderCapacity": 0.09605472776684473
+          "currentTime": 1.376,
+          "renderCapacity": 0.0964259121370067
         },
         {
-          "currentTime": 1.4613333333333334,
-          "renderCapacity": 0.0881305081567598
+          "currentTime": 1.472,
+          "renderCapacity": 0.11027261579096312
         },
         {
-          "currentTime": 1.568,
-          "renderCapacity": 0.0983775672887555
+          "currentTime": 1.576,
+          "renderCapacity": 0.10799478196049199
         },
         {
-          "currentTime": 1.664,
-          "renderCapacity": 0.1006259484066768
+          "currentTime": 1.6746666666666667,
+          "renderCapacity": 0.08767794852455926
         },
         {
-          "currentTime": 1.7706666666666666,
-          "renderCapacity": 0.09999062001688398
+          "currentTime": 1.776,
+          "renderCapacity": 0.09542873103063029
         },
         {
-          "currentTime": 1.8666666666666667,
-          "renderCapacity": 0.1589603540823053
+          "currentTime": 1.8773333333333333,
+          "renderCapacity": 0.15454545454545454
         },
         {
-          "currentTime": 1.9733333333333334,
-          "renderCapacity": 0.09254740003754457
+          "currentTime": 1.9813333333333334,
+          "renderCapacity": 0.093980117820324
         },
         {
-          "currentTime": 2.0693333333333332,
-          "renderCapacity": 0.10445954752816311
+          "currentTime": 2.08,
+          "renderCapacity": 0.08492845196060211
         },
         {
-          "currentTime": 2.176,
-          "renderCapacity": 0.09450009450009451
+          "currentTime": 2.184,
+          "renderCapacity": 0.13252002235053084
         },
         {
-          "currentTime": 2.272,
-          "renderCapacity": 0.09950434863929675
+          "currentTime": 2.2826666666666666,
+          "renderCapacity": 0.08742814759873911
         },
         {
-          "currentTime": 2.3786666666666667,
-          "renderCapacity": 0.09396162528216705
+          "currentTime": 2.384,
+          "renderCapacity": 0.09693635587593663
         },
         {
-          "currentTime": 2.474666666666667,
-          "renderCapacity": 0.08662952646239555
+          "currentTime": 2.485333333333333,
+          "renderCapacity": 0.11911723097236632
         },
         {
-          "currentTime": 2.5813333333333333,
-          "renderCapacity": 0.09802822166152696
+          "currentTime": 2.5893333333333333,
+          "renderCapacity": 0.10278433223218499
         },
         {
-          "currentTime": 2.6773333333333333,
-          "renderCapacity": 0.09735217997212821
+          "currentTime": 2.688,
+          "renderCapacity": 0.1122390346676882
         },
         {
-          "currentTime": 2.784,
-          "renderCapacity": 0.08672566371681416
+          "currentTime": 2.7866666666666666,
+          "renderCapacity": 0.10053057805082379
         },
         {
-          "currentTime": 2.88,
-          "renderCapacity": 0.09246767847105115
+          "currentTime": 2.8906666666666667,
+          "renderCapacity": 0.09030507205689689
         }
       ]
     },
@@ -838,115 +852,236 @@
       "voices": 8,
       "mode": 5,
       "pitchMode": 0,
+      "waveform": 0,
+      "addWaveSource": 0,
       "activeVoices": 8,
       "sampleRate": 48000,
       "callbackBufferFrames": 512,
       "baseLatencySeconds": 0.010666666666666666,
       "outputLatencySeconds": 0.04,
       "sampledRenderCapacity": {
-        "p50": 0.06063450347287404,
-        "p95": 0.06553398058252428,
-        "max": 0.07674943566591422
+        "p50": 0.06378542318263672,
+        "p95": 0.10229938995776632,
+        "max": 0.10525330087086807
       },
-      "callbackIntervalMeanSeconds": 0.010658954152472904,
-      "callbackIntervalVariance": 4.4255679650987565e-8,
-      "contextTimeAdvancedSeconds": 2.3253333333333335,
+      "callbackIntervalMeanSeconds": 0.010664087884324767,
+      "callbackIntervalVariance": 2.0818861446182477e-7,
+      "contextTimeAdvancedSeconds": 2.325333333333333,
       "samples": [
         {
-          "currentTime": 0.544,
-          "renderCapacity": 0.05702609826321166
+          "currentTime": 0.5546666666666666,
+          "renderCapacity": 0.06797299831239452
         },
         {
           "currentTime": 0.6506666666666666,
-          "renderCapacity": 0.059744888388670044
+          "renderCapacity": 0.06181955883745149
         },
         {
-          "currentTime": 0.7466666666666667,
-          "renderCapacity": 0.05559722482655166
+          "currentTime": 0.7573333333333333,
+          "renderCapacity": 0.06345937850992138
         },
         {
           "currentTime": 0.8533333333333334,
-          "renderCapacity": 0.06307490144546649
+          "renderCapacity": 0.06206187494158332
         },
         {
-          "currentTime": 0.9493333333333334,
-          "renderCapacity": 0.06337627889352028
+          "currentTime": 0.96,
+          "renderCapacity": 0.09660427052958329
         },
         {
           "currentTime": 1.056,
-          "renderCapacity": 0.06063450347287404
+          "renderCapacity": 0.05926684034238928
         },
         {
-          "currentTime": 1.152,
-          "renderCapacity": 0.07674943566591422
+          "currentTime": 1.1626666666666667,
+          "renderCapacity": 0.05793309661745468
         },
         {
-          "currentTime": 1.2533333333333334,
-          "renderCapacity": 0.05694016615327172
+          "currentTime": 1.2586666666666666,
+          "renderCapacity": 0.06039640987284966
         },
         {
-          "currentTime": 1.3546666666666667,
-          "renderCapacity": 0.06356922501635973
+          "currentTime": 1.3653333333333333,
+          "renderCapacity": 0.05885096064167133
         },
         {
-          "currentTime": 1.4506666666666668,
-          "renderCapacity": 0.06269826460160477
+          "currentTime": 1.4613333333333334,
+          "renderCapacity": 0.05582272512965582
         },
         {
-          "currentTime": 1.5573333333333332,
-          "renderCapacity": 0.06553398058252428
+          "currentTime": 1.568,
+          "renderCapacity": 0.10525330087086807
         },
         {
-          "currentTime": 1.6533333333333333,
-          "renderCapacity": 0.06445586174684727
+          "currentTime": 1.664,
+          "renderCapacity": 0.06916885061774615
         },
         {
-          "currentTime": 1.76,
-          "renderCapacity": 0.07455853499018966
+          "currentTime": 1.7706666666666666,
+          "renderCapacity": 0.08459357277882797
         },
         {
-          "currentTime": 1.856,
-          "renderCapacity": 0.05824698963875665
+          "currentTime": 1.8666666666666667,
+          "renderCapacity": 0.0682246513381078
         },
         {
-          "currentTime": 1.9626666666666666,
-          "renderCapacity": 0.06434291097503533
+          "currentTime": 1.9733333333333334,
+          "renderCapacity": 0.10090883537899373
         },
         {
-          "currentTime": 2.058666666666667,
-          "renderCapacity": 0.06495951798154773
+          "currentTime": 2.0693333333333332,
+          "renderCapacity": 0.06378542318263672
         },
         {
-          "currentTime": 2.1653333333333333,
-          "renderCapacity": 0.059973679263019365
+          "currentTime": 2.176,
+          "renderCapacity": 0.10219738586853572
         },
         {
-          "currentTime": 2.2613333333333334,
-          "renderCapacity": 0.05870786516853932
+          "currentTime": 2.272,
+          "renderCapacity": 0.06504835956760857
         },
         {
-          "currentTime": 2.368,
-          "renderCapacity": 0.062482356262350616
+          "currentTime": 2.3786666666666667,
+          "renderCapacity": 0.05836212531515548
         },
         {
-          "currentTime": 2.464,
-          "renderCapacity": 0.061354881142535005
+          "currentTime": 2.474666666666667,
+          "renderCapacity": 0.10376647834274953
         },
         {
-          "currentTime": 2.570666666666667,
-          "renderCapacity": 0.06051764705882352
+          "currentTime": 2.5813333333333333,
+          "renderCapacity": 0.10229938995776632
         },
         {
-          "currentTime": 2.6666666666666665,
-          "renderCapacity": 0.05686846812917805
+          "currentTime": 2.6773333333333333,
+          "renderCapacity": 0.06107514776245426
         },
         {
-          "currentTime": 2.7733333333333334,
-          "renderCapacity": 0.056905251354886936
+          "currentTime": 2.784,
+          "renderCapacity": 0.0659709280655982
         },
         {
-          "currentTime": 2.8693333333333335,
-          "renderCapacity": 0.05755125070528494
+          "currentTime": 2.88,
+          "renderCapacity": 0.061592854484555266
+        }
+      ]
+    },
+    {
+      "label": "Add square · 8 voices",
+      "voices": 8,
+      "mode": 4,
+      "pitchMode": 0,
+      "waveform": 2,
+      "addWaveSource": 1,
+      "activeVoices": 8,
+      "sampleRate": 48000,
+      "callbackBufferFrames": 512,
+      "baseLatencySeconds": 0.010666666666666666,
+      "outputLatencySeconds": 0.04,
+      "sampledRenderCapacity": {
+        "p50": 0.06621407979168603,
+        "p95": 0.08594264221908791,
+        "max": 0.10471838866094742
+      },
+      "callbackIntervalMeanSeconds": 0.010657266198703446,
+      "callbackIntervalVariance": 2.968235963047394e-7,
+      "contextTimeAdvancedSeconds": 2.3253333333333335,
+      "samples": [
+        {
+          "currentTime": 0.5653333333333334,
+          "renderCapacity": 0.06880861732751416
+        },
+        {
+          "currentTime": 0.6666666666666666,
+          "renderCapacity": 0.06353096427561504
+        },
+        {
+          "currentTime": 0.768,
+          "renderCapacity": 0.10272417707150965
+        },
+        {
+          "currentTime": 0.864,
+          "renderCapacity": 0.06046814044213264
+        },
+        {
+          "currentTime": 0.9706666666666667,
+          "renderCapacity": 0.07117940982370133
+        },
+        {
+          "currentTime": 1.0666666666666667,
+          "renderCapacity": 0.06621407979168603
+        },
+        {
+          "currentTime": 1.1733333333333333,
+          "renderCapacity": 0.0701572652792165
+        },
+        {
+          "currentTime": 1.2693333333333334,
+          "renderCapacity": 0.061268530681178456
+        },
+        {
+          "currentTime": 1.376,
+          "renderCapacity": 0.06681074985904906
+        },
+        {
+          "currentTime": 1.472,
+          "renderCapacity": 0.06517195515865476
+        },
+        {
+          "currentTime": 1.5786666666666667,
+          "renderCapacity": 0.08558558558558559
+        },
+        {
+          "currentTime": 1.6746666666666667,
+          "renderCapacity": 0.07453583281011751
+        },
+        {
+          "currentTime": 1.7813333333333334,
+          "renderCapacity": 0.0662667281956622
+        },
+        {
+          "currentTime": 1.8773333333333333,
+          "renderCapacity": 0.06310861423220973
+        },
+        {
+          "currentTime": 1.984,
+          "renderCapacity": 0.06001126972201353
+        },
+        {
+          "currentTime": 2.08,
+          "renderCapacity": 0.10471838866094742
+        },
+        {
+          "currentTime": 2.1866666666666665,
+          "renderCapacity": 0.06958738551600416
+        },
+        {
+          "currentTime": 2.2826666666666666,
+          "renderCapacity": 0.06392351673071515
+        },
+        {
+          "currentTime": 2.3893333333333335,
+          "renderCapacity": 0.06391117745848106
+        },
+        {
+          "currentTime": 2.485333333333333,
+          "renderCapacity": 0.08594264221908791
+        },
+        {
+          "currentTime": 2.592,
+          "renderCapacity": 0.06369308129248534
+        },
+        {
+          "currentTime": 2.688,
+          "renderCapacity": 0.07863473505562889
+        },
+        {
+          "currentTime": 2.7946666666666666,
+          "renderCapacity": 0.06264609630668537
+        },
+        {
+          "currentTime": 2.8906666666666667,
+          "renderCapacity": 0.06348766287773773
         }
       ]
     },
@@ -955,115 +1090,117 @@
       "voices": 8,
       "mode": 0,
       "pitchMode": 1,
+      "waveform": 0,
+      "addWaveSource": 0,
       "activeVoices": 8,
       "sampleRate": 48000,
       "callbackBufferFrames": 512,
       "baseLatencySeconds": 0.010666666666666666,
-      "outputLatencySeconds": 0.032,
+      "outputLatencySeconds": 0.04,
       "sampledRenderCapacity": {
-        "p50": 0.2560815868263473,
-        "p95": 0.2702803738317757,
-        "max": 0.29664230875959674
+        "p50": 0.2503041077945167,
+        "p95": 0.2711224393467384,
+        "max": 0.3607986501687289
       },
-      "callbackIntervalMeanSeconds": 0.010655394977502612,
-      "callbackIntervalVariance": 9.949277497183247e-8,
-      "contextTimeAdvancedSeconds": 2.3280000000000003,
+      "callbackIntervalMeanSeconds": 0.010656381845010025,
+      "callbackIntervalVariance": 2.6351612237668665e-7,
+      "contextTimeAdvancedSeconds": 2.3360000000000003,
       "samples": [
         {
-          "currentTime": 0.5546666666666666,
-          "renderCapacity": 0.25695164482986144
+          "currentTime": 0.5653333333333334,
+          "renderCapacity": 0.2594177285833876
         },
         {
           "currentTime": 0.6613333333333333,
-          "renderCapacity": 0.2698935869667577
+          "renderCapacity": 0.25650592295494823
         },
         {
-          "currentTime": 0.7573333333333333,
-          "renderCapacity": 0.2770168855534709
+          "currentTime": 0.768,
+          "renderCapacity": 0.24789758923565688
         },
         {
           "currentTime": 0.864,
-          "renderCapacity": 0.29664230875959674
+          "renderCapacity": 0.25111174188664964
         },
         {
-          "currentTime": 0.96,
-          "renderCapacity": 0.2551802441101334
+          "currentTime": 0.9706666666666667,
+          "renderCapacity": 0.2711224393467384
         },
         {
           "currentTime": 1.0666666666666667,
-          "renderCapacity": 0.2506989748369059
+          "renderCapacity": 0.24509711926433334
         },
         {
-          "currentTime": 1.1626666666666667,
-          "renderCapacity": 0.2612765957446809
+          "currentTime": 1.1733333333333333,
+          "renderCapacity": 0.2455909943714822
         },
         {
           "currentTime": 1.2693333333333334,
-          "renderCapacity": 0.25870506305288915
+          "renderCapacity": 0.3607986501687289
         },
         {
-          "currentTime": 1.3653333333333333,
-          "renderCapacity": 0.2636876763875823
+          "currentTime": 1.376,
+          "renderCapacity": 0.25325601292898564
         },
         {
-          "currentTime": 1.472,
-          "renderCapacity": 0.2560815868263473
+          "currentTime": 1.4773333333333334,
+          "renderCapacity": 0.24263674614305752
         },
         {
-          "currentTime": 1.568,
-          "renderCapacity": 0.24847518063244817
+          "currentTime": 1.5813333333333333,
+          "renderCapacity": 0.2624252615844544
         },
         {
-          "currentTime": 1.6746666666666667,
-          "renderCapacity": 0.25294447560291644
+          "currentTime": 1.6853333333333333,
+          "renderCapacity": 0.24451322453573437
         },
         {
-          "currentTime": 1.7706666666666666,
-          "renderCapacity": 0.24955520179792115
+          "currentTime": 1.784,
+          "renderCapacity": 0.2503041077945167
         },
         {
-          "currentTime": 1.8773333333333333,
-          "renderCapacity": 0.2554112554112554
+          "currentTime": 1.888,
+          "renderCapacity": 0.2502089718584564
         },
         {
-          "currentTime": 1.9733333333333334,
-          "renderCapacity": 0.2672446287222013
+          "currentTime": 1.9866666666666666,
+          "renderCapacity": 0.24926491510955137
         },
         {
-          "currentTime": 2.08,
-          "renderCapacity": 0.2624741103370364
+          "currentTime": 2.0906666666666665,
+          "renderCapacity": 0.27242681775259675
         },
         {
-          "currentTime": 2.176,
-          "renderCapacity": 0.24853966459393256
+          "currentTime": 2.1893333333333334,
+          "renderCapacity": 0.25053955146851836
         },
         {
-          "currentTime": 2.2826666666666666,
-          "renderCapacity": 0.25418498082857943
+          "currentTime": 2.2933333333333334,
+          "renderCapacity": 0.2592557612391386
         },
         {
-          "currentTime": 2.3786666666666667,
-          "renderCapacity": 0.24399092970521544
+          "currentTime": 2.392,
+          "renderCapacity": 0.2534614297824244
         },
         {
-          "currentTime": 2.482666666666667,
-          "renderCapacity": 0.24805474828911597
+          "currentTime": 2.496,
+          "renderCapacity": 0.24947906800530406
         },
         {
-          "currentTime": 2.5813333333333333,
-          "renderCapacity": 0.261175147596289
+          "currentTime": 2.5973333333333333,
+          "renderCapacity": 0.24670135662516257
         },
         {
-          "currentTime": 2.6826666666666665,
-          "renderCapacity": 0.2686117647058823
+          "currentTime": 2.6986666666666665,
+          "renderCapacity": 0.2536429444392216
         },
         {
-          "currentTime": 2.784,
-          "renderCapacity": 0.2702803738317757
+          "currentTime": 2.7973333333333334,
+          "renderCapacity": 0.24592758075025595
         },
         {
-          "currentTime": 2.8826666666666667,
-          "renderCapacity": 0.2512801415138255
+          "currentTime": 2.9013333333333335,
+          "renderCapacity": 0.24709302325581398
         }
       ]
     }

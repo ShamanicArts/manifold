@@ -777,8 +777,10 @@ export function renderWasm(engine, family, manifest, input, selected) {
     }
     new Float32Array(engine.memory.buffer, engine.manifold_sample_ptr(), manifest.sampleData.length).set(manifest.sampleData);
     if (engine.manifold_sample_commit() !== 1) throw new Error('Wasm sample commit failed');
-    if (family === 'main-voice-bank' && manifest.waveTarget && manifest.sourceTarget) {
-      for (const [target, values] of [manifest.waveTarget, manifest.sourceTarget].entries()) {
+    if (family === 'main-voice-bank' && (selected.waveTarget ?? manifest.waveTarget)
+      && (selected.sourceTarget ?? manifest.sourceTarget)) {
+      for (const [target, values] of [selected.waveTarget ?? manifest.waveTarget,
+        selected.sourceTarget ?? manifest.sourceTarget].entries()) {
         if (engine.manifold_partials_begin_target(2, target, values.length / 4, 1) !== 1) throw new Error('Main bank target begin failed');
         new Float32Array(engine.memory.buffer, engine.manifold_partials_ptr(), values.length).set(values);
         if (engine.manifold_partials_commit() !== 1) throw new Error('Main bank target commit failed');

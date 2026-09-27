@@ -1,11 +1,11 @@
 {
   "version": 1,
   "reference": "compiled original C++ Main Add/Morph voice nodes versus native Rust Main bank",
-  "scope": "old sample player, oscillator, Add oscillator, SineBank spectral Add/Morph with fixed published source spectrum, crossfaders, gains and voice mixers; temporal updates, vocoder and old UI envelope excluded",
+  "scope": "old sample player, oscillator, additive sine/saw/square/triangle/blend wave recipes, SineBank spectral Add/Morph with fixed published source spectrum, crossfaders, gains and voice mixers; temporal updates, vocoder and old UI envelope excluded",
   "legacySourceSha256": "deaf46d884f6e2c3c2187734291b1cdf6f282b0d90335bce557ee3ea24f0492a",
   "referenceHarnessSha256": "ad5080226e9638cff461276eb1d15f3f3ebcfa4a9e3f39472b60a9c044a40f60",
-  "rustSourceSha256": "7eef210fbe1bc3759f2de5ad25cd6c401e3073a5a18a4f2b68df2e54be848886",
-  "wasmSha256": "706225418be0cbea810d8c4427f5b288860a8a94b097cec8916a259dfe28c6c7",
+  "rustSourceSha256": "632cec33af2b422c4a929b2bb2acad2edf06e3ab6ceca8b785a8431c2c619af5",
+  "wasmSha256": "624dbb6c0ab381285788c0a3fc2748fd400ea9272765ab9a0f1aa1ac37f17ef8",
   "sampleRate": 48000,
   "sampleSourceRate": 48000,
   "sampleFrames": 16384,
@@ -58,7 +58,8 @@
         1,
         1,
         0,
-        0.2
+        0.2,
+        0
       ],
       "events": [
         [
@@ -72,7 +73,13 @@
       "changes": [],
       "blockSize": 128,
       "output": "add-source-rust.f32",
-      "legacyOutput": "add-source-cpp.f32"
+      "legacyOutput": "add-source-cpp.f32",
+      "waveTarget": [
+        1.0,
+        1.0,
+        0.0,
+        0.0
+      ]
     },
     {
       "id": "add-center",
@@ -96,7 +103,8 @@
         1,
         1,
         0,
-        0.2
+        0.2,
+        0
       ],
       "events": [
         [
@@ -110,7 +118,13 @@
       "changes": [],
       "blockSize": 128,
       "output": "add-center-rust.f32",
-      "legacyOutput": "add-center-cpp.f32"
+      "legacyOutput": "add-center-cpp.f32",
+      "waveTarget": [
+        1.0,
+        1.0,
+        0.0,
+        0.0
+      ]
     },
     {
       "id": "add-wave",
@@ -134,7 +148,8 @@
         1,
         1,
         0,
-        0.2
+        0.2,
+        0
       ],
       "events": [
         [
@@ -148,7 +163,13 @@
       "changes": [],
       "blockSize": 128,
       "output": "add-wave-rust.f32",
-      "legacyOutput": "add-wave-cpp.f32"
+      "legacyOutput": "add-wave-cpp.f32",
+      "waveTarget": [
+        1.0,
+        1.0,
+        0.0,
+        0.0
+      ]
     },
     {
       "id": "add-wave-only",
@@ -172,7 +193,8 @@
         1,
         1,
         0,
-        0.2
+        0.2,
+        0
       ],
       "events": [
         [
@@ -186,7 +208,13 @@
       "changes": [],
       "blockSize": 128,
       "output": "add-wave-only-rust.f32",
-      "legacyOutput": "add-wave-only-cpp.f32"
+      "legacyOutput": "add-wave-only-cpp.f32",
+      "waveTarget": [
+        1.0,
+        1.0,
+        0.0,
+        0.0
+      ]
     },
     {
       "id": "morph-source",
@@ -210,7 +238,8 @@
         1,
         1,
         0,
-        0.2
+        0.2,
+        0
       ],
       "events": [
         [
@@ -224,7 +253,13 @@
       "changes": [],
       "blockSize": 128,
       "output": "morph-source-rust.f32",
-      "legacyOutput": "morph-source-cpp.f32"
+      "legacyOutput": "morph-source-cpp.f32",
+      "waveTarget": [
+        1.0,
+        1.0,
+        0.0,
+        0.0
+      ]
     },
     {
       "id": "morph-center",
@@ -248,7 +283,8 @@
         1,
         1,
         0,
-        0.2
+        0.2,
+        0
       ],
       "events": [
         [
@@ -262,7 +298,382 @@
       "changes": [],
       "blockSize": 128,
       "output": "morph-center-rust.f32",
-      "legacyOutput": "morph-center-cpp.f32"
+      "legacyOutput": "morph-center-cpp.f32",
+      "waveTarget": [
+        1.0,
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": "add-saw-center",
+      "label": "Original Main Add fixed-spectrum route \u00b7 blend 0.0 \u00b7 depth 1.0",
+      "parameters": [
+        1,
+        0.0,
+        60,
+        2,
+        0,
+        0,
+        4,
+        1.0,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2,
+        1
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "add-saw-center-rust.f32",
+      "legacyOutput": "add-saw-center-cpp.f32",
+      "waveTarget": [
+        1.0,
+        0.3679369,
+        0.0,
+        0.0,
+        2.0,
+        0.18396845,
+        3.1415927,
+        0.0,
+        3.0,
+        0.12264564,
+        0.0,
+        0.0,
+        4.0,
+        0.09198423,
+        3.1415927,
+        0.0,
+        5.0,
+        0.07358738,
+        0.0,
+        0.0,
+        6.0,
+        0.06132282,
+        3.1415927,
+        0.0,
+        7.0,
+        0.052562416,
+        0.0,
+        0.0,
+        8.0,
+        0.045992114,
+        3.1415927,
+        0.0
+      ]
+    },
+    {
+      "id": "add-square-center",
+      "label": "Original Main Add fixed-spectrum route \u00b7 blend 0.0 \u00b7 depth 1.0",
+      "parameters": [
+        2,
+        0.0,
+        60,
+        2,
+        0,
+        0,
+        4,
+        1.0,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2,
+        1
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "add-square-center-rust.f32",
+      "legacyOutput": "add-square-center-cpp.f32",
+      "waveTarget": [
+        1.0,
+        0.49460858,
+        0.0,
+        0.0,
+        3.0,
+        0.16486953,
+        0.0,
+        0.0,
+        5.0,
+        0.098921716,
+        0.0,
+        0.0,
+        7.0,
+        0.07065837,
+        0.0,
+        0.0,
+        9.0,
+        0.05495651,
+        0.0,
+        0.0,
+        11.0,
+        0.044964418,
+        0.0,
+        0.0,
+        13.0,
+        0.038046815,
+        0.0,
+        0.0,
+        15.0,
+        0.032973908,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": "add-triangle-center",
+      "label": "Original Main Add fixed-spectrum route \u00b7 blend 0.0 \u00b7 depth 1.0",
+      "parameters": [
+        3,
+        0.0,
+        60,
+        2,
+        0,
+        0,
+        4,
+        1.0,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2,
+        1
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "add-triangle-center-rust.f32",
+      "legacyOutput": "add-triangle-center-cpp.f32",
+      "waveTarget": [
+        1.0,
+        0.83160704,
+        -1.5707964,
+        0.0,
+        3.0,
+        0.09240078,
+        1.5707964,
+        0.0,
+        5.0,
+        0.03326428,
+        -1.5707964,
+        0.0,
+        7.0,
+        0.016971571,
+        1.5707964,
+        0.0,
+        9.0,
+        0.010266754,
+        -1.5707964,
+        0.0,
+        11.0,
+        0.006872785,
+        1.5707964,
+        0.0,
+        13.0,
+        0.004920752,
+        -1.5707964,
+        0.0,
+        15.0,
+        0.0036960314,
+        1.5707964,
+        0.0
+      ]
+    },
+    {
+      "id": "add-blend-center",
+      "label": "Original Main Add fixed-spectrum route \u00b7 blend 0.0 \u00b7 depth 1.0",
+      "parameters": [
+        4,
+        0.0,
+        60,
+        2,
+        0,
+        0,
+        4,
+        1.0,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2,
+        1
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "add-blend-center-rust.f32",
+      "legacyOutput": "add-blend-center-cpp.f32",
+      "waveTarget": [
+        1.0,
+        0.30908024,
+        0.0,
+        0.0,
+        2.0,
+        0.18888237,
+        3.1415927,
+        0.0,
+        3.0,
+        0.12592158,
+        0.0,
+        0.0,
+        4.0,
+        0.09444118,
+        3.1415927,
+        0.0,
+        5.0,
+        0.07555295,
+        0.0,
+        0.0,
+        6.0,
+        0.06296079,
+        3.1415927,
+        0.0,
+        7.0,
+        0.05396639,
+        0.0,
+        0.0,
+        8.0,
+        0.04722059,
+        3.1415927,
+        0.0,
+        9.0,
+        0.04197386,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": "add-saw-wave-only",
+      "label": "Original Main Add fixed-spectrum route \u00b7 blend -1.0 \u00b7 depth 1.0",
+      "parameters": [
+        1,
+        -1.0,
+        60,
+        2,
+        0,
+        0,
+        4,
+        1.0,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2,
+        1
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "add-saw-wave-only-rust.f32",
+      "legacyOutput": "add-saw-wave-only-cpp.f32",
+      "waveTarget": [
+        1.0,
+        0.3679369,
+        0.0,
+        0.0,
+        2.0,
+        0.18396845,
+        3.1415927,
+        0.0,
+        3.0,
+        0.12264564,
+        0.0,
+        0.0,
+        4.0,
+        0.09198423,
+        3.1415927,
+        0.0,
+        5.0,
+        0.07358738,
+        0.0,
+        0.0,
+        6.0,
+        0.06132282,
+        3.1415927,
+        0.0,
+        7.0,
+        0.052562416,
+        0.0,
+        0.0,
+        8.0,
+        0.045992114,
+        3.1415927,
+        0.0
+      ]
     }
   ]
 }

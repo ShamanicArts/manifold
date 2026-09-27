@@ -16,7 +16,7 @@ for (let index = 0; index < stereo.length; index++) stereo[index] = Math.sin(ind
 const captured = captureMainVoiceBankState(project, values, controls,
   { sourceKind: 'embedded', sourceRate: 48_000, stereo, label: 'Chosen source' });
 const parsed = parseMainVoiceBankState(JSON.parse(JSON.stringify(captured)), project);
-assert.equal(parsed.schemaVersion, 2);
+assert.equal(parsed.schemaVersion, 3);
 assert.equal(parsed.parameters['blend-mode'], 5);
 assert.equal(parsed.parameters.depth, .75);
 assert.deepEqual(parsed.targetControls, controls);
@@ -24,10 +24,16 @@ assert.deepEqual(parsed.targets, [project.partials, project.extraPartials[0]]);
 assert.deepEqual(parsed.source.stereo, stereo);
 const v1 = structuredClone(captured);
 v1.schemaVersion = 1;
+delete v1.parameters['add-wave-source'];
 delete v1.targetControls.followPlayback;
 delete v1.targetControls.speed;
 assert.deepEqual(parseMainVoiceBankState(v1, project).targetControls,
   { ...v1.targetControls, followPlayback: false, speed: 1 });
+assert.equal(parseMainVoiceBankState(v1, project).parameters['add-wave-source'], 0);
+const v2 = structuredClone(captured);
+v2.schemaVersion = 2;
+delete v2.parameters['add-wave-source'];
+assert.equal(parseMainVoiceBankState(v2, project).parameters['add-wave-source'], 0);
 const builtin = captureMainVoiceBankState(project, values, controls,
   { sourceKind: 'builtin', sourceRate: 48_000, stereo });
 assert.deepEqual(parseMainVoiceBankState(builtin, project).source, { kind: 'builtin' });
@@ -42,4 +48,4 @@ assert.throws(() => parseMainVoiceBankState({ ...captured,
   targetControls: { ...captured.targetControls, speed: 5 } }, project), /target controls/);
 assert.throws(() => parseMainVoiceBankState({ ...captured,
   source: { ...captured.source, pcmF32Base64: 'bad' } }, project), /PCM/);
-console.log('Main voice bank state v2: 19 controls, two targets, temporal follow/speed, sources round-trip; v1 migration and malformed states checked');
+console.log('Main voice bank state v3: 20 controls, two targets, temporal follow/speed, sources round-trip; v1/v2 migration and malformed states checked');

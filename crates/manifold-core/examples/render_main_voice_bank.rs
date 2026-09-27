@@ -25,8 +25,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .split(',')
         .map(str::parse)
         .collect::<Result<_, _>>()?;
-    if parameters.len() != 19 {
-        return Err("expected nineteen Main bank parameters".into());
+    if !(19..=20).contains(&parameters.len()) {
+        return Err("expected nineteen or twenty Main bank parameters".into());
     }
     let events: Vec<(usize, u32, u8, u8, u8)> = args[8]
         .split(',')

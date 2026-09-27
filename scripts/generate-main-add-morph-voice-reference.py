@@ -13,11 +13,16 @@ LEGACY = Path(os.environ.get("MANIFOLD_LEGACY_DIR", ROOT.parent / "my-plugin"))
 OUT = ROOT / "web/public/reference/main-add-morph-voice"
 OUT.mkdir(parents=True, exist_ok=True)
 legacy_runner = subprocess.check_output([str(ROOT / "scripts/build-legacy-main-add-morph-voice-reference.sh")], text=True).strip()
-subprocess.run(["cargo", "build", "-p", "manifold-core", "--example", "render_main_voice_bank"], cwd=ROOT, check=True)
+subprocess.run(["cargo", "build", "-p", "manifold-core", "--example", "render_main_voice_bank",
+                "--example", "emit_main_wave_recipe"], cwd=ROOT, check=True)
 rust_runner = ROOT / "target/debug/examples/render_main_voice_bank"
+wave_runner = ROOT / "target/debug/examples/emit_main_wave_recipe"
 project = json.loads((ROOT / "projects/main-voice-bank/project.json").read_text())
 source_target = project["extraPartials"][0]["values"]
 wave_target = [1, 1, 0, 0]
+wave_targets = {waveform: [float(value) for value in subprocess.check_output(
+    [wave_runner, str(waveform), "8", "0", "0", ".5"], text=True).strip().split(",")]
+    for waveform in range(5)}
 sample_rate, sample_frames, frames, block = 48_000, 16384, 8192, 128
 with (OUT / "sample.f32").open("wb") as output:
     for index in range(sample_frames):
@@ -34,10 +39,16 @@ for case_id, mode, waveform, blend, depth in [
     ("add-wave-only", 4, 0, -1.0, 1.0),
     ("morph-source", 5, 0, 1.0, .75),
     ("morph-center", 5, 0, 0.0, .75),
+    ("add-saw-center", 4, 1, 0.0, 1.0),
+    ("add-square-center", 4, 2, 0.0, 1.0),
+    ("add-triangle-center", 4, 3, 0.0, 1.0),
+    ("add-blend-center", 4, 4, 0.0, 1.0),
+    ("add-saw-wave-only", 4, 1, -1.0, 1.0),
 ]:
     old_output, rust_output = f"{case_id}-cpp.f32", f"{case_id}-rust.f32"
     params = [waveform, blend, 60, 2, 0, 0, mode, depth, .5, 0, 1,
-              .001, .001, 1, .05, 1, 1, 0, .2]
+              .001, .001, 1, .05, 1, 1, 0, .2,
+              int(case_id in {"add-saw-center", "add-square-center", "add-triangle-center", "add-blend-center", "add-saw-wave-only"})]
     subprocess.run([legacy_runner, str(OUT / "sample.f32"), str(OUT / old_output),
                     str(sample_frames), str(frequency), ".4", str(waveform), str(blend),
                     str(depth), str(mode), str(frames), str(block),
@@ -45,10 +56,11 @@ for case_id, mode, waveform, blend, depth in [
     subprocess.run([rust_runner, str(OUT / "sample.f32"), str(OUT / rust_output),
                     str(sample_rate), str(sample_rate), str(block), str(frames),
                     ",".join(map(str, params)), "0:0:0:60:127", "",
-                    ",".join(map(str, wave_target)), ",".join(map(str, source_target))], check=True)
+                    ",".join(map(str, wave_targets[waveform])), ",".join(map(str, source_target))], check=True)
     cases.append({"id": case_id, "label": f"Original Main {('Add' if mode == 4 else 'Morph')} fixed-spectrum route · blend {blend} · depth {depth}",
                   "parameters": params, "events": [[0, 0, 0, 60, 127]], "changes": [],
-                  "blockSize": block, "output": rust_output, "legacyOutput": old_output})
+                  "blockSize": block, "output": rust_output, "legacyOutput": old_output,
+                  "waveTarget": wave_targets[waveform]})
 
 def digest(paths):
     return hashlib.sha256(b"".join(path.read_bytes() for path in paths)).hexdigest()
@@ -56,14 +68,15 @@ def digest(paths):
 (OUT / "manifest.json").write_text(json.dumps({
     "version": 1,
     "reference": "compiled original C++ Main Add/Morph voice nodes versus native Rust Main bank",
-    "scope": "old sample player, oscillator, Add oscillator, SineBank spectral Add/Morph with fixed published source spectrum, crossfaders, gains and voice mixers; temporal updates, vocoder and old UI envelope excluded",
+    "scope": "old sample player, oscillator, additive sine/saw/square/triangle/blend wave recipes, SineBank spectral Add/Morph with fixed published source spectrum, crossfaders, gains and voice mixers; temporal updates, vocoder and old UI envelope excluded",
     "legacySourceSha256": digest([LEGACY / "dsp/core/nodes" / name for name in
                                   ["SampleRegionPlaybackNode.cpp", "OscillatorNode.cpp", "SineBankNode.cpp",
                                    "GainNode.cpp", "CrossfaderNode.cpp", "MixerNode.cpp"]]),
     "referenceHarnessSha256": digest([ROOT / "tools/legacy-main-add-morph-voice-reference.cpp",
                                       ROOT / "scripts/build-legacy-main-add-morph-voice-reference.sh"]),
     "rustSourceSha256": digest([ROOT / "crates/manifold-core/src" / name for name in
-                                ["main_voice_bank.rs", "sample_region.rs", "oscillator.rs", "sine_bank.rs", "graph.rs"]]),
+                                ["main_voice_bank.rs", "sample_region.rs", "oscillator.rs", "wave_add_oscillator.rs", "sine_bank.rs", "graph.rs",
+                                 "spectral_targets.rs"]] + [ROOT / "crates/manifold-core/examples/emit_main_wave_recipe.rs"]),
     "wasmSha256": hashlib.sha256((ROOT / "web/public/manifold_filter.wasm").read_bytes()).hexdigest(),
     "sampleRate": sample_rate, "sampleSourceRate": sample_rate, "sampleFrames": sample_frames,
     "sample": "sample.f32", "channels": 2, "frames": frames, "stepFrame": 4096,

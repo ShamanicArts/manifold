@@ -13,6 +13,7 @@ use crate::phrase_gain::PhraseGain;
 use crate::ring_modulator::RingModulator;
 use crate::sample_region::SampleRegion;
 use crate::sine_bank::{DEFAULTS as SINE_DEFAULTS, PartialSet, SineBank};
+use crate::wave_add_oscillator::{WaveAddOscillator, prepare_default_tables};
 
 pub const MAX_MAIN_TEMPORAL_TARGETS: usize = 256;
 
@@ -23,6 +24,7 @@ struct MainVoice {
     ring_sample_to_wave: RingModulator,
     ring_wave_to_sample: RingModulator,
     wave_add: SineBank,
+    wave_add_oscillator: WaveAddOscillator,
     sample_add: SineBank,
     follower: EnvelopeFollower,
     phrase: PhraseGain,
@@ -50,6 +52,7 @@ pub struct MainVoiceBank {
     temporal_source_targets: Vec<PartialSet>,
     temporal_positions: [f32; MAIN_VOICE_COUNT],
     temporal_speed: f32,
+    original_add_wave: bool,
     waveform: u32,
     blend: f32,
     root_note: f32,
@@ -71,6 +74,7 @@ impl MainVoiceBank {
         let mut add_wave_defaults = SINE_DEFAULTS;
         // The original Add oscillator is prepared at 220 Hz before note-on retunes it.
         add_wave_defaults[0] = 220.0;
+        let wave_add_tables = prepare_default_tables();
         let voices = std::array::from_fn(|_| {
             let mut envelope = AdsrEnvelope::new(sample_rate);
             envelope.set_parameter(0, 0.005);
@@ -84,6 +88,7 @@ impl MainVoiceBank {
                 ring_sample_to_wave: RingModulator::new(sample_rate, [120.0, 0.0, 0.0, 0.0, 0.0]),
                 ring_wave_to_sample: RingModulator::new(sample_rate, [120.0, 0.0, 0.0, 0.0, 0.0]),
                 wave_add: SineBank::new(sample_rate, add_wave_defaults),
+                wave_add_oscillator: WaveAddOscillator::new(sample_rate, wave_add_tables.clone()),
                 sample_add: SineBank::new(sample_rate, SINE_DEFAULTS),
                 follower: EnvelopeFollower::new(sample_rate, 8.0, 85.0),
                 phrase: PhraseGain::new(sample_rate, 0.0, 0.2),
@@ -111,6 +116,7 @@ impl MainVoiceBank {
             temporal_source_targets: Vec::new(),
             temporal_positions: [0.0; MAIN_VOICE_COUNT],
             temporal_speed: 1.0,
+            original_add_wave: false,
             waveform: 0,
             blend: 0.0,
             root_note: 60.0,
@@ -195,6 +201,7 @@ impl MainVoiceBank {
                 self.waveform = value.round().clamp(0.0, 4.0) as u32;
                 for voice in &mut self.voices {
                     voice.oscillator.set_parameter(0, self.waveform as f32);
+                    voice.wave_add_oscillator.set_waveform(self.waveform);
                 }
             }
             1 => self.blend = value.clamp(-1.0, 1.0),
@@ -239,6 +246,7 @@ impl MainVoiceBank {
                     voice.phrase.set_parameter(id - 17, value);
                 }
             }
+            19 => self.original_add_wave = value >= 0.5,
             _ => return false,
         }
         true
@@ -256,6 +264,7 @@ impl MainVoiceBank {
                 let frequency = (440.0_f64 * 2.0_f64.powf((note as f64 - 69.0) / 12.0)) as f32;
                 voice.envelope.reset();
                 voice.wave_add.reset();
+                voice.wave_add_oscillator.reset_phase();
                 if let Some(first) = self.temporal_source_targets.first() {
                     voice.sample_add.load_partials(*first);
                 }
@@ -297,6 +306,7 @@ impl MainVoiceBank {
         for voice in &mut self.voices {
             voice.envelope.reset();
             voice.wave_add.reset();
+            voice.wave_add_oscillator.reset_phase();
             voice.sample_add.reset();
             voice.follower.reset();
             voice.player.set_parameter(6, 0.0);
@@ -475,15 +485,25 @@ impl MainVoiceBank {
                     (root_frequency * pitch.desired_sample_ratio as f64).clamp(20.0, 8000.0) as f32;
                 let morph_frequency = wave_frequency + (sample_frequency - wave_frequency) * t;
                 if self.direction_mode == 4 {
-                    voice.wave_add.set_parameter(0, wave_frequency);
-                    voice.wave_add.set_parameter(1, amp * 2.0);
-                    voice.wave_add.process_planar(
-                        None,
-                        [
-                            &mut self.add_wave_left[..frames],
-                            &mut self.add_wave_right[..frames],
-                        ],
-                    );
+                    if self.original_add_wave {
+                        voice.wave_add_oscillator.set_frequency(wave_frequency);
+                        voice.wave_add_oscillator.set_amplitude(amp * 2.0);
+                        for frame in 0..frames {
+                            let sample = voice.wave_add_oscillator.process_sample();
+                            self.add_wave_left[frame] = sample;
+                            self.add_wave_right[frame] = sample;
+                        }
+                    } else {
+                        voice.wave_add.set_parameter(0, wave_frequency);
+                        voice.wave_add.set_parameter(1, amp * 2.0);
+                        voice.wave_add.process_planar(
+                            None,
+                            [
+                                &mut self.add_wave_left[..frames],
+                                &mut self.add_wave_right[..frames],
+                            ],
+                        );
+                    }
                 }
                 voice.sample_add.set_parameter(
                     0,

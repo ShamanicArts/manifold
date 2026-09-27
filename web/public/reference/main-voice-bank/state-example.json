@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "projectId": "manifold.main-voice-bank-study",
   "parameters": {
     "waveform": 0,
@@ -20,7 +20,8 @@
     "output": 1,
     "time-stretch": 1,
     "phrase-amount": 0,
-    "phrase-reference": 0.2
+    "phrase-reference": 0.2,
+    "add-wave-source": 0
   },
   "targetControls": {
     "active": false,

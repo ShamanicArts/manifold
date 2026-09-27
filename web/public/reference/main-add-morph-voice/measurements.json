@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "settledStartFrame": 4096,
-  "comparisonScope": "old sample player, oscillator, Add oscillator, SineBank spectral Add/Morph with fixed published source spectrum, crossfaders, gains and voice mixers; temporal updates, vocoder and old UI envelope excluded",
+  "comparisonScope": "old sample player, oscillator, additive sine/saw/square/triangle/blend wave recipes, SineBank spectral Add/Morph with fixed published source spectrum, crossfaders, gains and voice mixers; temporal updates, vocoder and old UI envelope excluded",
   "results": [
     {
       "id": "add-source",
@@ -109,6 +109,96 @@
         "max": 0.013089984655380249,
         "rms": 0.0008783034938638825,
         "referenceRms": 0.09427328817532979
+      }
+    },
+    {
+      "id": "add-saw-center",
+      "settledOldVsNative": {
+        "max": 5.960464477539063e-8,
+        "rms": 7.688832115975574e-9,
+        "referenceRms": 0.08537159881836473
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.09952885338388306
+      },
+      "onsetOldVsNative": {
+        "max": 0.0010000449838116765,
+        "rms": 0.00007388740623374092,
+        "referenceRms": 0.11190934839408914
+      }
+    },
+    {
+      "id": "add-square-center",
+      "settledOldVsNative": {
+        "max": 5.960464477539063e-8,
+        "rms": 8.12326830065548e-9,
+        "referenceRms": 0.08313184232312959
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.10422917253515457
+      },
+      "onsetOldVsNative": {
+        "max": 0.002521909074857831,
+        "rms": 0.00018917891212202683,
+        "referenceRms": 0.12172375767766724
+      }
+    },
+    {
+      "id": "add-triangle-center",
+      "settledOldVsNative": {
+        "max": 6.146728992462158e-8,
+        "rms": 1.090735234300892e-8,
+        "referenceRms": 0.10444263446058057
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.11338583729035376
+      },
+      "onsetOldVsNative": {
+        "max": 0.003353504464030266,
+        "rms": 0.0002603229060217784,
+        "referenceRms": 0.1216743153569869
+      }
+    },
+    {
+      "id": "add-blend-center",
+      "settledOldVsNative": {
+        "max": 4.470348358154297e-8,
+        "rms": 8.09248201117002e-9,
+        "referenceRms": 0.0788362004289828
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.10618394933200537
+      },
+      "onsetOldVsNative": {
+        "max": 0.0021479097194969654,
+        "rms": 0.0001588897591189496,
+        "referenceRms": 0.12780862649065877
+      }
+    },
+    {
+      "id": "add-saw-wave-only",
+      "settledOldVsNative": {
+        "max": 2.9802322387695312e-8,
+        "rms": 5.9422335819754395e-9,
+        "referenceRms": 0.08761821580748695
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.08354743971015188
+      },
+      "onsetOldVsNative": {
+        "max": 0.0009357716771773994,
+        "rms": 0.0000732697466491486,
+        "referenceRms": 0.07926808091079675
       }
     }
   ]
