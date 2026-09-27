@@ -60,7 +60,7 @@
     <h2>What this exposed</h2>
     <p>REAPER supplies the discrete effect selector as a widened 32-bit float. Its normalized Reverb value is approximately <code>0.349999994</code>, not an exact <code>0.35</code>. The editor previously sent that imprecision into the browser project parser as a fractional effect index. The controller now quantizes the selector to one of 21 positions, and editor snapshots serialize its project value as an integer. The repeatable probe catches this host-specific failure.</p>
     <p class="note">This proves host loading, visible host edits, widget gestures, project recall, automation recording and replay, two simultaneous instances, and editor close/reopen in REAPER. Varied bus configurations and Windows/macOS hosts are subsequent gates.</p>
-    <p>Repeat locally with a disposable Xvfb/XTEST display: <code>DISPLAY=:88 MANIFOLD_ISOLATED_DISPLAY=1 python3 scripts/probe-reaper-vst3.py</code>. The script uses a temporary REAPER configuration and project and closes its isolated host process.</p>
+    <p>Repeat locally with a disposable Xvfb/XTEST display: <code>DISPLAY=:88 MANIFOLD_ISOLATED_DISPLAY=1 python3 scripts/probe-reaper-vst3.py</code>. The script uses a temporary REAPER configuration and project and closes its isolated host process. <a href="/standalone-fx-reaper-audio-proof.html">Hear and inspect a real REAPER audio render ↗</a></p>
   </main>
 </body>
 </html>

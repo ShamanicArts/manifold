@@ -1,0 +1,32 @@
+{
+  "host": "REAPER Linux VST3",
+  "effect": "WaveShaper",
+  "rate": 48000,
+  "frames": 48000,
+  "steadyStartFrame": 3072,
+  "dryVsNative": {
+    "peak": 5.960464477539063e-08,
+    "rms": 3.3916679491806327e-08
+  },
+  "wetVsNativeFull": {
+    "peak": 0.01644548773765564,
+    "rms": 0.0007743924403764064
+  },
+  "wetVsNativeAfterStartup": {
+    "peak": 5.960464477539063e-08,
+    "rms": 3.788327312954974e-08
+  },
+  "wetVsDry": {
+    "peak": 0.209328293800354,
+    "rms": 0.17777912930560746
+  },
+  "wetHostParameters": [
+    0.10000000149012,
+    0.69999998807907,
+    0.80000001192093,
+    0.0,
+    0.69999998807907,
+    0.5,
+    0.5
+  ]
+}

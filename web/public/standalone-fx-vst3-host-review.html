@@ -67,7 +67,7 @@
       <figure><img src="/standalone-fx-vst3-editor-gesture.png" alt="Same native VST3 editor after a pointer drag changes Room to 0.72" /><figcaption>Pointer drag on Room: host receives begin, value, end; the widget and controller settle at 0.72.</figcaption></figure>
     </div>
     <p class="note">The pointer traces come from disposable Xvfb sessions, including REAPER project recall, envelope playback, gesture recording and replay, and two independent instances with editor switching. Varied bus configurations remain to be validated. Audio Unit and Windows/macOS bundles remain separate export steps.</p>
-    <p>Build locally with <code>./scripts/build-vst3.sh</code>. The resulting bundle is <code>target/vst3/ManifoldFX.vst3</code>. <a href="/standalone-fx-host-review.html">Compare the CLAP host checkpoint ↗</a></p>
+    <p>Build locally with <code>./scripts/build-vst3.sh</code>. The resulting bundle is <code>target/vst3/ManifoldFX.vst3</code>. <a href="/standalone-fx-reaper-audio-proof.html">Inspect the real DAW audio render ↗</a> · <a href="/standalone-fx-host-review.html">Compare the CLAP host checkpoint ↗</a></p>
   </main>
 </body>
 </html>

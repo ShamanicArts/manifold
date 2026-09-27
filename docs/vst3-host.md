@@ -83,9 +83,22 @@ saves and reopens the two-track project. Reverb and Chorus retain independent
 effects and parameters. Captures of all nine stages are included in the
 review.
 
+The [REAPER audio render](../web/public/standalone-fx-reaper-audio-proof.html)
+adds a real stereo WAV item and renders bypass and WaveShaper projects through
+the REAPER master. `scripts/probe-reaper-vst3-audio.py` reads the host's saved
+seven parameter values, prepares that authored project in native Rust, and
+compares 48,000 stereo frames. The dry render differs by at most `5.96e-8`
+throughout. The wet render differs by at most `5.96e-8` after frame 3,072 and
+has a clear audible/visible effect (`0.178` RMS versus bypass). Its startup
+transition differs by up to `0.0164` before settling. The cause of that early
+host/native difference still needs investigation; the steady comparison must
+not be described as full-render parity. The review page includes the source,
+actual REAPER WAV renders, plots, and machine-readable measurements.
+
 ## Next host gates
 
-1. Test varied DAW audio configurations and longer automation sessions.
+1. Investigate the initial wet render mismatch, then test varied DAW audio
+   configurations and longer automation sessions.
 2. Export the general graph through fixed 128 macro parameters, typed MIDI
    and sidechain buses, and the authored project import path described in
    [the broader boundary map](native-vst3-boundary.md).
