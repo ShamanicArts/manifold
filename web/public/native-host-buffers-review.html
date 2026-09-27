@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Manifold · Native host buffer checkpoint</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #e0e8eb; background: #101820; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(930px, calc(100% - 36px)); margin: auto; padding: 52px 0 88px; }
+    .top { display: flex; justify-content: space-between; gap: 20px; padding-bottom: 17px; border-bottom: 1px solid #3e5761; font-size: 12px; }
+    .top strong, a { color: #81dade; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .eyebrow { color: #81dade; margin: 43px 0 10px; font: 11px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .12em; }
+    h1 { font: 400 clamp(40px, 6vw, 68px) Georgia, serif; line-height: 1.05; margin: 0 0 16px; }
+    h2 { font: 400 30px Georgia, serif; margin: 48px 0 15px; }
+    .lead, p { color: #b5c6ce; line-height: 1.65; }
+    .flow { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; margin-top: 33px; }
+    .step { flex: 1; min-width: 155px; padding: 16px; background: #192832; border: 1px solid #405a64; }
+    .step span { display: block; color: #85aab5; font: 10px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .1em; }
+    .step strong { display: block; margin-top: 12px; font-size: 16px; font-weight: 500; }
+    .step small { display: block; margin-top: 8px; color: #a9bdc5; line-height: 1.5; }
+    .arrow { align-self: center; color: #6eb9bc; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    td, th { text-align: left; padding: 12px 8px; border-bottom: 1px solid #374e58; }
+    th { color: #95abb6; font-weight: 500; }
+    td { color: #d0dde0; }
+    .next { padding: 17px; background: #1b2931; border-left: 2px solid #d6a66b; }
+    code { color: #b4ece7; }
+    @media (max-width: 640px) { .arrow { display: none; } .step { flex-basis: 100%; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="top"><strong>MANIFOLD / NATIVE CHECKPOINT</strong><a href="/fx-module.html">Try the FX module ↗</a></div>
+    <p class="eyebrow">Prepared audio boundary</p>
+    <h1>Host buffers can meet the Rust graph.</h1>
+    <p class="lead">The browser module demonstrates the authored UI and Rust/Wasm audio. This native step prepares the same Rust graph for a DAW host's raw planar audio buffers, including in-place processing where input and output share memory.</p>
+    <div class="flow">
+      <div class="step"><span>Host callback</span><strong>Raw channel pointers</strong><small>Null channels mean silence or discarded output.</small></div><span class="arrow">→</span>
+      <div class="step"><span>Prepared boundary</span><strong>Private planar scratch</strong><small>Inputs are copied before the graph can write output.</small></div><span class="arrow">→</span>
+      <div class="step"><span>Shared processor</span><strong>Rust graph + automation</strong><small>Same native processor used for the authored project bundles.</small></div><span class="arrow">→</span>
+      <div class="step"><span>Host output</span><strong>Copy after success</strong><small>Rejected blocks leave host output untouched.</small></div>
+    </div>
+    <h2>Checks</h2>
+    <table><thead><tr><th>Case</th><th>Result</th></tr></thead><tbody>
+      <tr><td>Input and output use the same host memory</td><td>Rendered safely through independent scratch</td></tr>
+      <tr><td>Mono sidechain, absent input channel</td><td>Missing channel reads as silence</td></tr>
+      <tr><td>Oversize block or invalid automation</td><td>Returns an error; output remains unchanged</td></tr>
+      <tr><td>Native suite</td><td>24 tests pass; <code>cargo fmt --check</code> clean</td></tr>
+    </tbody></table>
+    <h2>Next boundary</h2>
+    <p class="next">A loadable VST3 factory, processor/controller interfaces, bus negotiation, and host state callbacks still need to wrap this prepared ingress. The current bridge deliberately pays for copies to keep host aliasing and Rust borrowing unambiguous. It has no JUCE or Lua dependency.</p>
+  </main>
+</body>
+</html>

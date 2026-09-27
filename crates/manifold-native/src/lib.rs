@@ -7,6 +7,7 @@ use manifold_core::main_voice_bank::MainTemporalRecipe;
 use manifold_core::sine_bank::PartialSet;
 use manifold_core::temporal_partials::TemporalFrame;
 
+pub mod host_buffers;
 pub mod parameters;
 pub mod project;
 
