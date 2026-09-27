@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 const wasm = await readFile(new URL('../web/public/manifold_filter.wasm', import.meta.url));
+const contract = JSON.parse(await readFile(new URL('../projects/main-looper/project.json', import.meta.url)));
+const ids = contract.synthParameters;
 const { instance } = await WebAssembly.instantiate(wasm, {});
 const e = instance.exports;
 assert.equal(e.manifold_looper_prepare(8_000, 128), 1);
@@ -26,9 +28,17 @@ assert.equal(e.manifold_looper_status(8, 1), 4_000);
 assert.ok(block(0) > .25);
 assert.equal(e.manifold_looper_command(5, 0), 1); // clear the earlier dry-input loops
 for (let i = 0; i < 20; i++) block(0);
-assert.equal(e.manifold_looper_synth_parameter(0, 0), 1); // original wave branch, sine
-assert.equal(e.manifold_looper_synth_parameter(1, -1), 1); // wave only; no sample loaded
+assert.equal(e.manifold_looper_synth_parameter(ids.waveform, 0), 1); // original wave branch, sine
+assert.equal(e.manifold_looper_synth_parameter(ids.blend, -1), 1); // wave only; no sample loaded
+for (const [id, value] of [[ids.attack, .1], [ids.decay, .2], [ids.sustain, .7], [ids.release, .4]]) {
+  assert.equal(e.manifold_looper_synth_parameter(id, value), 1);
+}
 assert.equal(e.manifold_looper_synth_note(0, 60, 100), 1);
+block(0);
+const attackStartPeak = Math.max(...Array.from(output.subarray(0, 128), Math.abs));
+for (let i = 0; i < 8; i++) block(0);
+const attackLaterPeak = Math.max(...Array.from(output.subarray(0, 128), Math.abs));
+assert.ok(attackLaterPeak > attackStartPeak * 2, `ADSR attack: ${attackStartPeak} to ${attackLaterPeak}`);
 let synthPeak = 0;
 for (let i = 0; i < 20; i++) synthPeak = Math.max(synthPeak, Math.abs(block(0)));
 assert.ok(synthPeak > .001, `synth output peak ${synthPeak}`);
@@ -52,8 +62,8 @@ for (let offset = 0; offset < capturedFrames; offset += 128) {
 assert.equal(e.manifold_looper_sample_publish_finish(), 1);
 assert.equal(e.manifold_looper_synth_sample_frames(), 1_000);
 assert.ok(Math.abs(e.manifold_looper_synth_sample_peak(0, 1_000) - .35) < 1e-5);
-assert.equal(e.manifold_looper_synth_parameter(20, .25), 1);
-assert.equal(e.manifold_looper_synth_parameter(1, 1), 1);
+assert.equal(e.manifold_looper_synth_parameter(ids.sampleXfade, .25), 1);
+assert.equal(e.manifold_looper_synth_parameter(ids.blend, 1), 1);
 assert.equal(e.manifold_looper_synth_note(0, 60, 100), 1);
 let samplePeak = 0;
 for (let i = 0; i < 4; i++) samplePeak = Math.max(samplePeak, Math.abs(block(0)));
@@ -94,4 +104,4 @@ assert.equal(e.manifold_looper_synth_note(0, 60, 100), 1);
 let freeSamplePeak = 0;
 for (let i = 0; i < 4; i++) freeSamplePeak = Math.max(freeSamplePeak, Math.abs(block(0)));
 assert.ok(freeSamplePeak > .01, `Free sample output peak ${freeSamplePeak}`);
-console.log('Main looper Wasm: First Loop, retrospective dry input, Rust synth-to-layer capture, and Retro/Free Sample voices passed');
+console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR attack, Rust synth-to-layer capture, and Retro/Free Sample voices passed');

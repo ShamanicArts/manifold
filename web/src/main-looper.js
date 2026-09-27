@@ -2,6 +2,7 @@ import './main-looper.css';
 import project from '../../projects/main-looper/project.json';
 import { encodePcm, decodePcm } from './state/stereo-source.js';
 import { mountCompactSlider } from './widgets/compact-slider.js';
+import { mountMainAdsr } from './widgets/main-adsr.js';
 
 const $ = (id) => document.getElementById(id);
 const bars = project.segments;
@@ -26,6 +27,8 @@ const layerControl = (layer, id, value) => post({ type: 'layer-control', layer, 
 const command = (id, value = 0) => post({ type: 'command', id, value });
 const synthNote = (kind, note = 0, velocity = 0) => post({ type: 'synth-note', kind, note, velocity });
 const synthParameter = (id, value) => post({ type: 'synth-parameter', id, value });
+const synthIds = project.synthParameters;
+const adsr = mountMainAdsr($, synthParameter, synthIds);
 const selectedSegment = id => Number($(id).querySelector('[aria-pressed="true"]').dataset.value);
 function wireSegments(id, change) {
   const group = $(id);
@@ -56,13 +59,13 @@ const sourceOutput = mountCompactSlider($('source-output'), { label: 'Output', m
 let sampleBarsValue = 1, sampleBlendValue = 0;
 let sourceTab = 'sample', latestSamplePeaks = [];
 sampleBars.onChange(value => { sampleBarsValue = value; });
-sampleRoot.onChange(value => synthParameter(2, value));
-sampleBlend.onChange(value => { sampleBlendValue = value; synthParameter(1, value * 2 - 1); });
-sampleXfade.onChange(value => synthParameter(20, value / 100));
-sampleStretch.onChange(value => synthParameter(16, value));
-blendPitch.onChange(value => synthParameter(4, value));
-blendDepth.onChange(value => synthParameter(7, value));
-sourceOutput.onChange(value => synthParameter(15, value));
+sampleRoot.onChange(value => synthParameter(synthIds.sampleRoot, value));
+sampleBlend.onChange(value => { sampleBlendValue = value; synthParameter(synthIds.blend, value * 2 - 1); });
+sampleXfade.onChange(value => synthParameter(synthIds.sampleXfade, value / 100));
+sampleStretch.onChange(value => synthParameter(synthIds.timeStretch, value));
+blendPitch.onChange(value => synthParameter(synthIds.samplePitch, value));
+blendDepth.onChange(value => synthParameter(synthIds.blendDepth, value));
+sourceOutput.onChange(value => synthParameter(synthIds.output, value));
 const paintSampleSliders = () => { [sampleBars, sampleRoot, sampleBlend, sampleXfade,
   sampleStretch, blendPitch, blendDepth, sourceOutput].forEach(slider => slider.paint()); };
 new ResizeObserver(paintSampleSliders).observe($('sample-root'));
@@ -165,6 +168,19 @@ function sizeInstrument() {
 }
 new ResizeObserver(sizeInstrument).observe($('instrument-frame'));
 sizeInstrument();
+for (const tab of document.querySelectorAll('[data-main-tab]')) {
+  tab.addEventListener('click', () => {
+    const synth = tab.dataset.mainTab === 'midisynth';
+    $('layers').hidden = synth;
+    $('midisynth-panel').hidden = !synth;
+    for (const button of document.querySelectorAll('[data-main-tab]')) {
+      const selected = button === tab;
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-selected', String(selected));
+    }
+    requestAnimationFrame(() => { sizeInstrument(); if (synth) { paintSampleSliders(); adsr.paint(); } });
+  });
+}
 
 const noteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B', 'C'];
 for (let index = 0; index < noteNames.length; index++) {
@@ -556,18 +572,19 @@ async function start() {
       else if (data.type === 'rejected') status('That looper action could not be applied.');
       else handleTransfer(data);
     };
-    synthParameter(0, Number($('synth-wave').value));
-    synthParameter(1, sampleBlendValue * 2 - 1);
-    synthParameter(2, 60);
-    synthParameter(3, selectedSegment('blend-keytrack'));
-    synthParameter(4, 0);
-    synthParameter(5, selectedSegment('sample-pitch-mode'));
-    synthParameter(6, Number($('blend-mode').value));
-    synthParameter(7, .5);
-    synthParameter(15, 1);
-    synthParameter(16, 1);
-    synthParameter(19, selectedSegment('wave-render-mode'));
-    synthParameter(20, .1);
+    synthParameter(synthIds.waveform, Number($('synth-wave').value));
+    synthParameter(synthIds.blend, sampleBlendValue * 2 - 1);
+    synthParameter(synthIds.sampleRoot, 60);
+    synthParameter(synthIds.keytrack, selectedSegment('blend-keytrack'));
+    synthParameter(synthIds.samplePitch, 0);
+    synthParameter(synthIds.pitchMode, selectedSegment('sample-pitch-mode'));
+    synthParameter(synthIds.blendMode, Number($('blend-mode').value));
+    synthParameter(synthIds.blendDepth, .5);
+    synthParameter(synthIds.output, 1);
+    synthParameter(synthIds.timeStretch, 1);
+    synthParameter(synthIds.addWave, selectedSegment('wave-render-mode'));
+    synthParameter(synthIds.sampleXfade, .1);
+    adsr.sendDefaults();
     if (sourceKind === 'microphone') {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
       sourceNode = context.createMediaStreamSource(stream);
@@ -611,15 +628,15 @@ async function stop() {
 }
 $('audio-button').onclick = start;
 $('source').onchange = () => { $('file-label').hidden = $('source').value !== 'file'; $('pitch-label').hidden = $('source').value !== 'oscillator'; };
-$('synth-wave').onchange = () => { synthParameter(0, Number($('synth-wave').value)); drawSourceGraph(); };
-wireSegments('wave-render-mode', mode => synthParameter(19, mode));
+$('synth-wave').onchange = () => { synthParameter(synthIds.waveform, Number($('synth-wave').value)); drawSourceGraph(); };
+wireSegments('wave-render-mode', mode => synthParameter(synthIds.addWave, mode));
 wireSegments('sample-pitch-mode', mode => {
-  synthParameter(5, mode);
+  synthParameter(synthIds.pitchMode, mode);
   $('sample-stretch').hidden = mode === 0;
   requestAnimationFrame(paintSampleSliders);
 });
-$('blend-mode').onchange = () => synthParameter(6, Number($('blend-mode').value));
-wireSegments('blend-keytrack', mode => synthParameter(3, mode));
+$('blend-mode').onchange = () => synthParameter(synthIds.blendMode, Number($('blend-mode').value));
+wireSegments('blend-keytrack', mode => synthParameter(synthIds.keytrack, mode));
 $('pitch').onchange = () => { if (sourceNode?.frequency) sourceNode.frequency.setTargetAtTime(Math.max(60, Math.min(1200, Number($('pitch').value))), context.currentTime, .01); };
 $('mode').onchange = () => control(project.controls.mode, Number($('mode').value));
 $('tempo').onchange = () => control(project.controls.tempo, Number($('tempo').value));

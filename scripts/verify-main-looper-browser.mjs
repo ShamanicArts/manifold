@@ -11,6 +11,11 @@ try {
   await page.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html`);
   assert.equal(await page.locator('.layer').count(), 4);
   assert.equal(await page.locator('.segment').count(), 9);
+  const transportBounds = await page.locator('.transport').boundingBox();
+  const captureBounds = await page.locator('#capture').boundingBox();
+  const tabBounds = await page.locator('.tabs').boundingBox();
+  assert.equal(Math.round(captureBounds.y - transportBounds.y), 52);
+  assert.equal(Math.round(tabBounds.y - transportBounds.y), 182);
   await page.locator('#source').selectOption('oscillator');
   await page.locator('#audio-button').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Running'), { timeout: 25000 });
@@ -19,6 +24,22 @@ try {
   await page.waitForTimeout(1000);
   await page.locator('#rec').click();
   await page.waitForFunction(() => document.querySelector('.layer[data-layer="0"] .state').textContent === 'Playing', { timeout: 10000 });
+  await page.locator('[data-main-tab="midisynth"]').click();
+  assert.equal(await page.locator('#midisynth-panel').isVisible(), true);
+  assert.equal(await page.locator('#layers').isVisible(), false);
+  const rackBounds = await page.locator('#midisynth-panel').boundingBox();
+  assert.equal(Math.round(rackBounds.y - tabBounds.y), 34);
+  assert.equal(await page.locator('.rack-adsr').count(), 1);
+  assert.equal(await page.locator('#adsr-attack').getAttribute('aria-valuenow'), '50');
+  await page.locator('#adsr-attack').focus();
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await page.locator('#adsr-attack').getAttribute('aria-valuenow'), '51');
+  const adsrGraph = await page.locator('#adsr-graph').boundingBox();
+  await page.mouse.move(adsrGraph.x + 14, adsrGraph.y + 22);
+  await page.mouse.down();
+  await page.mouse.move(adsrGraph.x + 40, adsrGraph.y + 22, { steps: 5 });
+  await page.mouse.up();
+  assert.ok(Number(await page.locator('#adsr-attack').getAttribute('aria-valuenow')) > 51);
   await page.locator('#sample-bars').focus();
   await page.keyboard.press('Home');
   await page.locator('#sample-cap').click();
@@ -64,6 +85,9 @@ try {
   await page.locator('#blend-keytrack [data-value="1"]').click();
   assert.equal(await page.locator('#blend-keytrack [aria-pressed="true"]').getAttribute('data-value'), '1');
   await page.locator('[data-source-tab="sample"]').click();
+  await page.screenshot({ path: new URL('../web/public/main-midisynth-rack.png', import.meta.url).pathname, fullPage: true });
+  await page.locator('[data-main-tab="looper"]').click();
+  assert.equal(await page.locator('#layers').isVisible(), true);
   const inferredTempo = Number(await page.locator('#tempo').inputValue());
   assert.ok(inferredTempo > 90 && inferredTempo < 160, `First Loop tempo: ${inferredTempo}`);
   await page.locator('.donut').nth(1).click();
@@ -120,11 +144,13 @@ try {
   await page.locator('#source').selectOption('none');
   await page.locator('#audio-button').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Main voice bank'));
+  await page.locator('[data-main-tab="midisynth"]').click();
   const key = await page.locator('.synth-key').first().boundingBox();
   await page.mouse.move(key.x + key.width / 2, key.y + key.height / 2);
   await page.mouse.down();
   await page.waitForTimeout(500);
   await page.mouse.up();
+  await page.locator('[data-main-tab="looper"]').click();
   await page.locator('.donut').nth(2).click();
   await page.locator('.segment').nth(8).click();
   await page.waitForFunction(() => document.querySelector('.layer[data-layer="2"] .state').textContent === 'Playing', { timeout: 10000 });
@@ -140,5 +166,5 @@ try {
   assert.ok(lastSegment.x + lastSegment.width <= frame.x + frame.width + 1);
   assert.ok(await narrow.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await narrow.screenshot({ path: new URL('../web/public/main-looper-narrow.png', import.meta.url).pathname, fullPage: true });
-  console.log(`Main looper browser: four strips, first loop ${inferredTempo} BPM, Live/L1 Retro Cap, L1 Free Cap/STOP, Source waveform/tabs, traditional arm/fire, reverse scrub, session save/reopen, decoded file and Rust synth capture passed`);
+  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth ADSR and Source, Live/L1 Retro Cap, L1 Free Cap/STOP, traditional arm/fire, reverse scrub, session save/reopen, decoded file and Rust synth capture passed`);
 } finally { await browser.close(); }
