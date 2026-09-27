@@ -1012,6 +1012,7 @@ version = "0.1.0"
 dependencies = [
  "crossbeam-queue",
  "libc",
+ "manifold-core",
  "manifold-native",
  "serde_json",
  "vst3",

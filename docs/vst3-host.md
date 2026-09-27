@@ -102,8 +102,9 @@ source, actual REAPER WAV renders, plots, and machine-readable measurements.
 1. Test varied DAW audio configurations and longer automation sessions. Decide
    whether legacy WaveShaper block partition sensitivity should remain part
    of the product behavior.
-2. Export the general graph through fixed 128 macro parameters, typed MIDI
-   and sidechain buses, and the authored project import path described in
-   [the broader boundary map](native-vst3-boundary.md).
+2. The second class, [Manifold Graph](../web/public/graph-vst3-host-proof.html),
+   now exposes fixed 128 macro parameters, MIDI and sidechain buses, and
+   portable project state. Its native widget editor and user-facing project
+   import workflow remain to build; see [the broader boundary map](native-vst3-boundary.md).
 3. Build Windows and macOS bundles and run their host validation. Audio Unit
    remains a separate host adapter.

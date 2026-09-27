@@ -1,0 +1,16 @@
+{
+  "host": "REAPER Linux VST3",
+  "class": "Manifold Graph",
+  "project": "note-voice.json",
+  "rate": 48000,
+  "frames": 48000,
+  "pluginParameters": 128,
+  "reaperReportedParameters": 131,
+  "midiPitch": 60,
+  "noteStartSeconds": 0.125,
+  "noteEndSeconds": 0.5,
+  "beforeNotePeak": 0.0,
+  "notePeak": 0.10163843631744385,
+  "noteRms": 0.06153539917665956,
+  "render": "graph-vst3-reaper-note.wav"
+}

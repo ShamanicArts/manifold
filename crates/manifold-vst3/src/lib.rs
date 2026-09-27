@@ -4,6 +4,9 @@
 mod controller;
 #[cfg(target_os = "linux")]
 mod editor;
+mod graph_contract;
+mod graph_controller;
+mod graph_processor;
 mod processor;
 mod util;
 
@@ -32,7 +35,7 @@ impl IPluginFactoryTrait for Factory {
     }
 
     unsafe fn countClasses(&self) -> i32 {
-        2
+        4
     }
 
     unsafe fn getClassInfo(&self, index: i32, info: *mut PClassInfo) -> tresult {
@@ -43,18 +46,27 @@ impl IPluginFactoryTrait for Factory {
         info.cid = match index {
             0 => processor::Processor::CID,
             1 => controller::Controller::CID,
+            2 => graph_processor::GraphProcessor::CID,
+            3 => graph_controller::GraphController::CID,
             _ => return kInvalidArgument,
         };
         info.cardinality = PClassInfo_::ClassCardinality_::kManyInstances as i32;
         copy_cstring(
-            if index == 0 {
+            if index % 2 == 0 {
                 "Audio Module Class"
             } else {
                 "Component Controller Class"
             },
             &mut info.category,
         );
-        copy_cstring("Manifold Standalone FX", &mut info.name);
+        copy_cstring(
+            if index < 2 {
+                "Manifold Standalone FX"
+            } else {
+                "Manifold Graph"
+            },
+            &mut info.name,
+        );
         kResultOk
     }
 
@@ -80,6 +92,18 @@ impl IPluginFactoryTrait for Factory {
                     .to_com_ptr::<FUnknown>()
                     .unwrap(),
             )
+        } else if cid == graph_processor::GraphProcessor::CID {
+            Some(
+                ComWrapper::new(graph_processor::GraphProcessor::new())
+                    .to_com_ptr::<FUnknown>()
+                    .unwrap(),
+            )
+        } else if cid == graph_controller::GraphController::CID {
+            Some(
+                ComWrapper::new(graph_controller::GraphController::new())
+                    .to_com_ptr::<FUnknown>()
+                    .unwrap(),
+            )
         } else {
             None
         };
@@ -100,20 +124,32 @@ impl IPluginFactory2Trait for Factory {
         info.cid = match index {
             0 => processor::Processor::CID,
             1 => controller::Controller::CID,
+            2 => graph_processor::GraphProcessor::CID,
+            3 => graph_controller::GraphController::CID,
             _ => return kInvalidArgument,
         };
         info.cardinality = PClassInfo_::ClassCardinality_::kManyInstances as i32;
         copy_cstring(
-            if index == 0 {
+            if index % 2 == 0 {
                 "Audio Module Class"
             } else {
                 "Component Controller Class"
             },
             &mut info.category,
         );
-        copy_cstring("Manifold Standalone FX", &mut info.name);
+        copy_cstring(
+            if index < 2 {
+                "Manifold Standalone FX"
+            } else {
+                "Manifold Graph"
+            },
+            &mut info.name,
+        );
         info.classFlags = 0;
-        copy_cstring(if index == 0 { "Fx" } else { "" }, &mut info.subCategories);
+        copy_cstring(
+            if index % 2 == 0 { "Fx" } else { "" },
+            &mut info.subCategories,
+        );
         copy_cstring("Shamanic Arts", &mut info.vendor);
         copy_cstring("0.1.0", &mut info.version);
         copy_cstring("VST 3.8.0", &mut info.sdkVersion);
@@ -173,7 +209,11 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use vst3::{
         ComPtr, Interface,
-        Steinberg::Vst::{IComponent, IComponentTrait, IEditController, IEditControllerTrait},
+        Steinberg::Vst::{
+            AudioBusBuffers, AudioBusBuffers__type0, BusDirections_, IAudioProcessorTrait,
+            IComponent, IComponentTrait, IEditController, IEditControllerTrait, MediaTypes_,
+            ProcessData, ProcessSetup, SpeakerArr, SymbolicSampleSizes_,
+        },
     };
 
     struct StreamData {
@@ -246,10 +286,12 @@ mod tests {
     #[test]
     fn exported_factory_creates_processor_and_controller() {
         let factory = unsafe { ComPtr::from_raw(GetPluginFactory()) }.unwrap();
-        assert_eq!(unsafe { factory.countClasses() }, 2);
+        assert_eq!(unsafe { factory.countClasses() }, 4);
         for (cid, iid) in [
             (processor::Processor::CID, IComponent::IID),
             (controller::Controller::CID, IEditController::IID),
+            (graph_processor::GraphProcessor::CID, IComponent::IID),
+            (graph_controller::GraphController::CID, IEditController::IID),
         ] {
             let mut object = null_mut();
             let result = unsafe {
@@ -319,5 +361,116 @@ mod tests {
         );
         assert!((unsafe { controller.getParamNormalized(0) } - 7. / 20.).abs() < 1e-5);
         assert!((unsafe { controller.getParamNormalized(1) } - 0.72).abs() < 1e-5);
+    }
+
+    #[test]
+    fn graph_state_restores_a_sidechain_route_and_controller() {
+        let mut document: serde_json::Value =
+            serde_json::from_slice(graph_contract::DEFAULT_PROJECT).unwrap();
+        document["signal"]["nodes"] = serde_json::json!([
+            {"id": 1, "type": "input.raw"},
+            {"id": 2, "type": "input.sidechain"},
+            {"id": 3, "type": "output"}
+        ]);
+        document["signal"]["connections"] =
+            serde_json::json!([{"from": 2, "to": 3, "inputPort": 0}]);
+        document["signal"]["initialParameters"] = serde_json::json!([]);
+        let bytes = serde_json::to_vec(&document).unwrap();
+        let graph = graph_processor::GraphProcessor::new();
+        let (input, _) = stream(bytes);
+        assert_eq!(unsafe { graph.setState(input.as_ptr()) }, kResultOk);
+        let (output, saved_data) = stream(Vec::new());
+        assert_eq!(unsafe { graph.getState(output.as_ptr()) }, kResultOk);
+        let saved = saved_data.lock().unwrap().bytes.clone();
+        assert!(manifold_native::project::NativeProject::parse(&saved).is_ok());
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&saved).unwrap()["signal"]["connections"]
+                [0]["from"],
+            2
+        );
+        let controller = graph_controller::GraphController::new();
+        let (controller_input, _) = stream(saved);
+        assert_eq!(
+            unsafe { controller.setComponentState(controller_input.as_ptr()) },
+            kResultOk
+        );
+        assert_eq!(unsafe { controller.getParameterCount() }, 128);
+
+        let mut setup = ProcessSetup {
+            processMode: 0,
+            symbolicSampleSize: SymbolicSampleSizes_::kSample32 as i32,
+            maxSamplesPerBlock: 32,
+            sampleRate: 48_000.,
+        };
+        assert_eq!(unsafe { graph.setupProcessing(&mut setup) }, kResultOk);
+        let mut inputs = [SpeakerArr::kStereo, SpeakerArr::kStereo];
+        let mut outputs = [SpeakerArr::kStereo];
+        assert_eq!(
+            unsafe { graph.setBusArrangements(inputs.as_mut_ptr(), 2, outputs.as_mut_ptr(), 1) },
+            kResultOk
+        );
+        assert_eq!(
+            unsafe {
+                graph.activateBus(
+                    MediaTypes_::kAudio as i32,
+                    BusDirections_::kInput as i32,
+                    1,
+                    1,
+                )
+            },
+            kResultOk
+        );
+        assert_eq!(unsafe { graph.setActive(1) }, kResultOk);
+
+        let mut main_left = [0.8_f32; 32];
+        let mut main_right = [-0.8_f32; 32];
+        let mut side_left = [0.2_f32; 32];
+        let mut side_right = [-0.3_f32; 32];
+        let mut rendered_left = [0_f32; 32];
+        let mut rendered_right = [0_f32; 32];
+        let mut main_channels = [main_left.as_mut_ptr(), main_right.as_mut_ptr()];
+        let mut side_channels = [side_left.as_mut_ptr(), side_right.as_mut_ptr()];
+        let mut output_channels = [rendered_left.as_mut_ptr(), rendered_right.as_mut_ptr()];
+        let mut buses = [
+            AudioBusBuffers {
+                numChannels: 2,
+                silenceFlags: 0,
+                __field0: AudioBusBuffers__type0 {
+                    channelBuffers32: main_channels.as_mut_ptr(),
+                },
+            },
+            AudioBusBuffers {
+                numChannels: 2,
+                silenceFlags: 0,
+                __field0: AudioBusBuffers__type0 {
+                    channelBuffers32: side_channels.as_mut_ptr(),
+                },
+            },
+        ];
+        let mut output_bus = AudioBusBuffers {
+            numChannels: 2,
+            silenceFlags: 0,
+            __field0: AudioBusBuffers__type0 {
+                channelBuffers32: output_channels.as_mut_ptr(),
+            },
+        };
+        let mut data = ProcessData {
+            processMode: 0,
+            symbolicSampleSize: SymbolicSampleSizes_::kSample32 as i32,
+            numSamples: 32,
+            numInputs: 2,
+            numOutputs: 1,
+            inputs: buses.as_mut_ptr(),
+            outputs: &mut output_bus,
+            inputParameterChanges: null_mut(),
+            outputParameterChanges: null_mut(),
+            inputEvents: null_mut(),
+            outputEvents: null_mut(),
+            processContext: null_mut(),
+        };
+        assert_eq!(unsafe { graph.process(&mut data) }, kResultOk);
+        assert_eq!(rendered_left, side_left);
+        assert_eq!(rendered_right, side_right);
+        assert_eq!(unsafe { graph.setActive(0) }, kResultOk);
     }
 }

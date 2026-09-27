@@ -10,6 +10,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 crossbeam-queue = "0.3.14"
 libc = "0.2"
+manifold-core = { path = "../manifold-core" }
 manifold-native = { path = "../manifold-native" }
 serde_json = "1"
 vst3 = "=0.3.0"

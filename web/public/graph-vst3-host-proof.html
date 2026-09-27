@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manifold Graph · VST3 host proof</title>
+  <style>
+    :root { color-scheme: dark; font: 15px/1.5 system-ui, sans-serif; background: #111318; color: #e7e9ed; }
+    * { box-sizing: border-box; }
+    body { max-width: 980px; margin: 0 auto; padding: 48px 24px 80px; }
+    h1 { font-size: clamp(2rem, 5vw, 3.5rem); letter-spacing: -.05em; line-height: 1.04; margin: 8px 0 16px; }
+    h2 { font-size: 1.25rem; margin: 0 0 16px; }
+    p { margin: 0 0 16px; color: #b7bdc7; }
+    a { color: #b9d7fa; }
+    .eyebrow { color: #94b9ab; font-size: .72rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+    .lead { max-width: 740px; font-size: 1.18rem; color: #d2d7de; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 32px 0; }
+    .card, .panel { background: #1b1e25; border: 1px solid #343943; border-radius: 8px; padding: 22px; }
+    .card strong { display: block; font-size: 2rem; letter-spacing: -.04em; }
+    .card span { color: #aeb5c0; font-size: .82rem; }
+    .panel { margin: 18px 0; }
+    .row { display: grid; grid-template-columns: 150px 1fr; gap: 18px; padding: 12px 0; border-top: 1px solid #333842; }
+    .row:first-child { border-top: 0; }
+    .row span:first-child { color: #aeb5c0; }
+    audio { display: block; width: 100%; margin: 20px 0 10px; }
+    .small { font-size: .85rem; color: #9ea6b2; }
+    @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } .row { grid-template-columns: 1fr; gap: 4px; } }
+  </style>
+</head>
+<body>
+  <div class="eyebrow">Manifold v2 · host export checkpoint</div>
+  <h1>The graph now runs in a VST3 host.</h1>
+  <p class="lead">A second class in the Linux Manifold VST3 bundle loads the browser authored graph project, receives MIDI and audio buses, and renders through the same Rust engine as the browser and native paths.</p>
+  <div class="grid">
+    <div class="card"><strong>1,074 / 0</strong><span>Steinberg validator passed / failed across both VST3 classes</span></div>
+    <div class="card"><strong>128</strong><span>fixed automatable host slots for the general graph</span></div>
+    <div class="card"><strong>48,000</strong><span>stereo frames rendered by REAPER from a MIDI note</span></div>
+  </div>
+  <section class="panel">
+    <h2>Hear the actual REAPER render</h2>
+    <p>REAPER inserted <em>Manifold Graph</em>, sent note 60 from 0.125 to 0.5 seconds, and rendered its master output at 48 kHz. The default project is <code>projects/graph-workspace/note-voice.json</code>.</p>
+    <audio controls preload="metadata" src="/graph-vst3-reaper-note.wav"></audio>
+    <p class="small">Peak before note: 0.0 · peak during note: 0.101638 · RMS during note: 0.061535. <a href="/graph-vst3-reaper-note.json">Machine readable measurements</a> · <a href="/graph-vst3-reaper-note.wav">Download WAV</a></p>
+  </section>
+  <section class="panel">
+    <h2>What this proves</h2>
+    <div class="row"><span>Factory</span><span>REAPER finds Manifold Graph alongside the original Standalone FX class in one bundle. Steinberg's validator exercises both classes.</span></div>
+    <div class="row"><span>Signal path</span><span>A VST3 note event reaches the Rust graph at frame 16 and produces the same 128 frame stereo output as direct native rendering, sample for sample.</span></div>
+    <div class="row"><span>Project state</span><span>The component accepts and saves a portable graph bundle. A test loads a sidechain to output route and verifies the VST3 sidechain bus produces the expected stereo samples.</span></div>
+    <div class="row"><span>Host parameters</span><span>All 128 public IDs stay fixed while project bindings change. REAPER reports 131 parameters because it adds three host controls.</span></div>
+  </section>
+  <section class="panel">
+    <h2>Current boundary and next work</h2>
+    <p>This general graph class currently uses the host's generic controls. Its native graph editor and a user facing browser project import path are next. Only the first MIDI input node receives host notes for now. The earlier <a href="/standalone-fx-reaper-proof.html">Standalone FX class</a> retains its original widget editor and independent host proof.</p>
+    <p class="small">Reproduce: <code>cargo test -p manifold-vst3</code>, <code>./scripts/build-vst3.sh</code>, <code>validator -e target/vst3/ManifoldFX.vst3</code>, then run <code>scripts/probe-reaper-graph-vst3.py</code> on an isolated Xvfb display.</p>
+  </section>
+</body>
+</html>
