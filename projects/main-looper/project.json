@@ -1,6 +1,7 @@
 {
   "format": "manifold.project",
   "version": 1,
+  "sessionVersion": 2,
   "id": "manifold.main-looper",
   "name": "Main Looper",
   "legacyReference": "UserScripts/projects/Main/dsp/looper_baseline.lua",

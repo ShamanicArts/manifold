@@ -141,6 +141,12 @@ export function mountMainEq(get, parameter, ids) {
   return {
     paint,
     setResponse(values) { response = values ?? []; paint(); },
+    snapshot() { return { bands: bands.map(band => ({ ...band })), selected, insertType }; },
+    restore(state) {
+      state.bands.forEach((band, index) => Object.assign(bands[index], band));
+      selected = state.selected; insertType = state.insertType;
+      sync(); paint(); this.sendState();
+    },
     sendState() { bands.forEach((_, index) => sendBand(index)); },
   };
 }

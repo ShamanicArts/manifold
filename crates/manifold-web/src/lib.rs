@@ -186,10 +186,38 @@ pub extern "C" fn manifold_looper_synth_sample_frames() -> u32 {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_synth_sample_clear() -> u32 {
+    LOOPER.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |e| {
+            if e.sample_upload.is_some() {
+                return 0;
+            }
+            e.instrument.clear_sample_source();
+            1
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn manifold_looper_synth_sample_peak(start: u32, end: u32) -> f32 {
     LOOPER.with(|slot| {
         slot.borrow().as_ref().map_or(0.0, |e| {
             e.instrument.synth_sample_peak(start as usize, end as usize)
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_synth_sample_export_chunk(offset: u32, frames: u32) -> u32 {
+    if frames == 0 || frames > 4096 {
+        return 0;
+    }
+    LOOPER.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |e| {
+            e.instrument.copy_synth_sample_interleaved(
+                offset as usize,
+                &mut e.transfer[..frames as usize * 2],
+            ) as u32
         })
     })
 }
@@ -323,6 +351,71 @@ pub extern "C" fn manifold_looper_sample_publish_finish() -> u32 {
             1
         })
     })
+}
+
+/// Restore saved Main Sample PCM outside the audio callback, in bounded chunks.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_synth_sample_import_begin(frames: u32) -> u32 {
+    LOOPER.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |e| {
+            if e.sample_upload.is_some() {
+                return 0;
+            }
+            let Some(upload) = StereoSampleUpload::new(frames as usize, e.instrument.sample_rate())
+            else {
+                return 0;
+            };
+            e.sample_upload = Some(upload);
+            1
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_synth_sample_import_chunk(offset: u32, frames: u32) -> u32 {
+    if frames == 0 || frames > 4096 {
+        return 0;
+    }
+    LOOPER.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |e| {
+            let Some(upload) = e.sample_upload.as_mut() else {
+                return 0;
+            };
+            let offset = offset as usize;
+            let frames = frames as usize;
+            if !upload.prepare_next(offset, frames) {
+                return 0;
+            }
+            upload.samples_mut()[offset * 2..(offset + frames) * 2]
+                .copy_from_slice(&e.transfer[..frames * 2]);
+            u32::from(upload.validate_next(offset, frames))
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_synth_sample_import_finish() -> u32 {
+    LOOPER.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |e| {
+            let Some(upload) = e.sample_upload.take() else {
+                return 0;
+            };
+            let Some(sample) = upload.finish() else {
+                return 0;
+            };
+            e.instrument.load_validated_sample(sample);
+            1
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_synth_sample_import_cancel() {
+    LOOPER.with(|slot| {
+        if let Some(e) = slot.borrow_mut().as_mut() {
+            e.sample_upload = None;
+        }
+    });
 }
 
 #[unsafe(no_mangle)]

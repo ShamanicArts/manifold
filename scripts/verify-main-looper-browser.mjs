@@ -9,8 +9,14 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1100 }, acceptDownloads: true });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html`);
+  assert.ok(page.url().endsWith('/main-looper.html'));
   assert.equal(await page.locator('.layer').count(), 4);
   assert.equal(await page.locator('.segment').count(), 9);
+  const firstLayer = await page.locator('.layer').first().boundingBox();
+  const firstWave = await page.locator('.layer .wave').first().boundingBox();
+  const firstVolume = await page.locator('.layer .knob').first().boundingBox();
+  assert.equal(Math.round(firstWave.x - firstLayer.x), 56);
+  assert.equal(Math.round(firstVolume.x - firstLayer.x), 1044);
   const transportBounds = await page.locator('.transport').boundingBox();
   const captureBounds = await page.locator('#capture').boundingBox();
   const tabBounds = await page.locator('.tabs').boundingBox();
@@ -158,10 +164,19 @@ try {
   const download = await downloadPromise;
   const bundle = JSON.parse(await readFile(await download.path(), 'utf8'));
   assert.equal(bundle.id, 'manifold.main-looper');
+  assert.equal(bundle.version, 2);
+  assert.ok(bundle.sample.frames > 0 && bundle.sample.pcmF32Base64.length > 0);
+  assert.equal(bundle.rack.source.waveform, 1);
+  assert.equal(bundle.rack.fx2.selected, 5);
+  assert.equal(bundle.rack.filter.mode, 0);
   assert.ok(bundle.layers[0].frames > 0 && bundle.layers[1].frames > 0);
   await page.locator('#audio-button').click();
   await page.locator('#audio-button').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Running'));
+  await page.locator('[data-main-tab="midisynth"]').click();
+  await page.locator('[data-source-tab="wave"]').click();
+  await page.locator('#synth-wave').selectOption('0');
+  await page.locator('#filter-mode').selectOption('2');
   await page.locator('#open-session').setInputFiles({ name: 'main-looper.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(bundle)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
@@ -169,6 +184,18 @@ try {
     && document.querySelector('.layer[data-layer="1"] .bars').textContent.includes('bar'));
   assert.match(await page.locator('.layer[data-layer="0"] .bars').textContent(), /bar/);
   assert.match(await page.locator('.layer[data-layer="1"] .bars').textContent(), /bar/);
+  assert.equal(await page.locator('#synth-wave').inputValue(), '1');
+  assert.equal(await page.locator('#filter-mode').inputValue(), '0');
+  assert.equal(await page.locator('#fx2-module-type').getAttribute('data-value'), '5');
+  assert.notEqual(await page.locator('#sample-length').textContent(), '0ms');
+  const legacy = { ...bundle, version: 1 };
+  delete legacy.rack;
+  delete legacy.sample;
+  await page.locator('#status').evaluate(element => { element.textContent = 'Testing legacy import'; });
+  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v1.json',
+    mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(legacy)) });
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
+  await page.locator('[data-main-tab="looper"]').click();
   const wave = await page.locator('.layer[data-layer="0"] .wave').boundingBox();
   await page.mouse.move(wave.x + wave.width * .6, wave.y + wave.height * .5);
   await page.mouse.down();

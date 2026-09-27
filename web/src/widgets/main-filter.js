@@ -100,6 +100,13 @@ export function mountMainFilter(get, parameter, ids) {
   paint();
   return {
     paint() { paint(); cutoffSlider.paint(); resonanceSlider.paint(); },
+    snapshot() { return { mode: filterType, cutoff, resonance }; },
+    restore(state) {
+      filterType = state.mode; cutoff = state.cutoff; resonance = state.resonance;
+      mode.value = String(filterType);
+      cutoffSlider.setValue(cutoff); resonanceSlider.setValue(resonance);
+      this.paint(); this.sendDefaults();
+    },
     sendDefaults() {
       parameter(ids.filterMode, filterType);
       parameter(ids.filterCutoff, cutoff);

@@ -1,6 +1,7 @@
 import './main-looper.css';
 import project from '../../projects/main-looper/project.json';
 import { encodePcm, decodePcm } from './state/stereo-source.js';
+import { validateMainRackState } from './state/main-rack-state.js';
 import { mountCompactSlider } from './widgets/compact-slider.js';
 import { mountMainAdsr } from './widgets/main-adsr.js';
 import { mountMainFilter } from './widgets/main-filter.js';
@@ -117,6 +118,60 @@ for (const tab of document.querySelectorAll('[data-source-tab]')) {
     requestAnimationFrame(paintSampleSliders);
     drawSourceGraph();
   });
+}
+const sliderValue = id => Number($(id).getAttribute('aria-valuenow'));
+function sourceSnapshot() {
+  return {
+    waveform: Number($('synth-wave').value), waveRender: selectedSegment('wave-render-mode'),
+    sampleBars: sliderValue('sample-bars'), sampleRoot: sliderValue('sample-root'),
+    sampleBlend: sliderValue('sample-blend'), sampleXfade: sliderValue('sample-xfade'),
+    sampleStretch: sliderValue('sample-stretch'), pitchMode: selectedSegment('sample-pitch-mode'),
+    samplePitch: sliderValue('blend-pitch'), blendMode: Number($('blend-mode').value),
+    keytrack: selectedSegment('blend-keytrack'), blendDepth: sliderValue('blend-depth'),
+    output: sliderValue('source-output'), tab: sourceTab,
+    sampleSource: Number($('sample-source-select').value), sampleMode,
+  };
+}
+function sendSourceState() {
+  const state = sourceSnapshot();
+  for (const [id, value] of [
+    [synthIds.waveform, state.waveform], [synthIds.addWave, state.waveRender],
+    [synthIds.sampleRoot, state.sampleRoot], [synthIds.blend, state.sampleBlend * 2 - 1],
+    [synthIds.sampleXfade, state.sampleXfade / 100], [synthIds.timeStretch, state.sampleStretch],
+    [synthIds.pitchMode, state.pitchMode], [synthIds.samplePitch, state.samplePitch],
+    [synthIds.blendMode, state.blendMode], [synthIds.keytrack, state.keytrack],
+    [synthIds.blendDepth, state.blendDepth], [synthIds.output, state.output],
+  ]) synthParameter(id, value);
+}
+function restoreSource(state) {
+  $('synth-wave').value = String(state.waveform);
+  synthParameter(synthIds.waveform, state.waveform);
+  for (const [group, value] of [['wave-render-mode', state.waveRender],
+    ['sample-pitch-mode', state.pitchMode], ['blend-keytrack', state.keytrack]]) {
+    $(`${group}`).querySelector(`[data-value="${value}"]`).click();
+  }
+  $('blend-mode').value = String(state.blendMode);
+  synthParameter(synthIds.blendMode, state.blendMode);
+  for (const [slider, value] of [[sampleBars, state.sampleBars], [sampleRoot, state.sampleRoot],
+    [sampleBlend, state.sampleBlend], [sampleXfade, state.sampleXfade],
+    [sampleStretch, state.sampleStretch], [blendPitch, state.samplePitch],
+    [blendDepth, state.blendDepth], [sourceOutput, state.output]]) slider.setValue(value, true);
+  $('sample-source-select').value = String(state.sampleSource);
+  sampleMode = state.sampleMode;
+  $('sample-mode').textContent = sampleMode ? 'Free' : 'Retro';
+  $('sample-mode').classList.toggle('free', sampleMode === 1);
+  document.querySelector(`[data-source-tab="${state.tab}"]`).click();
+  sendSourceState();
+  drawSourceGraph();
+}
+function rackSnapshot() {
+  return { source: sourceSnapshot(), adsr: adsr.snapshot(), filter: filter.snapshot(),
+    fx1: fx1.snapshot(), fx2: fx2.snapshot(), eq: eq.snapshot() };
+}
+function restoreRack(state) {
+  restoreSource(state.source);
+  adsr.restore(state.adsr); filter.restore(state.filter);
+  fx1.restore(state.fx1); fx2.restore(state.fx2); eq.restore(state.eq);
 }
 drawSourceGraph();
 function resetSampleCaptureUI() {
@@ -439,16 +494,22 @@ function nextSaveChunk() {
     }
     job.layer++; job.offset = 0;
   }
+  if (job.sampleOffset < job.state.sample.frames) {
+    post({ type: 'save-sample-chunk', requestId: job.id, offset: job.sampleOffset,
+      frames: Math.min(4096, job.state.sample.frames - job.sampleOffset) });
+    return;
+  }
   post({ type: 'save-end', requestId: job.id });
   for (let index = 0; index < project.layers; index++) {
     const layer = job.state.layers[index];
     layer.pcmF32Base64 = layer.frames ? encodePcm(job.audio[index]) : '';
   }
+  job.state.sample.pcmF32Base64 = job.state.sample.frames ? encodePcm(job.sampleAudio) : '';
   const blob = new Blob([JSON.stringify(job.state)], { type: 'application/json' });
   const url = URL.createObjectURL(blob), link = document.createElement('a');
   link.href = url; link.download = 'manifold-main-looper.json'; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  status('Downloaded the four-layer looper session.');
+  status('Downloaded the Main instrument session.');
   transferJob = null; $('save-session').disabled = false;
 }
 
@@ -457,7 +518,12 @@ function nextImportLayer() {
   if (!job || job.kind !== 'import') return;
   while (job.layer < project.layers && !job.state.layers[job.layer].frames) job.layer++;
   if (job.layer === project.layers) {
-    post({ type: 'import-end', requestId: job.id }); return;
+    if (job.sampleAudio) {
+      const stereo = job.sampleAudio;
+      job.sampleAudio = null;
+      post({ type: 'import-sample-begin', requestId: job.id, frames: job.state.sample.frames, stereo }, [stereo.buffer]);
+    } else post({ type: 'import-end', requestId: job.id });
+    return;
   }
   const layer = job.state.layers[job.layer];
   const stereo = job.audio[job.layer];
@@ -471,21 +537,35 @@ function handleTransfer(data) {
   if (!job || job.id !== data.requestId) return;
   if (data.type === 'save-started' && job.kind === 'save') {
     job.state = data.state;
+    job.state.rack = job.rack;
     job.audio = data.state.layers.map(layer => new Float32Array(layer.frames * 2));
+    job.sampleAudio = new Float32Array(data.state.sample.frames * 2);
     nextSaveChunk();
   } else if (data.type === 'save-chunk' && job.kind === 'save') {
     job.audio[data.layer].set(data.stereo, data.offset * 2);
     job.offset = data.offset + data.stereo.length / 2;
+    nextSaveChunk();
+  } else if (data.type === 'save-sample-chunk' && job.kind === 'save') {
+    job.sampleAudio.set(data.stereo, data.offset * 2);
+    job.sampleOffset = data.offset + data.stereo.length / 2;
     nextSaveChunk();
   } else if (data.type === 'import-started' && job.kind === 'import') {
     nextImportLayer();
   } else if (data.type === 'import-progress' && job.kind === 'import') {
     if (data.done) { job.layer++; nextImportLayer(); }
     else post({ type: 'import-step', requestId: job.id, layer: data.layer });
+  } else if (data.type === 'import-sample-progress' && job.kind === 'import') {
+    if (data.done) post({ type: 'import-end', requestId: job.id });
+    else post({ type: 'import-sample-step', requestId: job.id });
   } else if (data.type === 'import-complete' && job.kind === 'import') {
     $('target').value = Math.round(job.state.targetBpm);
-    status('Opened the four-layer looper session.');
     transferJob = null;
+    if (job.state.version === project.sessionVersion) {
+      restoreRack(job.state.rack);
+      $('sample-length').textContent = `${Math.round(job.state.sample.frames / context.sampleRate * 1000)}ms`;
+    }
+    status('Opened the four-layer Main session.');
+    post({ type: 'snapshot' });
   }
 }
 
@@ -493,7 +573,11 @@ $('save-session').onclick = () => {
   if (!processor) { status('Start audio before downloading a looper session.'); return; }
   if (transferJob || sampleJob || freeSource !== null) return;
   const id = nextRequest++;
-  transferJob = { kind: 'save', id, state: null, audio: null, layer: 0, offset: 0 };
+  let rack;
+  try { rack = validateMainRackState(rackSnapshot()); }
+  catch (error) { status(error.message); return; }
+  transferJob = { kind: 'save', id, state: null, audio: null, layer: 0, offset: 0,
+    sampleOffset: 0, sampleAudio: null, rack };
   $('save-session').disabled = true; status('Collecting loop audio for download…');
   post({ type: 'save-start', requestId: id });
 };
@@ -504,7 +588,7 @@ $('open-session').onchange = async () => {
   if (!file) return;
   try {
     const state = JSON.parse(await file.text());
-    if (state.format !== project.format || state.version !== project.version || state.id !== project.id
+    if (state.format !== project.format || ![1, project.sessionVersion].includes(state.version) || state.id !== project.id
       || state.sampleRate !== context.sampleRate || !Array.isArray(state.layers) || state.layers.length !== project.layers
       || !Number.isFinite(state.tempo) || !Number.isFinite(state.targetBpm)
       || !Number.isInteger(state.activeLayer) || state.activeLayer < 0 || state.activeLayer >= project.layers
@@ -519,9 +603,20 @@ $('open-session').onchange = async () => {
         || layer.speed < -4 || layer.speed > 4) throw new Error('Invalid looper layer data.');
       return layer.frames ? decodePcm(layer.pcmF32Base64, layer.frames) : null;
     });
+    let sampleAudio = null;
+    if (state.version === project.sessionVersion) {
+      validateMainRackState(state.rack);
+      if (!state.sample || !Number.isInteger(state.sample.frames)
+        || state.sample.frames < 0 || state.sample.frames > Math.min(1_440_000, context.sampleRate * project.captureSeconds)
+        || (state.sample.frames === 0 && state.sample.pcmF32Base64 !== '')) {
+        throw new Error('Invalid Main Sample state.');
+      }
+      sampleAudio = state.sample.frames ? decodePcm(state.sample.pcmF32Base64, state.sample.frames) : null;
+    }
     const id = nextRequest++;
-    const metadata = { ...state, layers: state.layers.map(({ pcmF32Base64: _pcm, ...layer }) => layer) };
-    transferJob = { kind: 'import', id, state: metadata, audio, layer: 0 };
+    const metadata = { ...state, layers: state.layers.map(({ pcmF32Base64: _pcm, ...layer }) => layer),
+      sample: state.sample ? { frames: state.sample.frames } : undefined };
+    transferJob = { kind: 'import', id, state: metadata, audio, sampleAudio, layer: 0 };
     status('Opening looper session…');
     post({ type: 'import-start', requestId: id, state: metadata });
   } catch (error) { status(error.message); }
@@ -580,18 +675,7 @@ async function start() {
       else if (data.type === 'rejected') status('That looper action could not be applied.');
       else handleTransfer(data);
     };
-    synthParameter(synthIds.waveform, Number($('synth-wave').value));
-    synthParameter(synthIds.blend, sampleBlendValue * 2 - 1);
-    synthParameter(synthIds.sampleRoot, 60);
-    synthParameter(synthIds.keytrack, selectedSegment('blend-keytrack'));
-    synthParameter(synthIds.samplePitch, 0);
-    synthParameter(synthIds.pitchMode, selectedSegment('sample-pitch-mode'));
-    synthParameter(synthIds.blendMode, Number($('blend-mode').value));
-    synthParameter(synthIds.blendDepth, .5);
-    synthParameter(synthIds.output, 1);
-    synthParameter(synthIds.timeStretch, 1);
-    synthParameter(synthIds.addWave, selectedSegment('wave-render-mode'));
-    synthParameter(synthIds.sampleXfade, .1);
+    sendSourceState();
     adsr.sendDefaults();
     filter.sendDefaults();
     fx1.sendDefaults(); fx2.sendDefaults();

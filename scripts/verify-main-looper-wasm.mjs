@@ -13,6 +13,16 @@ function block(value) {
   assert.equal(e.manifold_looper_process(128), 1);
   return output[0];
 }
+globalThis.AudioWorkletProcessor = class {};
+globalThis.registerProcessor = () => {};
+const { captureStripBins } = await import('../web/src/audio/main-looper-processor.js');
+for (let i = 0; i < 4; i++) block(.8);
+for (let i = 0; i < 4; i++) block(0);
+const captureBins = captureStripBins(contract.segments, 8, 16_000, 240_000,
+  e.manifold_looper_status(contract.status.capturedFrames, 0));
+const capturePeaks = captureBins.map(bin => bin ? e.manifold_looper_peak(0, 1, ...bin) : 0);
+assert.ok(capturePeaks[0] > .79 && capturePeaks.at(-1) < .001,
+  `capture display must run from earlier loud input to later silence: ${capturePeaks}`);
 assert.equal(e.manifold_looper_command(0, 0), 1);
 for (let i = 0; i < 125; i++) block(.25);
 assert.equal(e.manifold_looper_command(1, 0), 1);
@@ -61,6 +71,11 @@ for (let offset = 0; offset < capturedFrames; offset += 128) {
 }
 assert.equal(e.manifold_looper_sample_publish_finish(), 1);
 assert.equal(e.manifold_looper_synth_sample_frames(), 1_000);
+assert.ok(Math.abs(e.manifold_looper_synth_sample_peak(0, 1_000) - .35) < 1e-5);
+assert.equal(e.manifold_looper_synth_sample_export_chunk(0, 1_000), 1_000);
+assert.equal(e.manifold_looper_synth_sample_import_begin(1_000), 1);
+assert.equal(e.manifold_looper_synth_sample_import_chunk(0, 1_000), 1);
+assert.equal(e.manifold_looper_synth_sample_import_finish(), 1);
 assert.ok(Math.abs(e.manifold_looper_synth_sample_peak(0, 1_000) - .35) < 1e-5);
 assert.equal(e.manifold_looper_synth_parameter(ids.sampleXfade, .25), 1);
 assert.equal(e.manifold_looper_synth_parameter(ids.blend, 1), 1);
@@ -151,4 +166,6 @@ for (const base of [fx.fx1Base, fx.fx2Base]) {
 }
 const twoFxLevel = sustainedLevel();
 assert.ok(dryFxLevel > twoFxLevel * 5, `Main two FX slots: ${dryFxLevel} / ${twoFxLevel}`);
+assert.equal(e.manifold_looper_synth_sample_clear(), 1);
+assert.equal(e.manifold_looper_synth_sample_frames(), 0);
 console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, and Retro/Free Sample voices passed');

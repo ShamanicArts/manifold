@@ -189,6 +189,18 @@ impl MainVoiceBank {
         self.panic();
     }
 
+    pub fn clear_sample(&mut self) {
+        self.voices[0].player.clear_sample();
+        let (first, remaining) = self.voices.split_at_mut(1);
+        for voice in remaining {
+            voice.player.share_sample_from(&first[0].player);
+        }
+        self.temporal_source_targets.clear();
+        self.temporal_source_frames.clear();
+        self.temporal_recipe = None;
+        self.panic();
+    }
+
     /// A uniformly spaced, prepared source spectrum table. The control side
     /// builds every target; processing only selects and copies one per voice.
     pub fn load_temporal_source_targets(&mut self, targets: Vec<PartialSet>) -> bool {
@@ -473,6 +485,12 @@ impl MainVoiceBank {
 
     pub fn sample_peak(&self, start: usize, end: usize) -> f32 {
         self.voices[0].player.sample_peak(start, end)
+    }
+
+    pub fn copy_sample_interleaved(&self, start_frame: usize, destination: &mut [f32]) -> usize {
+        self.voices[0]
+            .player
+            .copy_stereo_interleaved(start_frame, destination)
     }
 
     pub fn process_planar(&mut self, output: [&mut [f32]; 2]) {

@@ -130,9 +130,21 @@ export function mountMainFxSlot(root, parameter, base) {
   pad.addEventListener('pointermove', event => { if (dragging) move(event); });
   for (const kind of ['pointerup', 'pointercancel', 'lostpointercapture']) pad.addEventListener(kind, () => { dragging = false; paintPad(); });
   syncType();
-  return { paint, sendDefaults() {
-    parameter(base, selected);
-    stored[selected].forEach((value, slot) => parameter(base + 2 + slot, value));
-    parameter(base + 1, mixValue);
-  } };
+  return {
+    paint,
+    snapshot() { return { selected, mix: mixValue, parameters: stored.map(values => [...values]),
+      xIndex, yIndex, mode }; },
+    restore(state) {
+      state.parameters.forEach((values, index) => { stored[index] = [...values]; });
+      selected = state.selected; mixValue = state.mix;
+      xIndex = state.xIndex; yIndex = state.yIndex;
+      type.setSelected(selected); mix.setValue(mixValue);
+      syncType(); mode = state.mode; paint(); this.sendDefaults();
+    },
+    sendDefaults() {
+      parameter(base, selected);
+      stored[selected].forEach((value, slot) => parameter(base + 2 + slot, value));
+      parameter(base + 1, mixValue);
+    },
+  };
 }

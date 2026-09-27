@@ -162,6 +162,13 @@ impl SampleRegion {
         true
     }
 
+    pub fn clear_sample(&mut self) {
+        self.stereo = Arc::new(Vec::new());
+        self.source_rate = self.output_rate;
+        self.position = 0.0;
+        self.playing = false;
+    }
+
     pub(crate) fn load_validated(&mut self, source: ValidatedStereo) {
         self.stereo = Arc::new(source.stereo);
         self.source_rate = source.source_rate;
@@ -212,6 +219,17 @@ impl SampleRegion {
 
     pub fn sample_frames(&self) -> usize {
         self.stereo.len() / 2
+    }
+
+    /// Copy a bounded chronological span for host-side state export.
+    pub fn copy_stereo_interleaved(&self, start_frame: usize, destination: &mut [f32]) -> usize {
+        if destination.len() % 2 != 0 || start_frame >= self.sample_frames() {
+            return 0;
+        }
+        let frames = (destination.len() / 2).min(self.sample_frames() - start_frame);
+        destination[..frames * 2]
+            .copy_from_slice(&self.stereo[start_frame * 2..(start_frame + frames) * 2]);
+        frames
     }
 
     /// Bounded display peak in chronological sample order.

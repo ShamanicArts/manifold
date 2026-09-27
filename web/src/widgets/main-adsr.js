@@ -88,6 +88,15 @@ export function mountMainAdsr(get, parameter, ids) {
   paint();
   return {
     paint() { paint(); Object.values(sliders).forEach(slider => slider.paint()); },
+    snapshot() { return { ...values }; },
+    restore(state) {
+      for (const [name] of specs) {
+        values[name] = state[name];
+        sliders[name].setValue(state[name]);
+      }
+      paint();
+      this.sendDefaults();
+    },
     sendDefaults() {
       for (const [name] of specs) parameter(ids[name], name === 'sustain' ? values[name] / 100 : values[name] / 1000);
     },

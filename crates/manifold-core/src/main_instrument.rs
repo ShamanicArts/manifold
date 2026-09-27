@@ -156,6 +156,10 @@ impl MainInstrument {
         self.synth.load_validated(sample);
     }
 
+    pub fn clear_sample_source(&mut self) {
+        self.synth.clear_sample();
+    }
+
     pub fn sample_rate(&self) -> f32 {
         self.sample_rate
     }
@@ -166,6 +170,14 @@ impl MainInstrument {
 
     pub fn synth_sample_peak(&self, start: usize, end: usize) -> f32 {
         self.synth.sample_peak(start, end)
+    }
+
+    pub fn copy_synth_sample_interleaved(
+        &self,
+        start_frame: usize,
+        destination: &mut [f32],
+    ) -> usize {
+        self.synth.copy_sample_interleaved(start_frame, destination)
     }
 
     pub fn process(&mut self, dry: [&[f32]; 2], output: [&mut [f32]; 2]) {

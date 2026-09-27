@@ -1,15 +1,17 @@
 /** Main looper adapter: device buffers and messages only; Rust owns audio/state. */
 // Vite serves this AudioWorklet module as an asset, so it must be self-contained.
-// Each Main capture strip spans an age range. Return buckets in screen order:
-// older audio on the left, the current write head toward the right.
-export function captureStripBins(bars, index, samplesPerBar, captureFrames, count = 20) {
+// Each strip is an age range. While it fills for the first time, place its
+// available chronological audio at the left edge; empty space stays at right.
+export function captureStripBins(bars, index, samplesPerBar, captureFrames, capturedFrames, count = 20) {
   const older = Math.min(captureFrames, Math.floor(bars[index] * samplesPerBar));
   const newer = Math.min(captureFrames, Math.floor((bars[index + 1] ?? 0) * samplesPerBar));
   const span = Math.max(0, older - newer);
-  return Array.from({ length: count }, (_, bin) => [
-    Math.floor(older - span * (bin + 1) / count),
-    Math.floor(older - span * bin / count),
-  ]);
+  const available = Math.max(0, Math.min(span, capturedFrames - newer));
+  const filled = span ? Math.min(count, Math.ceil(count * available / span)) : 0;
+  return Array.from({ length: count }, (_, bin) => bin < filled ? [
+    Math.floor(newer + available - available * (bin + 1) / filled),
+    Math.floor(newer + available - available * bin / filled),
+  ] : null);
 }
 let project;
 class MainLooperProcessor extends AudioWorkletProcessor {
@@ -89,11 +91,12 @@ class MainLooperProcessor extends AudioWorkletProcessor {
             muted: s(project.status.layerMute, layer) === 1,
           }));
           this.port.postMessage({ type: 'save-started', requestId: data.requestId,
-            state: { format: project.format, version: project.version, id: project.id,
+            state: { format: project.format, version: project.sessionVersion, id: project.id,
               sampleRate: s(project.status.sampleRate), tempo: s(project.status.tempo),
               targetBpm: s(project.status.targetBpm), mode: s(project.status.mode),
               activeLayer: s(project.status.activeLayer), overdub: s(project.status.overdub) === 1,
-              overdubLengthPolicy: s(project.status.overdubLengthPolicy), layers } });
+              overdubLengthPolicy: s(project.status.overdubLengthPolicy), layers,
+              sample: { frames: e.manifold_looper_synth_sample_frames() } } });
         } else if (data.type === 'save-chunk' && this.engine && this.transferJob?.type === 'save'
           && this.transferJob.requestId === data.requestId) {
           const frames = this.engine.manifold_looper_export_chunk(data.layer, data.offset, Math.min(4096, data.frames));
@@ -101,6 +104,13 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           const ptr = this.engine.manifold_looper_transfer_ptr();
           const stereo = new Float32Array(this.engine.memory.buffer, ptr, frames * 2).slice();
           this.port.postMessage({ type: 'save-chunk', requestId: data.requestId, layer: data.layer, offset: data.offset, stereo }, [stereo.buffer]);
+        } else if (data.type === 'save-sample-chunk' && this.engine && this.transferJob?.type === 'save'
+          && this.transferJob.requestId === data.requestId) {
+          const frames = this.engine.manifold_looper_synth_sample_export_chunk(data.offset, Math.min(4096, data.frames));
+          if (!frames) throw new Error('Main Sample export ended before its saved length.');
+          const ptr = this.engine.manifold_looper_transfer_ptr();
+          const stereo = new Float32Array(this.engine.memory.buffer, ptr, frames * 2).slice();
+          this.port.postMessage({ type: 'save-sample-chunk', requestId: data.requestId, offset: data.offset, stereo }, [stereo.buffer]);
         } else if (data.type === 'save-end' && this.transferJob?.type === 'save'
           && this.transferJob.requestId === data.requestId) {
           this.transferJob = null;
@@ -109,7 +119,7 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           if (s(project.status.recording) || Array.from({ length: project.layers }, (_, layer) => s(project.status.layerPending, layer)).some(Boolean)) {
             throw new Error('Finish recording and pending commits before opening a session.');
           }
-          this.transferJob = { type: 'import', requestId: data.requestId, state: data.state, layer: null };
+          this.transferJob = { type: 'import', requestId: data.requestId, state: data.state, layer: null, sample: null };
           this.port.postMessage({ type: 'import-started', requestId: data.requestId });
         } else if (data.type === 'import-begin' && this.engine && this.transferJob?.type === 'import'
           && this.transferJob.requestId === data.requestId) {
@@ -135,9 +145,46 @@ class MainLooperProcessor extends AudioWorkletProcessor {
             this.transferJob.layer = null;
           }
           this.port.postMessage({ type: 'import-progress', requestId: data.requestId, layer: data.layer, done });
+        } else if (data.type === 'import-sample-begin' && this.engine && this.transferJob?.type === 'import'
+          && this.transferJob.requestId === data.requestId && !this.transferJob.sample) {
+          const stereo = data.stereo;
+          if (!(stereo instanceof Float32Array) || stereo.length !== data.frames * 2
+            || this.engine.manifold_looper_synth_sample_import_begin(data.frames) !== 1) {
+            throw new Error('Main Sample import preparation failed.');
+          }
+          this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_looper_input_ptr(), this.capacity * 2);
+          this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_looper_output_ptr(), this.capacity * 2);
+          this.transferJob.sample = { stereo, copied: 0 };
+          this.port.postMessage({ type: 'import-sample-progress', requestId: data.requestId, done: false });
+        } else if (data.type === 'import-sample-step' && this.engine && this.transferJob?.sample
+          && this.transferJob.requestId === data.requestId) {
+          const job = this.transferJob.sample;
+          const count = Math.min(4096, job.stereo.length / 2 - job.copied);
+          const ptr = this.engine.manifold_looper_transfer_ptr();
+          new Float32Array(this.engine.memory.buffer, ptr, count * 2)
+            .set(job.stereo.subarray(job.copied * 2, (job.copied + count) * 2));
+          if (this.engine.manifold_looper_synth_sample_import_chunk(job.copied, count) !== 1) {
+            throw new Error('Saved Main Sample PCM failed validation.');
+          }
+          job.copied += count;
+          const done = job.copied === job.stereo.length / 2;
+          if (done) {
+            if (this.engine.manifold_looper_synth_sample_import_finish() !== 1) {
+              throw new Error('Main Sample publication failed.');
+            }
+            this.transferJob.sample = null;
+            this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_looper_input_ptr(), this.capacity * 2);
+            this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_looper_output_ptr(), this.capacity * 2);
+          }
+          this.port.postMessage({ type: 'import-sample-progress', requestId: data.requestId, done });
         } else if (data.type === 'import-end' && this.engine && this.transferJob?.type === 'import'
           && this.transferJob.requestId === data.requestId) {
           const state = this.transferJob.state;
+          if (this.transferJob.layer || this.transferJob.sample) throw new Error('Session PCM transfer is incomplete.');
+          if (state.version === project.sessionVersion && state.sample.frames === 0
+            && this.engine.manifold_looper_synth_sample_clear() !== 1) {
+            throw new Error('Saved empty Main Sample could not be restored.');
+          }
           const c = project.controls, lc = project.layerControls;
           for (const [id, value] of [[c.tempo, state.tempo], [c.targetBpm, state.targetBpm],
             [c.mode, state.mode], [c.activeLayer, state.activeLayer],
@@ -155,6 +202,7 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           this.port.postMessage({ type: 'import-complete', requestId: data.requestId });
         } else if (data.type === 'import-cancel' && this.transferJob?.type === 'import') {
           if (this.transferJob.layer) this.engine.manifold_looper_import_cancel(this.transferJob.layer.index);
+          if (this.transferJob.sample) this.engine.manifold_looper_synth_sample_import_cancel();
           this.transferJob = null;
         } else if (data.type === 'control' && this.engine) {
           const accepted = this.engine.manifold_looper_control(data.id, data.value) === 1;
@@ -208,13 +256,14 @@ class MainLooperProcessor extends AudioWorkletProcessor {
               muted: s(project.status.layerMute, index) === 1,
               playing: s(project.status.layerPlaying, index) === 1, peaks };
           });
+          const captured = s(project.status.capturedFrames, active);
           const segments = bars.map((_, index) => captureStripBins(
-            bars, index, spb, project.captureSeconds * sampleRate,
-          ).map(([start, end]) => e.manifold_looper_peak(active, 1, start, end)));
+            bars, index, spb, project.captureSeconds * sampleRate, captured,
+          ).map(bin => bin ? e.manifold_looper_peak(active, 1, bin[0], bin[1]) : 0));
           this.port.postMessage({ type: 'snapshot', tempo: s(project.status.tempo), active,
             mode: s(project.status.mode), recording: s(project.status.recording) === 1,
             overdub: s(project.status.overdub) === 1, forwardBars: s(project.status.forwardBars),
-            captured: s(project.status.capturedFrames, active), sampleRate: s(project.status.sampleRate),
+            captured, sampleRate: s(project.status.sampleRate),
             layers, segments, sampleFrames, samplePeaks, eqResponse });
         }
       } catch (error) {
@@ -224,6 +273,9 @@ class MainLooperProcessor extends AudioWorkletProcessor {
         this.freeSource = null;
         if (this.transferJob?.type === 'import' && this.transferJob.layer) {
           this.engine.manifold_looper_import_cancel(this.transferJob.layer.index);
+        }
+        if (this.transferJob?.type === 'import' && this.transferJob.sample) {
+          this.engine.manifold_looper_synth_sample_import_cancel();
         }
         this.transferJob = null;
         this.port.postMessage({ type: 'error', message: error.message });

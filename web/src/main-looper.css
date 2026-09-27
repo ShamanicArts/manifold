@@ -13,8 +13,8 @@ body {
 }
 
 .page {
-  max-width:1360px;
-  padding:28px 24px 64px;
+  max-width:1328px;
+  padding:18px 24px 64px;
   margin:auto
 }
 
@@ -23,7 +23,7 @@ body {
   justify-content:space-between;
   gap:32px;
   align-items:end;
-  margin-bottom:16px
+  margin-bottom:10px
 }
 
 .intro a {
@@ -37,11 +37,11 @@ body {
   color:#64748b;
   font-size:11px;
   letter-spacing:.18em;
-  margin-top:20px
+  margin-top:8px
 }
 
 .intro h1 {
-  font-size:29px;
+  font-size:22px;
   line-height:1.15;
   margin:5px 0
 }
@@ -49,7 +49,7 @@ body {
 .intro p {
   margin:0;
   color:#94a3b8;
-  font-size:13px;
+  font-size:12px;
   max-width:660px
 }
 
@@ -366,6 +366,9 @@ body {
   cursor:ns-resize;
   touch-action:none
 }
+
+/* The old strip places Vol at x=1044 after the 980px waveform at x=56. */
+.wave + .knob { margin-left:8px; }
 
 .layer-button {
   height:108px;
