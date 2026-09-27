@@ -24,7 +24,8 @@ assert.equal(hashFiles(['tools/legacy-main-add-morph-voice-reference.cpp',
 assert.equal(hashFiles([...['main_voice_bank.rs', 'sample_region.rs', 'oscillator.rs', 'wave_add_oscillator.rs', 'sine_bank.rs', 'graph.rs',
   'spectral_targets.rs'].map((file) => join('crates/manifold-core/src', file)),
   'crates/manifold-core/examples/emit_main_wave_recipe.rs',
-  'crates/manifold-core/examples/emit_main_add_source_recipe.rs']), manifest.rustSourceSha256);
+  'crates/manifold-core/examples/emit_main_add_source_recipe.rs',
+  'crates/manifold-core/examples/emit_main_morph_source_recipe.rs']), manifest.rustSourceSha256);
 const wasmBytes = readFileSync('web/dist/manifold_filter.wasm');
 assert.equal(createHash('sha256').update(wasmBytes).digest('hex'), manifest.wasmSha256);
 manifest.sampleData = floats(`${root}${manifest.sample}`);
@@ -71,6 +72,19 @@ assert.ok(measure(pulseNarrow, pulseHalf).max > .05,
   'Changing driven pulse width did not affect the assembled voice');
 assert.ok(measure(saw, bright).max > .01,
   'Changing driven waveform did not affect the assembled voice');
+const different = (a, b) => measure(
+  floats(`${root}${a}-rust.f32`), floats(`${root}${b}-rust.f32`), start,
+).max;
+assert.ok(different('add-neutral', 'add-stretch') > .2,
+  'Add stretch did not move the settled source spectrum');
+assert.ok(different('add-neutral', 'add-tilt-bright') > .04
+  && different('add-tilt-bright', 'add-tilt-dark') > .08,
+  'Add tilt modes did not change the settled source spectrum');
+assert.ok(different('morph-linear-quarter', 'morph-cosine-quarter') > .01
+  && different('morph-cosine-quarter', 'morph-equal-quarter') > .01,
+  'Morph curve did not change the settled voice');
+assert.ok(different('morph-depth-low', 'morph-depth-full') > .1,
+  'Morph frequency depth did not change the settled voice');
 if (process.argv[2]) writeFileSync(process.argv[2], `${JSON.stringify({
   schemaVersion: 1, settledStartFrame: manifest.settledStartFrame,
   comparisonScope: manifest.scope, results,

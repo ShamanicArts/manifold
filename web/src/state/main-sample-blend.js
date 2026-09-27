@@ -40,15 +40,21 @@ export function parseMainSampleBlendState(document, project) {
     || !Number.isInteger(target.tiltMode) || target.tiltMode < 0 || target.tiltMode > 2
     || !validNumber(target.position, 0, 1)
     || !validNumber(target.morphAmount, 0, 1)
+    || (target.pulseWidth !== undefined && !validNumber(target.pulseWidth, .01, .99))
+    || (target.morphDepth !== undefined && !validNumber(target.morphDepth, 0, 1))
+    || (target.morphCurve !== undefined && (!Number.isInteger(target.morphCurve)
+      || target.morphCurve < 0 || target.morphCurve > 2))
     || !validNumber(target.stretch, 0, 1)
     || !validNumber(target.smooth, 0, 1)
     || !validNumber(target.contrast, 0, 2)) {
     throw new Error('Invalid prepared target controls.');
   }
+  const normalizedTarget = { ...target, pulseWidth: target.pulseWidth ?? .5,
+    morphDepth: target.morphDepth ?? .7, morphCurve: target.morphCurve ?? 2 };
   const source = document.source;
   if (source?.kind === 'builtin') {
     return { schemaVersion: VERSION, projectId: project.id, parameters: checkedParameters,
-      target: { ...target }, source: { kind: 'builtin' } };
+      target: normalizedTarget, source: { kind: 'builtin' } };
   }
   if (source?.kind !== 'embedded' || !Number.isInteger(source.sourceRate)
     || source.sourceRate < 8_000 || source.sourceRate > 96_000
@@ -59,7 +65,7 @@ export function parseMainSampleBlendState(document, project) {
   }
   const stereo = decodePcm(source.pcmF32Base64, source.frames);
   return { schemaVersion: VERSION, projectId: project.id, parameters: checkedParameters,
-    target: { ...target }, source: { kind: 'embedded', sourceRate: source.sourceRate,
+    target: normalizedTarget, source: { kind: 'embedded', sourceRate: source.sourceRate,
       frames: source.frames, label: source.label, stereo } };
 }
 

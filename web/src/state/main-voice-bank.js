@@ -31,6 +31,10 @@ function checkTargetControls(target, version) {
     || !Number.isInteger(target.tiltMode) || target.tiltMode < 0 || target.tiltMode > 2
     || !validNumber(target.position, 0, 1)
     || !validNumber(target.morphAmount, 0, 1)
+    || (target.pulseWidth !== undefined && !validNumber(target.pulseWidth, .01, .99))
+    || (target.morphDepth !== undefined && !validNumber(target.morphDepth, 0, 1))
+    || (target.morphCurve !== undefined && (!Number.isInteger(target.morphCurve)
+      || target.morphCurve < 0 || target.morphCurve > 2))
     || !validNumber(target.stretch, 0, 1)
     || !validNumber(target.smooth, 0, 1)
     || !validNumber(target.contrast, 0, 2)
@@ -38,7 +42,9 @@ function checkTargetControls(target, version) {
       || !validNumber(target.speed, 0, 4)))) throw new Error('Invalid target controls.');
   return { active: target.active, mode: target.mode, waveform: target.waveform,
     tiltMode: target.tiltMode, position: target.position,
-    morphAmount: target.morphAmount, stretch: target.stretch,
+    pulseWidth: target.pulseWidth ?? .5, morphAmount: target.morphAmount,
+    morphDepth: target.morphDepth ?? .7, morphCurve: target.morphCurve ?? 2,
+    stretch: target.stretch,
     smooth: target.smooth, contrast: target.contrast,
     followPlayback: version >= 2 ? target.followPlayback : false,
     speed: version >= 2 ? target.speed : 1 };

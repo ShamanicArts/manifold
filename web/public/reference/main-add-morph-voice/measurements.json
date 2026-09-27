@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "settledStartFrame": 4096,
-  "comparisonScope": "old sample player, oscillator, additive sine/saw/square/triangle/blend wave recipes, SineBank spectral Add/Morph with fixed published source spectrum and driven Add flavor/pulse width, crossfaders, gains and voice mixers; temporal updates, vocoder and old UI envelope excluded",
+  "comparisonScope": "old sample player, oscillator, additive sine/saw/square/triangle/blend wave recipes, SineBank spectral Add/Morph with fixed published source spectrum, driven Add flavor/pulse width, spectral stretch/tilt and Morph curve/depth, crossfaders, gains and voice mixers; temporal updates, vocoder and old UI envelope excluded",
   "results": [
     {
       "id": "add-source",
@@ -271,6 +271,186 @@
         "max": 0.0005434485501609743,
         "rms": 0.000037086539918378835,
         "referenceRms": 0.13871130435200194
+      }
+    },
+    {
+      "id": "add-neutral",
+      "settledOldVsNative": {
+        "max": 7.450580596923828e-8,
+        "rms": 9.82598093123359e-9,
+        "referenceRms": 0.14334141700665215
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.13587642050583598
+      },
+      "onsetOldVsNative": {
+        "max": 0.0004789797530975193,
+        "rms": 0.00003226096604157349,
+        "referenceRms": 0.12797672810737978
+      }
+    },
+    {
+      "id": "add-stretch",
+      "settledOldVsNative": {
+        "max": 8.940696716308594e-8,
+        "rms": 9.377826626758847e-9,
+        "referenceRms": 0.14280041650672307
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.13565414015961444
+      },
+      "onsetOldVsNative": {
+        "max": 0.0006464478792622685,
+        "rms": 0.00002916754236041337,
+        "referenceRms": 0.12810985613760537
+      }
+    },
+    {
+      "id": "add-tilt-bright",
+      "settledOldVsNative": {
+        "max": 5.960464477539063e-8,
+        "rms": 9.44423700614471e-9,
+        "referenceRms": 0.12373627648689678
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.11686039574448391
+      },
+      "onsetOldVsNative": {
+        "max": 0.00037988272379152477,
+        "rms": 0.000022196748425468493,
+        "referenceRms": 0.10955381152342072
+      }
+    },
+    {
+      "id": "add-tilt-dark",
+      "settledOldVsNative": {
+        "max": 7.450580596923828e-8,
+        "rms": 1.011654522788378e-8,
+        "referenceRms": 0.1604501372157451
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.1523838922189721
+      },
+      "onsetOldVsNative": {
+        "max": 0.0005853978218510747,
+        "rms": 0.00003937810403325084,
+        "referenceRms": 0.14386611127421603
+      }
+    },
+    {
+      "id": "morph-linear-quarter",
+      "settledOldVsNative": {
+        "max": 4.470348358154297e-8,
+        "rms": 9.185772445477987e-9,
+        "referenceRms": 0.10540530862296806
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.10076380848703705
+      },
+      "onsetOldVsNative": {
+        "max": 0.0003148565301671624,
+        "rms": 0.000019119833349656925,
+        "referenceRms": 0.09589792928982772
+      }
+    },
+    {
+      "id": "morph-cosine-quarter",
+      "settledOldVsNative": {
+        "max": 4.470348358154297e-8,
+        "rms": 9.121824593585791e-9,
+        "referenceRms": 0.09921177385123153
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.09484035145080756
+      },
+      "onsetOldVsNative": {
+        "max": 0.00028440693859010935,
+        "rms": 0.000017145304831280148,
+        "referenceRms": 0.09025746450486101
+      }
+    },
+    {
+      "id": "morph-equal-quarter",
+      "settledOldVsNative": {
+        "max": 5.960464477539063e-8,
+        "rms": 9.47721038362449e-9,
+        "referenceRms": 0.10789816620150033
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.10314678059786342
+      },
+      "onsetOldVsNative": {
+        "max": 0.0003266494022682309,
+        "rms": 0.00001988519816467807,
+        "referenceRms": 0.09816569862933441
+      }
+    },
+    {
+      "id": "morph-depth-low",
+      "settledOldVsNative": {
+        "max": 7.450580596923828e-8,
+        "rms": 9.778938790865606e-9,
+        "referenceRms": 0.12954936305347237
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.12372631883239149
+      },
+      "onsetOldVsNative": {
+        "max": 0.0003103828494204208,
+        "rms": 0.000022816269555928342,
+        "referenceRms": 0.11761533452615289
+      }
+    },
+    {
+      "id": "morph-depth-full",
+      "settledOldVsNative": {
+        "max": 5.960464477539063e-8,
+        "rms": 9.709980883393068e-9,
+        "referenceRms": 0.13046175798957374
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.12396338496336826
+      },
+      "onsetOldVsNative": {
+        "max": 0.00030169465753715485,
+        "rms": 0.00002290598008596086,
+        "referenceRms": 0.11710496048634975
+      }
+    },
+    {
+      "id": "morph-stretch-bright",
+      "settledOldVsNative": {
+        "max": 4.470348358154297e-8,
+        "rms": 8.72935111024002e-9,
+        "referenceRms": 0.10155602832729191
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.09616706258177093
+      },
+      "onsetOldVsNative": {
+        "max": 0.0004102775128558278,
+        "rms": 0.00001859309753038257,
+        "referenceRms": 0.09045763148444542
       }
     }
   ]

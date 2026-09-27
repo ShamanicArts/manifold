@@ -17,7 +17,9 @@ try {
   await page.waitForFunction(() => !document.querySelector('#sine-use-frame').disabled);
   await page.locator('#sine-follow-playback').check();
   await page.locator('#sine-temporal-speed').fill('1.5');
-  await page.locator('#sine-target-mode').selectOption('1');
+  await page.locator('#sine-target-mode').selectOption('2');
+  await page.locator('#sine-waveform').selectOption('6');
+  await page.locator('#sine-pulse-width').fill('0.18');
   await page.locator('[data-parameter-id="6"] select').selectOption('4');
   await page.locator('#sine-use-frame').click();
   await page.waitForFunction(() => document.querySelector('#sine-target-status').textContent.includes('source frames interpolate'));
@@ -35,6 +37,7 @@ try {
   assert.equal(state.parameters['blend-mode'], 4);
   assert.equal(state.targetControls.followPlayback, true);
   assert.equal(state.targetControls.speed, 1.5);
+  assert.equal(state.targetControls.pulseWidth, .18);
   await page.locator('#audio-toggle').click();
   await page.locator('#main-state-file').setInputFiles([{
     name: 'main-temporal-state.json', mimeType: 'application/json', buffer: bytes,
@@ -43,18 +46,40 @@ try {
   await page.waitForFunction(() => document.querySelector('#sine-target-status').textContent.includes('source frames interpolate'));
   assert.equal(await page.locator('#sine-follow-playback').isChecked(), true);
   assert.equal(await page.locator('#sine-temporal-speed').inputValue(), '1.5');
+  assert.equal(await page.locator('#sine-pulse-width').inputValue(), '0.18');
   await page.locator('#audio-toggle').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running'));
   await page.locator('#keyboard button').first().click();
   await page.waitForTimeout(350);
   await page.locator('[data-parameter-id="6"] select').selectOption('5');
   await page.locator('#sine-target-mode').selectOption('3');
+  await page.locator('#sine-waveform').selectOption('1');
+  await page.locator('#sine-morph-amount').fill('0.25');
+  await page.locator('#sine-morph-depth').fill('0.25');
+  await page.locator('#sine-morph-curve').selectOption('0');
   await page.locator('#sine-use-frame').click();
   await page.waitForFunction(() => document.querySelector('#sine-target-status').textContent.includes('source frames interpolate'));
   await page.waitForTimeout(250);
+  const morphDownloadPromise = page.waitForEvent('download');
+  await page.locator('#main-state-export').click();
+  const morphDownload = await morphDownloadPromise;
+  const morphBytes = await readFile(await morphDownload.path());
+  const morphState = JSON.parse(morphBytes.toString());
+  assert.equal(morphState.targetControls.morphAmount, .25);
+  assert.equal(morphState.targetControls.morphDepth, .25);
+  assert.equal(morphState.targetControls.morphCurve, 0);
+  await page.locator('#audio-toggle').click();
+  await page.locator('#main-state-file').setInputFiles([{
+    name: 'main-morph-state.json', mimeType: 'application/json', buffer: morphBytes,
+  }]);
+  await page.waitForFunction(() => document.querySelector('#main-state-status').textContent.startsWith('Opened'));
+  assert.equal(await page.locator('#sine-morph-depth').inputValue(), '0.25');
+  assert.equal(await page.locator('#sine-morph-curve').inputValue(), '0');
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running'));
   assert.deepEqual(errors, []);
   assert.ok((await page.locator('#status').textContent()).startsWith('Audio running'));
-  console.log('Main temporal browser: raw-frame Add/Morph, worklet note, v3 state save/reopen, automatic frame restore passed');
+  console.log('Main temporal browser: raw Add pulse width and Morph depth/curve, worklet note, v3 state save/reopen passed');
 } finally {
   await browser.close();
 }

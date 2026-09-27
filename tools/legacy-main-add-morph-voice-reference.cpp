@@ -61,7 +61,7 @@ static void crossfade(dsp_primitives::CrossfaderNode& node, int block, float pos
 
 int main(int argc, char** argv) {
     if (argc != 13 && argc != 14 && argc != 15 && argc != 16) {
-        std::cerr << "usage: legacy-main-add-morph-voice-reference SAMPLE OUTPUT SAMPLE_FRAMES FREQ AMP WAVEFORM BLEND DEPTH MODE FRAMES BLOCK SOURCE_PARTIALS [ADD_FLAVOR,SPECTRAL_WAVEFORM,PULSE_WIDTH | TEMPORAL_FRAMES TEMPORAL_SPEED [MORPH_AMOUNT]]\n";
+        std::cerr << "usage: legacy-main-add-morph-voice-reference SAMPLE OUTPUT SAMPLE_FRAMES FREQ AMP WAVEFORM BLEND DEPTH MODE FRAMES BLOCK SOURCE_PARTIALS [ADD_FLAVOR,SPECTRAL_WAVEFORM,PULSE_WIDTH[,STRETCH,TILT,MORPH_AMOUNT,MORPH_DEPTH,MORPH_CURVE] | TEMPORAL_FRAMES TEMPORAL_SPEED [MORPH_AMOUNT]]\n";
         return 2;
     }
     const int sampleFrames = std::atoi(argv[3]);
@@ -83,20 +83,36 @@ int main(int argc, char** argv) {
         values.push_back(std::strtof(field.c_str(), nullptr));
     }
     if (values.empty() || values.size() % 4 || values.size() > 32 * 4) return 2;
-    int addFlavor = 0, spectralWaveform = waveform;
-    float pulseWidth = 0.5f;
+    int addFlavor = 0, spectralWaveform = waveform, tiltMode = 0, morphCurve = 2;
+    float pulseWidth = 0.5f, stretch = 0.0f, morphAmountOverride = 1.0f, morphDepth = 1.0f;
     if (argc == 14) {
         std::istringstream controls(argv[13]);
         std::string field;
-        if (!std::getline(controls, field, ',')) return 2;
-        addFlavor = std::atoi(field.c_str());
-        if (!std::getline(controls, field, ',')) return 2;
-        spectralWaveform = std::atoi(field.c_str());
-        if (!std::getline(controls, field, ',')) return 2;
-        pulseWidth = std::strtof(field.c_str(), nullptr);
-        if (std::getline(controls, field, ',') || addFlavor < 0 || addFlavor > 1
+        std::vector<float> fields;
+        while (std::getline(controls, field, ',')) fields.push_back(std::strtof(field.c_str(), nullptr));
+        if (fields.size() != 3 && fields.size() != 8) return 2;
+        for (float value : fields) if (!std::isfinite(value)) return 2;
+        addFlavor = static_cast<int>(fields[0]);
+        spectralWaveform = static_cast<int>(fields[1]);
+        pulseWidth = fields[2];
+        if (fields.size() == 8) {
+            stretch = fields[3];
+            tiltMode = static_cast<int>(fields[4]);
+            morphAmountOverride = fields[5];
+            morphDepth = fields[6];
+            morphCurve = static_cast<int>(fields[7]);
+        }
+        if (fields[0] != static_cast<float>(addFlavor)
+            || fields[1] != static_cast<float>(spectralWaveform)
+            || (fields.size() == 8 && (fields[4] != static_cast<float>(tiltMode)
+                || fields[7] != static_cast<float>(morphCurve)))
+            || addFlavor < 0 || addFlavor > 1
             || spectralWaveform < 0 || spectralWaveform > 7
-            || !std::isfinite(pulseWidth) || pulseWidth < 0.01f || pulseWidth > 0.99f) return 2;
+            || pulseWidth < 0.01f || pulseWidth > 0.99f
+            || stretch < 0.0f || stretch > 1.0f || tiltMode < 0 || tiltMode > 2
+            || morphAmountOverride < 0.0f || morphAmountOverride > 1.0f
+            || morphDepth < 0.0f || morphDepth > 1.0f
+            || morphCurve < 0 || morphCurve > 2) return 2;
     }
     std::vector<float> source(static_cast<size_t>(sampleFrames) * 2);
     std::ifstream input(argv[1], std::ios::binary);
@@ -201,9 +217,11 @@ int main(int argc, char** argv) {
     sampleAdditive.setSpectralWaveform(spectralWaveform);
     sampleAdditive.setSpectralAddFlavor(addFlavor);
     sampleAdditive.setSpectralPulseWidth(pulseWidth);
-    sampleAdditive.setSpectralMorphAmount(morphAmount);
-    sampleAdditive.setSpectralMorphDepth(1.0f);
-    sampleAdditive.setSpectralMorphCurve(2);
+    sampleAdditive.setSpectralStretch(stretch);
+    sampleAdditive.setSpectralTiltMode(tiltMode);
+    sampleAdditive.setSpectralMorphAmount(argc == 14 ? morphAmountOverride : morphAmount);
+    sampleAdditive.setSpectralMorphDepth(morphDepth);
+    sampleAdditive.setSpectralMorphCurve(morphCurve);
     if (argc >= 15) {
         sampleAdditive.setSpectralTemporalSmooth(0.6f);
         sampleAdditive.setSpectralTemporalContrast(0.5f);

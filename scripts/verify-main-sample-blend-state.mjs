@@ -29,7 +29,8 @@ values.set(30, 2);
 values.set(31, 12);
 values.set(32, 2);
 const target = { active: true, mode: 3, waveform: 1, position: .47,
-  morphAmount: .68, stretch: .2, tiltMode: 2, smooth: .6, contrast: 1.2 };
+  pulseWidth: .18, morphAmount: .68, morphDepth: .25, morphCurve: 0,
+  stretch: .2, tiltMode: 2, smooth: .6, contrast: 1.2 };
 const stereo = new Float32Array(4096 * 2);
 for (let frame = 0; frame < stereo.length / 2; frame++) {
   stereo[frame * 2] = .3 * Math.sin(frame * .03);
@@ -40,6 +41,14 @@ const embedded = captureMainSampleBlendState(project, values, target,
 const restored = parseMainSampleBlendState(JSON.parse(JSON.stringify(embedded)), project);
 assert.deepEqual(restored.parameters, Object.fromEntries(project.parameters.map((parameter) => [parameter.hostId, values.get(parameter.id)])));
 assert.deepEqual(restored.target, target);
+const priorTarget = { ...target };
+delete priorTarget.pulseWidth;
+delete priorTarget.morphDepth;
+delete priorTarget.morphCurve;
+const migratedRecipe = parseMainSampleBlendState({ ...embedded, target: priorTarget }, project).target;
+assert.equal(migratedRecipe.pulseWidth, .5);
+assert.equal(migratedRecipe.morphDepth, .7);
+assert.equal(migratedRecipe.morphCurve, 2);
 assert.deepEqual(restored.source.stereo, stereo);
 const builtin = captureMainSampleBlendState(project, values, target,
   { sourceKind: 'builtin', sourceRate: 48_000, stereo, label: 'Built-in two-tone source' });
@@ -117,6 +126,7 @@ assert.equal(migratedV10.parameters['sample-root-note'], 60);
 assert.equal(migratedV10.parameters['sample-pitch-mode'], 0);
 assert.throws(() => parseMainSampleBlendState({ ...embedded, projectId: 'other' }, project), /different/);
 assert.throws(() => parseMainSampleBlendState({ ...embedded, target: { ...target, position: 3 } }, project), /target/);
+assert.throws(() => parseMainSampleBlendState({ ...embedded, target: { ...target, morphCurve: 3 } }, project), /target/);
 assert.throws(() => parseMainSampleBlendState({ ...embedded, source: { ...embedded.source, frames: 10 } }, project), /source/);
 assert.throws(() => parseMainSampleBlendState({ ...embedded, source: { ...embedded.source, pcmF32Base64: 'bad' } }, project), /PCM/);
 console.log(`Main blend state: ${project.parameters.length} controls + target + ${stereo.length / 2} stereo frames round-trip; v1–v10 migration and malformed states checked`);

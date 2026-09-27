@@ -2203,9 +2203,10 @@ function requestPreparedSineTarget() {
   const mode = activeFamily === 'main-voice-bank' ? (selectedMode === 3 ? 2 : 1)
     : selectedMode === 3 ? 2 : selectedMode === 0 ? 0 : 1;
   const recipe = new Float32Array([
-    Number(byId('sine-waveform').value), 8, 0, 0, 0.5,
+    Number(byId('sine-waveform').value), 8, 0, 0, Number(byId('sine-pulse-width').value),
     selectedMode === 2 ? 1 : 0,
-    Number(byId('sine-morph-amount').value), 0.7, 2,
+    Number(byId('sine-morph-amount').value), Number(byId('sine-morph-depth').value),
+    Number(byId('sine-morph-curve').value),
     Number(byId('sine-stretch').value), Number(byId('sine-tilt-mode').value),
   ]);
   const id = ++sampleAnalysisSerial;
@@ -2229,7 +2230,10 @@ function scheduleSineTarget() {
 function updateSineTargetControls() {
   const mode = Number(byId('sine-target-mode').value);
   byId('sine-waveform-label').hidden = mode !== 2 && mode !== 3;
+  byId('sine-pulse-width-label').hidden = mode !== 2 || Number(byId('sine-waveform').value) !== 6;
   byId('sine-morph-label').hidden = mode !== 3;
+  byId('sine-morph-depth-label').hidden = mode !== 3;
+  byId('sine-morph-curve-label').hidden = mode !== 3;
   byId('sine-stretch-label').hidden = mode === 0;
   byId('sine-tilt-label').hidden = mode === 0;
   const bank = activeFamily === 'main-voice-bank';
@@ -2259,7 +2263,8 @@ byId('sine-temporal-speed').addEventListener('input', () => {
   if (activeProject?.temporalTargets) activeProject.temporalTargets.speed = speed;
   audio.setTemporalSpeed(speed);
 });
-for (const id of ['sine-target-mode', 'sine-waveform', 'sine-morph-amount', 'sine-stretch', 'sine-tilt-mode', 'sine-smooth', 'sine-contrast']) {
+for (const id of ['sine-target-mode', 'sine-waveform', 'sine-pulse-width', 'sine-morph-amount',
+  'sine-morph-depth', 'sine-morph-curve', 'sine-stretch', 'sine-tilt-mode', 'sine-smooth', 'sine-contrast']) {
   byId(id).addEventListener('input', () => { updateSineTargetControls(); renderSineSourceAnalysis(); scheduleSineTarget(); });
 }
 byId('sine-use-frame').addEventListener('click', () => {
@@ -2272,8 +2277,11 @@ function mainBlendTargetControls() {
     active: sineTargetActive,
     mode: Number(byId('sine-target-mode').value),
     waveform: Number(byId('sine-waveform').value),
+    pulseWidth: Number(byId('sine-pulse-width').value),
     position: Number(byId('sine-position').value),
     morphAmount: Number(byId('sine-morph-amount').value),
+    morphDepth: Number(byId('sine-morph-depth').value),
+    morphCurve: Number(byId('sine-morph-curve').value),
     stretch: Number(byId('sine-stretch').value),
     tiltMode: Number(byId('sine-tilt-mode').value),
     smooth: Number(byId('sine-smooth').value),
@@ -2323,7 +2331,9 @@ byId('main-state-file').addEventListener('change', async (event) => {
       applyPatchParameterValues(activeProject, state.parameters);
       for (const [id, value] of Object.entries({
         'sine-target-mode': state.targetControls.mode, 'sine-waveform': state.targetControls.waveform,
+        'sine-pulse-width': state.targetControls.pulseWidth,
         'sine-position': state.targetControls.position, 'sine-morph-amount': state.targetControls.morphAmount,
+        'sine-morph-depth': state.targetControls.morphDepth, 'sine-morph-curve': state.targetControls.morphCurve,
         'sine-stretch': state.targetControls.stretch, 'sine-tilt-mode': state.targetControls.tiltMode,
         'sine-smooth': state.targetControls.smooth, 'sine-contrast': state.targetControls.contrast,
       })) byId(id).value = String(value);
@@ -2370,7 +2380,9 @@ byId('main-state-file').addEventListener('change', async (event) => {
     updateMainDepthControls();
     for (const [id, value] of Object.entries({
       'sine-target-mode': state.target.mode, 'sine-waveform': state.target.waveform,
+      'sine-pulse-width': state.target.pulseWidth,
       'sine-position': state.target.position, 'sine-morph-amount': state.target.morphAmount,
+      'sine-morph-depth': state.target.morphDepth, 'sine-morph-curve': state.target.morphCurve,
       'sine-stretch': state.target.stretch, 'sine-tilt-mode': state.target.tiltMode,
       'sine-smooth': state.target.smooth, 'sine-contrast': state.target.contrast,
     })) byId(id).value = String(value);

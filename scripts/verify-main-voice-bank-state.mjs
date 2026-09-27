@@ -8,7 +8,8 @@ for (const [id, value] of [[1, .37], [6, 5], [7, .75], [11, .012], [17, .6]]) va
 project.partials.values = [1, .9, 0, 0, 2, .3, .2, 0];
 project.extraPartials[0].values = [1, .7, 0, 0, 3, .2, .4, .01];
 const controls = { active: true, mode: 3, waveform: 1, position: .42,
-  morphAmount: .67, stretch: .2, tiltMode: 2, smooth: .3, contrast: 1.2,
+  pulseWidth: .18, morphAmount: .67, morphDepth: .25, morphCurve: 0,
+  stretch: .2, tiltMode: 2, smooth: .3, contrast: 1.2,
   followPlayback: true, speed: 1.75 };
 const stereo = new Float32Array(4096 * 2);
 for (let index = 0; index < stereo.length; index++) stereo[index] = Math.sin(index * .017) * .25;
@@ -34,6 +35,14 @@ const v2 = structuredClone(captured);
 v2.schemaVersion = 2;
 delete v2.parameters['add-wave-source'];
 assert.equal(parseMainVoiceBankState(v2, project).parameters['add-wave-source'], 0);
+const priorV3 = structuredClone(captured);
+delete priorV3.targetControls.pulseWidth;
+delete priorV3.targetControls.morphDepth;
+delete priorV3.targetControls.morphCurve;
+const priorControls = parseMainVoiceBankState(priorV3, project).targetControls;
+assert.equal(priorControls.pulseWidth, .5);
+assert.equal(priorControls.morphDepth, .7);
+assert.equal(priorControls.morphCurve, 2);
 const builtin = captureMainVoiceBankState(project, values, controls,
   { sourceKind: 'builtin', sourceRate: 48_000, stereo });
 assert.deepEqual(parseMainVoiceBankState(builtin, project).source, { kind: 'builtin' });
@@ -47,5 +56,9 @@ assert.throws(() => parseMainVoiceBankState({ ...captured,
 assert.throws(() => parseMainVoiceBankState({ ...captured,
   targetControls: { ...captured.targetControls, speed: 5 } }, project), /target controls/);
 assert.throws(() => parseMainVoiceBankState({ ...captured,
+  targetControls: { ...captured.targetControls, pulseWidth: 1.2 } }, project), /target controls/);
+assert.throws(() => parseMainVoiceBankState({ ...captured,
+  targetControls: { ...captured.targetControls, morphCurve: 3 } }, project), /target controls/);
+assert.throws(() => parseMainVoiceBankState({ ...captured,
   source: { ...captured.source, pcmF32Base64: 'bad' } }, project), /PCM/);
-console.log('Main voice bank state v3: 20 controls, two targets, temporal follow/speed, sources round-trip; v1/v2 migration and malformed states checked');
+console.log('Main voice bank state v3: 20 controls, two targets, pulse/Morph controls and temporal follow/speed round-trip; v1/v2/prior-v3 migration checked');

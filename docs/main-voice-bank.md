@@ -117,7 +117,7 @@ note ownership follows the old UI's note-only policy across channels.
   0.000003263 after frame 512; native Rust and Wasm are bit-exact. Depth zero
   and three wet positions are covered. The same vocoder and envelope scope
   applies.
-- `scripts/verify-main-add-morph-voice-comparison.mjs` checks fifteen assembled
+- `scripts/verify-main-add-morph-voice-comparison.mjs` checks twenty-five assembled
   original C++ Add/Morph routes against native Rust and Wasm. The old
   `SineBankNode` runs spectral Add/Morph mode from a fixed published source
   spectrum; the original additive oscillator, sample player, crossfaders,
@@ -128,7 +128,13 @@ note ownership follows the old UI's note-only policy across channels.
   difference is 0.0000000615. Four driven Add cases cover saw, bright and
   pulse waveforms at two widths. They agree with the assembled original route
   within 0.00000006 settled peak; changing pulse width moves output by
-  0.1165 peak. The Main parameter `add-wave-source` selects
+  0.1165 peak. Ten more cases cover a neutral source, Add stretch and two tilt
+  modes, plus Morph linear/cosine/equal-power curves, frequency depth and
+  combined shaping. A slightly inharmonic source separates frequency depth:
+  its two settings differ by 0.1801 peak in the settled voice. These ten cases
+  agree with C++ within 0.00000009 settled peak. The browser now exposes pulse
+  width, Morph depth and curve alongside its existing stretch and tilt controls.
+  The Main parameter `add-wave-source` selects
   the authored prepared partial bank or the original additive oscillator;
   saved states from versions 1 and 2 migrate with prepared partials selected.
   The fixture excludes temporal source changes, vocoder processing, and the
@@ -157,16 +163,18 @@ note ownership follows the old UI's note-only policy across channels.
 - `scripts/verify-main-temporal-worklet.mjs` checks table upload, invalid
   upload rejection, clear, staggered voices, and audible movement in the real
   AudioWorklet adapter. `scripts/verify-main-temporal-browser.mjs` opens the
-  workbench in headless Chromium, enables raw-frame follow, plays a note,
-  saves v3 state, reopens it, rebuilds the frames, and plays again.
+  workbench in headless Chromium, enables raw-frame follow, plays Add with
+  pulse width and Morph with depth/curve changes, saves v3 states, reopens them,
+  rebuilds the frames, and plays again.
 - `scripts/verify-main-voice-bank-state.mjs` round-trips 20 controls, separate
   wave and source targets, and embedded or built-in source choices. It rejects
   malformed controls, target addresses, partials, and PCM. A headless Chromium
   workbench check opened edited embedded state, waited for source analysis,
   downloaded identical targets and PCM, and started the restored AudioWorklet.
   `scripts/verify-main-sample-blend-state.mjs` still passes after extracting
-  shared PCM encoding. The bank state schema is version 3 with follow and
-  speed controls; a saved source rebuilds its temporal frames on reopen. This
+  shared PCM encoding. The bank state schema is version 3 with follow, speed,
+  pulse width, Morph depth and curve controls. Earlier v3 states receive the
+  former spectral defaults; a saved source rebuilds its temporal frames on reopen. This
   is bank state, not old preset migration.
 
 The playable workbench is `/?primitive=main-voice-bank`; the Add/Morph checkpoint

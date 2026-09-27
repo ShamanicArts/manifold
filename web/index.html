@@ -109,7 +109,10 @@
             <div class="sine-target-controls">
               <label id="sine-target-mode-label">Target<select id="sine-target-mode"><option value="0">Source frame</option><option value="1">Add · self resynthesis</option><option value="2">Add · wave driven</option><option value="3">Morph · wave / source</option></select></label>
               <label id="sine-waveform-label">Waveform<select id="sine-waveform"><option value="0">Sine</option><option value="1" selected>Saw</option><option value="2">Square</option><option value="3">Triangle</option><option value="4">Blend</option><option value="5">Noise cloud</option><option value="6">Pulse</option><option value="7">SuperSaw</option></select></label>
+              <label id="sine-pulse-width-label">Pulse width<input id="sine-pulse-width" type="range" min="0.01" max="0.99" step="0.01" value="0.5"></label>
               <label id="sine-morph-label">Morph amount<input id="sine-morph-amount" type="range" min="0" max="1" step="0.01" value="0.5"></label>
+              <label id="sine-morph-depth-label">Frequency depth<input id="sine-morph-depth" type="range" min="0" max="1" step="0.01" value="0.7"></label>
+              <label id="sine-morph-curve-label">Morph curve<select id="sine-morph-curve"><option value="0">Linear</option><option value="1">Cosine</option><option value="2" selected>Equal power</option></select></label>
               <label id="sine-stretch-label">Stretch<input id="sine-stretch" type="range" min="0" max="1" step="0.01" value="0"></label>
               <label id="sine-tilt-label">Spectral tilt<select id="sine-tilt-mode"><option value="0">Neutral</option><option value="1">Brighter</option><option value="2">Darker</option></select></label>
             </div>
@@ -117,7 +120,7 @@
             <button id="sine-use-frame" class="gate-button" type="button" disabled>Audition prepared target</button>
             <p id="sine-target-status" class="control-help" role="status">Select a target after analysis.</p>
             <div id="sine-target-bars" class="sine-source-bars" aria-label="Prepared target partials"></div>
-            <p class="control-help">Wave recipes currently use eight partials, zero drift, 50% pulse width, and the old equal-power Morph curve. Moving a manual slider restores the harmonic bank.</p>
+            <p class="control-help">Wave recipes use eight partials and zero drift. Pulse width shapes the driven pulse waveform. Moving a manual slider restores the harmonic bank.</p>
           </div>
           <div class="module-section" id="main-state-section" hidden><div class="section-label" id="main-state-label">Main blend state</div><button id="main-state-export" class="gate-button" type="button">Download project state</button><label class="sample-file">Open project state<input id="main-state-file" type="file" accept="application/json,.json"></label><p id="main-state-status" class="control-help" role="status">Saves branch levels, target controls, and the decoded source. Stop the instrument before opening a state.</p></div>
           <div class="module-section" id="slot-state-section" hidden><div class="section-label">FX state</div><button id="slot-state-export" class="gate-button" type="button">Download state JSON</button><label class="sample-file">Open state JSON<input id="slot-state-file" type="file" accept="application/json,.json" /></label><p id="slot-state-status" class="control-help" role="status">Save the selected type and remembered controls for all 21 effects.</p></div>
