@@ -7,7 +7,7 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.2108554015955007
+        "signalRms": 0.18939319064910518
       }
     },
     {
@@ -15,16 +15,16 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.1586880550021135
+        "signalRms": 0.14378763242627285
       },
       "settledOldVsNative": {
-        "max": 0.0000017583370208740234,
-        "rms": 8.982108642899675e-7,
-        "referenceRms": 0.1617420199042004,
+        "max": 0.0000017285346984863281,
+        "rms": 9.00305409351318e-7,
+        "referenceRms": 0.14880653712105113,
         "parity": true
       },
       "onsetOldVsNative": {
-        "max": 0.01815388910472393
+        "max": 0.018153886310756207
       }
     },
     {
@@ -32,16 +32,16 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.1586880550021135
+        "signalRms": 0.14378763242627285
       },
       "settledOldVsNative": {
-        "max": 0.0000017583370208740234,
-        "rms": 8.982108642899675e-7,
-        "referenceRms": 0.1617420199042004,
+        "max": 0.0000017285346984863281,
+        "rms": 9.00305409351318e-7,
+        "referenceRms": 0.14880653712105113,
         "parity": true
       },
       "onsetOldVsNative": {
-        "max": 0.01815388910472393
+        "max": 0.018153886310756207
       }
     },
     {
@@ -49,7 +49,7 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.2074411389280282
+        "signalRms": 0.17554546940288213
       }
     },
     {
@@ -57,33 +57,33 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.15659849487589908
+        "signalRms": 0.13628567020072757
       },
       "settledOldVsNative": {
-        "max": 0.0004961714148521423,
-        "rms": 0.00006233411855011848,
-        "referenceRms": 0.1594611942500721,
+        "max": 0.0006051138043403625,
+        "rms": 0.00008714115917600388,
+        "referenceRms": 0.14057613526530321,
         "parity": true
       },
       "onsetOldVsNative": {
-        "max": 0.01815388910472393
+        "max": 0.018153886310756207
       }
     },
     {
       "id": "raw-old-add-follow",
       "nativeVsWasm": {
         "max": 5.960464477539063e-8,
-        "rms": 1.5193236256508658e-9,
-        "signalRms": 0.15659967012168902
+        "rms": 3.763468813909184e-9,
+        "signalRms": 0.13628674175653546
       },
       "settledOldVsNative": {
         "max": 0.0000017285346984863281,
-        "rms": 8.984074282940918e-7,
-        "referenceRms": 0.1594611942500721,
+        "rms": 9.003259938215609e-7,
+        "referenceRms": 0.14057613526530321,
         "parity": true
       },
       "onsetOldVsNative": {
-        "max": 0.01815388910472393
+        "max": 0.018153886310756207
       }
     },
     {
@@ -91,7 +91,7 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.2077266879900618
+        "signalRms": 0.17173148998870233
       }
     },
     {
@@ -99,33 +99,33 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.1572487199667646
+        "signalRms": 0.13502069066915198
       },
       "settledOldVsNative": {
-        "max": 0.0005358383059501648,
-        "rms": 0.0000666704048438976,
-        "referenceRms": 0.16025399781111635,
+        "max": 0.0006006583571434021,
+        "rms": 0.00009169716641531958,
+        "referenceRms": 0.13924149279066522,
         "parity": true
       },
       "onsetOldVsNative": {
-        "max": 0.01815425418317318
+        "max": 0.018155199475586414
       }
     },
     {
       "id": "raw-old-add-fast",
       "nativeVsWasm": {
         "max": 5.960464477539063e-8,
-        "rms": 3.031660723210525e-9,
-        "signalRms": 0.15725075812300857
+        "rms": 3.170000043221433e-9,
+        "signalRms": 0.13501914532822396
       },
       "settledOldVsNative": {
         "max": 0.0000017285346984863281,
-        "rms": 8.984656455799949e-7,
-        "referenceRms": 0.16025399781111635,
+        "rms": 9.003882165736978e-7,
+        "referenceRms": 0.13924149279066522,
         "parity": true
       },
       "onsetOldVsNative": {
-        "max": 0.01815388724207878
+        "max": 0.01815388910472393
       }
     },
     {
@@ -133,7 +133,7 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.16857097767833357
+        "signalRms": 0.15181870109461276
       }
     },
     {
@@ -141,16 +141,16 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.12588103713633383
+        "signalRms": 0.15082501778185975
       },
       "settledOldVsNative": {
         "max": 8.940696716308594e-8,
-        "rms": 1.291164153480896e-8,
-        "referenceRms": 0.12746110056738458,
+        "rms": 1.4530431186006639e-8,
+        "referenceRms": 0.15271885778256977,
         "parity": true
       },
       "onsetOldVsNative": {
-        "max": 0.010389105416834354
+        "max": 0.009530905168503523
       }
     },
     {
@@ -158,16 +158,16 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.12588103713633383
+        "signalRms": 0.15082501778185975
       },
       "settledOldVsNative": {
         "max": 8.940696716308594e-8,
-        "rms": 1.291164153480896e-8,
-        "referenceRms": 0.12746110056738458,
+        "rms": 1.4530431186006639e-8,
+        "referenceRms": 0.15271885778256977,
         "parity": true
       },
       "onsetOldVsNative": {
-        "max": 0.010389105416834354
+        "max": 0.009530905168503523
       }
     },
     {
@@ -175,7 +175,7 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.1655651803964879
+        "signalRms": 0.14234354589986944
       }
     },
     {
@@ -183,33 +183,33 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.12398522556667978
+        "signalRms": 0.14143521349768293
       },
       "settledOldVsNative": {
-        "max": 0.00040290504693984985,
-        "rms": 0.00005079060448131755,
-        "referenceRms": 0.12537802345438387,
+        "max": 0.0004843771457672119,
+        "rms": 0.00007137838484594077,
+        "referenceRms": 0.14225954563819931,
         "parity": true
       },
       "onsetOldVsNative": {
-        "max": 0.010389105416834354
+        "max": 0.009530905168503523
       }
     },
     {
       "id": "raw-old-morph-follow",
       "nativeVsWasm": {
         "max": 5.960464477539063e-8,
-        "rms": 3.122319717499288e-9,
-        "signalRms": 0.12398635370752671
+        "rms": 3.2720530594669454e-9,
+        "signalRms": 0.14143843458213987
       },
       "settledOldVsNative": {
-        "max": 8.940696716308594e-8,
-        "rms": 1.272932638323173e-8,
-        "referenceRms": 0.12537802345438387,
+        "max": 7.450580596923828e-8,
+        "rms": 1.4183898196004482e-8,
+        "referenceRms": 0.14225954563819931,
         "parity": true
       },
       "onsetOldVsNative": {
-        "max": 0.010389105416834354
+        "max": 0.009530905168503523
       }
     },
     {
@@ -217,7 +217,7 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.16577720114881767
+        "signalRms": 0.13983311284141817
       }
     },
     {
@@ -225,33 +225,33 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.12454603828486525
+        "signalRms": 0.14015087906982082
       },
       "settledOldVsNative": {
-        "max": 0.0004157721996307373,
-        "rms": 0.00005441486921854139,
-        "referenceRms": 0.1260696301577151,
+        "max": 0.00044411420822143555,
+        "rms": 0.00007149824132518682,
+        "referenceRms": 0.14099480669351194,
         "parity": true
       },
       "onsetOldVsNative": {
-        "max": 0.010389105416834354
+        "max": 0.009530905168503523
       }
     },
     {
       "id": "raw-old-morph-fast",
       "nativeVsWasm": {
         "max": 5.960464477539063e-8,
-        "rms": 2.585957326694362e-9,
-        "signalRms": 0.12454770082404412
+        "rms": 3.5378906684159383e-9,
+        "signalRms": 0.14015343750566198
       },
       "settledOldVsNative": {
-        "max": 8.940696716308594e-8,
-        "rms": 1.276955589979774e-8,
-        "referenceRms": 0.1260696301577151,
+        "max": 7.450580596923828e-8,
+        "rms": 1.4250865326722175e-8,
+        "referenceRms": 0.14099480669351194,
         "parity": true
       },
       "onsetOldVsNative": {
-        "max": 0.010389105416834354
+        "max": 0.009530905168503523
       }
     }
   ]

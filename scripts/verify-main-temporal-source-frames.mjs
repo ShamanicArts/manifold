@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const wasm = readFileSync('web/dist/manifold_filter.wasm');
 const { instance: { exports: engine } } = await WebAssembly.instantiate(wasm, {});
-for (const variant of ['voice', 'rhythmic']) {
+for (const variant of ['voice', 'rhythmic', 'inharmonic']) {
   const root = `web/public/reference/main-temporal-${variant}/`;
   const raw = readFileSync(`${root}sample.f32`);
   const sample = new Float32Array(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength));

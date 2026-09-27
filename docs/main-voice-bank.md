@@ -138,16 +138,18 @@ note ownership follows the old UI's note-only policy across channels.
   interpolation and spectral recipe at the actual playhead position, without
   doing source FFT work in the callback. The old UI-rate envelope and vocoder
   remain outside these fixtures.
-- `MANIFOLD_TEMPORAL_SOURCE=rhythmic` runs the same generator and verifier
-  against four harmonic bursts and changing stereo balance. Original and Rust
-  extraction each yield 45 frames, with matching partial counts and amplitude
-  differences under 0.00000072, checked by
-  `scripts/verify-main-temporal-source-frames.mjs`. The prepared route's
-  moving spectra differ by up to 0.02538 settled peak and 0.005964 RMS. The
-  raw-frame route reduces those to at most 0.000388 peak and 0.000160 RMS;
-  its native/Wasm difference is below 0.00000009. Naive interpolation between
+- `MANIFOLD_TEMPORAL_SOURCE=rhythmic` and `inharmonic` run the same generator
+  and verifier against harmonic bursts and moving detuned/nonharmonic partials.
+  The original extractor receives Rust's tracked pitch for each source, so
+  both analyze the same frequencies. All three sources yield 45 frames and
+  matching partial counts; `scripts/verify-main-temporal-source-frames.mjs`
+  measures frequency differences below 5e-6 Hz, amplitudes below 5e-10, and
+  phases below 5e-9 radians. The rhythmic prepared route differs by up to
+  0.025610 settled peak and 0.005963 RMS. Across all three sources the raw
+  route stays below 0.00000176 peak and 0.000000901 RMS against C++, with
+  native/Wasm difference below 0.00000009. Naive interpolation between
   prepared targets caused a double-speed wraparound spike and was rejected.
-  The two-source [review](../web/public/main-temporal-source-review.html)
+  The three-source [review](../web/public/main-temporal-source-review.html)
   exposes the captures and measurements.
 - `scripts/verify-main-temporal-worklet.mjs` checks table upload, invalid
   upload rejection, clear, staggered voices, and audible movement in the real

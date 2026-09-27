@@ -5,8 +5,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { renderWasm } from '../web/src/reference/comparison.js';
 
 const sourceVariant = process.env.MANIFOLD_TEMPORAL_SOURCE ?? 'harmonic';
-assert.ok(['harmonic', 'rhythmic'].includes(sourceVariant), 'Unknown temporal source variant');
-const root = `web/public/reference/main-temporal-${sourceVariant === 'harmonic' ? 'voice' : 'rhythmic'}/`;
+assert.ok(['harmonic', 'rhythmic', 'inharmonic'].includes(sourceVariant), 'Unknown temporal source variant');
+const root = `web/public/reference/main-temporal-${sourceVariant === 'harmonic' ? 'voice' : sourceVariant}/`;
 const floats = (name) => {
   const bytes = readFileSync(`${root}${name}`);
   return new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
@@ -119,14 +119,12 @@ for (const name of ['add', 'morph']) {
     assert.ok(oldPeak > .01, `${name}: original ${motion} did not move`);
   }
 }
-if (sourceVariant === 'rhythmic') {
-  for (const name of ['add', 'morph']) {
-    for (const motion of ['follow', 'fast']) {
-      const prepared = results.find((row) => row.id === `old-${name}-${motion}`);
-      const raw = results.find((row) => row.id === `raw-old-${name}-${motion}`);
-      assert.ok(raw.settledOldVsNative.max * 40 < prepared.settledOldVsNative.max,
-        `${name}-${motion}: raw-frame route did not close the moving-source gap`);
-    }
+for (const name of ['add', 'morph']) {
+  for (const motion of ['follow', 'fast']) {
+    const prepared = results.find((row) => row.id === `old-${name}-${motion}`);
+    const raw = results.find((row) => row.id === `raw-old-${name}-${motion}`);
+    assert.ok(raw.settledOldVsNative.max * 40 < prepared.settledOldVsNative.max,
+      `${sourceVariant} ${name}-${motion}: raw-frame route did not improve moving-source parity`);
   }
 }
 if (process.argv[2]) writeFileSync(process.argv[2], `${JSON.stringify({

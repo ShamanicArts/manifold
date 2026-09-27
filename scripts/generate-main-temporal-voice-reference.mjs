@@ -6,8 +6,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const sourceVariant = process.env.MANIFOLD_TEMPORAL_SOURCE ?? 'harmonic';
-assert.ok(['harmonic', 'rhythmic'].includes(sourceVariant), 'Unknown temporal source variant');
-const root = `web/public/reference/main-temporal-${sourceVariant === 'harmonic' ? 'voice' : 'rhythmic'}`;
+assert.ok(['harmonic', 'rhythmic', 'inharmonic'].includes(sourceVariant), 'Unknown temporal source variant');
+const root = `web/public/reference/main-temporal-${sourceVariant === 'harmonic' ? 'voice' : sourceVariant}`;
 mkdirSync(root, { recursive: true });
 const hash = (names) => {
   const digest = createHash('sha256');
@@ -31,6 +31,13 @@ for (let frame = 0; frame < sampleFrames; frame++) {
     const fifth = .08 * burst * Math.sin(2 * Math.PI * 1100 * time);
     sample[frame * 2] = fundamental + second + fourth + fifth;
     sample[frame * 2 + 1] = .85 * fundamental + .65 * second + .95 * fourth + .4 * fifth;
+  } else if (sourceVariant === 'inharmonic') {
+    const fundamental = .34 * Math.sin(2 * Math.PI * 220 * time);
+    const detuned = (.06 + .22 * position) * Math.sin(2 * Math.PI * 443 * time);
+    const upper = (.25 - .17 * position) * Math.sin(2 * Math.PI * 747 * time);
+    const high = .06 * Math.sin(2 * Math.PI * 1130 * time);
+    sample[frame * 2] = fundamental + detuned + upper + high;
+    sample[frame * 2 + 1] = .82 * fundamental + .6 * detuned + .9 * upper + .5 * high;
   } else {
     const fundamental = .4 * Math.sin(2 * Math.PI * 220 * time);
     const second = (.08 + .28 * position) * Math.sin(2 * Math.PI * 440 * time);
@@ -70,9 +77,11 @@ for (const [mode, name] of [[1, 'add'], [2, 'morph']]) {
 }
 const temporalRunner = execFileSync('bash', ['scripts/build-legacy-temporal-reference.sh'],
   { encoding: 'utf8' }).trim();
+const trackedPitch = analysis.manifold_analysis_temporal_frame_field(0, 4);
+assert.ok(Number.isFinite(trackedPitch) && trackedPitch > 0, 'Temporal extractor returned no pitch');
 execFileSync(temporalRunner, [
   join(root, 'old-temporal-frames.json'), join(root, 'sample.f32'),
-  sampleFrames, rate, 0, sampleFrames, 220, 128,
+  sampleFrames, rate, 0, sampleFrames, trackedPitch, 128,
 ].map(String));
 const oldFrames = JSON.parse(readFileSync(join(root, 'old-temporal-frames.json'), 'utf8'));
 assert.ok(oldFrames.frameCount > 1 && oldFrames.frameCount <= 128);
@@ -161,7 +170,7 @@ for (const [name, mode] of [['add', 4], ['morph', 5]]) {
 }
 writeFileSync(join(root, 'manifest.json'), `${JSON.stringify({
   version: 2, sourceVariant, reference: 'original Main C++ temporal Add/Morph route versus native Rust and Wasm',
-  scope: `original C++ source temporal interpolation and assembled Add/Morph routing compared with 256-position v2 prepared table; old UI envelope and vocoder omitted${sourceVariant === 'rhythmic' ? '; moving-route parity gap remains open' : ''}`,
+  scope: `original C++ source temporal interpolation and assembled Add/Morph routing compared with both the 256-position prepared table and the raw-frame route; old UI envelope and vocoder omitted${sourceVariant === 'rhythmic' ? '; prepared moving-route gap remains in historical captures and closes with raw frames' : ''}`,
   sourceSha256: hash([
     'crates/manifold-core/src/main_voice_bank.rs', 'crates/manifold-core/src/sample_analysis.rs',
     'crates/manifold-core/src/temporal_partials.rs', 'crates/manifold-core/src/spectral_targets.rs',
@@ -173,7 +182,7 @@ writeFileSync(join(root, 'manifest.json'), `${JSON.stringify({
     'tools/legacy-main-add-morph-voice-reference.cpp', 'tools/legacy-temporal-partials-reference.cpp',
     '../my-plugin/dsp/core/nodes/SineBankNode.cpp', '../my-plugin/dsp/core/nodes/SampleRegionPlaybackNode.cpp',
     '../my-plugin/dsp/core/nodes/TemporalPartialData.h', '../my-plugin/dsp/core/nodes/PartialsExtractor.h',
-  ]), oldTemporalFrames: oldFrames.frameCount,
+  ]), oldTemporalFrames: oldFrames.frameCount, trackedPitch,
   sampleRate: rate, sampleSourceRate: rate, sampleFrames, sample: 'sample.f32',
   channels: 2, frames, stepFrame: 8192, input: 'input.f32', waveTarget, sourceTarget, cases,
 }, null, 2)}\n`);
