@@ -1579,14 +1579,24 @@ function renderPrimitive(family) {
       isActive: () => activeFamily === 'graph-workspace' && activeProject === graphWorkspaceProject,
       onChange: (edited) => {
         byId('signal-path').textContent = `${edited.nodes.length} Rust nodes · ${edited.connections.length} typed routes · stereo output`;
+        const internal = edited.inputSource === 'none';
+        byId('input-label').textContent = internal ? 'Instrument' : 'Live input';
+        byId('source').disabled = internal;
+        byId('source').hidden = internal;
+        if (!audio.running) toggle.textContent = internal ? 'Start instrument' : 'Start audio';
+        document.querySelector('.measurement-hint').textContent = internal
+          ? 'Start the instrument to see the output spectrum. The comparison below is a fixed native Rust capture.'
+          : 'Start audio to view the processed live input.';
       },
       onParameter: (nodeId, id, value) => audio.setNodeParameter(nodeId, id, value),
+      onTemplateLoaded: (caseId) => referenceLab?.selectCase(caseId),
     });
   }
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
   byId('mode-section').hidden = !mode;
   byId('mode-label').textContent = family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper' || family === 'midi-arpeggiator' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'sine-bank' ? 'Drive shape' : family === 'waveshaper' ? 'Shaping curve' : family === 'phaser' ? 'Stages' : family === 'chorus' ? 'LFO waveform' : family === 'granulator' ? 'Grain envelope' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : isFxFamily(family) ? 'Effect type' : 'Mode';
   byId('input-label').textContent = isInstrument ? 'Instrument' : 'Live input';
+  byId('source').disabled = isInstrument;
   const sampleView = ['sample-region', 'sample-instrument', 'main-voice-bank'].includes(family);
   byId('keyboard-section').hidden = !['voice', 'midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator', 'sample-instrument', 'main-voice-bank'].includes(family);
   byId('midi-output-section').hidden = !['midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator'].includes(family);

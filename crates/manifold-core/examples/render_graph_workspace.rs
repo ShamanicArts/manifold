@@ -2,10 +2,81 @@
 use manifold_core::graph::{Connection, GraphDescription, NodeKind, NodeSpec};
 use std::io::Write;
 
+fn tone_texture() -> GraphDescription {
+    let nodes = vec![
+        NodeSpec {
+            id: 1,
+            kind: NodeKind::InputRaw,
+        },
+        NodeSpec {
+            id: 3,
+            kind: NodeKind::Output,
+        },
+        NodeSpec {
+            id: 4,
+            kind: NodeKind::Oscillator {
+                frequency: 220.0,
+                amplitude: 0.4,
+                waveform: 0,
+            },
+        },
+        NodeSpec {
+            id: 5,
+            kind: NodeKind::NoiseGenerator {
+                level: 0.08,
+                color: 0.5,
+            },
+        },
+        NodeSpec {
+            id: 6,
+            kind: NodeKind::Sum2 {
+                gain_a: 1.0,
+                gain_b: 1.0,
+            },
+        },
+        NodeSpec {
+            id: 7,
+            kind: NodeKind::Svf,
+        },
+        NodeSpec {
+            id: 8,
+            kind: NodeKind::ModulatedGain {
+                base: 0.5,
+                depth: 0.4,
+            },
+        },
+        NodeSpec {
+            id: 9,
+            kind: NodeKind::Lfo {
+                waveform: 0,
+                rate: 2.0,
+            },
+        },
+    ];
+    let connections = [
+        (4, 6, 0),
+        (5, 6, 1),
+        (6, 7, 0),
+        (7, 8, 0),
+        (9, 8, 1),
+        (8, 3, 0),
+    ]
+    .map(|(from, to, input_port)| Connection {
+        from,
+        to,
+        input_port,
+    })
+    .to_vec();
+    GraphDescription { nodes, connections }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 3 || !["seed", "distortion", "cv"].contains(&args[1].as_str()) {
-        return Err("usage: render_graph_workspace seed|distortion|cv OUTPUT".into());
+    if args.len() != 3 || !["seed", "distortion", "cv", "texture"].contains(&args[1].as_str()) {
+        return Err("usage: render_graph_workspace seed|distortion|cv|texture OUTPUT".into());
+    }
+    if args[1] == "texture" {
+        return render(tone_texture(), &args[2]);
     }
     let distorted = args[1] != "seed";
     let cv = args[1] == "cv";
@@ -82,7 +153,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         to: 3,
         input_port: 0,
     });
-    let mut plan = GraphDescription { nodes, connections }.compile(48_000.0, 128)?;
+    render(GraphDescription { nodes, connections }, &args[2])
+}
+
+fn render(description: GraphDescription, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let mut plan = description.compile(48_000.0, 128)?;
     let mut pcm = Vec::with_capacity(8192 * 2 * 4);
     for block in 0..64 {
         let mut input_left = [0.0_f32; 128];
@@ -101,6 +176,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             pcm.extend_from_slice(&r.to_le_bytes());
         }
     }
-    std::fs::File::create(&args[2])?.write_all(&pcm)?;
+    std::fs::File::create(path)?.write_all(&pcm)?;
     Ok(())
 }

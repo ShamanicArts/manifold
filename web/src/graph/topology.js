@@ -12,7 +12,7 @@ export const NODE_TYPES = {
   svf: { label: 'SVF filter', code: 6, output: 'audio', inputs: ['audio'],
     parameters: [{ id: 0, label: 'Mode', choices: ['Low pass', 'Band pass', 'High pass', 'Notch'], default: 0 },
       { id: 1, label: 'Cutoff', min: 20, max: 20000, default: 3200 },
-      { id: 2, label: 'Resonance', min: .1, max: 2, default: .75 }] },
+      { id: 2, label: 'Resonance', min: .1, max: 1, default: .75 }] },
   sum2: { label: 'Audio sum', code: 4, output: 'audio', inputs: ['audio', 'audio'], args: { a: 1, b: 1 } },
   oscillator: { label: 'Oscillator', code: 11, output: 'audio', inputs: ['audio'], args: { a: 220, b: .4 },
     parameters: [{ id: 0, label: 'Waveform', choices: ['Sine', 'Saw', 'Square', 'Triangle', 'Blend'], default: 0 },
@@ -36,8 +36,10 @@ const sameKeys = (value, keys) => Object.keys(value).sort().join('|') === [...ke
 
 export function validateTopology(signal) {
   if (!signal || typeof signal !== 'object' || Array.isArray(signal)
-    || !sameKeys(signal, ['inputs', 'outputs', 'nodes', 'connections', 'initialParameters'])
+    || !(sameKeys(signal, ['inputs', 'outputs', 'nodes', 'connections', 'initialParameters'])
+      || sameKeys(signal, ['inputs', 'outputs', 'inputSource', 'nodes', 'connections', 'initialParameters']))
     || signal.inputs !== 2 || signal.outputs !== 2
+    || (signal.inputSource !== undefined && !['external', 'none'].includes(signal.inputSource))
     || !Array.isArray(signal.nodes) || signal.nodes.length < 2 || signal.nodes.length > 64
     || !Array.isArray(signal.connections) || signal.connections.length > 256
     || !Array.isArray(signal.initialParameters)) throw new Error('Invalid graph description.');
@@ -143,6 +145,12 @@ export function setInitialParameter(signal, nodeId, id, value) {
   const entry = next.initialParameters.find((item) => item.nodeId === nodeId && item.id === id);
   if (!entry) throw new Error('Graph parameter unavailable.');
   entry.value = value;
+  return validateTopology(next);
+}
+
+export function setInputSource(signal, source) {
+  const next = structuredClone(signal);
+  next.inputSource = source;
   return validateTopology(next);
 }
 

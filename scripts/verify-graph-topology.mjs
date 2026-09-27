@@ -1,11 +1,17 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { addNode, removeNode, setConnection, setInitialParameter,
-  captureGraphProject, parseGraphProject, validateTopology } from '../web/src/graph/topology.js';
+  setInputSource, captureGraphProject, parseGraphProject, validateTopology } from '../web/src/graph/topology.js';
 
 const project = JSON.parse(readFileSync('projects/graph-workspace/project.json', 'utf8'));
+const texture = JSON.parse(readFileSync('projects/graph-workspace/tone-texture.json', 'utf8'));
+assert.deepEqual(parseGraphProject(texture), texture.signal);
+assert.equal(texture.signal.inputSource, 'none');
+assert.equal(texture.signal.nodes.length, 8);
 const seed = validateTopology(project.signal);
 assert.deepEqual(seed, project.signal);
+assert.equal(setInputSource(seed, 'none').inputSource, 'none');
+assert.throws(() => setInputSource(seed, 'untrusted'), /Invalid graph/);
 let signal = addNode(seed, 'distortion');
 assert.equal(signal.nodes.at(-1).id, 4);
 signal = setConnection(signal, 4, 0, 2);

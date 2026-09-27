@@ -15,7 +15,7 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/?primitive=graph-workspace`);
   await page.waitForFunction(() => document.querySelector('#comparison-result').textContent === 'Match');
-  assert.equal(await page.locator('#reference-case option').count(), 3);
+  assert.equal(await page.locator('#reference-case option').count(), 4);
   assert.match(await page.locator('#reference-title').textContent(), /Native Rust/);
   assert.ok(Number(await page.locator('#max-difference').textContent()) < 1e-5);
   await page.locator('#reference-case').selectOption('distortion');
@@ -23,6 +23,9 @@ try {
   assert.equal(await page.locator('#comparison-result').textContent(), 'Match');
   await page.locator('#reference-case').selectOption('cv');
   await page.waitForFunction(() => document.querySelector('#reference-status').textContent.includes('CV gain'));
+  assert.equal(await page.locator('#comparison-result').textContent(), 'Match');
+  await page.locator('#reference-case').selectOption('texture');
+  await page.waitForFunction(() => document.querySelector('#reference-status').textContent.includes('Oscillator + noise'));
   assert.equal(await page.locator('#comparison-result').textContent(), 'Match');
   assert.equal(await page.locator('.graph-node').count(), 3);
   await page.locator('#audio-toggle').click();
@@ -87,6 +90,7 @@ try {
   await page.locator('#audio-toggle').click();
   await page.locator('#graph-add-type').selectOption('noise');
   await page.locator('#graph-add-node').click();
+  assert.equal(await page.locator('.graph-node-parked').count(), 1);
   await page.locator('#audio-toggle').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running'));
   const parkedLevel = page.locator('input[data-node="7"][data-parameter="0"]');
@@ -94,8 +98,38 @@ try {
   await parkedLevel.press('Tab');
   await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('Rust rejected this node parameter'));
   assert.equal(await parkedLevel.inputValue(), '0.08');
+  await page.locator('#audio-toggle').click();
+  await page.locator('#graph-load-tone').click();
+  assert.equal(await page.locator('.graph-node').count(), 8);
+  assert.equal(await page.locator('.graph-node-parked').count(), 1);
+  assert.equal(await page.locator('#graph-source-mode').inputValue(), 'none');
+  assert.equal(await page.locator('#source').isDisabled(), true);
+  assert.equal(await page.locator('#source').isHidden(), true);
+  assert.equal(await page.locator('#audio-toggle').textContent(), 'Start instrument');
+  await page.waitForFunction(() => document.querySelector('#reference-case').value === 'texture');
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
+  const frequency = page.locator('input[data-node="4"][data-parameter="1"]');
+  await frequency.fill('330');
+  await frequency.press('Tab');
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('in Rust and project state'));
+  await page.locator('#audio-toggle').click();
+  const toneDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const toneBundle = JSON.parse((await readFile(await (await toneDownload).path())).toString());
+  assert.equal(toneBundle.signal.inputSource, 'none');
+  assert.equal(toneBundle.signal.initialParameters.find((entry) => entry.nodeId === 4 && entry.id === 1).value, 330);
+  await page.locator('#graph-source-mode').selectOption('external');
+  assert.equal(await page.locator('#source').isDisabled(), false);
+  assert.equal(await page.locator('#source').isVisible(), true);
+  await page.locator('#graph-project-file').setInputFiles([{
+    name: 'tone-texture.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(toneBundle)),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
+  assert.equal(await page.locator('#graph-source-mode').inputValue(), 'none');
+  assert.equal(await page.locator('#source').isDisabled(), true);
   assert.deepEqual(errors, []);
-  console.log('Graph workspace browser: stopped topology edits, acknowledged live parameter, parked-node rejection, Rust/Wasm starts, cycle rejection, project reopen passed');
+  console.log('Graph workspace browser: stopped topology edits, native/Wasm references, live parameters, parked-node rejection, internal-source study, project reopen passed');
 } finally {
   await browser.close();
 }

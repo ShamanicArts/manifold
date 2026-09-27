@@ -7,6 +7,7 @@ import { addNode, setConnection, setInitialParameter } from '../web/src/graph/to
 const directory = resolve('web/public/reference/graph-workspace');
 mkdirSync(directory, { recursive: true });
 const seed = JSON.parse(readFileSync('projects/graph-workspace/project.json', 'utf8')).signal;
+const texture = JSON.parse(readFileSync('projects/graph-workspace/tone-texture.json', 'utf8')).signal;
 let distorted = addNode(seed, 'distortion');
 distorted = setConnection(distorted, 4, 0, 2);
 distorted = setConnection(distorted, 3, 0, 4);
@@ -28,6 +29,7 @@ const cases = [
   { id: 'seed', label: 'Input → Gain', graph: seed },
   { id: 'distortion', label: 'Input → Gain → Distortion', graph: distorted },
   { id: 'cv', label: 'Input → Gain → Distortion → CV gain', graph: cv },
+  { id: 'texture', label: 'Oscillator + noise → SVF → CV gain', graph: texture },
 ];
 for (const entry of cases) {
   entry.output = `${entry.id}.f32`;

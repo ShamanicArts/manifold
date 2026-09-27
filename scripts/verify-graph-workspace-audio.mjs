@@ -17,6 +17,7 @@ globalThis.AudioWorkletProcessor = class {
 globalThis.registerProcessor = (_, processor) => { Processor = processor; };
 await import(pathToFileURL(resolve('web/src/audio/filter-processor.js')).href);
 const seed = JSON.parse(readFileSync('projects/graph-workspace/project.json', 'utf8')).signal;
+const texture = JSON.parse(readFileSync('projects/graph-workspace/tone-texture.json', 'utf8')).signal;
 let distorted = addNode(seed, 'distortion');
 distorted = setConnection(distorted, 4, 0, 2);
 distorted = setConnection(distorted, 3, 0, 4);
@@ -29,7 +30,7 @@ cv = setConnection(cv, 3, 0, 6);
 
 const workspace = mkdtempSync(join(tmpdir(), 'manifold-graph-'));
 try {
-  for (const [mode, signal] of [['seed', seed], ['distortion', distorted], ['cv', cv]]) {
+  for (const [mode, signal] of [['seed', seed], ['distortion', distorted], ['cv', cv], ['texture', texture]]) {
     const output = join(workspace, `${mode}.f32`);
     execFileSync('cargo', ['run', '--quiet', '-p', 'manifold-core', '--example',
       'render_graph_workspace', '--', mode, output], { cwd: resolve('.'), stdio: 'pipe' });

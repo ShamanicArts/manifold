@@ -60,8 +60,12 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .graph-add .gate-button { flex: none; padding: 0 9px; }
 .graph-workspace select, .graph-workspace input[type="number"] { min-width: 0; padding: 7px; border: 1px solid #526170; border-radius: 4px; background: #1c2a35; color: #e7edf0; font-size: 11px; }
 .graph-workspace > .gate-button, .graph-workspace > .sample-file { display: block; width: 100%; margin-top: 8px; }
+.graph-workspace > .graph-field { margin-top: 10px; }
+.graph-workspace > .graph-field select { width: 100%; }
 .graph-nodes { display: grid; gap: 8px; margin-top: 12px; }
 .graph-node { padding: 9px; border: 1px solid #42515f; border-radius: 4px; background: #17232e; }
+.graph-node-parked { border-color: #48515a; background: #19232b; }
+.graph-parked { color: #e3b689; font: 9px ui-monospace, monospace; text-transform: uppercase; }
 .graph-node-heading { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 11px; }
 .graph-node-heading strong { min-width: 0; flex: 1; }
 .graph-signal { font: 9px ui-monospace, monospace; text-transform: uppercase; color: #99b8c9; }

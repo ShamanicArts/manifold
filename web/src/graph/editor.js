@@ -1,12 +1,15 @@
 import { NODE_TYPES, addNode, removeNode, setConnection, setInitialParameter,
-  captureGraphProject, parseGraphProject } from './topology.js';
+  setInputSource, captureGraphProject, parseGraphProject } from './topology.js';
+import toneTexture from '../../../projects/graph-workspace/tone-texture.json';
 
 // Edits a project description outside the AudioWorklet. The next start compiles it in Rust.
-export function mountGraphEditor(section, project, { isRunning, isActive, onChange, onParameter }) {
+export function mountGraphEditor(section, project, { isRunning, isActive, onChange, onParameter, onTemplateLoaded }) {
   const nodesRoot = section.querySelector('#graph-nodes');
   const status = section.querySelector('#graph-status');
   const addType = section.querySelector('#graph-add-type');
   const addButton = section.querySelector('#graph-add-node');
+  const sourceMode = section.querySelector('#graph-source-mode');
+  const loadTone = section.querySelector('#graph-load-tone');
   const fileInput = section.querySelector('#graph-project-file');
   const exportButton = section.querySelector('#graph-project-export');
   const listeners = new AbortController();
@@ -39,11 +42,24 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   }
 
   function render() {
+    sourceMode.value = project.signal.inputSource === 'none' ? 'none' : 'external';
+    const reachable = new Set([3]);
+    let changed;
+    do {
+      changed = false;
+      for (const edge of project.signal.connections) {
+        if (reachable.has(edge.to) && !reachable.has(edge.from)) {
+          reachable.add(edge.from);
+          changed = true;
+        }
+      }
+    } while (changed);
     nodesRoot.replaceChildren();
     for (const node of project.signal.nodes) {
       const spec = NODE_TYPES[node.type];
       const article = document.createElement('article');
       article.className = 'graph-node';
+      if (!reachable.has(node.id)) article.classList.add('graph-node-parked');
       const heading = document.createElement('div');
       heading.className = 'graph-node-heading';
       const name = document.createElement('strong');
@@ -52,6 +68,13 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
       signal.className = `graph-signal graph-signal-${spec.output ?? 'sink'}`;
       signal.textContent = spec.output ?? 'sink';
       heading.append(name, signal);
+      if (!reachable.has(node.id)) {
+        const parked = document.createElement('span');
+        parked.className = 'graph-parked';
+        parked.textContent = 'parked';
+        parked.title = 'This node is disconnected from Output and does not run until its route is connected on a stopped edit.';
+        heading.append(parked);
+      }
       if (!spec.fixedId) {
         const remove = document.createElement('button');
         remove.type = 'button';
@@ -147,6 +170,20 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   addButton.addEventListener('click', () => {
     if (!canEdit()) return;
     try { commit(addNode(project.signal, addType.value), `Added ${NODE_TYPES[addType.value].label}. Connect its ports, then start audio.`); }
+    catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  sourceMode.addEventListener('change', () => {
+    if (!canEdit()) return;
+    try { commit(setInputSource(project.signal, sourceMode.value),
+      sourceMode.value === 'none' ? 'External input off. Internal graph sources will play on the next start.' : 'External input on. Choose the test oscillator or microphone above.'); }
+    catch (error) { sourceMode.value = project.signal.inputSource === 'none' ? 'none' : 'external'; fail(error); }
+  }, { signal: listeners.signal });
+  loadTone.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      commit(parseGraphProject(toneTexture), 'Loaded the tone and noise study. Start the instrument to hear its Rust graph.');
+      onTemplateLoaded?.('texture');
+    }
     catch (error) { fail(error); }
   }, { signal: listeners.signal });
   exportButton.addEventListener('click', () => {

@@ -1505,6 +1505,12 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
     }
   }
 
+  function selectCase(id) {
+    if (currentFamily !== selectedFamily || !manifest?.cases.some((entry) => entry.id === id)) return;
+    chooser.value = id;
+    choose().catch((error) => { byId('reference-status').textContent = String(error); });
+  }
+
   async function play(kind) {
     if (playbackSource) { playbackSource.stop(); playbackSource = null; }
     if (kind === 'stop' || !active) return;
@@ -1530,5 +1536,5 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
   }
   await loadFamily(initialFamily);
   await choose();
-  return { selectFamily, selectEffectType };
+  return { selectFamily, selectEffectType, selectCase };
 }
