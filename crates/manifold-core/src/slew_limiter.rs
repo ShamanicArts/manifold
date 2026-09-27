@@ -33,6 +33,12 @@ impl SlewLimiter {
         true
     }
 
+    pub fn reset(&mut self) {
+        self.current_up = self.target_up;
+        self.current_down = self.target_down;
+        self.last = [0.0; 2];
+    }
+
     pub fn process_planar(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
         let frames = input[0].len();
         if frames == 0 {

@@ -90,6 +90,10 @@ impl Chorus {
         set_value(&mut self.target, id, value)
     }
 
+    pub fn reset(&mut self) {
+        self.reconfigure(self.target);
+    }
+
     fn read_delay(&self, channel: usize, delay_samples: f32) -> f32 {
         let size = self.delay[0].len();
         let mut position = self.write_index as f32 - delay_samples;
@@ -186,6 +190,24 @@ impl Chorus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reset_clears_delay_at_current_settings_without_reallocating() {
+        let mut chorus = Chorus::new(48_000.0, 128, defaults());
+        let storage = chorus.delay[0].as_ptr();
+        assert!(chorus.set_parameter(1, 0.8));
+        let impulse = [1.0; 1024];
+        chorus.process_planar([&impulse, &impulse], [&mut [0.0; 1024], &mut [0.0; 1024]]);
+        chorus.reset();
+        assert_eq!(chorus.delay[0].as_ptr(), storage);
+        let silence = [0.0; 1024];
+        let mut left = [0.0; 1024];
+        let mut right = [0.0; 1024];
+        chorus.process_planar([&silence, &silence], [&mut left, &mut right]);
+        assert_eq!(left, silence);
+        assert_eq!(right, silence);
+        assert_eq!(chorus.target[1], 0.8);
+    }
     #[test]
     fn delayed_voices_survive_block_boundary_and_stay_finite() {
         let mut chorus = Chorus::new(48_000.0, 128, defaults());

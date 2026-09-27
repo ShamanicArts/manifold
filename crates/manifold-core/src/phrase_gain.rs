@@ -31,6 +31,11 @@ impl PhraseGain {
         true
     }
 
+    pub fn reset(&mut self) {
+        self.current = self.target;
+        self.last_gain = 1.0;
+    }
+
     pub fn process_planar(
         &mut self,
         input: [&[f32]; 2],

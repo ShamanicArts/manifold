@@ -155,6 +155,17 @@ impl Eq8 {
         true
     }
 
+    pub fn reset(&mut self) {
+        self.current = self.target;
+        self.cached = self.target;
+        for band in 0..BAND_COUNT {
+            self.coeffs[band] = self.coefficients(self.target[band]);
+        }
+        self.state = [[State::default(); BAND_COUNT]; 2];
+        self.output_db = self.output_target;
+        self.mix = self.mix_target;
+    }
+
     /// Current effective stereo response; coefficients are shared by both channels.
     pub fn response_db_at(&self, frequency: f32) -> Option<f32> {
         if !frequency.is_finite() || frequency <= 0.0 || frequency >= self.sample_rate * 0.5 {
@@ -286,6 +297,30 @@ impl Eq8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reset_clears_filter_history_at_current_controls() {
+        let mut eq = Eq8::new(48_000.0, defaults());
+        assert!(eq.set_parameter(0, 1.0));
+        assert!(eq.set_parameter(2, 600.0));
+        assert!(eq.set_parameter(3, 9.0));
+        let impulse = [1.0; 256];
+        eq.process_planar([&impulse, &impulse], [&mut [0.0; 256], &mut [0.0; 256]]);
+        eq.reset();
+        let mut params = defaults();
+        params[0] = 1.0;
+        params[2] = 600.0;
+        params[3] = 9.0;
+        let mut fresh = Eq8::new(48_000.0, params);
+        let mut reset_left = [0.0; 256];
+        let mut reset_right = [0.0; 256];
+        let mut fresh_left = [0.0; 256];
+        let mut fresh_right = [0.0; 256];
+        eq.process_planar([&impulse, &impulse], [&mut reset_left, &mut reset_right]);
+        fresh.process_planar([&impulse, &impulse], [&mut fresh_left, &mut fresh_right]);
+        assert_eq!(reset_left, fresh_left);
+        assert_eq!(reset_right, fresh_right);
+    }
     #[test]
     fn disabled_bands_pass_stereo_and_enabled_band_changes_one_frequency() {
         let mut eq = Eq8::new(48000.0, defaults());

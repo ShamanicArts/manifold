@@ -76,6 +76,11 @@ impl Resonator {
         set_value(&mut self.target, id, value)
     }
 
+    pub fn reset(&mut self) {
+        self.current = self.target;
+        self.states = [State::default(); 2];
+    }
+
     pub fn process_planar(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
         let frames = input[0].len();
         assert_eq!(frames, input[1].len());

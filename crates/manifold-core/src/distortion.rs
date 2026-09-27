@@ -34,6 +34,10 @@ impl Distortion {
         true
     }
 
+    pub fn reset(&mut self) {
+        self.current = self.target;
+    }
+
     pub fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
         for index in 0..3 {
             self.current[index] += (self.target[index] - self.current[index]) * self.smoothing;

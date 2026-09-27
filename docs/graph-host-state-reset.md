@@ -46,6 +46,13 @@ reclaims them. Loop capture clears its logical take without reallocating its
 ring. Tests check silence, source reuse, current controls, and forgotten MIDI
 ownership. Execution-plan dispatch and the full kernel audit remain next.
 
+The third core step covers control-state kernels (`SampleHold`, slew,
+attenuverter, CV mixer, phrase gain, distortion), `Chorus`, `Eq8`,
+`Resonator`, `SpectrumAnalyzer`, and `FftSpectrum`. Their resets retain target
+controls and clear phases, delay generations, biquad histories, or analysis
+rings in place. Chorus, EQ, and FFT probes check fresh-instance behavior or
+the absence of old history. The CLAP callback still awaits graph-wide dispatch.
+
 Test with Note Voice (held note and filter), Tone Texture (oscillator phase),
 Sample Voice (active sample cursor), and a delay or reverb graph with a live
 tail. In each case compare the first post-reset block against a newly prepared

@@ -48,6 +48,13 @@ impl SpectrumAnalyzer {
         true
     }
 
+    pub fn reset(&mut self) {
+        self.current = self.target;
+        self.split_state = [0.0; 7];
+        self.band_state = [0.0; 8];
+        self.bands = [0.0; 8];
+    }
+
     pub fn process_planar(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
         let [left, right] = input;
         let [out_left, out_right] = output;

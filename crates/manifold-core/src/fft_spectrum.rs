@@ -76,6 +76,17 @@ impl FftSpectrum {
         true
     }
 
+    pub fn reset(&mut self) {
+        self.ring.fill(0.0);
+        self.real.fill(0.0);
+        self.imag.fill(0.0);
+        self.bands.fill(0.0);
+        self.peak_hz = 0.0;
+        self.write = 0;
+        self.filled = 0;
+        self.hop = 0;
+    }
+
     pub fn meter(&self, band: usize) -> Option<f32> {
         if band == FFT_BANDS {
             Some(self.peak_hz)
@@ -183,6 +194,22 @@ impl FftSpectrum {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reset_clears_meter_and_prepared_window_history() {
+        let mut analyzer = FftSpectrum::new(48_000.0, 0.2, -72.0);
+        let input = [0.8; FFT_SIZE];
+        analyzer.process_planar(
+            [&input, &input],
+            [&mut [0.0; FFT_SIZE], &mut [0.0; FFT_SIZE]],
+        );
+        assert!(analyzer.bands.iter().any(|value| *value > 0.0));
+        analyzer.reset();
+        assert_eq!(analyzer.bands, [0.0; FFT_BANDS]);
+        assert_eq!(analyzer.peak_hz, 0.0);
+        assert_eq!(analyzer.filled, 0);
+        assert_eq!(analyzer.smoothing, 0.2);
+    }
 
     #[test]
     fn passes_stereo_audio_and_finds_tone_after_first_window() {

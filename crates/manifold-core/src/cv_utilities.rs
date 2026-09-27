@@ -35,6 +35,10 @@ impl AttenuverterBias {
         true
     }
 
+    pub fn reset(&mut self) {
+        self.output = 0.0;
+    }
+
     pub fn process_sample(&mut self, input: f32) -> f32 {
         self.output = bipolar(bipolar(input) * self.amount + self.bias);
         self.output
@@ -66,6 +70,11 @@ impl SampleHold {
         }
         self.mode = value.round().clamp(0.0, 2.0) as u32;
         true
+    }
+
+    pub fn reset(&mut self) {
+        self.output = 0.0;
+        self.trigger_high = false;
     }
 
     pub fn process_sample(&mut self, input: f32, trigger: f32) -> f32 {
@@ -117,6 +126,10 @@ impl CvMix {
             _ => return false,
         }
         true
+    }
+
+    pub fn reset(&mut self) {
+        self.output = 0.0;
     }
 
     pub fn process_sample(&mut self, input: [f32; 4]) -> f32 {
