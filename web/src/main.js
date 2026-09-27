@@ -47,6 +47,8 @@ import loopCaptureProject from '../../projects/loop-capture/project.json';
 import sampleRegionProject from '../../projects/sample-region/project.json';
 import sampleInstrumentProject from '../../projects/sample-instrument/project.json';
 import mainVoiceBankProject from '../../projects/main-voice-bank/project.json';
+const mainVoiceBankInitialPartials = structuredClone(mainVoiceBankProject.partials);
+const mainVoiceBankInitialExtraPartials = structuredClone(mainVoiceBankProject.extraPartials);
 import spectrumAnalyzerProject from '../../projects/spectrum-analyzer/project.json';
 import fftSpectrumProject from '../../projects/fft-spectrum/project.json';
 import slewAudioProject from '../../projects/slew-audio/project.json';
@@ -432,8 +434,8 @@ function usesSineSource(family = activeFamily) {
 }
 function resetMainBankTargets() {
   if (activeFamily !== 'main-voice-bank') return;
-  activeProject.partials = structuredClone(mainVoiceBankProject.partials);
-  activeProject.extraPartials = structuredClone(mainVoiceBankProject.extraPartials);
+  activeProject.partials = structuredClone(mainVoiceBankInitialPartials);
+  activeProject.extraPartials = structuredClone(mainVoiceBankInitialExtraPartials);
   delete activeProject.temporalTargets;
 }
 let values = new Map();
@@ -1167,8 +1169,10 @@ function updateLoopToggles() {
     button.setAttribute('aria-pressed', String(on));
     button.disabled = (id === 1 || id === 2) && (Boolean(values.get(0)) || !loopHasTake);
   }
-  byId('capture-transfer').disabled = !audio.running || !loopHasTake || Boolean(values.get(0));
-  byId('capture-transfer-granulator').disabled = !audio.running || !loopHasTake || Boolean(values.get(0));
+  for (const id of ['capture-transfer', 'capture-transfer-granulator',
+    'capture-transfer-main-bank', 'capture-transfer-main-blend']) {
+    byId(id).disabled = !audio.running || !loopHasTake || Boolean(values.get(0));
+  }
 }
 
 function addSelect(parameter) {
@@ -2570,20 +2574,38 @@ byId('sample-use-root').addEventListener('click', () => {
 });
 async function transferCapturedTake(destination) {
   const readout = byId('capture-transfer-status');
-  byId('capture-transfer').disabled = true;
-  byId('capture-transfer-granulator').disabled = true;
+  for (const id of ['capture-transfer', 'capture-transfer-granulator',
+    'capture-transfer-main-bank', 'capture-transfer-main-blend']) byId(id).disabled = true;
   try {
     if (activeFamily !== 'loop-capture' || !audio.running || !loopHasTake || values.get(0)) {
       throw new Error('Record a take and stop recording before sending it.');
     }
     readout.textContent = 'Copying the stopped take…';
     const sample = await audio.captureSnapshot(2);
-    const source = { ...sample, label: `Captured take · ${(sample.stereo.length / 2 / sample.sourceRate).toFixed(2)} s · ready to start` };
+    if (activeFamily !== 'loop-capture' || !audio.running || values.get(0)) {
+      throw new Error('Loop capture changed while exporting the take.');
+    }
+    const main = destination === 'main-voice-bank' || destination === 'main-sample-blend';
+    if (main && (sample.stereo.length < 512 || sample.sourceRate < 8_000 || sample.sourceRate > 96_000)) {
+      throw new Error('Main needs at least 256 frames at a sample rate between 8 and 96 kHz.');
+    }
+    const source = { ...sample, sourceKind: 'embedded',
+      label: `Captured take · ${(sample.stereo.length / 2 / sample.sourceRate).toFixed(2)} s · ready to start` };
     if (destination === 'granulator') {
       loadedGranulatorSource = { ...source, origin: 'capture' };
       byId('granulator-file').value = '';
-    } else loadedSample = source;
+    } else if (destination === 'main-sample-blend') loadedSineSource = source;
+    else {
+      loadedSample = source;
+      if (destination === 'main-voice-bank') loadedSineSource = source;
+    }
+    if (main) sineTargetActive = false;
     await selectPrimitive(destination);
+    if (destination === 'main-voice-bank') {
+      resetMainBankTargets();
+      byId('sine-target-bars').replaceChildren();
+      byId('sine-target-status').textContent = 'Captured source analyzing. Audition a frame to prepare its spectral targets.';
+    } else if (destination === 'main-sample-blend') requestSampleAnalysis(loadedSineSource, true);
   } catch (error) {
     readout.textContent = `Take unavailable: ${error.message ?? String(error)}`;
   } finally {
@@ -2592,6 +2614,8 @@ async function transferCapturedTake(destination) {
 }
 byId('capture-transfer').addEventListener('click', () => transferCapturedTake('sample-instrument'));
 byId('capture-transfer-granulator').addEventListener('click', () => transferCapturedTake('granulator'));
+byId('capture-transfer-main-bank').addEventListener('click', () => transferCapturedTake('main-voice-bank'));
+byId('capture-transfer-main-blend').addEventListener('click', () => transferCapturedTake('main-sample-blend'));
 byId('sample-trigger').addEventListener('click', () => {
   if (audio.running && activeFamily === 'sample-region') audio.sendEvent(2, 0, 60, 100);
   else byId('sample-source-status').textContent = 'Start the instrument before triggering the sample.';

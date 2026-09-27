@@ -191,6 +191,16 @@ note ownership follows the old UI's note-only policy across channels.
   command actually saved broad runtime state including rack layout; this v2
   sound preset is deliberately narrower. Graph replacement and migrating the
   old project's runtime state and preset library remain future work.
+- Loop capture can transfer a stopped Rust take to either Main view. The new
+  source is analyzed in the worker and saved once as embedded PCM in the
+  project bundle. The bank resets old prepared targets before the captured
+  source is auditioned, using immutable initial arrays rather than the
+  previously edited project object. `scripts/verify-main-capture-transfer-browser.mjs`
+  first auditions another bank source and checks that target reset, then
+  records with the browser test oscillator and transfers to both Main views,
+  prepares a target, starts and plays the bank, then saves and reopens both
+  bundles. The [review page](../web/public/main-capture-transfer-review.html)
+  records the observed frame counts and remaining capture scope.
 
 The playable workbench is `/?primitive=main-voice-bank`; the Add/Morph checkpoint
 review is `/main-add-morph-review.html`; the timing review is
