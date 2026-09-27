@@ -52,7 +52,10 @@ The same Rust DSP crate builds to native code and Wasm. `manifold-native` wraps 
 The first loadable native format is now CLAP on Linux. `manifold-clap` uses the
 raw CLAP C ABI bindings and loads the authored Standalone FX project through
 `manifold-native`, with seven stable controls, stereo f32 processing, and host
-state callbacks. Its Audio callback runs prepared native Rust DSP; the browser
+state callbacks. The browser and CLAP host can exchange the authored project
+JSON with all 21 effects' remembered control sets; the native reader validates
+and prepares it before publication to the audio callback. Its audio callback
+runs prepared native Rust DSP; the browser
 still runs the Wasm build of the same core. The CLAP module has no custom editor
 yet. See the [CLAP host proof](clap-host.md) for tests and remaining work.
 

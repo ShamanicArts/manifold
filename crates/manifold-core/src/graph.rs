@@ -1664,6 +1664,21 @@ impl ExecutionPlan {
             })
     }
 
+    pub fn restore_effect_slot_params(
+        &mut self,
+        node: NodeId,
+        effect_type: u32,
+        values: [f32; 5],
+    ) -> bool {
+        self.nodes
+            .iter_mut()
+            .find(|entry| entry.id == node)
+            .is_some_and(|entry| match &mut entry.kernel {
+                Kernel::EffectSlot(slot) => slot.restore_stored_params(effect_type, values),
+                _ => false,
+            })
+    }
+
     pub fn capture_length(&self, node: NodeId) -> Option<usize> {
         self.nodes
             .iter()

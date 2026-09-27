@@ -13,6 +13,12 @@ Build a loadable file with `./scripts/build-clap.sh`. It prints the path under
 module currently uses the host's generic parameter UI. The browser widget
 surface has not been embedded in a native editor.
 
+The browser's **Save host project** action exports the authored project JSON
+with all seven current public values and `typeParameters` for all 21 effects.
+The CLAP state stream writes the same JSON envelope. Both the browser's
+**Open state** action and `NativeProject::parse_fx_module` accept it. Browser
+state files remain available through the existing **Save state** action.
+
 ## Evidence
 
 - `cargo test -p manifold-native standalone_fx_module_loads_the_authored_project_and_roundtrips_host_state`
@@ -21,8 +27,12 @@ surface has not been embedded in a native editor.
 - `cargo test -p manifold-clap` creates the CLAP plug-in through its factory,
   activates it, sends a host parameter event, and compares its stereo output
   sample for sample with the native project adapter. It also switches between
-  Chorus and Reverb and checks that the generic host controls follow each
-  effect's remembered values.
+  Chorus and Reverb, checks that the generic host controls follow each effect's
+  remembered values, saves through the CLAP stream callbacks, and reopens the
+  saved state with both effects' controls intact. A second test changes types
+  and controls while inactive, then activates and verifies the saved values.
+- `node web/tests/fx-module.browser.mjs` exports a host project from the
+  actual browser controls, reads its state, and reopens it in the browser.
 - The official `free-audio/clap-validator` v0.4.1 test suite loads the built
   `.clap` module. On this Linux machine it reports 44 tests run: 33 passed,
   0 failed, 0 warnings, 11 skipped. The passing tests include in-place and
@@ -43,10 +53,13 @@ effect history, though deactivation and state publication prepare new kernels.
 State load while active prepares the replacement on the main thread and swaps
 at the next process block; old runtime retirement stays off the callback.
 Multiple queued state loads before a process block are currently rejected.
-The browser remembers per-effect control values in JavaScript; that per-type
-memory is now reflected in the live CLAP parameter values on type switches,
-with a host value rescan requested on the main thread. Saved state still only
-contains the selected effect's five controls; reopening a DAW project resets
-the other effects' remembered controls to their defaults. CLAP automation and audio
+The CLAP state saver reads atomic public controls and per-effect memories while
+audio may be running; a save concurrent with a control-changing block can
+capture values from adjacent blocks. A coherent control-thread snapshot is
+needed before treating live saves as production-ready.
+
+The browser's per-effect control memory is now reflected in the live CLAP
+parameter values and its saved project state. Type switches request a host
+value rescan on the main thread. CLAP automation and audio
 processing cover f32 stereo; f64 audio and sidechain ports are not advertised.
 VST3, Audio Unit, and other format bundles remain separate host adapters.

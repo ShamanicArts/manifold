@@ -1,6 +1,7 @@
 //! Native host boundary for the same prepared graph used by the browser.
 //! The host owns device I/O and calls this adapter with planar f32 blocks.
 
+pub use manifold_core::effect_slot::DEFAULT_TYPE_PARAMETERS;
 use manifold_core::events::{EventError, TimedEvent};
 use manifold_core::graph::{ExecutionPlan, GraphDescription, GraphError, NodeId};
 use manifold_core::main_voice_bank::MainTemporalRecipe;
@@ -80,6 +81,22 @@ impl NativeProcessor {
     /// Read this only while host processing is suspended or otherwise synchronized.
     pub fn current_parameter_values(&self) -> &[f32] {
         &self.current_parameter_values
+    }
+
+    pub fn effect_slot_params(&self, node: NodeId, effect_type: u32) -> Option<[f32; 5]> {
+        self.plan.effect_slot_params(node, effect_type)
+    }
+
+    /// Restore inactive effect memories during project preparation, before
+    /// normal active parameter setup applies live DSP settings.
+    pub fn restore_effect_slot_params(
+        &mut self,
+        node: NodeId,
+        effect_type: u32,
+        values: [f32; 5],
+    ) -> bool {
+        self.plan
+            .restore_effect_slot_params(node, effect_type, values)
     }
 
     /// Fixed public host slots; a slot may be unbound in a given project.

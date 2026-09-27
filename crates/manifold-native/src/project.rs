@@ -12,7 +12,7 @@ use manifold_core::temporal_partials::analyze_temporal_stereo;
 use serde_json::Value;
 
 use crate::parameters::{HOST_SLOT_COUNT, HostBinding, HostParameter};
-use crate::{NativeError, NativeProcessor};
+use crate::{DEFAULT_TYPE_PARAMETERS, NativeError, NativeProcessor};
 
 const MAX_PROJECT_BYTES: usize = 45 * 1024 * 1024;
 const MAX_ASSET_BYTES: usize = 32 * 1024 * 1024;
@@ -62,6 +62,7 @@ pub struct NativeProject {
     assets: Vec<Asset>,
     targets: Vec<Target>,
     temporal: Vec<TemporalRecipe>,
+    fx_type_parameters: Option<[[f32; 5]; 21]>,
 }
 
 /// Keep the portable project beside its prepared processor for host state saves.
@@ -90,6 +91,17 @@ impl PreparedNativeProject {
                 .position(|parameter| parameter.node == node && u64::from(parameter.local_id) == id)
                 .ok_or(ProjectError::Invalid("parameter id"))?;
             entry["value"] = Value::from(self.processor.current_parameter_values()[index]);
+        }
+        if self.document["id"] == "manifold.standalone-fx-module" {
+            let mut table = serde_json::Map::new();
+            for effect_type in 0..21 {
+                let values = self
+                    .processor
+                    .effect_slot_params(2_u32.into(), effect_type)
+                    .ok_or(ProjectError::Invalid("FX type controls"))?;
+                table.insert(effect_type.to_string(), serde_json::json!(values));
+            }
+            self.document["typeParameters"] = Value::Object(table);
         }
         let bytes =
             serde_json::to_vec(&self.document).map_err(|_| ProjectError::Invalid("JSON"))?;
@@ -391,13 +403,33 @@ impl NativeProject {
                 "signal",
                 "parameters",
             ],
-            &[],
+            &["typeParameters"],
         )?;
         if required(root, "schemaVersion") != 1
             || required(root, "id") != "manifold.standalone-fx-module"
         {
             return Err(ProjectError::Invalid("FX project version"));
         }
+        let fx_type_parameters = if let Some(table) = root.get("typeParameters") {
+            let entries = table
+                .as_object()
+                .filter(|entries| entries.len() == 21)
+                .ok_or(ProjectError::Invalid("FX type controls"))?;
+            let mut all = [[0.; 5]; 21];
+            for (effect_type, values) in all.iter_mut().enumerate() {
+                let row = entries
+                    .get(&effect_type.to_string())
+                    .and_then(Value::as_array)
+                    .filter(|row| row.len() == 5)
+                    .ok_or(ProjectError::Invalid("FX type controls"))?;
+                for (index, value) in row.iter().enumerate() {
+                    values[index] = float(value, 0., 1.)?;
+                }
+            }
+            Some(all)
+        } else {
+            None
+        };
         let public = required(root, "parameters")
             .as_array()
             .ok_or(ProjectError::Invalid("FX public parameters"))?;
@@ -442,6 +474,10 @@ impl NativeProject {
         let encoded = serde_json::to_vec(&envelope).map_err(|_| ProjectError::Invalid("JSON"))?;
         let mut parsed = Self::parse(&encoded)?;
         parsed.document = authored;
+        parsed.fx_type_parameters = fx_type_parameters;
+        // The authored file lists five controls before type. Host state may
+        // reopen on any type, so select it before applying those controls.
+        parsed.parameters.sort_by_key(|entry| entry.id);
         Ok(parsed)
     }
 
@@ -952,6 +988,7 @@ impl NativeProject {
             assets,
             targets,
             temporal,
+            fx_type_parameters: None,
         })
     }
 
@@ -961,6 +998,10 @@ impl NativeProject {
 
     pub fn host_bindings(&self) -> &[HostBinding] {
         &self.host_bindings
+    }
+
+    pub fn fx_type_parameters(&self) -> [[f32; 5]; 21] {
+        self.fx_type_parameters.unwrap_or(DEFAULT_TYPE_PARAMETERS)
     }
 
     /// Compile and install state on a control thread, before publishing the processor.
@@ -1019,6 +1060,13 @@ impl NativeProject {
         }
         let mut processor = NativeProcessor::prepare(&self.graph, sample_rate, max_frames)
             .map_err(ProjectError::Prepare)?;
+        if let Some(table) = self.fx_type_parameters {
+            for (effect_type, values) in table.into_iter().enumerate() {
+                if !processor.restore_effect_slot_params(2_u32.into(), effect_type as u32, values) {
+                    return Err(ProjectError::Invalid("FX type controls"));
+                }
+            }
+        }
         for parameter in self.parameters {
             if !processor.set_parameter(parameter.node.into(), parameter.id, parameter.value) {
                 return Err(ProjectError::Invalid("unavailable parameter"));
@@ -1182,11 +1230,13 @@ mod tests {
         assert_eq!(value(&prepared, 0), 0.);
         assert_eq!(value(&prepared, 2), 0.87);
         let saved = prepared.save_state().unwrap();
-        let reopened = NativeProject::parse_fx_module(&saved)
+        let mut reopened = NativeProject::parse_fx_module(&saved)
             .unwrap()
             .prepare_with_state(48_000., 64)
             .unwrap();
         assert_eq!(value(&reopened, 2), 0.87);
+        assert!(reopened.processor.set_parameter(node, 0, 7.));
+        assert_eq!(value(&reopened, 2), 0.13);
     }
 
     fn parse(value: &Value) -> Result<NativeProject, ProjectError> {

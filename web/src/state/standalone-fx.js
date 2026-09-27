@@ -60,3 +60,44 @@ export const parseStandaloneFxState = (document) => parseState(document, false);
 export const captureStandaloneFxState = (values, typeValues) => captureState(values, typeValues, false);
 export const parsePersistentFxState = (document) => parseState(document, true);
 export const capturePersistentFxState = (values, typeValues) => captureState(values, typeValues, true);
+
+// The authored graph project is also the CLAP stream state. Keep its public
+// control IDs and the browser's per-type memory in one portable JSON envelope.
+export function captureFxProjectState(template, values, typeValues) {
+  const state = captureStandaloneFxState(values, typeValues);
+  const document = structuredClone(template);
+  document.signal.initialParameters = Array.from({ length: 7 }, (_, id) => ({
+    nodeId: 2,
+    id,
+    value: id === 0 ? state.hostParameters.type : id === 1
+      ? state.hostParameters.mix : state.hostParameters[`p/${id - 2}`],
+  }));
+  document.typeParameters = state.typeParameters;
+  return document;
+}
+
+export function parseFxProjectState(document) {
+  if (document?.schemaVersion !== 1 || document?.id !== "manifold.standalone-fx-module") {
+    throw new Error("This is not a Standalone FX host project.");
+  }
+  const entries = document.signal?.initialParameters;
+  if (!Array.isArray(entries) || entries.length !== 7) {
+    throw new Error("The host project needs seven public controls.");
+  }
+  const controls = new Map();
+  for (const entry of entries) {
+    if (entry?.nodeId !== 2 || !Number.isInteger(entry.id) || entry.id < 0 || entry.id > 6
+      || controls.has(entry.id)) throw new Error("Invalid host control ID.");
+    controls.set(entry.id, entry.value);
+  }
+  return parseStandaloneFxState({
+    schemaVersion: 1,
+    projectId: PROJECT,
+    hostParameters: {
+      type: controls.get(0), mix: controls.get(1),
+      "p/0": controls.get(2), "p/1": controls.get(3), "p/2": controls.get(4),
+      "p/3": controls.get(5), "p/4": controls.get(6),
+    },
+    typeParameters: document.typeParameters,
+  });
+}

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 import { createServer } from "vite";
 import { chromium } from "playwright-core";
 
@@ -94,6 +95,19 @@ try {
   assert.equal(await page.locator("#widget-param3").isVisible(), false);
   await selectEffect(0);
   assert.equal(Number(await page.locator("#widget-param1").getAttribute("aria-valuenow")).toFixed(2), "0.83");
+  const hostDownloadPromise = page.waitForEvent("download");
+  await page.locator("#save-host-state").click();
+  const hostDownload = await hostDownloadPromise;
+  const hostPath = await hostDownload.path();
+  const hostProject = JSON.parse(await readFile(hostPath, "utf8"));
+  assert.equal(hostProject.id, "manifold.standalone-fx-module");
+  assert.equal(hostProject.typeParameters["0"][0].toFixed(2), "0.83");
+  assert.equal(hostProject.signal.initialParameters.length, 7);
+  await clickSlider("param1", .2);
+  await page.locator("#open-state").setInputFiles(hostPath);
+  await page.waitForFunction(() =>
+    Number(document.querySelector("#widget-param1").getAttribute("aria-valuenow")).toFixed(2) === "0.83"
+  );
   await page.locator("#settings-toggle").click();
   assert.equal(await page.locator("#settings-overlay").isVisible(), true);
   await page.locator("#settings-close").click();

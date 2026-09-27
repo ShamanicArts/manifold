@@ -15,6 +15,7 @@ use clap_sys::process::{
     CLAP_PROCESS_CONTINUE, CLAP_PROCESS_ERROR, clap_process, clap_process_status,
 };
 use clap_sys::stream::{clap_istream, clap_ostream};
+use manifold_native::DEFAULT_TYPE_PARAMETERS;
 use manifold_native::host_buffers::{HostBuffers, RawHostBlock};
 use manifold_native::parameters::{HOST_SLOT_BASE, TimedAutomation};
 use manifold_native::project::{NativeProject, PreparedNativeProject};
@@ -41,6 +42,8 @@ pub(crate) struct Instance {
     sample_rate: Mutex<Option<(f32, usize)>>,
     state: Mutex<Vec<u8>>,
     values: [AtomicU32; 7],
+    type_values: [[AtomicU32; 5]; 21],
+    type_values_valid: AtomicBool,
 }
 
 // CLAP serializes process calls per instance. Its state extension runs on the
@@ -77,6 +80,9 @@ impl Instance {
             sample_rate: Mutex::new(None),
             state: Mutex::new(SOURCE_PROJECT.to_vec()),
             values: DEFAULTS.map(|value| AtomicU32::new(value.to_bits())),
+            type_values: DEFAULT_TYPE_PARAMETERS
+                .map(|row| row.map(|value| AtomicU32::new(value.to_bits()))),
+            type_values_valid: AtomicBool::new(true),
         });
         instance.plugin.plugin_data = &mut *instance as *mut Self as *mut c_void;
         instance
@@ -101,6 +107,25 @@ impl Instance {
                     serde_json::json!({"nodeId": 2, "id": index, "value": self.value(index)}),
                 );
             }
+        }
+        if self.type_values_valid.load(Ordering::Acquire) {
+            let mut table = serde_json::Map::new();
+            for effect_type in 0..21 {
+                let values: [f32; 5] = std::array::from_fn(|index| {
+                    f32::from_bits(self.type_values[effect_type][index].load(Ordering::Acquire))
+                });
+                table.insert(effect_type.to_string(), serde_json::json!(values));
+            }
+            let selected = self.value(0) as usize;
+            if selected < 21 {
+                table.insert(
+                    selected.to_string(),
+                    serde_json::json!(
+                        std::array::from_fn::<_, 5, _>(|index| self.value(index + 2))
+                    ),
+                );
+            }
+            doc["typeParameters"] = serde_json::Value::Object(table);
         }
         serde_json::to_vec(&doc)
             .ok()
@@ -191,6 +216,7 @@ unsafe extern "C" fn plugin_activate(
     let Some(runtime) = instance.prepared(&state, rate as f32, max as usize) else {
         return false;
     };
+    publish_processor_snapshot(instance, &runtime, false);
     instance
         .current
         .store(Box::into_raw(runtime), Ordering::Release);
@@ -294,7 +320,8 @@ unsafe fn append_events(
     true
 }
 
-fn publish_values(instance: &Instance, automation: &[TimedAutomation]) {
+fn publish_inactive_values(instance: &Instance, automation: &[TimedAutomation]) -> bool {
+    let mut type_changed = false;
     for point in automation {
         let index = (point.id - HOST_SLOT_BASE) as usize;
         let value = if index == 0 {
@@ -302,11 +329,25 @@ fn publish_values(instance: &Instance, automation: &[TimedAutomation]) {
         } else {
             point.normalized
         };
+        if index == 0 {
+            let selected = value as usize;
+            for control in 0..5 {
+                let remembered = instance.type_values[selected][control].load(Ordering::Acquire);
+                instance.values[control + 2].store(remembered, Ordering::Release);
+            }
+            type_changed = true;
+        } else if index >= 2 {
+            let selected = instance.value(0) as usize;
+            if selected < 21 {
+                instance.type_values[selected][index - 2].store(value.to_bits(), Ordering::Release);
+            }
+        }
         instance.values[index].store(value.to_bits(), Ordering::Release);
     }
+    type_changed
 }
 
-fn publish_processor_values(instance: &Instance, runtime: &Runtime) {
+fn publish_processor_snapshot(instance: &Instance, runtime: &Runtime, rescan: bool) {
     for (descriptor, value) in runtime
         .prepared
         .processor
@@ -318,7 +359,20 @@ fn publish_processor_values(instance: &Instance, runtime: &Runtime) {
             instance.values[descriptor.local_id as usize].store(value.to_bits(), Ordering::Release);
         }
     }
-    if !instance.host.is_null() {
+    for effect_type in 0..21 {
+        if let Some(values) = runtime
+            .prepared
+            .processor
+            .effect_slot_params(2_u32.into(), effect_type)
+        {
+            for (index, value) in values.into_iter().enumerate() {
+                instance.type_values[effect_type as usize][index]
+                    .store(value.to_bits(), Ordering::Release);
+            }
+        }
+    }
+    instance.type_values_valid.store(true, Ordering::Release);
+    if rescan && !instance.host.is_null() {
         instance.rescan_needed.store(true, Ordering::Release);
         if let Some(request) = unsafe { (*instance.host).request_callback } {
             unsafe { request(instance.host) };
@@ -337,6 +391,7 @@ fn publish_pending(instance: &Instance) {
     let pending = instance.pending.swap(null_mut(), Ordering::AcqRel);
     if !pending.is_null() {
         let old = instance.current.swap(pending, Ordering::AcqRel);
+        publish_processor_snapshot(instance, unsafe { &*pending }, true);
         if !old.is_null() {
             instance.retired.store(old, Ordering::Release);
             if !instance.host.is_null() {
@@ -442,10 +497,8 @@ unsafe extern "C" fn plugin_process(
     {
         return CLAP_PROCESS_ERROR;
     }
-    if type_changed(&runtime.automation) {
-        publish_processor_values(instance, runtime);
-    } else {
-        publish_values(instance, &runtime.automation);
+    if !runtime.automation.is_empty() {
+        publish_processor_snapshot(instance, runtime, type_changed(&runtime.automation));
     }
     CLAP_PROCESS_CONTINUE
 }
@@ -453,15 +506,22 @@ unsafe extern "C" fn plugin_process(
 unsafe extern "C" fn plugin_main_thread(plugin: *const clap_plugin) {
     if let Some(instance) = unsafe { instance(plugin) } {
         instance.retire_old();
-        if instance.rescan_needed.swap(false, Ordering::AcqRel) && !instance.host.is_null() {
-            if let Some(get) = unsafe { (*instance.host).get_extension } {
-                let extension = unsafe { get(instance.host, CLAP_EXT_PARAMS.as_ptr()) };
-                if !extension.is_null() {
-                    let params = unsafe { &*(extension as *const clap_host_params) };
-                    if let Some(rescan) = params.rescan {
-                        unsafe { rescan(instance.host, CLAP_PARAM_RESCAN_VALUES) };
-                    }
-                }
+        if instance.rescan_needed.swap(false, Ordering::AcqRel) {
+            rescan_host_values(instance);
+        }
+    }
+}
+
+fn rescan_host_values(instance: &Instance) {
+    if instance.host.is_null() {
+        return;
+    }
+    if let Some(get) = unsafe { (*instance.host).get_extension } {
+        let extension = unsafe { get(instance.host, CLAP_EXT_PARAMS.as_ptr()) };
+        if !extension.is_null() {
+            let params = unsafe { &*(extension as *const clap_host_params) };
+            if let Some(rescan) = params.rescan {
+                unsafe { rescan(instance.host, CLAP_PARAM_RESCAN_VALUES) };
             }
         }
     }
@@ -559,7 +619,9 @@ pub(crate) unsafe extern "C" fn param_flush(
         // the audio callback and becomes the input to the next activation.
         let mut scratch = Vec::with_capacity(MAX_EVENTS);
         if unsafe { append_events(events, 0, &mut scratch) } {
-            publish_values(instance, &scratch);
+            if publish_inactive_values(instance, &scratch) {
+                rescan_host_values(instance);
+            }
         }
         return;
     }
@@ -584,10 +646,8 @@ pub(crate) unsafe extern "C" fn param_flush(
         )
         .is_ok()
     {
-        if type_changed(&runtime.automation) {
-            publish_processor_values(instance, runtime);
-        } else {
-            publish_values(instance, &runtime.automation);
+        if !runtime.automation.is_empty() {
+            publish_processor_snapshot(instance, runtime, type_changed(&runtime.automation));
         }
     }
 }
@@ -670,6 +730,12 @@ pub(crate) unsafe extern "C" fn state_load(
         }
         values[index] = parameter.initial;
     }
+    let mut type_values = parsed.fx_type_parameters();
+    let selected = values[0] as usize;
+    if selected >= 21 {
+        return false;
+    }
+    type_values[selected].copy_from_slice(&values[2..7]);
     instance.retire_old();
     let configuration = instance.sample_rate.lock().ok().and_then(|guard| *guard);
     if let Some((rate, max)) = configuration {
@@ -697,18 +763,12 @@ pub(crate) unsafe extern "C" fn state_load(
     for (index, value) in values.iter().enumerate() {
         instance.values[index].store(value.to_bits(), Ordering::Release);
     }
-    if !instance.host.is_null() {
-        if let Some(get) = unsafe { (*instance.host).get_extension } {
-            let extension = unsafe { get(instance.host, CLAP_EXT_PARAMS.as_ptr()) };
-            if !extension.is_null() {
-                let params = unsafe { &*(extension as *const clap_host_params) };
-                if let Some(rescan) = params.rescan {
-                    unsafe {
-                        rescan(instance.host, CLAP_PARAM_RESCAN_VALUES);
-                    }
-                }
-            }
+    for (effect_type, row) in type_values.iter().enumerate() {
+        for (index, value) in row.iter().enumerate() {
+            instance.type_values[effect_type][index].store(value.to_bits(), Ordering::Release);
         }
     }
+    instance.type_values_valid.store(true, Ordering::Release);
+    rescan_host_values(instance);
     true
 }

@@ -4,6 +4,8 @@ import layout from "../../projects/standalone-fx-module/ui.json";
 import { BrowserAudioHost } from "./audio/browser-host.js";
 import {
   captureStandaloneFxState,
+  captureFxProjectState,
+  parseFxProjectState,
   parseStandaloneFxState,
 } from "./state/standalone-fx.js";
 import { mountProjectUi } from "./widgets/project-ui.js";
@@ -369,24 +371,32 @@ byId("audio-toggle").addEventListener("click", async () => {
     syncEngine();
   }
 });
-byId("save-state").addEventListener("click", () => {
-  const state = captureStandaloneFxState(values, typeValues);
+function downloadState(state, filename) {
   const url = URL.createObjectURL(
     new Blob([JSON.stringify(state, null, 2)], { type: "application/json" }),
   );
   const link = document.createElement("a");
   link.href = url;
-  link.download = "manifold-standalone-fx.json";
+  link.download = filename;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+byId("save-state").addEventListener("click", () => {
+  downloadState(captureStandaloneFxState(values, typeValues), "manifold-standalone-fx.json");
   status("Standalone FX state saved.");
+});
+byId("save-host-state").addEventListener("click", () => {
+  downloadState(captureFxProjectState(project, values, typeValues), "manifold-standalone-fx-host.json");
+  status("Host project saved. Its JSON state can also be reopened here.");
 });
 byId("open-state").addEventListener("change", async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
   try {
     if (audio.running) throw new Error("Stop audio before opening state.");
-    const state = parseStandaloneFxState(JSON.parse(await file.text()));
+    const document = JSON.parse(await file.text());
+    const state = document.id === "manifold.standalone-fx-module"
+      ? parseFxProjectState(document) : parseStandaloneFxState(document);
     typeValues = new Map(
       Object.entries(state.typeParameters).map((
         [type, controls],

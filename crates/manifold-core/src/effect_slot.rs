@@ -134,6 +134,31 @@ pub struct EffectSlot {
     legacy: Option<LegacyState>,
 }
 
+/// Normalized control memories in the legacy public effect-type order.
+pub const DEFAULT_TYPE_PARAMETERS: [[f32; 5]; 21] = [
+    [0.5, 0.5, 0.2, 0.6, 0.4],
+    [0.5, 0.5, 0.4, 0.5, 0.4],
+    [0.3, 0.0, 0.7, 0.5, 0.5],
+    [0.4, 0.3, 0.1, 0.3, 0.5],
+    [0.6, 0.4, 0.5, 0.5, 0.5],
+    [0.5, 0.2, 0.5, 0.5, 0.5],
+    [0.5, 0.4, 0.1, 0.5, 0.5],
+    [0.5, 0.4, 0.5, 0.5, 0.5],
+    [0.3, 0.3, 0.5, 0.5, 0.5],
+    [0.3, 0.3, 0.5, 0.5, 0.5],
+    [0.5, 0.5, 0.2, 0.5, 0.5],
+    [0.3, 0.4, 0.6, 0.25, 0.5],
+    [0.3, 1.0, 0.2, 0.5, 0.5],
+    [0.0, 0.5, 0.4, 0.3, 0.5],
+    [0.5; 5],
+    [0.5, 0.3, 0.4, 0.4, 0.5],
+    [0.5; 5],
+    [0.3, 0.12, 0.55, 0.5, 0.5],
+    [0.6, 0.75, 0.7, 0.5, 0.5],
+    [0.2, 0.25, 0.47, 0.5, 0.5],
+    [0.05, 0.8, 0.8, 0.25, 0.5],
+];
+
 impl EffectSlot {
     /// Stored normalized controls for an effect, including effects whose
     /// output gate is currently closed.
@@ -164,6 +189,44 @@ impl EffectSlot {
         })
     }
 
+    /// Restore the control memory before the graph is published to an audio
+    /// callback. The selected type's live DSP settings are applied by the
+    /// regular public parameter setup that follows preparation.
+    pub fn restore_stored_params(&mut self, effect_type: u32, values: [f32; 5]) -> bool {
+        if !values
+            .iter()
+            .all(|value| value.is_finite() && (0.0..=1.0).contains(value))
+        {
+            return false;
+        }
+        let target = match effect_type {
+            CHORUS_TYPE => &mut self.chorus_params,
+            PHASER_TYPE => &mut self.phaser_params,
+            WAVESHAPER_TYPE => &mut self.waveshaper_params,
+            WIDENER_TYPE => &mut self.widener_params,
+            LEGACY_FILTER_TYPE => &mut self.legacy_filter_params,
+            REVERB_TYPE => &mut self.reverb_params,
+            COMPRESSOR_TYPE => &mut self.compressor_params,
+            SVF_TYPE => &mut self.svf_params,
+            DELAY_TYPE => &mut self.delay_params,
+            MULTITAP_TYPE => &mut self.multitap_params,
+            RING_TYPE => &mut self.ring_params,
+            TRANSIENT_TYPE => &mut self.transient_params,
+            BITCRUSHER_TYPE => &mut self.bitcrusher_params,
+            EQ_TYPE => &mut self.eq_params,
+            FORMANT_TYPE => &mut self.formant_params,
+            REVERSE_DELAY_TYPE => &mut self.reverse_delay_params,
+            STUTTER_TYPE => &mut self.stutter_params,
+            PITCH_SHIFT_TYPE => &mut self.pitch_shift_params,
+            SHIMMER_TYPE => &mut self.shimmer_params,
+            GRANULATOR_TYPE => &mut self.granulator_params,
+            LIMITER_TYPE => &mut self.limiter_params,
+            _ => return false,
+        };
+        *target = values;
+        true
+    }
+
     pub fn new(
         sample_rate: f32,
         max_frames: usize,
@@ -182,27 +245,27 @@ impl EffectSlot {
             target_mix: mix.clamp(0.0, 1.0),
             mix_smoothing: ((1.0 - (-1.0 / (0.01 * sample_rate as f64)).exp()) as f32)
                 .clamp(0.0001, 1.0),
-            chorus_params: [0.5, 0.5, 0.2, 0.6, 0.4],
-            phaser_params: [0.5, 0.5, 0.4, 0.5, 0.4],
-            waveshaper_params: [0.3, 0.0, 0.7, 0.5, 0.5],
-            widener_params: [0.6, 0.4, 0.5, 0.5, 0.5],
-            legacy_filter_params: [0.5, 0.2, 0.5, 0.5, 0.5],
-            reverb_params: [0.5, 0.4, 0.5, 0.5, 0.5],
-            svf_params: [0.5, 0.4, 0.1, 0.5, 0.5],
-            delay_params: [0.3, 0.3, 0.5, 0.5, 0.5],
-            multitap_params: [0.3, 0.3, 0.5, 0.5, 0.5],
-            ring_params: [0.3, 1.0, 0.2, 0.5, 0.5],
-            transient_params: [0.5, 0.5, 0.5, 0.5, 0.5],
-            bitcrusher_params: [0.3, 0.12, 0.55, 0.5, 0.5],
-            eq_params: [0.5; 5],
-            formant_params: [0.0, 0.5, 0.4, 0.3, 0.5],
-            reverse_delay_params: [0.2, 0.25, 0.47, 0.5, 0.5],
-            stutter_params: [0.05, 0.8, 0.8, 0.25, 0.5],
-            pitch_shift_params: [0.5, 0.5, 0.2, 0.5, 0.5],
-            shimmer_params: [0.6, 0.75, 0.7, 0.5, 0.5],
-            granulator_params: [0.3, 0.4, 0.6, 0.25, 0.5],
-            compressor_params: [0.4, 0.3, 0.1, 0.3, 0.5],
-            limiter_params: [0.5, 0.3, 0.4, 0.4, 0.5],
+            chorus_params: DEFAULT_TYPE_PARAMETERS[0],
+            phaser_params: DEFAULT_TYPE_PARAMETERS[1],
+            waveshaper_params: DEFAULT_TYPE_PARAMETERS[2],
+            widener_params: DEFAULT_TYPE_PARAMETERS[4],
+            legacy_filter_params: DEFAULT_TYPE_PARAMETERS[5],
+            reverb_params: DEFAULT_TYPE_PARAMETERS[7],
+            svf_params: DEFAULT_TYPE_PARAMETERS[6],
+            delay_params: DEFAULT_TYPE_PARAMETERS[8],
+            multitap_params: DEFAULT_TYPE_PARAMETERS[9],
+            ring_params: DEFAULT_TYPE_PARAMETERS[12],
+            transient_params: DEFAULT_TYPE_PARAMETERS[16],
+            bitcrusher_params: DEFAULT_TYPE_PARAMETERS[17],
+            eq_params: DEFAULT_TYPE_PARAMETERS[14],
+            formant_params: DEFAULT_TYPE_PARAMETERS[13],
+            reverse_delay_params: DEFAULT_TYPE_PARAMETERS[19],
+            stutter_params: DEFAULT_TYPE_PARAMETERS[20],
+            pitch_shift_params: DEFAULT_TYPE_PARAMETERS[10],
+            shimmer_params: DEFAULT_TYPE_PARAMETERS[18],
+            granulator_params: DEFAULT_TYPE_PARAMETERS[11],
+            compressor_params: DEFAULT_TYPE_PARAMETERS[3],
+            limiter_params: DEFAULT_TYPE_PARAMETERS[15],
             limiter_pre_gain: 1.02,
             limiter_pre_target: 1.02,
             sample_rate,

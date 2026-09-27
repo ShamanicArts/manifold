@@ -243,6 +243,7 @@ mod tests {
         clap_event_param_value, clap_input_events,
     };
     use clap_sys::process::{CLAP_PROCESS_CONTINUE, clap_process};
+    use clap_sys::stream::{clap_istream, clap_ostream};
     use manifold_native::host_buffers::{HostBuffers, RawHostBlock};
     use manifold_native::parameters::{HOST_SLOT_BASE, TimedAutomation};
     use manifold_native::project::NativeProject;
@@ -256,6 +257,105 @@ mod tests {
         _index: u32,
     ) -> *const clap_event_header {
         unsafe { (*events).ctx as *const clap_event_header }
+    }
+
+    unsafe extern "C" fn write_state(
+        stream: *const clap_ostream,
+        data: *const c_void,
+        size: u64,
+    ) -> i64 {
+        let bytes = unsafe { &mut *((*stream).ctx as *mut Vec<u8>) };
+        bytes.extend_from_slice(unsafe {
+            std::slice::from_raw_parts(data as *const u8, size as usize)
+        });
+        size as i64
+    }
+
+    struct StateReader<'a> {
+        bytes: &'a [u8],
+        offset: usize,
+    }
+    unsafe extern "C" fn read_state(
+        stream: *const clap_istream,
+        data: *mut c_void,
+        size: u64,
+    ) -> i64 {
+        let reader = unsafe { &mut *((*stream).ctx as *mut StateReader<'_>) };
+        let count = (size as usize).min(reader.bytes.len() - reader.offset);
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                reader.bytes.as_ptr().add(reader.offset),
+                data as *mut u8,
+                count,
+            )
+        };
+        reader.offset += count;
+        count as i64
+    }
+
+    #[test]
+    fn inactive_host_flush_retains_each_effects_controls() {
+        let host = clap_host {
+            clap_version: CLAP_VERSION,
+            host_data: null_mut(),
+            name: c"Test host".as_ptr(),
+            vendor: c"Manifold".as_ptr(),
+            url: c"https://example.test".as_ptr(),
+            version: c"1".as_ptr(),
+            get_extension: None,
+            request_restart: None,
+            request_process: None,
+            request_callback: None,
+        };
+        let plugin = unsafe { factory_create(&FACTORY.0, &host, ID.as_ptr()) };
+        assert!(unsafe { (*plugin).init.unwrap()(plugin) });
+        let flush = |id, value| {
+            let event = clap_event_param_value {
+                header: clap_event_header {
+                    size: std::mem::size_of::<clap_event_param_value>() as u32,
+                    time: 0,
+                    space_id: CLAP_CORE_EVENT_SPACE_ID,
+                    type_: CLAP_EVENT_PARAM_VALUE,
+                    flags: 0,
+                },
+                param_id: id,
+                cookie: null_mut(),
+                note_id: -1,
+                port_index: -1,
+                channel: -1,
+                key: -1,
+                value,
+            };
+            let events = clap_input_events {
+                ctx: &event as *const _ as *mut c_void,
+                size: Some(event_count),
+                get: Some(event_get),
+            };
+            unsafe { PARAMS.flush.unwrap()(plugin, &events, null()) };
+        };
+        flush(2, 0.81);
+        flush(0, 7.);
+        flush(2, 0.19);
+        flush(0, 0.);
+        let mut public = -1.;
+        assert!(unsafe { PARAMS.get_value.unwrap()(plugin, 2, &mut public) });
+        assert!((public - 0.81).abs() < 1e-6);
+        let mut bytes = Vec::new();
+        let stream = clap_ostream {
+            ctx: &mut bytes as *mut _ as *mut c_void,
+            write: Some(write_state),
+        };
+        assert!(unsafe { STATE.save.unwrap()(plugin, &stream) });
+        let doc: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!((doc["typeParameters"]["7"][0].as_f64().unwrap() - 0.19).abs() < 1e-6);
+        assert!(unsafe { (*plugin).activate.unwrap()(plugin, 48_000., 1, 128) });
+        flush(0, 7.);
+        assert!(unsafe { PARAMS.get_value.unwrap()(plugin, 2, &mut public) });
+        assert!((public - 0.19).abs() < 1e-6);
+        unsafe {
+            (*plugin).deactivate.unwrap()(plugin);
+            (*plugin).destroy.unwrap()(plugin);
+        }
     }
 
     #[test]
@@ -386,10 +486,51 @@ mod tests {
         flush_parameter(2, 0.13);
         flush_parameter(0, 0.);
         assert!((public_value(2) - 0.87).abs() < 1e-6);
+        let mut saved = Vec::new();
+        let output_stream = clap_ostream {
+            ctx: &mut saved as *mut _ as *mut c_void,
+            write: Some(write_state),
+        };
+        assert!(unsafe { STATE.save.unwrap()(plugin, &output_stream) });
+        let saved_document: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+        assert!((saved_document["typeParameters"]["0"][0].as_f64().unwrap() - 0.87).abs() < 1e-6);
+        assert!((saved_document["typeParameters"]["7"][0].as_f64().unwrap() - 0.13).abs() < 1e-6);
         unsafe {
             (*plugin).stop_processing.unwrap()(plugin);
             (*plugin).deactivate.unwrap()(plugin);
             (*plugin).destroy.unwrap()(plugin);
+        }
+        let reopened = unsafe { factory_create(&FACTORY.0, &host, ID.as_ptr()) };
+        assert!(unsafe { (*reopened).init.unwrap()(reopened) });
+        let mut reader = StateReader {
+            bytes: &saved,
+            offset: 0,
+        };
+        let input_stream = clap_istream {
+            ctx: &mut reader as *mut _ as *mut c_void,
+            read: Some(read_state),
+        };
+        assert!(unsafe { STATE.load.unwrap()(reopened, &input_stream) });
+        assert!(unsafe { (*reopened).activate.unwrap()(reopened, 48_000., 1, 128) });
+        let restored = |id: u32| {
+            let mut value = -1.;
+            assert!(unsafe { PARAMS.get_value.unwrap()(reopened, id, &mut value) });
+            value
+        };
+        assert!((restored(2) - 0.87).abs() < 1e-6);
+        let mut event = event;
+        event.param_id = 0;
+        event.value = 7.;
+        let events = clap_input_events {
+            ctx: &event as *const _ as *mut c_void,
+            size: Some(event_count),
+            get: Some(event_get),
+        };
+        unsafe { PARAMS.flush.unwrap()(reopened, &events, null()) };
+        assert!((restored(2) - 0.13).abs() < 1e-6);
+        unsafe {
+            (*reopened).deactivate.unwrap()(reopened);
+            (*reopened).destroy.unwrap()(reopened);
         }
     }
 }
