@@ -1,4 +1,16 @@
 /** Main looper adapter: device buffers and messages only; Rust owns audio/state. */
+// Vite serves this AudioWorklet module as an asset, so it must be self-contained.
+// Each Main capture strip spans an age range. Return buckets in screen order:
+// older audio on the left, the current write head toward the right.
+export function captureStripBins(bars, index, samplesPerBar, captureFrames, count = 20) {
+  const older = Math.min(captureFrames, Math.floor(bars[index] * samplesPerBar));
+  const newer = Math.min(captureFrames, Math.floor((bars[index + 1] ?? 0) * samplesPerBar));
+  const span = Math.max(0, older - newer);
+  return Array.from({ length: count }, (_, bin) => [
+    Math.floor(older - span * (bin + 1) / count),
+    Math.floor(older - span * bin / count),
+  ]);
+}
 let project;
 class MainLooperProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -134,14 +146,9 @@ class MainLooperProcessor extends AudioWorkletProcessor {
               muted: s(project.status.layerMute, index) === 1,
               playing: s(project.status.layerPlaying, index) === 1, peaks };
           });
-          const segments = bars.map((bar, index) => {
-            const next = bars[index + 1] ?? 0;
-            const start = Math.min(project.captureSeconds * sampleRate, Math.floor(next * spb));
-            const end = Math.min(project.captureSeconds * sampleRate, Math.floor(bar * spb));
-            return Array.from({ length: 20 }, (_, bin) => e.manifold_looper_peak(active, 1,
-              Math.floor(start + (end - start) * bin / 20),
-              Math.floor(start + (end - start) * (bin + 1) / 20)));
-          });
+          const segments = bars.map((_, index) => captureStripBins(
+            bars, index, spb, project.captureSeconds * sampleRate,
+          ).map(([start, end]) => e.manifold_looper_peak(active, 1, start, end)));
           this.port.postMessage({ type: 'snapshot', tempo: s(project.status.tempo), active,
             mode: s(project.status.mode), recording: s(project.status.recording) === 1,
             overdub: s(project.status.overdub) === 1, forwardBars: s(project.status.forwardBars),

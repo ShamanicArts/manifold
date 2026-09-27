@@ -25,6 +25,16 @@ const command = (id, value = 0) => post({ type: 'command', id, value });
 const synthNote = (kind, note = 0, velocity = 0) => post({ type: 'synth-note', kind, note, velocity });
 const synthParameter = (id, value) => post({ type: 'synth-parameter', id, value });
 
+function sizeInstrument() {
+  const frame = $('instrument-frame');
+  const instrument = frame.querySelector('.instrument');
+  const scale = Math.min(1, frame.clientWidth / 1280);
+  instrument.style.transform = `scale(${scale})`;
+  frame.style.height = `${Math.ceil(instrument.offsetHeight * scale)}px`;
+}
+new ResizeObserver(sizeInstrument).observe($('instrument-frame'));
+sizeInstrument();
+
 const noteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B', 'C'];
 for (let index = 0; index < noteNames.length; index++) {
   const note = 60 + index;

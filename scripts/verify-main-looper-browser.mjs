@@ -86,5 +86,14 @@ try {
   assert.match(await page.locator('.layer[data-layer="2"] .bars').textContent(), /1\/16 bar/);
   await page.screenshot({ path: new URL('../web/public/main-looper-live.png', import.meta.url).pathname, fullPage: true });
   assert.deepEqual(errors, []);
+  const narrow = await browser.newPage({ viewport: { width: 900, height: 1100 } });
+  await narrow.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html`);
+  const frame = await narrow.locator('#instrument-frame').boundingBox();
+  const firstSegment = await narrow.locator('.segment').first().boundingBox();
+  const lastSegment = await narrow.locator('.segment').last().boundingBox();
+  assert.ok(firstSegment.x >= frame.x - 1);
+  assert.ok(lastSegment.x + lastSegment.width <= frame.x + frame.width + 1);
+  assert.ok(await narrow.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+  await narrow.screenshot({ path: new URL('../web/public/main-looper-narrow.png', import.meta.url).pathname, fullPage: true });
   console.log(`Main looper browser: four strips, first loop ${inferredTempo} BPM, retrospective layer, traditional arm/fire, reverse scrub, session save/reopen, decoded file and Rust synth capture passed`);
 } finally { await browser.close(); }

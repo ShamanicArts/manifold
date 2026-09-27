@@ -10,12 +10,14 @@
       <label>Wave shape<select id="synth-wave"><option value="0">Sine</option><option value="1">Saw</option><option value="2">Square</option><option value="3">Triangle</option><option value="4">Sine + saw</option></select></label>
       <div id="synth-keys" class="synth-keys" aria-label="Synth keyboard"></div>
     </section>
-    <section class="instrument" aria-label="Main looper instrument">
-      <div class="transport"><select id="mode" aria-label="Recording mode"><option value="0">First Loop</option><option value="1">Free Mode</option><option value="2">Traditional</option></select><button id="rec" class="red">● REC</button><button id="play" class="green">▶ PLAY</button><button id="stop">⏹ STOP</button><button id="overdub">Overdub</button><button id="clear-all" class="clear">Clear</button><div id="donuts" class="donuts"></div><span class="link">○ link</span><label class="number">BPM<input id="tempo" type="number" min="40" max="240" value="120"></label><label class="number target">Target<input id="target" type="number" min="40" max="240" value="120"></label></div>
-      <div id="capture" class="capture" aria-label="Retrospective capture plane"></div>
-      <div class="tabs"><span class="tab active">Looper</span><span class="tab disabled">MidiSynth</span></div>
-      <div id="layers" class="layers"></div>
-    </section>
+    <div id="instrument-frame" class="instrument-frame">
+      <section class="instrument" aria-label="Main looper instrument">
+        <div class="transport"><select id="mode" aria-label="Recording mode"><option value="0">First Loop</option><option value="1">Free Mode</option><option value="2">Traditional</option></select><button id="rec" class="red">● REC</button><button id="play" class="green">▶ PLAY</button><button id="stop">⏹ STOP</button><button id="overdub">Overdub</button><button id="clear-all" class="clear">Clear</button><div id="donuts" class="donuts"></div><span class="link">○ link</span><label class="number">BPM<input id="tempo" type="number" min="40" max="240" value="120"></label><label class="number target">Target<input id="target" type="number" min="40" max="240" value="120"></label></div>
+        <div id="capture" class="capture" aria-label="Retrospective capture plane, older audio at left and newest audio at right"></div>
+        <div class="tabs"><span class="tab active">Looper</span><span class="tab disabled">MidiSynth</span></div>
+        <div id="layers" class="layers"></div>
+      </section>
+    </div>
     <div class="session"><span>Session</span><button id="save-session">Download looper session</button><label>Open session<input id="open-session" type="file" accept="application/json,.json"></label><small>Four loop takes and controls · reopen at the same audio sample rate</small></div>
     <div class="help"><div><strong>First Loop</strong><span>Press REC, play into the input, press REC again. The first span sets tempo against Target and commits to the selected layer.</span></div><div><strong>Retrospective</strong><span>Let audio run, then click a bar segment to take recent audio without recording first. Traditional mode arms a segment; press Commit armed to fire it.</span></div><div><strong>Layers</strong><span>Select a strip or donut, drag its waveform to scrub, and drag the original style Vol and Speed knobs vertically. Input keeps feeding each layer’s capture ring.</span></div></div>
     <button id="fire" class="fire" hidden>Commit armed segment</button>
