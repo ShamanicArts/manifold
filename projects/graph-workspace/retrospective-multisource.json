@@ -1,0 +1,48 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "external",
+    "sidechainSource": "oscillator",
+    "selectedCaptureNodeId": 6,
+    "captureWindowSeconds": 2,
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 3, "type": "output" },
+      { "id": 4, "type": "midi-input" },
+      { "id": 5, "type": "sample-instrument" },
+      { "id": 6, "type": "retrospective-capture", "a": 30, "b": 0 },
+      { "id": 7, "type": "fixed-gain", "a": 4 },
+      { "id": 8, "type": "input.sidechain" },
+      { "id": 9, "type": "fixed-gain", "a": 4 },
+      { "id": 10, "type": "retrospective-capture", "a": 30, "b": 0 }
+    ],
+    "connections": [
+      { "from": 1, "to": 7, "inputPort": 0 },
+      { "from": 7, "to": 6, "inputPort": 0 },
+      { "from": 8, "to": 9, "inputPort": 0 },
+      { "from": 9, "to": 10, "inputPort": 0 },
+      { "from": 4, "to": 5, "inputPort": 0 },
+      { "from": 5, "to": 3, "inputPort": 0 }
+    ],
+    "initialParameters": [
+      { "nodeId": 5, "id": 0, "value": 60 },
+      { "nodeId": 5, "id": 1, "value": 1 },
+      { "nodeId": 5, "id": 2, "value": 0.25 },
+      { "nodeId": 5, "id": 3, "value": 1 },
+      { "nodeId": 5, "id": 4, "value": 0 },
+      { "nodeId": 5, "id": 5, "value": 0 },
+      { "nodeId": 5, "id": 6, "value": 0 },
+      { "nodeId": 5, "id": 7, "value": 0 },
+      { "nodeId": 5, "id": 8, "value": 1 },
+      { "nodeId": 5, "id": 9, "value": 0.08 },
+      { "nodeId": 5, "id": 10, "value": 0.01 },
+      { "nodeId": 5, "id": 11, "value": 1 },
+      { "nodeId": 5, "id": 12, "value": 0 },
+      { "nodeId": 5, "id": 13, "value": 0 }
+    ]
+  }
+}

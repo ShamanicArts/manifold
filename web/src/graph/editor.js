@@ -15,6 +15,7 @@ import mainBank from '../../../projects/graph-workspace/main-bank.json';
 import liveSampler from '../../../projects/graph-workspace/live-sampler.json';
 import sidechainSampler from '../../../projects/graph-workspace/sidechain-sampler.json';
 import retrospectiveSampler from '../../../projects/graph-workspace/retrospective-sampler.json';
+import retrospectiveMultisource from '../../../projects/graph-workspace/retrospective-multisource.json';
 
 const defaultMainTargets = (nodeId) => [mainVoiceBankProject.partials, ...mainVoiceBankProject.extraPartials]
   .map((target) => ({ ...target, nodeId }));
@@ -56,6 +57,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   const loadLiveSampler = section.querySelector('#graph-load-live-sampler');
   const loadSidechainSampler = section.querySelector('#graph-load-sidechain-sampler');
   const loadRetrospectiveSampler = section.querySelector('#graph-load-retrospective-sampler');
+  const loadRetrospectiveMultisource = section.querySelector('#graph-load-retrospective-multisource');
   const fileInput = section.querySelector('#graph-project-file');
   const exportButton = section.querySelector('#graph-project-export');
   const listeners = new AbortController();
@@ -79,7 +81,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
       control.disabled = !canChangeParameter() || pendingParameters.has(`${control.dataset.node}:${control.dataset.parameter}`);
     });
     section.querySelectorAll('.graph-capture-action').forEach((control) => {
-      control.disabled = !canChangeParameter() || !isRunning();
+      control.disabled = !canChangeParameter() || (control.tagName === 'BUTTON' && !isRunning());
     });
     fileInput.disabled = disabled;
     if (updateStatus && isActive()) status.textContent = `${project.signal.nodes.length} nodes · ${project.signal.connections.length} connections · ${isRunning() ? 'parameters update live; stop audio to edit topology' : 'start audio to compile this graph in Rust'}`;
@@ -237,15 +239,41 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
           const source = document.createElement('select');
           source.className = 'graph-capture-action';
           source.setAttribute('aria-label', `Capture source for sample instrument ${node.id}`);
-          for (const capture of captures) source.add(new Option(`${capture.type === 'retrospective-capture' ? 'Retrospective capture' : 'Loop capture'} ${capture.id}`, String(capture.id)));
+          const sourceName = (capture) => {
+            if (capture.type !== 'retrospective-capture') return `Loop capture ${capture.id}`;
+            let upstream = project.signal.connections.find((edge) => edge.to === capture.id)?.from;
+            if (project.signal.nodes.find((item) => item.id === upstream)?.type === 'fixed-gain') {
+              upstream = project.signal.connections.find((edge) => edge.to === upstream)?.from;
+            }
+            const role = project.signal.nodes.find((item) => item.id === upstream)?.type;
+            return `${role === 'input.sidechain' ? 'Sidechain' : role === 'input.raw' ? 'Audio input' : 'Retrospective'} · ${capture.id}`;
+          };
+          for (const capture of captures) source.add(new Option(sourceName(capture), String(capture.id)));
+          source.value = String(project.signal.selectedCaptureNodeId ?? captures[0].id);
+          source.addEventListener('change', () => {
+            if (!canChangeParameter()) return;
+            const chosen = selectedCapture();
+            if (!chosen) return;
+            commit({ ...project.signal, selectedCaptureNodeId: chosen.id }, `${sourceName(chosen)} selected for the next capture.`);
+          });
           const windowSeconds = document.createElement('input');
           windowSeconds.type = 'number';
           windowSeconds.className = 'graph-capture-action';
           windowSeconds.min = '0.05';
           windowSeconds.max = '30';
           windowSeconds.step = '0.05';
-          windowSeconds.value = '2';
+          windowSeconds.value = String(project.signal.captureWindowSeconds ?? 2);
           windowSeconds.setAttribute('aria-label', `Recent window seconds for sample instrument ${node.id}`);
+          windowSeconds.addEventListener('change', () => {
+            if (!canChangeParameter()) return;
+            const seconds = Number(windowSeconds.value);
+            if (!Number.isFinite(seconds) || seconds < .05 || seconds > 30) {
+              windowSeconds.value = String(project.signal.captureWindowSeconds ?? 2);
+              fail(new Error('Choose a capture window from 0.05 to 30 seconds.'));
+              return;
+            }
+            commit({ ...project.signal, captureWindowSeconds: seconds }, `Recent capture window: ${seconds} seconds.`);
+          });
           const windowLabel = document.createElement('label');
           windowLabel.className = 'graph-capture-window';
           windowLabel.append('Recent window', windowSeconds, 'seconds');
@@ -288,7 +316,9 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
               const assets = [...(project.graphAssets ?? []).filter((item) => item.nodeId !== node.id),
                 { nodeId: node.id, sourceRate: asset.sourceRate, stereo: asset.stereo,
                   label }];
-              commit(project.signal, `${label} is now the source for new notes. Held notes keep their previous source; project bundle includes the take.`, assets);
+              const signal = { ...project.signal, selectedCaptureNodeId: Number(source.value),
+                ...(retrospective ? { captureWindowSeconds: seconds } : {}) };
+              commit(signal, `${label} is now the source for new notes. Held notes keep their previous source; project bundle includes the take.`, assets);
             } catch (error) { if (revision === startingRevision) fail(error); }
             finally { busy = false; refreshRunning(false); }
           };
@@ -681,6 +711,15 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
       const source = builtinSample();
       const signal = parseGraphProject(retrospectiveSampler);
       commit(signal, 'Loaded the always-on retrospective sampler. Start audio, wait for input, then choose a recent window under Sample instrument 5.',
+        [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadRetrospectiveMultisource.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      const source = builtinSample();
+      const signal = parseGraphProject(retrospectiveMultisource);
+      commit(signal, 'Loaded Audio Input and Sidechain retrospective sources. Both record while audio runs; select either source under Sample instrument 5 to publish its recent window.',
         [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
     } catch (error) { fail(error); }
   }, { signal: listeners.signal });

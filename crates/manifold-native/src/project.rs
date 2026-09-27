@@ -507,7 +507,12 @@ impl NativeProject {
                 "connections",
                 "initialParameters",
             ],
-            &["inputSource", "sidechainSource"],
+            &[
+                "inputSource",
+                "sidechainSource",
+                "selectedCaptureNodeId",
+                "captureWindowSeconds",
+            ],
         )?;
         if required(signal, "inputs") != 2 || required(signal, "outputs") != 2 {
             return Err(ProjectError::Invalid("bus count"));
@@ -520,6 +525,9 @@ impl NativeProject {
                 .is_some_and(|v| v != "none" && v != "oscillator" && v != "microphone")
         {
             return Err(ProjectError::Invalid("source recipe"));
+        }
+        if let Some(seconds) = signal.get("captureWindowSeconds") {
+            float(seconds, 0.05, 30.0)?;
         }
         let nodes = required(signal, "nodes")
             .as_array()
@@ -562,6 +570,7 @@ impl NativeProject {
                     }
                 }
                 "gain"
+                | "fixed-gain"
                 | "loop-capture"
                 | "retrospective-capture"
                 | "sum2"
@@ -619,6 +628,11 @@ impl NativeProject {
                             return Err(ProjectError::Invalid("gain arguments"));
                         }
                         NodeKind::Gain { gain: a }
+                    } else if kind == "fixed-gain" {
+                        if entry.len() != 3 || !(0.0..=4.0).contains(&a) {
+                            return Err(ProjectError::Invalid("fixed gain arguments"));
+                        }
+                        NodeKind::FixedGain { gain: a }
                     } else {
                         let b = float(
                             entry
@@ -695,6 +709,15 @@ impl NativeProject {
                 > 1
         {
             return Err(ProjectError::Invalid("required nodes"));
+        }
+        if let Some(selected) = signal.get("selectedCaptureNodeId") {
+            let id = uint(selected, 65_535)?;
+            if !matches!(
+                kinds.get(&id).map(String::as_str),
+                Some("loop-capture" | "retrospective-capture")
+            ) {
+                return Err(ProjectError::Invalid("selected capture source"));
+            }
         }
         let edges = required(signal, "connections")
             .as_array()
@@ -1350,6 +1373,8 @@ mod tests {
         for json in [
             include_bytes!("../../../projects/graph-workspace/live-sampler.json").as_slice(),
             include_bytes!("../../../projects/graph-workspace/retrospective-sampler.json")
+                .as_slice(),
+            include_bytes!("../../../projects/graph-workspace/retrospective-multisource.json")
                 .as_slice(),
         ] {
             NativeProject::parse(json)

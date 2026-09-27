@@ -9,6 +9,7 @@ export const NODE_TYPES = {
   output: { label: 'Output', code: 7, output: null, inputs: ['audio'], fixedId: 3 },
   gain: { label: 'Gain', code: 3, output: 'audio', inputs: ['audio'], args: { a: .7 },
     parameters: [{ id: 0, label: 'Level', min: 0, max: 2, default: .7 }] },
+  'fixed-gain': { label: 'Fixed gain ×4', code: 67, output: 'audio', inputs: ['audio'], args: { a: 4 } },
   distortion: { label: 'Distortion', code: 17, output: 'audio', inputs: ['audio'], args: { a: 4, b: .7 },
     parameters: [{ id: 0, label: 'Drive', min: 1, max: 30, default: 4 },
       { id: 1, label: 'Wet mix', min: 0, max: 1, default: .7 },
@@ -125,12 +126,15 @@ const sameKeys = (value, keys) => Object.keys(value).sort().join('|') === [...ke
 
 export function validateTopology(signal) {
   const baseKeys = ['inputs', 'outputs', 'nodes', 'connections', 'initialParameters'];
+  const allowedKeys = new Set([...baseKeys, 'inputSource', 'sidechainSource', 'selectedCaptureNodeId', 'captureWindowSeconds']);
   if (!signal || typeof signal !== 'object' || Array.isArray(signal)
-    || ![baseKeys, [...baseKeys, 'inputSource'], [...baseKeys, 'sidechainSource'],
-      [...baseKeys, 'inputSource', 'sidechainSource']].some((keys) => sameKeys(signal, keys))
+    || !baseKeys.every((key) => Object.hasOwn(signal, key))
+    || Object.keys(signal).some((key) => !allowedKeys.has(key))
     || signal.inputs !== 2 || signal.outputs !== 2
     || (signal.inputSource !== undefined && !['external', 'none'].includes(signal.inputSource))
     || (signal.sidechainSource !== undefined && !['none', 'oscillator', 'microphone'].includes(signal.sidechainSource))
+    || (signal.captureWindowSeconds !== undefined && (typeof signal.captureWindowSeconds !== 'number'
+      || !Number.isFinite(signal.captureWindowSeconds) || signal.captureWindowSeconds < .05 || signal.captureWindowSeconds > 30))
     || !Array.isArray(signal.nodes) || signal.nodes.length < 2 || signal.nodes.length > 64
     || !Array.isArray(signal.connections) || signal.connections.length > 256
     || !Array.isArray(signal.initialParameters)) throw new Error('Invalid graph description.');
@@ -147,6 +151,11 @@ export function validateTopology(signal) {
   }
   if (nodes.get(1)?.type !== 'input.raw' || nodes.get(3)?.type !== 'output') {
     throw new Error('Graph needs its live input and output.');
+  }
+  if (signal.selectedCaptureNodeId !== undefined
+    && (!Number.isInteger(signal.selectedCaptureNodeId)
+      || !['loop-capture', 'retrospective-capture'].includes(nodes.get(signal.selectedCaptureNodeId)?.type))) {
+    throw new Error('Selected capture source is unavailable.');
   }
   if ([...nodes.values()].filter((node) => node.type === 'midi-input').length > 1) {
     throw new Error('This graph accepts one MIDI input.');
@@ -218,6 +227,7 @@ export function removeNode(signal, id) {
   if (!signal.nodes.some((node) => node.id === id)) throw new Error('Graph node unavailable.');
   const next = structuredClone(signal);
   next.nodes = next.nodes.filter((node) => node.id !== id);
+  if (next.selectedCaptureNodeId === id) delete next.selectedCaptureNodeId;
   next.connections = next.connections.filter((edge) => edge.from !== id && edge.to !== id);
   next.initialParameters = next.initialParameters.filter((entry) => entry.nodeId !== id);
   return validateTopology(next);

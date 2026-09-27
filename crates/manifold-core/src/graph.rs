@@ -109,6 +109,9 @@ pub enum NodeKind {
     Gain {
         gain: f32,
     },
+    FixedGain {
+        gain: f32,
+    },
     Sum2 {
         gain_a: f32,
         gain_b: f32,
@@ -324,6 +327,7 @@ impl NodeKind {
             Self::CvMix { .. } => 4,
             Self::Mixer { inputs, .. } => *inputs,
             Self::Gain { .. }
+            | Self::FixedGain { .. }
             | Self::MidiTranspose { .. }
             | Self::MidiNoteFilter { .. }
             | Self::MidiArpeggiator { .. }
@@ -453,6 +457,7 @@ impl NodeKind {
                 offset,
             } => amount.is_finite() && curve.is_finite() && offset.is_finite(),
             Self::InputMonitor { gain } | Self::Gain { gain } => gain.is_finite(),
+            Self::FixedGain { gain } => gain.is_finite() && (0.0..=4.0).contains(gain),
             Self::Constant { value } => value.is_finite(),
             Self::Sum2 { gain_a, gain_b } => gain_a.is_finite() && gain_b.is_finite(),
             Self::LinearBlend { mix } => mix.is_finite(),
@@ -647,6 +652,9 @@ enum Kernel {
         smoothing: f32,
         muted: bool,
     },
+    FixedGain {
+        gain: f32,
+    },
     Sum2 {
         gain_a: f32,
         gain_b: f32,
@@ -752,6 +760,7 @@ impl Kernel {
             Self::Gain {
                 target, current, ..
             } => *current = *target,
+            Self::FixedGain { .. } => {}
             Self::Crossfader(state) => state.current = state.target,
             Self::Mixer(state) => {
                 state.gains.copy_from_slice(&state.target_gains);
@@ -854,6 +863,7 @@ impl Kernel {
                     muted: false,
                 }
             }
+            NodeKind::FixedGain { gain } => Self::FixedGain { gain: *gain },
             NodeKind::Sum2 { gain_a, gain_b } => Self::Sum2 {
                 gain_a: *gain_a,
                 gain_b: *gain_b,
@@ -2450,6 +2460,14 @@ impl ExecutionPlan {
                         *current += (requested - *current) * *smoothing;
                         left[frame] = from_left[frame] * *current;
                         right[frame] = from_right[frame] * *current;
+                    }
+                }
+                Kernel::FixedGain { gain } => {
+                    let from_left = source(0, 0);
+                    let from_right = source(0, 1);
+                    for frame in 0..frames {
+                        left[frame] = from_left[frame] * *gain;
+                        right[frame] = from_right[frame] * *gain;
                     }
                 }
                 Kernel::Sum2 { gain_a, gain_b } => {
