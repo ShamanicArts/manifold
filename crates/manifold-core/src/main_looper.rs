@@ -146,9 +146,10 @@ impl Layer {
             self.commit = Some(job);
         }
     }
-    fn sample(&mut self) -> [f32; 2] {
+    /// Gate output and post-volume output. Main's Sample L1-L4 taps the gate.
+    fn sample(&mut self) -> ([f32; 2], [f32; 2]) {
         if !self.playing || self.length == 0 {
-            return [0.0; 2];
+            return ([0.0; 2], [0.0; 2]);
         }
         let index = self.position.floor() as usize;
         let loop_data = &self.loops[self.active];
@@ -176,7 +177,7 @@ impl Layer {
                     let t = 1.0 - self.seek_remaining as f32 / 64.0;
                     sample = source * (1.0 - t) + sample * t;
                 }
-                out[channel] = sample * self.volume;
+                out[channel] = sample;
             }
         }
         if self.seek_remaining > 0 {
@@ -184,7 +185,7 @@ impl Layer {
             self.seek_remaining -= 1;
         }
         self.position = (self.position + increment as f64).rem_euclid(self.length as f64);
-        out
+        (out, [out[0] * self.volume, out[1] * self.volume])
     }
     fn begin_load(&mut self, frames: usize, bars: f32, position: f32, playing: bool) -> bool {
         if frames == 0
@@ -598,6 +599,16 @@ impl MainLooper {
         monitor: [&[f32]; 2],
         output: [&mut [f32]; 2],
     ) {
+        self.process_routed_with_taps(capture, monitor, output, None);
+    }
+
+    pub fn process_routed_with_taps(
+        &mut self,
+        capture: [&[f32]; 2],
+        monitor: [&[f32]; 2],
+        output: [&mut [f32]; 2],
+        mut layer_taps: Option<&mut [Vec<f32>; LAYERS]>,
+    ) {
         let [left, right] = capture;
         let [monitor_left, monitor_right] = monitor;
         let [out_left, out_right] = output;
@@ -606,13 +617,20 @@ impl MainLooper {
         assert_eq!(left.len(), monitor_right.len());
         assert_eq!(left.len(), out_left.len());
         assert_eq!(left.len(), out_right.len());
+        if let Some(taps) = &layer_taps {
+            assert!(taps.iter().all(|tap| tap.len() >= left.len() * 2));
+        }
         for layer in &mut self.layers {
             layer.copy_commit();
         }
         for frame in 0..left.len() {
             let mut sum = [monitor_left[frame], monitor_right[frame]];
-            for layer in &mut self.layers {
-                let sample = layer.sample();
+            for (index, layer) in self.layers.iter_mut().enumerate() {
+                let (gate, sample) = layer.sample();
+                if let Some(taps) = &mut layer_taps {
+                    taps[index][frame * 2] = gate[0];
+                    taps[index][frame * 2 + 1] = gate[1];
+                }
                 sum[0] += sample[0];
                 sum[1] += sample[1];
                 let write = layer.write * 2;
@@ -738,12 +756,12 @@ mod tests {
             layer.loops[0][frame * 2] = frame as f32;
             layer.loops[0][frame * 2 + 1] = frame as f32;
         }
-        assert_eq!(layer.sample()[0], 0.0);
-        assert_eq!(layer.sample()[0], 0.0);
-        assert_eq!(layer.sample()[0], 1.0);
+        assert_eq!(layer.sample().1[0], 0.0);
+        assert_eq!(layer.sample().1[0], 0.0);
+        assert_eq!(layer.sample().1[0], 1.0);
         assert!(looper.set_layer_control(0, 4, 1.0));
         assert_eq!(looper.layers[0].seek_remaining, 64);
-        assert_eq!(looper.layers[0].sample()[0], 1.0); // old source on first jumped sample
+        assert_eq!(looper.layers[0].sample().1[0], 1.0); // old source on first jumped sample
     }
     #[test]
     fn exported_loop_reopens_without_touching_live_capture_or_previous_audio_until_complete() {

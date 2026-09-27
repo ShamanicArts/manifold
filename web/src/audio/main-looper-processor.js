@@ -20,7 +20,7 @@ class MainLooperProcessor extends AudioWorkletProcessor {
     this.inputView = null;
     this.outputView = null;
     this.transferJob = null;
-    this.liveJob = null;
+    this.sampleJob = null;
     this.port.onmessage = async ({ data }) => {
       try {
         if (data.type === 'init') {
@@ -34,33 +34,33 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           this.port.postMessage({ type: 'ready' });
         } else if (this.transferJob && ['control', 'layer-control', 'command', 'synth-note', 'synth-parameter'].includes(data.type)) {
           this.port.postMessage({ type: 'rejected', action: data });
-        } else if (data.type === 'live-capture' && this.engine && !this.liveJob && !this.transferJob) {
-          const frames = this.engine.manifold_looper_live_capture(data.bars);
-          if (!frames) throw new Error('Live sample capture was rejected.');
-          this.liveJob = { frames, copied: 0, publishing: false };
-          this.port.postMessage({ type: 'live-capture-started', frames });
-        } else if (data.type === 'live-publish-next' && this.engine && this.liveJob) {
-          const job = this.liveJob;
+        } else if (data.type === 'sample-capture' && this.engine && !this.sampleJob && !this.transferJob) {
+          const frames = this.engine.manifold_looper_sample_capture(data.source, data.bars);
+          if (!frames) throw new Error('Sample capture was rejected.');
+          this.sampleJob = { source: data.source, frames, copied: 0, publishing: false };
+          this.port.postMessage({ type: 'sample-capture-started', source: data.source, frames });
+        } else if (data.type === 'sample-publish-next' && this.engine && this.sampleJob) {
+          const job = this.sampleJob;
           const frames = Math.min(4096, job.frames - job.copied);
-          if (this.engine.manifold_looper_live_publish_chunk(job.copied, frames) !== 1) {
-            throw new Error('Live sample PCM failed validation.');
+          if (this.engine.manifold_looper_sample_publish_chunk(job.copied, frames) !== 1) {
+            throw new Error('Sample PCM failed validation.');
           }
           job.copied += frames;
           if (job.copied === job.frames) {
-            if (this.engine.manifold_looper_live_publish_finish() !== 1) throw new Error('Live sample publication failed.');
+            if (this.engine.manifold_looper_sample_publish_finish() !== 1) throw new Error('Sample publication failed.');
             this.inputView = new Float32Array(this.engine.memory.buffer,
               this.engine.manifold_looper_input_ptr(), this.capacity * 2);
             this.outputView = new Float32Array(this.engine.memory.buffer,
               this.engine.manifold_looper_output_ptr(), this.capacity * 2);
-            this.liveJob = null;
-            this.port.postMessage({ type: 'live-capture-complete', frames: job.frames });
+            this.sampleJob = null;
+            this.port.postMessage({ type: 'sample-capture-complete', frames: job.frames });
           } else {
-            this.port.postMessage({ type: 'live-publish-progress', copied: job.copied, frames: job.frames });
+            this.port.postMessage({ type: 'sample-publish-progress', copied: job.copied, frames: job.frames });
           }
-        } else if (data.type === 'live-cancel' && this.engine) {
-          this.engine.manifold_looper_live_cancel();
-          this.liveJob = null;
-        } else if (data.type === 'save-start' && this.engine && !this.transferJob) {
+        } else if (data.type === 'sample-cancel' && this.engine) {
+          this.engine.manifold_looper_sample_cancel();
+          this.sampleJob = null;
+        } else if (data.type === 'save-start' && this.engine && !this.transferJob && !this.sampleJob) {
           const e = this.engine, s = (id, layer = 0) => e.manifold_looper_status(id, layer);
           if (s(project.status.recording) || Array.from({ length: project.layers }, (_, layer) => s(project.status.layerPending, layer)).some(Boolean)) {
             throw new Error('Finish recording and pending commits before saving.');
@@ -89,7 +89,7 @@ class MainLooperProcessor extends AudioWorkletProcessor {
         } else if (data.type === 'save-end' && this.transferJob?.type === 'save'
           && this.transferJob.requestId === data.requestId) {
           this.transferJob = null;
-        } else if (data.type === 'import-start' && this.engine && !this.transferJob) {
+        } else if (data.type === 'import-start' && this.engine && !this.transferJob && !this.sampleJob) {
           const s = (id, layer = 0) => this.engine.manifold_looper_status(id, layer);
           if (s(project.status.recording) || Array.from({ length: project.layers }, (_, layer) => s(project.status.layerPending, layer)).some(Boolean)) {
             throw new Error('Finish recording and pending commits before opening a session.');
@@ -158,16 +158,16 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           if (!accepted) this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'snapshot' && this.engine) {
           const e = this.engine;
-          if (this.liveJob && !this.liveJob.publishing
-            && e.manifold_looper_live_progress() === this.liveJob.frames) {
-            if (e.manifold_looper_live_publish_begin() !== this.liveJob.frames) {
-              throw new Error('Live sample publication preparation failed.');
+          if (this.sampleJob && !this.sampleJob.publishing
+            && e.manifold_looper_sample_progress() === this.sampleJob.frames) {
+            if (e.manifold_looper_sample_publish_begin() !== this.sampleJob.frames) {
+              throw new Error('Sample publication preparation failed.');
             }
             // The upload may grow Wasm memory and detach the old audio views.
             this.inputView = new Float32Array(e.memory.buffer, e.manifold_looper_input_ptr(), this.capacity * 2);
             this.outputView = new Float32Array(e.memory.buffer, e.manifold_looper_output_ptr(), this.capacity * 2);
-            this.liveJob.publishing = true;
-            this.port.postMessage({ type: 'live-capture-ready', frames: this.liveJob.frames });
+            this.sampleJob.publishing = true;
+            this.port.postMessage({ type: 'sample-capture-ready', frames: this.sampleJob.frames });
           }
           const s = (id, layer = 0) => e.manifold_looper_status(id, layer);
           const active = s(project.status.activeLayer);
@@ -194,8 +194,8 @@ class MainLooperProcessor extends AudioWorkletProcessor {
             layers, segments });
         }
       } catch (error) {
-        if (this.liveJob && this.engine) this.engine.manifold_looper_live_cancel();
-        this.liveJob = null;
+        if (this.sampleJob && this.engine) this.engine.manifold_looper_sample_cancel();
+        this.sampleJob = null;
         if (this.transferJob?.type === 'import' && this.transferJob.layer) {
           this.engine.manifold_looper_import_cancel(this.transferJob.layer.index);
         }

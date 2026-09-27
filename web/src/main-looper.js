@@ -10,7 +10,7 @@ const layerColors = ['#22d3ee', '#a78bfa', '#f59e0b', '#34d399'];
 let context = null, processor = null, stream = null, sourceNode = null, inputGain = null;
 let latest = null, poll = null, dragging = null;
 let transferJob = null, nextRequest = 1;
-let liveJob = null;
+let sampleJob = null;
 const status = (message) => { $('status').textContent = message; };
 function formatBars(value) {
   if (!value) return '';
@@ -41,13 +41,15 @@ const paintSampleSliders = () => { sampleBars.paint(); sampleRoot.paint(); sampl
 new ResizeObserver(paintSampleSliders).observe($('sample-root'));
 requestAnimationFrame(paintSampleSliders);
 $('sample-cap').onclick = () => {
-  if (!processor) { status('Start audio to capture a Live sample.'); return; }
-  if ($('source').value === 'none') { status('Choose a dry input before capturing a Live sample.'); return; }
-  if (liveJob || transferJob) return;
-  liveJob = { bars: sampleBarsValue };
+  if (!processor) { status('Start audio to capture a sample.'); return; }
+  const source = Number($('sample-source-select').value);
+  if (source === 0 && $('source').value === 'none') { status('Choose a dry input before capturing a Live sample.'); return; }
+  if (source > 0 && !latest?.layers[source - 1]?.length) { status(`Record or commit a loop into L${source} before sampling it.`); return; }
+  if (sampleJob || transferJob) return;
+  sampleJob = { source, bars: sampleBarsValue };
   $('sample-cap').disabled = true;
-  status('Capturing recent dry input for the Main Sample voice…');
-  post({ type: 'live-capture', bars: sampleBarsValue });
+  status(`Capturing recent ${source === 0 ? 'dry input' : `L${source} playback`} for the Main Sample voice…`);
+  post({ type: 'sample-capture', source, bars: sampleBarsValue });
 };
 
 function sizeInstrument() {
@@ -359,7 +361,7 @@ function handleTransfer(data) {
 
 $('save-session').onclick = () => {
   if (!processor) { status('Start audio before downloading a looper session.'); return; }
-  if (transferJob) return;
+  if (transferJob || sampleJob) return;
   const id = nextRequest++;
   transferJob = { kind: 'save', id, state: null, audio: null, layer: 0, offset: 0 };
   $('save-session').disabled = true; status('Collecting loop audio for download…');
@@ -367,7 +369,7 @@ $('save-session').onclick = () => {
 };
 $('open-session').onchange = async () => {
   if (!processor) { status('Start audio before opening a looper session.'); return; }
-  if (transferJob) return;
+  if (transferJob || sampleJob) return;
   const file = $('open-session').files[0];
   if (!file) return;
   try {
@@ -422,22 +424,23 @@ async function start() {
       if (data.type === 'snapshot') render(data);
       else if (data.type === 'error') {
         if (transferJob) { transferJob = null; $('save-session').disabled = false; }
-        if (liveJob) { liveJob = null; $('sample-cap').disabled = false; }
+        if (sampleJob) { sampleJob = null; $('sample-cap').disabled = false; }
         status(`Audio error: ${data.message}`);
       }
-      else if (data.type === 'live-capture-started') {
-        liveJob.frames = data.frames;
-        status(`Freezing ${(data.frames / context.sampleRate).toFixed(2)}s of dry input…`);
+      else if (data.type === 'sample-capture-started') {
+        sampleJob.frames = data.frames;
+        status(`Freezing ${(data.frames / context.sampleRate).toFixed(2)}s of ${data.source === 0 ? 'dry input' : `L${data.source} playback`}…`);
       }
-      else if (data.type === 'live-capture-ready' || data.type === 'live-publish-progress') {
-        post({ type: 'live-publish-next' });
+      else if (data.type === 'sample-capture-ready' || data.type === 'sample-publish-progress') {
+        post({ type: 'sample-publish-next' });
       }
-      else if (data.type === 'live-capture-complete') {
-        liveJob = null;
+      else if (data.type === 'sample-capture-complete') {
+        const source = sampleJob?.source ?? 0;
+        sampleJob = null;
         $('sample-cap').disabled = false;
         $('sample-length').textContent = `${Math.round(data.frames / context.sampleRate * 1000)}ms`;
         sampleBlend.setValue(1, true);
-        status('Live sample captured. Play the keyboard to hear the Sample voice.');
+        status(`${source === 0 ? 'Live' : `L${source}`} sample captured. Play the keyboard to hear the Sample voice.`);
       }
       else if (data.type === 'rejected') status('That looper action could not be applied.');
       else handleTransfer(data);
@@ -473,8 +476,8 @@ async function stop() {
   synthNote(2);
   document.querySelectorAll('.synth-key.held').forEach(key => key.classList.remove('held'));
   if (transferJob?.kind === 'import') post({ type: 'import-cancel' });
-  if (liveJob) post({ type: 'live-cancel' });
-  liveJob = null; $('sample-cap').disabled = false;
+  if (sampleJob) post({ type: 'sample-cancel' });
+  sampleJob = null; $('sample-cap').disabled = false;
   $('sample-length').textContent = '0ms';
   sampleBlend.setValue(0, true);
   transferJob = null; $('save-session').disabled = false;

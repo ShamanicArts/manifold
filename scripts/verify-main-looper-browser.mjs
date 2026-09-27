@@ -26,6 +26,10 @@ try {
   assert.notEqual(await page.locator('#sample-length').textContent(), '0ms');
   assert.equal(await page.locator('#sample-blend').getAttribute('aria-valuenow'), '1');
   await page.screenshot({ path: new URL('../web/public/main-live-sample.png', import.meta.url).pathname, fullPage: true });
+  await page.locator('#sample-source-select').selectOption('1');
+  await page.locator('#sample-cap').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('L1 sample captured'), { timeout: 15000 });
+  await page.screenshot({ path: new URL('../web/public/main-layer-sample.png', import.meta.url).pathname, fullPage: true });
   const inferredTempo = Number(await page.locator('#tempo').inputValue());
   assert.ok(inferredTempo > 90 && inferredTempo < 160, `First Loop tempo: ${inferredTempo}`);
   await page.locator('.donut').nth(1).click();
@@ -102,5 +106,5 @@ try {
   assert.ok(lastSegment.x + lastSegment.width <= frame.x + frame.width + 1);
   assert.ok(await narrow.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await narrow.screenshot({ path: new URL('../web/public/main-looper-narrow.png', import.meta.url).pathname, fullPage: true });
-  console.log(`Main looper browser: four strips, first loop ${inferredTempo} BPM, retrospective layer, traditional arm/fire, reverse scrub, session save/reopen, decoded file and Rust synth capture passed`);
+  console.log(`Main looper browser: four strips, first loop ${inferredTempo} BPM, Live/L1 Sample Cap, retrospective layer, traditional arm/fire, reverse scrub, session save/reopen, decoded file and Rust synth capture passed`);
 } finally { await browser.close(); }

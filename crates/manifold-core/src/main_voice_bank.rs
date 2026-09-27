@@ -168,7 +168,9 @@ impl MainVoiceBank {
     }
 
     pub fn load_stereo(&mut self, stereo: Vec<f32>, source_rate: f32) -> bool {
-        let Some(source) = ValidatedStereo::from_stereo(stereo, source_rate) else { return false };
+        let Some(source) = ValidatedStereo::from_stereo(stereo, source_rate) else {
+            return false;
+        };
         self.load_validated(source);
         true
     }

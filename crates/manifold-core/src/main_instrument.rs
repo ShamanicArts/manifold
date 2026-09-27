@@ -1,15 +1,17 @@
 //! Main's synth-to-looper routing, with all scratch prepared before processing.
 
 use crate::events::EventKind;
+use crate::main_looper::LAYERS;
 use crate::main_looper::MainLooper;
-use crate::main_live_capture::MainLiveCapture;
+use crate::main_sample_capture::MainSampleCapture;
 use crate::main_voice_bank::MainVoiceBank;
 use crate::sample_region::ValidatedStereo;
 
 pub struct MainInstrument {
     looper: MainLooper,
     synth: MainVoiceBank,
-    live_capture: MainLiveCapture,
+    sample_capture: MainSampleCapture,
+    layer_taps: [Vec<f32>; LAYERS],
     sample_rate: f32,
     synth_left: Vec<f32>,
     synth_right: Vec<f32>,
@@ -24,7 +26,8 @@ impl MainInstrument {
         Self {
             looper: MainLooper::new(sample_rate),
             synth: MainVoiceBank::new(sample_rate, max_frames, 9),
-            live_capture: MainLiveCapture::new(sample_rate),
+            sample_capture: MainSampleCapture::new(sample_rate),
+            layer_taps: std::array::from_fn(|_| vec![0.0; max_frames * 2]),
             sample_rate,
             synth_left: vec![0.0; max_frames],
             synth_right: vec![0.0; max_frames],
@@ -51,29 +54,33 @@ impl MainInstrument {
         self.synth.event(event);
     }
 
-    pub fn request_live_sample(&mut self, bars: f32) -> usize {
+    pub fn request_sample_source(&mut self, source: usize, bars: f32) -> usize {
         if !bars.is_finite() || !(0.0625..=16.0).contains(&bars) {
             return 0;
         }
         let frames = (bars * self.looper.samples_per_bar()).round() as usize;
-        let frames = frames.min(self.live_capture.capacity());
-        if self.live_capture.request(frames) { frames } else { 0 }
+        let frames = frames.min(self.sample_capture.capacity());
+        if self.sample_capture.request(source, frames) {
+            frames
+        } else {
+            0
+        }
     }
 
-    pub fn live_sample_progress(&self) -> (usize, usize) {
-        self.live_capture.progress()
+    pub fn sample_progress(&self) -> (usize, usize) {
+        self.sample_capture.progress()
     }
 
-    pub fn live_sample_captured_frames(&self) -> usize {
-        self.live_capture.captured_frames()
+    pub fn sample_captured_frames(&self, source: usize) -> usize {
+        self.sample_capture.captured_frames(source)
     }
 
-    pub fn copy_live_sample_chunk(&self, offset: usize, destination: &mut [f32]) -> bool {
-        self.live_capture.copy_frozen_chunk(offset, destination)
+    pub fn copy_sample_chunk(&self, offset: usize, destination: &mut [f32]) -> bool {
+        self.sample_capture.copy_frozen_chunk(offset, destination)
     }
 
-    pub fn release_live_sample(&mut self) {
-        self.live_capture.release();
+    pub fn release_sample(&mut self) {
+        self.sample_capture.release();
     }
 
     pub fn load_validated_sample(&mut self, sample: ValidatedStereo) {
@@ -88,7 +95,6 @@ impl MainInstrument {
         let frames = dry[0].len();
         assert_eq!(dry[1].len(), frames);
         assert!(frames <= self.synth_left.len());
-        self.live_capture.process(dry);
         self.synth.process_planar([
             &mut self.synth_left[..frames],
             &mut self.synth_right[..frames],
@@ -102,11 +108,13 @@ impl MainInstrument {
             self.monitor_left[frame] = dry[0][frame] + self.synth_left[frame] * 0.8;
             self.monitor_right[frame] = dry[1][frame] + self.synth_right[frame] * 0.8;
         }
-        self.looper.process_routed(
+        self.looper.process_routed_with_taps(
             [&self.capture_left[..frames], &self.capture_right[..frames]],
             [&self.monitor_left[..frames], &self.monitor_right[..frames]],
             output,
+            Some(&mut self.layer_taps),
         );
+        self.sample_capture.process(dry, &self.layer_taps);
     }
 }
 
@@ -116,6 +124,69 @@ mod tests {
     use crate::sample_region::StereoSampleUpload;
 
     #[test]
+    fn layer_sample_source_taps_playback_gate_before_volume() {
+        let mut main = MainInstrument::new(8_000.0, 128);
+        let dry = [0.4; 128];
+        let silence = [0.0; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        for _ in 0..12 {
+            main.process([&dry, &dry], [&mut left, &mut right]);
+        }
+        assert!(main.looper_mut().commit(0.0625));
+        assert!(main.looper_mut().set_layer_control(0, 0, 2.0));
+        for _ in 0..20 {
+            main.process([&silence, &silence], [&mut left, &mut right]);
+        }
+        assert_eq!(main.request_sample_source(1, 0.0625), 1_000);
+        while main.sample_progress().0 < 1_000 {
+            main.process([&silence, &silence], [&mut left, &mut right]);
+        }
+        let mut chunk = [0.0; 256];
+        assert!(main.copy_sample_chunk(0, &mut chunk));
+        assert!(chunk.iter().all(|value| (*value - 0.4).abs() < 1e-6));
+        main.release_sample();
+        assert!(main.looper_mut().set_layer_control(0, 2, 1.0));
+        for _ in 0..10 {
+            main.process([&silence, &silence], [&mut left, &mut right]);
+        }
+        assert_eq!(main.request_sample_source(1, 0.0625), 1_000);
+        while main.sample_progress().0 < 1_000 {
+            main.process([&silence, &silence], [&mut left, &mut right]);
+        }
+        assert!(main.copy_sample_chunk(0, &mut chunk));
+        assert!(chunk.iter().all(|value| *value == 0.0));
+    }
+
+    #[test]
+    fn fourth_layer_sample_source_uses_its_own_loop_playback() {
+        let mut main = MainInstrument::new(8_000.0, 128);
+        let silence = [0.0; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        for layer in 0..4 {
+            let dry = [0.1 * (layer + 1) as f32; 128];
+            for _ in 0..12 {
+                main.process([&dry, &dry], [&mut left, &mut right]);
+            }
+            assert!(main.looper_mut().set_control(0, layer as f32));
+            assert!(main.looper_mut().commit(0.0625));
+            for _ in 0..10 {
+                main.process([&silence, &silence], [&mut left, &mut right]);
+            }
+        }
+        assert_eq!(main.request_sample_source(4, 0.0625), 1_000);
+        while main.sample_progress().0 < 1_000 {
+            main.process([&silence, &silence], [&mut left, &mut right]);
+        }
+        let mut chunk = [0.0; 256];
+        assert!(main.copy_sample_chunk(0, &mut chunk));
+        assert!(chunk.iter().all(|value| (*value - 0.4).abs() < 1e-6));
+        main.release_sample();
+        assert_eq!(main.request_sample_source(5, 0.0625), 0);
+    }
+
+    #[test]
     fn live_sample_is_dry_input_and_plays_through_main_voice_bank() {
         let mut main = MainInstrument::new(8_000.0, 128);
         let dry = [0.35; 128];
@@ -123,31 +194,46 @@ mod tests {
         let mut left = [0.0; 128];
         let mut right = [0.0; 128];
         main.set_synth_parameter(1, -1.0);
-        main.synth_event(EventKind::NoteOn { channel: 0, note: 60, velocity: 100 });
+        main.synth_event(EventKind::NoteOn {
+            channel: 0,
+            note: 60,
+            velocity: 100,
+        });
         for _ in 0..16 {
             main.process([&dry, &dry], [&mut left, &mut right]);
         }
-        let frames = main.request_live_sample(0.0625);
+        let frames = main.request_sample_source(0, 0.0625);
         assert_eq!(frames, 1_000);
-        while main.live_sample_progress().0 < frames {
+        while main.sample_progress().0 < frames {
             main.process([&silence, &silence], [&mut left, &mut right]);
         }
         let mut upload = StereoSampleUpload::new(frames, 8_000.0).unwrap();
         for offset in (0..frames).step_by(128) {
             let count = (frames - offset).min(128);
             assert!(upload.prepare_next(offset, count));
-            assert!(main.copy_live_sample_chunk(offset,
-                &mut upload.samples_mut()[offset * 2..(offset + count) * 2]));
+            assert!(main.copy_sample_chunk(
+                offset,
+                &mut upload.samples_mut()[offset * 2..(offset + count) * 2]
+            ));
             assert!(upload.validate_next(offset, count));
         }
         // The live source must contain only the dry input, even though the
         // oscillator was sounding in the looper's dry-plus-synth capture.
-        assert!(upload.samples_mut().chunks_exact(2).all(|frame| frame[0] == 0.35 && frame[1] == 0.35));
+        assert!(
+            upload
+                .samples_mut()
+                .chunks_exact(2)
+                .all(|frame| frame[0] == 0.35 && frame[1] == 0.35)
+        );
         main.synth_event(EventKind::AllNotesOff);
         main.load_validated_sample(upload.finish().unwrap());
-        main.release_live_sample();
+        main.release_sample();
         main.set_synth_parameter(1, 1.0);
-        main.synth_event(EventKind::NoteOn { channel: 0, note: 60, velocity: 100 });
+        main.synth_event(EventKind::NoteOn {
+            channel: 0,
+            note: 60,
+            velocity: 100,
+        });
         main.process([&silence, &silence], [&mut left, &mut right]);
         assert!(left.iter().any(|sample| sample.abs() > 0.001));
     }
@@ -169,7 +255,10 @@ mod tests {
             main.process([&silence, &silence], [&mut left, &mut right]);
         }
         assert!(left.iter().any(|v| v.abs() > 0.001));
-        main.synth_event(EventKind::NoteOff { channel: 0, note: 60 });
+        main.synth_event(EventKind::NoteOff {
+            channel: 0,
+            note: 60,
+        });
         main.looper_mut().set_control(0, 2.0);
         assert!(main.looper_mut().commit(0.0625));
         for _ in 0..20 {
