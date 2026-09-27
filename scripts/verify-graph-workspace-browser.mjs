@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 
 const requireFromWeb = createRequire(new URL('../web/package.json', import.meta.url));
 const { chromium } = requireFromWeb('playwright-core');
-function wavSource(frames = 4800) {
+function wavSource(frames = 4800, invertRight = true) {
   const wav = Buffer.alloc(44 + frames * 4);
   wav.write('RIFF', 0);
   wav.writeUInt32LE(wav.length - 8, 4);
@@ -22,7 +22,7 @@ function wavSource(frames = 4800) {
   for (let frame = 0; frame < frames; frame++) {
     const value = Math.round(Math.sin(frame * Math.PI * 2 * 330 / 48000) * 12000);
     wav.writeInt16LE(value, 44 + frame * 4);
-    wav.writeInt16LE(-value, 46 + frame * 4);
+    wav.writeInt16LE(invertRight ? -value : value, 46 + frame * 4);
   }
   return wav;
 }
@@ -403,8 +403,30 @@ try {
   await page.locator('#graph-project-export').click();
   const editedMain = JSON.parse((await readFile(await (await editedDownload).path())).toString());
   assert.deepEqual(editedMain.targets[0].values, [1, .8, 0, 0]);
+  await page.locator('input[aria-label="Main voice bank 5 audio file"]').setInputFiles([{
+    name: 'new-main-source.wav', mimeType: 'audio/wav', buffer: wavSource(12000, false),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('new prepared source target'), null, { timeout: 45000 });
+  const replacementDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const replacedMain = JSON.parse((await readFile(await (await replacementDownload).path())).toString());
+  assert.deepEqual(replacedMain.targets[0].values, [1, .8, 0, 0], 'wave target remains authored');
+  assert.notDeepEqual(replacedMain.targets[1].values, editedMain.targets[1].values, 'source target follows the new file');
+  assert.match(replacedMain.assets[0].label, /new-main-source.wav/);
+  await page.locator('input[aria-label="Main voice bank 5 audio file"]').setInputFiles([{
+    name: 'cancelled-source.wav', mimeType: 'audio/wav', buffer: wavSource(12000),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('no usable prepared partials'));
+  const failedDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const afterFailure = JSON.parse((await readFile(await (await failedDownload).path())).toString());
+  assert.deepEqual(afterFailure.targets, replacedMain.targets, 'rejected analysis leaves prepared targets intact');
+  assert.deepEqual(afterFailure.assets, replacedMain.assets, 'rejected analysis leaves source intact');
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
+  await page.locator('#audio-toggle').click();
   assert.deepEqual(errors, []);
-  console.log('Graph workspace browser: typed Audio/CV/MIDI editing, sample voice, region and granulator source modes, native/Wasm references, live controls, project reopen passed');
+  console.log('Graph workspace browser: typed Audio/CV/MIDI editing, sample/region/granulator/Main nodes, Main source analysis and rejection, native/Wasm references, live controls, project reopen passed');
 } finally {
   await browser.close();
 }

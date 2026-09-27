@@ -3,6 +3,7 @@ import { NODE_TYPES, SAMPLE_NODE_TYPES, addNode, removeNode, setConnection, setI
   validateGraphTargets } from './topology.js';
 import { parseMainVoiceBankState } from '../state/main-voice-bank.js';
 import { parseProjectDocument } from '../state/project-document.js';
+import { analyzeMainSource } from './main-source.js';
 import mainVoiceBankProject from '../../../projects/main-voice-bank/project.json';
 import toneTexture from '../../../projects/graph-workspace/tone-texture.json';
 import noteVoice from '../../../projects/graph-workspace/note-voice.json';
@@ -130,10 +131,18 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
             status.textContent = `Decoding ${file.name}…`;
             const decoded = await decodeSample(file);
             if (!canEdit()) throw new Error('Project view changed while decoding the sample.');
+            let targets = project.graphTargets ?? [];
+            if (node.type === 'main-voice-bank') {
+              status.textContent = `Preparing ${file.name} source spectrum in Rust/Wasm…`;
+              const analyzed = await analyzeMainSource(decoded);
+              if (!canEdit()) throw new Error('Project view changed while preparing the Main source.');
+              targets = targets.map((target) => target.nodeId === node.id && target.target === 1
+                ? { nodeId: node.id, target: 1, ...analyzed } : target);
+            }
             const assets = [...(project.graphAssets ?? []).filter((item) => item.nodeId !== node.id),
               { nodeId: node.id, sourceRate: decoded.sourceRate, stereo: decoded.stereo, label: decoded.label }];
             validateGraphAssets(project.signal, assets);
-            commit(project.signal, `Loaded ${file.name} into ${spec.label.toLowerCase()} ${node.id}. Start audio to hear it.`, assets);
+            commit(project.signal, `Loaded ${file.name} into ${spec.label.toLowerCase()} ${node.id}${node.type === 'main-voice-bank' ? ' with a new prepared source target' : ''}. Start audio to hear it.`, assets, targets);
           } catch (error) { fail(error); }
           finally { input.value = ''; }
         });
