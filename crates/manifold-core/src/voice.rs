@@ -74,6 +74,14 @@ impl VoiceSynth {
         }
     }
 
+    /// Clear sounding and releasing voices immediately, retaining sound controls.
+    /// This is safe to call from a prepared host's audio reset callback.
+    pub fn reset(&mut self) {
+        self.voices.fill(Voice::default());
+        self.bend_ratio.fill(1.0);
+        self.serial = 0;
+    }
+
     pub fn set_parameter(&mut self, id: u32, value: f32) -> bool {
         if !value.is_finite() {
             return false;
@@ -245,6 +253,43 @@ impl VoiceSynth {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reset_silences_held_voice_and_retains_current_sound_controls() {
+        let mut synth = VoiceSynth::new(48_000.0);
+        assert!(synth.set_parameter(0, 2.0));
+        assert!(synth.set_parameter(5, 0.7));
+        synth.event(EventKind::PitchBend {
+            channel: 0,
+            value: 12288,
+        });
+        synth.event(EventKind::NoteOn {
+            channel: 0,
+            note: 69,
+            velocity: 100,
+        });
+        for _ in 0..2048 {
+            synth.process_sample();
+        }
+        assert_eq!(synth.active_voices(), 1);
+        synth.reset();
+        assert_eq!(synth.active_voices(), 0);
+        assert_eq!(synth.process_sample(), 0.0);
+        assert_eq!(synth.bend_ratio[0], 1.0);
+        let mut fresh = VoiceSynth::new(48_000.0);
+        assert!(fresh.set_parameter(0, 2.0));
+        assert!(fresh.set_parameter(5, 0.7));
+        let note = EventKind::NoteOn {
+            channel: 0,
+            note: 69,
+            velocity: 100,
+        };
+        synth.event(note);
+        fresh.event(note);
+        for _ in 0..128 {
+            assert_eq!(synth.process_sample(), fresh.process_sample());
+        }
+    }
 
     #[test]
     fn note_off_during_attack_releases_without_stuck_voice() {

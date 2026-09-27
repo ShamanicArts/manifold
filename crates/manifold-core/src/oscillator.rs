@@ -52,6 +52,14 @@ impl Oscillator {
         true
     }
 
+    /// Restart phase and smoothing from the currently selected controls.
+    pub fn reset(&mut self) {
+        self.phase = 0.0;
+        self.frequency = self.target_frequency;
+        self.amplitude = self.target_amplitude;
+        self.previous_sync_sample = 0.0;
+    }
+
     pub fn meter(&self, band: usize) -> Option<f32> {
         match band {
             0 => Some(self.target_frequency),
@@ -99,6 +107,21 @@ impl Oscillator {
 #[cfg(test)]
 mod tests {
     use super::Oscillator;
+
+    #[test]
+    fn reset_restarts_phase_with_the_current_frequency_and_level() {
+        let mut oscillator = Oscillator::new(48_000.0, 220.0, 0.4, 0);
+        assert!(oscillator.set_parameter(1, 880.0));
+        assert!(oscillator.set_parameter(2, 0.6));
+        for _ in 0..1000 {
+            oscillator.process_sample(None);
+        }
+        oscillator.reset();
+        let mut fresh = Oscillator::new(48_000.0, 880.0, 0.6, 0);
+        for _ in 0..128 {
+            assert_eq!(oscillator.process_sample(None), fresh.process_sample(None));
+        }
+    }
 
     #[test]
     fn raw_audio_rising_edge_resets_phase_only_when_sync_is_enabled() {
