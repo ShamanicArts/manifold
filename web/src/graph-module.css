@@ -20,6 +20,9 @@ h1 { margin: 0; font-size: 26px; line-height: 1.1; font-weight: 600; letter-spac
 .graph-card h2 small { font-size: 10px; color: #91a5b9; font-weight: 400; margin-left: auto; }
 .graph-parameter-row { display: flex; align-items: center; gap: 8px; min-height: 23px; margin: 3px 0; }
 .graph-slot { width: 24px; color: #869aae; font-size: 10px; font-variant-numeric: tabular-nums; }
+.graph-slot-edit { flex: 0 0 24px; height: 19px; padding: 0 1px; border: 0; border-bottom: 1px solid #526b83; border-radius: 0; background: transparent; text-align: center; font: 10px ui-monospace, monospace; appearance: textfield; cursor: text; }
+.graph-slot-edit::-webkit-inner-spin-button, .graph-slot-edit::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.graph-slot-edit:focus-visible { outline: 1px solid #8dcab9; outline-offset: 1px; }
 .graph-control { width: 220px; height: 18px; flex: none; }
 .graph-control canvas { display: block; width: 100%; height: 100%; }
 .graph-control[aria-disabled="true"] { opacity: .5; pointer-events: none; }

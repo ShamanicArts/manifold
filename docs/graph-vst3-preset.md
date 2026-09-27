@@ -68,6 +68,9 @@ uses browser-exported Tone Texture JSON, moves Oscillator Frequency to displayed
 slot 42, exports a VST3 preset, and loads it in isolated REAPER. REAPER reports
 the expected initial normalized value, sets slot 42 to 0.1, and saves the
 project. Fresh-process REAPER renders show the dominant tone moving from 330 to
-1618 Hz over one second of 48 kHz stereo audio. The native editor displays the
-new slot with the original compact widget; assignment within that editor is
-the next control-surface step.
+1618 Hz over one second of 48 kHz stereo audio. The native editor also accepts
+slot assignments beside the original compact widgets. An isolated XTEST edit
+moved Semitones from displayed slot 1 to 42, REAPER set the new slot to +12
+semitones, and a saved-project render matched direct native Rust within
+`5.96e-8` peak sample error over all 48,000 stereo frames. Changing a slot in
+the native editor reloads the graph and resets active voices and effect tails.

@@ -33,6 +33,11 @@ struct ImportAssembly {
 
 type ImportResult = Result<(String, Vec<u8>), &'static str>;
 
+enum EditorAction {
+    Import(ImportResult),
+    Assign { id: u32, slot: u32 },
+}
+
 #[derive(Clone, Copy)]
 enum Kind {
     Begin,
@@ -74,7 +79,7 @@ impl Session {
 struct State {
     shared: Arc<GraphShared>,
     messages: Arc<ArrayQueue<Message>>,
-    imports: Arc<ArrayQueue<ImportResult>>,
+    imports: Arc<ArrayQueue<EditorAction>>,
     session: Mutex<Option<Session>>,
     ready: AtomicBool,
     last_sent: AtomicU64,
@@ -105,12 +110,16 @@ impl State {
     }
 
     fn tick(&self) {
-        let import_status = self.imports.pop().map(|import| match import {
-            Ok((name, bytes)) => match self.shared.import_project(&bytes) {
+        let import_status = self.imports.pop().map(|action| match action {
+            EditorAction::Import(Ok((name, bytes))) => match self.shared.import_project(&bytes) {
                 Ok(()) => format!("Loaded {name} into the DAW graph."),
                 Err(reason) => format!("Project unchanged: {reason}."),
             },
-            Err(reason) => format!("Project unchanged: {reason}."),
+            EditorAction::Import(Err(reason)) => format!("Project unchanged: {reason}."),
+            EditorAction::Assign { id, slot } => match self.shared.reassign_slot(id, slot) {
+                Ok(()) => format!("Assigned host slot {} to slot {}. Graph reloaded; active voices and effect tails reset. Existing automation may reach a different control.", id - HOST_SLOT_BASE + 1, slot + 1),
+                Err(reason) => format!("Host slot unchanged: {reason}."),
+            },
         });
         let handler = self
             .shared
@@ -266,7 +275,7 @@ impl IPlugViewTrait for View {
         let reader_running = running.clone();
         let reader = std::thread::spawn(move || {
             let mut assembly: Option<ImportAssembly> = None;
-            let submit = |mut result: ImportResult| {
+            let submit = |mut result: EditorAction| {
                 while reader_running.load(Ordering::Acquire) {
                     match imports.push(result) {
                         Ok(()) => return,
@@ -294,6 +303,21 @@ impl IPlugViewTrait for View {
                     continue;
                 }
                 match value["kind"].as_str() {
+                    Some("slot-assign") => {
+                        let id = value["id"].as_u64().and_then(|id| u32::try_from(id).ok());
+                        let slot = value["slot"]
+                            .as_u64()
+                            .and_then(|slot| u32::try_from(slot).ok());
+                        if let (Some(id), Some(slot)) = (id, slot) {
+                            if (HOST_SLOT_BASE..HOST_SLOT_BASE + HOST_SLOT_COUNT as u32)
+                                .contains(&id)
+                                && (slot as usize) < HOST_SLOT_COUNT
+                            {
+                                submit(EditorAction::Assign { id, slot });
+                            }
+                        }
+                        continue;
+                    }
                     Some("import-start") => {
                         assembly = None;
                         let Some(size) = value["size"]
@@ -306,7 +330,7 @@ impl IPlugViewTrait for View {
                             continue;
                         };
                         if size == 0 || size > MAX_PROJECT_BYTES || name.len() > 128 {
-                            submit(Err("project exceeds import limits"));
+                            submit(EditorAction::Import(Err("project exceeds import limits")));
                             continue;
                         }
                         assembly = Some(ImportAssembly {
@@ -324,18 +348,20 @@ impl IPlugViewTrait for View {
                             value["data"].as_str().filter(|chunk| chunk.len() <= 3000)
                         else {
                             assembly = None;
-                            submit(Err("invalid project transfer"));
+                            submit(EditorAction::Import(Err("invalid project transfer")));
                             continue;
                         };
                         let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(chunk)
                         else {
                             assembly = None;
-                            submit(Err("invalid project transfer"));
+                            submit(EditorAction::Import(Err("invalid project transfer")));
                             continue;
                         };
                         if current.bytes.len() + bytes.len() > current.expected {
                             assembly = None;
-                            submit(Err("project transfer exceeded its size"));
+                            submit(EditorAction::Import(Err(
+                                "project transfer exceeded its size",
+                            )));
                             continue;
                         }
                         current.bytes.extend_from_slice(&bytes);
@@ -348,7 +374,7 @@ impl IPlugViewTrait for View {
                             } else {
                                 Err("project transfer incomplete")
                             };
-                            submit(result);
+                            submit(EditorAction::Import(result));
                         }
                         continue;
                     }

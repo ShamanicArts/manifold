@@ -11,6 +11,7 @@ const editorMode = new URLSearchParams(location.search).has('editor');
 if (editorMode) {
   document.body.classList.add('plugin-editor');
   document.getElementById('graph-import-label').textContent = 'Import project JSON';
+  document.querySelector('footer').textContent += ' Edit a slot number to reassign it; this reloads the graph, resets active voices and effect tails, and can redirect existing DAW automation.';
 }
 const HOST_SLOT_BASE = 0x0100_0000;
 const widgetStyles = fxLayout.module.children.filter((item) => item.type === 'Slider').map((item) => item.style);
@@ -75,9 +76,35 @@ function paint(snapshot) {
         const label = spec?.label ?? `Parameter ${item.parameterId}`;
         const row = document.createElement('div');
         row.className = 'graph-parameter-row';
-        const slot = document.createElement('span');
-        slot.className = 'graph-slot';
-        slot.textContent = String(item.id - HOST_SLOT_BASE + 1).padStart(2, '0');
+        const slotNumber = item.id - HOST_SLOT_BASE + 1;
+        const slot = document.createElement(editorMode ? 'input' : 'span');
+        slot.className = editorMode ? 'graph-slot graph-slot-edit' : 'graph-slot';
+        if (editorMode) {
+          slot.type = 'number';
+          slot.min = '1';
+          slot.max = '128';
+          slot.step = '1';
+          slot.value = String(slotNumber);
+          slot.setAttribute('aria-label', `Host slot for ${NODE_TYPES[node.type]?.label ?? node.type} ${node.id} ${label}`);
+          slot.title = 'Change the host slot. An occupied slot swaps its two controls.';
+          slot.addEventListener('change', () => {
+            const selected = Number(slot.value);
+            slot.value = String(slotNumber);
+            if (!Number.isInteger(selected) || selected < 1 || selected > 128) {
+              status('Enter a host slot from 1 to 128.');
+              return;
+            }
+            if (selected === slotNumber) return;
+            if (!window.ipc?.postMessage) {
+              status('DAW editor bridge unavailable.');
+              return;
+            }
+            window.ipc?.postMessage(JSON.stringify({ version: 1, kind: 'slot-assign', id: item.id, slot: selected - 1 }));
+            status(`Assigning host slot ${slotNumber} to ${selected}…`);
+          });
+        } else {
+          slot.textContent = String(slotNumber).padStart(2, '0');
+        }
         const element = document.createElement('div');
         element.className = 'graph-control';
         const physical = item.min + item.normalized * (item.max - item.min);

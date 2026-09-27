@@ -18,6 +18,7 @@ pub(crate) struct GraphController {
 
 pub(crate) struct GraphShared {
     normalized: [AtomicU64; HOST_SLOT_COUNT],
+    project: Mutex<Vec<u8>>,
     pub handler: Mutex<Option<ComPtr<IComponentHandler>>>,
     host: Mutex<Option<ComPtr<IHostApplication>>>,
     peer: Mutex<Option<ComPtr<IConnectionPoint>>>,
@@ -67,6 +68,7 @@ impl GraphShared {
             .lock()
             .map_err(|_| "presentation unavailable")?;
         *current = next;
+        *self.project.lock().map_err(|_| "project unavailable")? = bytes.to_vec();
         for (slot, value) in values.iter().enumerate() {
             self.normalized[slot].store(value.to_bits(), Ordering::Release);
         }
@@ -75,6 +77,24 @@ impl GraphShared {
             unsafe { handler.restartComponent(RestartFlags_::kParamValuesChanged) };
         }
         Ok(())
+    }
+
+    pub fn reassign_slot(&self, id: u32, slot: u32) -> Result<(), &'static str> {
+        let source = GraphController::slot(id).ok_or("invalid source slot")? as u32;
+        if slot as usize >= HOST_SLOT_COUNT {
+            return Err("invalid destination slot");
+        }
+        if source == slot {
+            return Ok(());
+        }
+        let bytes = self
+            .project
+            .lock()
+            .map_err(|_| "project unavailable")?
+            .clone();
+        let values = std::array::from_fn(|index| self.value(HOST_SLOT_BASE + index as u32));
+        let updated = reassigned_project(&bytes, source, slot, &values)?;
+        self.import_project(&updated)
     }
 
     pub fn value(&self, id: u32) -> f64 {
@@ -137,6 +157,121 @@ fn presentation(bytes: &[u8], project: &NativeProject) -> Option<serde_json::Val
     )
 }
 
+fn reassigned_project(
+    bytes: &[u8],
+    source: u32,
+    destination: u32,
+    values: &[f64; HOST_SLOT_COUNT],
+) -> Result<Vec<u8>, &'static str> {
+    if source as usize >= HOST_SLOT_COUNT || destination as usize >= HOST_SLOT_COUNT {
+        return Err("invalid host slot");
+    }
+    let project = NativeProject::parse(bytes).map_err(|_| "invalid graph project")?;
+    let mut bindings = project.host_bindings().to_vec();
+    let current = bindings
+        .iter()
+        .position(|binding| binding.slot == source)
+        .ok_or("source slot is unbound")?;
+    let mut document: serde_json::Value =
+        serde_json::from_slice(bytes).map_err(|_| "invalid graph project")?;
+    let parameters = document["signal"]["initialParameters"]
+        .as_array_mut()
+        .ok_or("invalid graph parameters")?;
+    for binding in &bindings {
+        let descriptor = project
+            .host_parameters()
+            .iter()
+            .find(|parameter| parameter.id == binding.graph_parameter)
+            .ok_or("invalid host binding")?;
+        let physical = descriptor
+            .from_normalized(values[binding.slot as usize] as f32)
+            .ok_or("invalid host value")?;
+        let entry = parameters
+            .iter_mut()
+            .find(|entry| entry["nodeId"] == descriptor.node && entry["id"] == descriptor.local_id)
+            .ok_or("missing graph parameter")?;
+        entry["value"] = serde_json::Value::from(physical);
+    }
+    if let Some(displaced) = bindings
+        .iter()
+        .position(|binding| binding.slot == destination)
+    {
+        bindings[displaced].slot = source;
+    }
+    bindings[current].slot = destination;
+    document["hostBindings"] = serde_json::Value::Array(
+        bindings
+            .iter()
+            .map(|binding| {
+                serde_json::json!({"slot":binding.slot,
+                    "nodeId":binding.graph_parameter >> 8,
+                    "id":binding.graph_parameter & 255})
+            })
+            .collect(),
+    );
+    serde_json::to_vec(&document).map_err(|_| "project serialization failed")
+}
+
+#[cfg(test)]
+mod assignment_tests {
+    use super::*;
+
+    #[test]
+    fn assignment_moves_and_swaps_fixed_slots_with_current_control_values() {
+        let source = NativeProject::parse(DEFAULT_PROJECT).unwrap();
+        let descriptors = slot_descriptors(&source);
+        let first = descriptors[0].unwrap();
+        let second = descriptors[1].unwrap();
+        let mut values = normalized_values(&descriptors);
+        values[0] = 0.75;
+        let moved = reassigned_project(DEFAULT_PROJECT, 0, 17, &values).unwrap();
+        let parsed = NativeProject::parse(&moved).unwrap();
+        assert!(
+            parsed
+                .host_bindings()
+                .iter()
+                .any(|binding| binding.slot == 17 && binding.graph_parameter == first.id)
+        );
+        assert!(
+            !parsed
+                .host_bindings()
+                .iter()
+                .any(|binding| binding.slot == 0)
+        );
+        let document: serde_json::Value = serde_json::from_slice(&moved).unwrap();
+        let value = document["signal"]["initialParameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["nodeId"] == first.node && entry["id"] == first.local_id)
+            .unwrap()["value"]
+            .as_f64()
+            .unwrap();
+        assert!((value - first.from_normalized(0.75).unwrap() as f64).abs() < 1e-5);
+        let swapped = reassigned_project(
+            &moved,
+            17,
+            1,
+            &normalized_values(&slot_descriptors(&parsed)),
+        )
+        .unwrap();
+        let parsed = NativeProject::parse(&swapped).unwrap();
+        assert!(
+            parsed
+                .host_bindings()
+                .iter()
+                .any(|binding| binding.slot == 1 && binding.graph_parameter == first.id)
+        );
+        assert!(
+            parsed
+                .host_bindings()
+                .iter()
+                .any(|binding| binding.slot == 17 && binding.graph_parameter == second.id)
+        );
+        assert!(reassigned_project(&swapped, 99, 1, &values).is_err());
+    }
+}
+
 impl GraphController {
     pub const CID: TUID = uid(0xC5C5353D, 0x6BDF4E42, 0xAE535D85, 0x81C0832F);
 
@@ -146,6 +281,7 @@ impl GraphController {
         Self {
             shared: Arc::new(GraphShared {
                 normalized: defaults.map(|value| AtomicU64::new(value.to_bits())),
+                project: Mutex::new(DEFAULT_PROJECT.to_vec()),
                 handler: Mutex::new(None),
                 host: Mutex::new(None),
                 peer: Mutex::new(None),
@@ -227,6 +363,10 @@ impl IEditControllerTrait for GraphController {
             return kResultFalse;
         };
         *current = presentation;
+        let Ok(mut saved_project) = self.shared.project.lock() else {
+            return kResultFalse;
+        };
+        *saved_project = bytes;
         for (slot, value) in values.iter().enumerate() {
             self.shared.normalized[slot].store(value.to_bits(), Ordering::Release);
         }

@@ -172,6 +172,31 @@ class X11:
         assert test.XTestFakeButtonEvent(self.display, 1, 0, 0)
         self.lib.XFlush(self.display)
 
+    def assign_first_slot(self, window: int, displayed: int) -> None:
+        x, y = self.origin(window)
+        self.click(x + 43, y + 211)
+        self.lib.XSetInputFocus(self.display, window, 2, 0)
+        self.lib.XFlush(self.display)
+        time.sleep(0.1)
+        test = c.CDLL("libXtst.so.6")
+        test.XTestFakeKeyEvent.argtypes = [c.c_void_p, c.c_uint, c.c_int, c.c_ulong]
+        self.lib.XKeysymToKeycode.argtypes = [c.c_void_p, c.c_ulong]
+        self.lib.XKeysymToKeycode.restype = c.c_ubyte
+        def key(symbol: int, down: bool) -> None:
+            code = self.lib.XKeysymToKeycode(self.display, symbol)
+            assert code, f"unmapped keysym {symbol:#x}"
+            assert test.XTestFakeKeyEvent(self.display, code, int(down), 0)
+        key(0xffe3, True)  # Control_L
+        key(ord('a'), True)
+        key(ord('a'), False)
+        key(0xffe3, False)
+        for character in str(displayed):
+            key(ord(character), True)
+            key(ord(character), False)
+        key(0xff09, True)  # Tab commits the number field.
+        key(0xff09, False)
+        self.lib.XFlush(self.display)
+
     def choose_file(self, window: int, path: Path) -> None:
         x, y = self.origin(window)
         self.click(x + 90, y + 125)
@@ -222,6 +247,8 @@ def main() -> None:
     sample_import = "--sample-import" in sys.argv
     manual_picker = "--manual-picker" in sys.argv
     direct_import = "--direct-import" in sys.argv or sample_import or manual_picker
+    slot_assign = "--slot-assign" in sys.argv
+    assert not (slot_assign and direct_import), "run slot assignment as its own host probe"
     assert os.environ.get("MANIFOLD_ISOLATED_DISPLAY") == "1"
     assert os.environ.get("DISPLAY") and os.environ["DISPLAY"] != ":0"
     assert BUNDLE.is_dir(), "build the VST3 bundle first"
@@ -262,7 +289,7 @@ def main() -> None:
             config = work / "reaper.ini"
             config.write_text(f"[reaper]\nvstpath={BUNDLE.parent}\nvstpath64={BUNDLE.parent}\n")
             script = work / "probe.lua"
-            if sample_import:
+            if sample_import or slot_assign:
                 media_setup = """
 local item=reaper.CreateNewMIDIItemInProj(track,0,1,false)
 local take=reaper.GetActiveTake(item)
@@ -297,12 +324,20 @@ local function poll()
   if command=='automate' then
    reaper.TrackFX_SetParamNormalized(track,fx,0,0.2)
    result:write('done ' .. tostring(reaper.TrackFX_GetParamNormalized(track,fx,0)))
+  elseif command=='slot-query' then
+   result:write('done ' .. tostring(reaper.TrackFX_GetParamNormalized(track,fx,41)) .. ' ' .. tostring(reaper.TrackFX_GetParamNormalized(track,fx,0)))
+  elseif command=='slot-set' then
+   reaper.TrackFX_SetParamNormalized(track,fx,41,0.75)
+   reaper.SetEditCurPos(0,false,false)
+   reaper.OnPlayButton()
+   result:write('done ' .. tostring(reaper.TrackFX_GetParamNormalized(track,fx,41)))
   elseif command=='query' then
    result:write('done ' .. tostring(reaper.TrackFX_GetParamNormalized(track,fx,0)))
   elseif command=='preset' then
    local loaded=reaper.TrackFX_SetPreset(track,fx,'{preset}')
    result:write(loaded and 'done preset' or 'FAILED: preset load')
   elseif command=='save' then
+   reaper.OnStopButton()
    reaper.GetSetProjectInfo(0,'RENDER_SETTINGS',0,true)
    reaper.GetSetProjectInfo(0,'RENDER_BOUNDSFLAG',0,true)
    reaper.GetSetProjectInfo(0,'RENDER_STARTPOS',0,true)
@@ -349,7 +384,24 @@ reaper.defer(poll)
                     x11.click(672, 360)
                     time.sleep(0.3)
                     x11.raise_fx()
-                    if direct_import:
+                    if slot_assign:
+                        x11.assign_first_slot(window, 42)
+                        time.sleep(1)
+                        (work / "command.txt").write_text("slot-query")
+                        slot_values = wait_for(work / "slot-query.txt", "done").split()
+                        assigned = float(slot_values[1])
+                        vacant = float(slot_values[2])
+                        assert abs(assigned - 31 / 48) < 1e-4, slot_values
+                        assert abs(vacant) < 1e-5, slot_values
+                        (work / "command.txt").write_text("slot-set")
+                        changed = float(wait_for(work / "slot-set.txt", "done").split()[1])
+                        assert abs(changed - 0.75) < 1e-5, changed
+                        time.sleep(1.2)
+                        slot_capture = x11.capture(window, "graph-vst3-reaper-editor-slot-assign.png")
+                        (work / "command.txt").write_text("save")
+                        wait_for(work / "save.txt", "done")
+                        print(f"REAPER editor slot 1 -> 42: initial={assigned:.6f}, old slot={vacant:.6f}, changed={changed:.6f}; capture: {slot_capture}")
+                    elif direct_import:
                         if manual_picker:
                             x11.choose_file(window, imported_project)
                         time.sleep(1)
@@ -385,6 +437,46 @@ reaper.defer(poll)
                     if process.poll() is None:
                         os.killpg(process.pid, signal.SIGTERM)
                     process.wait(timeout=5)
+            if slot_assign:
+                assert project.exists(), "REAPER did not save assigned graph state"
+                with (work / "render.log").open("w") as log:
+                    subprocess.run(["reaper", "-cfgfile", str(config), "-newinst",
+                                    "-nosplash", "-renderproject", str(project)],
+                                   env=env, stdout=log, stderr=subprocess.STDOUT,
+                                   timeout=45, check=True)
+                rendered = work / "direct-import.wav"
+                assert rendered.exists(), (work / "render.log").read_text()[-1500:]
+                raw = subprocess.check_output(["ffmpeg", "-v", "error", "-i", str(rendered),
+                                               "-f", "f32le", "-acodec", "pcm_f32le", "-"])
+                actual = array("f")
+                actual.frombytes(raw)
+                expected_project = json.loads((ROOT / "projects/graph-workspace/note-voice.json").read_text())
+                next(entry for entry in expected_project["signal"]["initialParameters"]
+                     if entry["nodeId"] == 5 and entry["id"] == 0)["value"] = 12
+                native_project = work / "note-transpose-12.json"
+                native_project.write_text(json.dumps(expected_project))
+                native_path = work / "note-transpose-12.f32"
+                subprocess.run(["cargo", "run", "-q", "-p", "manifold-native", "--example",
+                                "render_graph_midi_audio", "--", str(native_project),
+                                str(native_path), "1024", "6000", "24000", "100"],
+                               cwd=ROOT, check=True, timeout=120)
+                expected = array("f")
+                expected.frombytes(native_path.read_bytes())
+                assert len(actual) == len(expected) == 48_000 * 2
+                error = max(abs(a - b) for a, b in zip(actual, expected))
+                peak = max(abs(value) for value in actual)
+                assert peak > .01 and error < 1e-7, (peak, error)
+                target = PUBLIC / "graph-vst3-reaper-editor-slot-assign.wav"
+                target.write_bytes(rendered.read_bytes())
+                metrics = {"host": "REAPER Linux VST3", "assignment": "original widget editor slot 1 to 42",
+                           "normalizedBefore": assigned, "oldSlotAfter": vacant,
+                           "normalizedAfter": changed, "savedAndReopened": True,
+                           "renderFrames": 48_000, "channels": 2,
+                           "peak": peak, "peakErrorVsNative": error,
+                           "render": target.name}
+                (PUBLIC / "graph-vst3-reaper-editor-slot-assign.json").write_text(
+                    json.dumps(metrics, indent=2) + "\n")
+                print(f"Fresh REAPER render after native editor assignment: peak={peak:.6f}, peak error vs Rust={error:.2g}; {target}")
             if direct_import:
                 assert project.exists(), "REAPER did not save imported graph state"
                 render_env = {key: value for key, value in env.items()
