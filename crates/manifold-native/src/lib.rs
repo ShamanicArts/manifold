@@ -17,7 +17,7 @@ use parameters::{
 };
 
 const MAX_SPLIT_MIDI_EVENTS: usize = 1024;
-const MAX_AUTOMATION_POINTS: usize = 1024;
+const MAX_AUTOMATION_POINTS: usize = 4096;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum NativeError {

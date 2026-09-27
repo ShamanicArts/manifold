@@ -55,6 +55,17 @@ a symlink in `~/.clap`; resolving the module path before locating its companion
 assets is required for the editor to open. The same fix applies to Standalone
 FX CLAP's editor lookup.
 
+The official `free-audio/clap-validator` v0.4.1 reports **36 passed, 0 failed,
+8 skipped** for the Graph class. The raw result is
+`web/public/graph-clap-validator.json`. It initially found two failures:
+wildcard note-off events with unspecified velocity, and more than 1,024
+sample-accurate automation points in one block. Graph CLAP now accepts the
+wildcard release and prepares space for 4,096 automation points; a regression
+test renders 1,536 automation points plus a wildcard release through the same
+native boundary. The core presently has channel/key note events without CLAP
+note IDs or partial wildcard filters, so a wildcard release conservatively
+clears every held note. More precise filter semantics remain host work.
+
 ## Standalone FX
 
 The Linux CLAP module is the first loadable native host for the authored

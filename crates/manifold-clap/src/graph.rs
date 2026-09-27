@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
 use crate::graph_gui::{GuiMessage, GuiMessageKind, GuiState};
 use clap_sys::audio_buffer::clap_audio_buffer;
 use clap_sys::events::{
-    CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_OFF, CLAP_EVENT_NOTE_ON,
+    CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_CHOKE, CLAP_EVENT_NOTE_OFF, CLAP_EVENT_NOTE_ON,
     CLAP_EVENT_PARAM_GESTURE_BEGIN, CLAP_EVENT_PARAM_GESTURE_END, CLAP_EVENT_PARAM_VALUE,
     clap_event_header, clap_event_note, clap_event_param_gesture, clap_event_param_value,
     clap_input_events, clap_output_events,
@@ -43,7 +43,8 @@ use manifold_native::parameters::{
 use manifold_native::project::{NativeProject, PreparedNativeProject};
 
 const DEFAULT: &[u8] = include_bytes!("../../../projects/graph-workspace/note-voice.json");
-const MAX_EVENTS: usize = 1024;
+const MAX_AUTOMATION: usize = 4096;
+const MAX_NOTES: usize = 1024;
 const MAX_STATE: usize = 45 * 1024 * 1024;
 
 struct Runtime {
@@ -198,8 +199,8 @@ impl Instance {
         Some(Box::new(Runtime {
             prepared,
             buffers: HostBuffers::prepare(max),
-            automation: Vec::with_capacity(MAX_EVENTS),
-            events: Vec::with_capacity(MAX_EVENTS),
+            automation: Vec::with_capacity(MAX_AUTOMATION),
+            events: Vec::with_capacity(MAX_NOTES),
             slot_indices,
             midi_node,
         }))
@@ -658,7 +659,7 @@ unsafe fn collect(list: *const clap_input_events, frames: usize, runtime: &mut R
         return false;
     };
     let count = unsafe { size(list) };
-    if count as usize > MAX_EVENTS * 4 {
+    if count as usize > MAX_AUTOMATION * 4 {
         return false;
     }
     for index in 0..count {
@@ -701,7 +702,7 @@ unsafe fn collect(list: *const clap_input_events, frames: usize, runtime: &mut R
                 }
                 if !event.value.is_finite()
                     || !(0. ..=1.).contains(&event.value)
-                    || runtime.automation.len() == MAX_EVENTS
+                    || runtime.automation.len() == MAX_AUTOMATION
                 {
                     return false;
                 }
@@ -711,22 +712,35 @@ unsafe fn collect(list: *const clap_input_events, frames: usize, runtime: &mut R
                     normalized: event.value as f32,
                 });
             }
-            CLAP_EVENT_NOTE_ON | CLAP_EVENT_NOTE_OFF if runtime.midi_node.is_some() => {
+            CLAP_EVENT_NOTE_ON | CLAP_EVENT_NOTE_OFF | CLAP_EVENT_NOTE_CHOKE
+                if runtime.midi_node.is_some() =>
+            {
                 if header.size < std::mem::size_of::<clap_event_note>() as u32 {
                     return false;
                 }
                 let event =
                     unsafe { &*(header as *const clap_event_header as *const clap_event_note) };
-                if event.port_index != 0
-                    || !(0..=15).contains(&event.channel)
-                    || !(0..=127).contains(&event.key)
-                    || !event.velocity.is_finite()
-                    || !(0. ..=1.).contains(&event.velocity)
-                    || runtime.events.len() == MAX_EVENTS
+                if !(-1..=0).contains(&event.port_index) || runtime.events.len() == MAX_NOTES {
+                    return false;
+                }
+                let on = header.type_ == CLAP_EVENT_NOTE_ON;
+                if (on
+                    && (!(0..=15).contains(&event.channel)
+                        || !(0..=127).contains(&event.key)
+                        || !event.velocity.is_finite()
+                        || !(0. ..=1.).contains(&event.velocity)))
+                    || (!on
+                        && (!(-1..=15).contains(&event.channel)
+                            || !(-1..=127).contains(&event.key)))
                 {
                     return false;
                 }
-                let kind = if header.type_ == CLAP_EVENT_NOTE_OFF || event.velocity == 0. {
+                // The core currently identifies notes by channel and key,
+                // not CLAP note ID. A wildcard release clears all held notes
+                // conservatively until filtered note-offs have a core event.
+                let kind = if !on && (event.channel == -1 || event.key == -1) {
+                    EventKind::AllNotesOff
+                } else if !on || event.velocity == 0. {
                     EventKind::NoteOff {
                         channel: event.channel as u8,
                         note: event.key as u8,
@@ -947,7 +961,7 @@ unsafe extern "C" fn flush(
             let Ok(descriptors) = instance.descriptors.lock() else {
                 return;
             };
-            for index in 0..unsafe { size(events) }.min((MAX_EVENTS * 4) as u32) {
+            for index in 0..unsafe { size(events) }.min((MAX_AUTOMATION * 4) as u32) {
                 let header = unsafe { get(events, index) };
                 if header.is_null() {
                     return;
@@ -1253,6 +1267,75 @@ mod tests {
         assert!(unsafe { STATE.save.unwrap()(plugin, &stream) });
         assert!(NativeProject::parse(&saved).is_ok());
         unsafe { (*plugin).destroy.unwrap()(plugin) };
+    }
+
+    #[test]
+    fn dense_automation_and_wildcard_release_stay_inside_prepared_buffers() {
+        let mut runtime = *Instance::prepare(DEFAULT, 48_000., 128).unwrap();
+        let id = HOST_SLOT_BASE + 1;
+        let points: Vec<_> = (0..1536)
+            .map(|index| clap_event_param_value {
+                header: clap_event_header {
+                    size: std::mem::size_of::<clap_event_param_value>() as u32,
+                    time: index / 16,
+                    space_id: CLAP_CORE_EVENT_SPACE_ID,
+                    type_: CLAP_EVENT_PARAM_VALUE,
+                    flags: 0,
+                },
+                param_id: id,
+                cookie: null_mut(),
+                note_id: -1,
+                port_index: -1,
+                channel: -1,
+                key: -1,
+                value: (index % 101) as f64 / 100.,
+            })
+            .collect();
+        let release = clap_event_note {
+            header: clap_event_header {
+                size: std::mem::size_of::<clap_event_note>() as u32,
+                time: 96,
+                space_id: CLAP_CORE_EVENT_SPACE_ID,
+                type_: CLAP_EVENT_NOTE_OFF,
+                flags: 0,
+            },
+            note_id: -1,
+            port_index: -1,
+            channel: -1,
+            key: -1,
+            velocity: f64::NAN,
+        };
+        let mut pointers: Vec<_> = points
+            .iter()
+            .map(|point| &point.header as *const _)
+            .collect();
+        pointers.push(&release.header);
+        let events = clap_input_events {
+            ctx: &pointers as *const _ as *mut c_void,
+            size: Some(event_count),
+            get: Some(event_get),
+        };
+        assert!(unsafe { collect(&events, 128, &mut runtime) });
+        assert_eq!(runtime.automation.len(), 1536);
+        assert_eq!(runtime.events[0].kind, EventKind::AllNotesOff);
+        let mut left = [0_f32; 128];
+        let mut right = [0_f32; 128];
+        assert!(
+            unsafe {
+                runtime.buffers.render(
+                    &mut runtime.prepared.processor,
+                    RawHostBlock {
+                        frames: 128,
+                        main: [null(); 2],
+                        sidechain: [null(); 2],
+                        output: [left.as_mut_ptr(), right.as_mut_ptr()],
+                        events: &runtime.events,
+                        automation: &runtime.automation,
+                    },
+                )
+            }
+            .is_ok()
+        );
     }
 
     #[test]

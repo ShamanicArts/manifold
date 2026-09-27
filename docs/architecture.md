@@ -74,6 +74,10 @@ CLAP editor now embeds the same compact browser widgets as Graph VST3; project
 imports and slot reassignment prepare complete replacement graphs off the
 callback. Presentation snapshots cache the node and control description so
 ordinary host automation repaints do not reparse embedded audio assets.
+The native automation boundary reserves up to 4,096 ordered points per block,
+while its MIDI split limit remains 1,024 events. The CLAP adapter converts a
+wildcard note release to an all-notes-off core event until filtered releases
+and CLAP note IDs have a native event representation.
 The [native editor boundary](native-editor-plan.md) records the exact widget
 reuse, CLAP GUI lifecycle, and proposed browser process bridge.
 
