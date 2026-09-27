@@ -9,6 +9,7 @@ import { mountMainEq } from './widgets/main-eq.js';
 import { mountMainFxSlot } from './widgets/main-fx-slot.js';
 import { mountMainLfo, DEFAULT_LFO_STATE } from './widgets/main-lfo.js';
 import { mountMainCapturePlane } from './widgets/main-capture-plane.js';
+import { drawMainLayerKnob } from './widgets/main-layer-knob.js';
 
 const $ = (id) => document.getElementById(id);
 const bars = project.segments;
@@ -282,39 +283,6 @@ for (let index = 0; index < noteNames.length; index++) {
   $('synth-keys').append(key);
 }
 
-function drawKnob(canvas, value, min, max, label, color) {
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width, h = canvas.height;
-  const cx = w / 2, cy = h * 0.42, r = Math.min(w, h) * 0.32;
-  const fraction = Math.max(0, Math.min(1, (value - min) / (max - min)));
-  const start = -135, end = start + fraction * 270;
-  const arc = (radius, a, b, stroke, width = 1) => {
-    ctx.strokeStyle = stroke; ctx.lineWidth = width; ctx.beginPath();
-    for (let deg = a; deg <= b + 0.01; deg += 2) {
-      const theta = (deg - 90) * Math.PI / 180;
-      const x = cx + Math.cos(theta) * radius, y = cy + Math.sin(theta) * radius;
-      if (deg === a) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    const theta = (b - 90) * Math.PI / 180;
-    ctx.lineTo(cx + Math.cos(theta) * radius, cy + Math.sin(theta) * radius);
-    ctx.stroke();
-  };
-  ctx.clearRect(0, 0, w, h);
-  arc(r * 1.02, -135, 225, '#172337'); arc(r, -135, 225, '#1e293b');
-  arc(r * .66, -135, 225, '#263448');
-  for (const radius of [.96, .91, .86]) arc(r * radius, -135, 135, '#172337', 1.4);
-  if (fraction > 0) for (const radius of [.96, .91, .86]) arc(r * radius, -135, end, color, 1.4);
-  const a = (end - 90) * Math.PI / 180;
-  ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1; ctx.beginPath();
-  ctx.moveTo(cx + Math.cos(a) * r * .2, cy + Math.sin(a) * r * .2);
-  ctx.lineTo(cx + Math.cos(a) * r * .78, cy + Math.sin(a) * r * .78); ctx.stroke();
-  ctx.fillStyle = '#e2e8f0'; ctx.beginPath(); ctx.arc(cx + Math.cos(a) * r * .78, cy + Math.sin(a) * r * .78, 2.5, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#344155'; ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.fill();
-  ctx.textAlign = 'center'; ctx.fillStyle = '#cbd5e1'; ctx.font = '11px sans-serif';
-  ctx.fillText(value.toFixed(2), cx, h * .81);
-  ctx.fillStyle = '#94a3b8'; ctx.font = '10px sans-serif'; ctx.fillText(label, cx, h * .95);
-}
-
 function drawWave(canvas, peaks, position, color, pending = 0) {
   const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
   ctx.fillStyle = '#0e1828'; ctx.fillRect(0, 0, w, h);
@@ -354,7 +322,7 @@ function makeKnob(layer, id, label, min, max, initial, color) {
   const set = (value) => {
     value = Math.max(min, Math.min(max, Math.round(value * 100) / 100));
     canvas.dataset.value = value; canvas.setAttribute('aria-valuenow', String(value));
-    drawKnob(canvas, value, min, max, label, color); layerControl(layer, id, value);
+    drawMainLayerKnob(canvas, value, min, max, label, color); layerControl(layer, id, value);
   };
   canvas.addEventListener('pointerdown', event => {
     canvas.setPointerCapture(event.pointerId); dragging = canvas;
@@ -370,7 +338,7 @@ function makeKnob(layer, id, label, min, max, initial, color) {
     if (event.key === 'ArrowUp' || event.key === 'ArrowRight') { set(Number(canvas.dataset.value) + .01); event.preventDefault(); }
     if (event.key === 'ArrowDown' || event.key === 'ArrowLeft') { set(Number(canvas.dataset.value) - .01); event.preventDefault(); }
   });
-  drawKnob(canvas, initial, min, max, label, color);
+  drawMainLayerKnob(canvas, initial, min, max, label, color);
   return canvas;
 }
 
@@ -467,8 +435,8 @@ function render(data) {
     ui.mute.textContent = layer.muted ? 'Muted' : 'Mute'; ui.mute.classList.toggle('muted', layer.muted);
     ui.play.textContent = layer.playing ? '⏸' : '▶'; ui.play.classList.toggle('playing', layer.playing);
     drawWave(ui.wave, layer.peaks, layer.position, layer.muted ? '#94a3b8' : stateColors[layer.state], layer.pending);
-    if (dragging !== ui.volume) { ui.volume.dataset.value = layer.volume; drawKnob(ui.volume, layer.volume, 0, 2, 'Vol', '#a78bfa'); }
-    if (dragging !== ui.speed) { ui.speed.dataset.value = layer.speed; drawKnob(ui.speed, layer.speed, -4, 4, 'Speed', '#22d3ee'); }
+    if (dragging !== ui.volume) { ui.volume.dataset.value = layer.volume; drawMainLayerKnob(ui.volume, layer.volume, 0, 2, 'Vol', '#a78bfa'); }
+    if (dragging !== ui.speed) { ui.speed.dataset.value = layer.speed; drawMainLayerKnob(ui.speed, layer.speed, -4, 4, 'Speed', '#22d3ee'); }
     drawDonut(donutElements[index].querySelector('canvas'), layer, index === data.active, layerColors[index]);
   }
   capturePlane.render(data.segments, data.forwardBars);
