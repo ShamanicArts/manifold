@@ -422,9 +422,35 @@ try {
   const afterFailure = JSON.parse((await readFile(await (await failedDownload).path())).toString());
   assert.deepEqual(afterFailure.targets, replacedMain.targets, 'rejected analysis leaves prepared targets intact');
   assert.deepEqual(afterFailure.assets, replacedMain.assets, 'rejected analysis leaves source intact');
+  await page.locator('button[aria-label="Use built-in source for Main voice bank 5"]').click();
+  const builtInDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const restoredBuiltIn = JSON.parse((await readFile(await (await builtInDownload).path())).toString());
+  const mainTemplate = JSON.parse((await readFile(new URL('../projects/graph-workspace/main-bank.json', import.meta.url))).toString());
+  assert.deepEqual(restoredBuiltIn.targets[0].values, [1, .8, 0, 0]);
+  assert.deepEqual(restoredBuiltIn.targets[1], mainTemplate.targets[1]);
+  assert.equal(restoredBuiltIn.assets[0].label, 'Built-in two-tone source');
   await page.locator('#audio-toggle').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
   await page.locator('#audio-toggle').click();
+  let delayedAnalysisRequests = 0;
+  await page.route('**/manifold_filter.wasm', async (route) => {
+    delayedAnalysisRequests++;
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await route.continue();
+  });
+  await page.locator('input[aria-label="Main voice bank 5 audio file"]').setInputFiles([{
+    name: 'superseded-source.wav', mimeType: 'audio/wav', buffer: wavSource(12000, false),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('Preparing superseded-source.wav'));
+  await page.locator('#graph-load-main').click();
+  await page.waitForTimeout(1200);
+  assert.ok(delayedAnalysisRequests >= 1, 'the stale worker fetch was delayed');
+  const raceDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const afterSupersede = JSON.parse((await readFile(await (await raceDownload).path())).toString());
+  assert.equal(afterSupersede.assets[0].label, 'Built-in two-tone source');
+  await page.unroute('**/manifold_filter.wasm');
   assert.deepEqual(errors, []);
   console.log('Graph workspace browser: typed Audio/CV/MIDI editing, sample/region/granulator/Main nodes, Main source analysis and rejection, native/Wasm references, live controls, project reopen passed');
 } finally {

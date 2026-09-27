@@ -33,6 +33,8 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   const listeners = new AbortController();
   let busy = false;
   let destroyed = false;
+  let revision = 0;
+  let sourceRequest = 0;
   const pendingParameters = new Set();
 
   addType.replaceChildren(...Object.entries(NODE_TYPES).filter(([, spec]) => !spec.fixedId)
@@ -52,6 +54,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   function commit(signal, message, assets = project.graphAssets ?? [], targets = project.graphTargets ?? []) {
     const checked = validateGraphAssets(signal, assets.filter((asset) => signal.nodes.some((node) => node.id === asset.nodeId && SAMPLE_NODE_TYPES.has(node.type))));
     const partials = validateGraphTargets(signal, targets.filter((target) => signal.nodes.some((node) => node.id === target.nodeId && node.type === 'main-voice-bank')));
+    revision++;
     project.signal = signal;
     project.graphAssets = checked;
     project.graphTargets = partials;
@@ -126,16 +129,18 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
         input.addEventListener('change', async () => {
           const file = input.files?.[0];
           if (!file) return;
+          const startingRevision = revision;
+          const request = ++sourceRequest;
           try {
             if (!canEdit()) throw new Error('Stop audio before loading a sample.');
             status.textContent = `Decoding ${file.name}…`;
             const decoded = await decodeSample(file);
-            if (!canEdit()) throw new Error('Project view changed while decoding the sample.');
+            if (!canEdit() || revision !== startingRevision || request !== sourceRequest) return;
             let targets = project.graphTargets ?? [];
             if (node.type === 'main-voice-bank') {
               status.textContent = `Preparing ${file.name} source spectrum in Rust/Wasm…`;
               const analyzed = await analyzeMainSource(decoded);
-              if (!canEdit()) throw new Error('Project view changed while preparing the Main source.');
+              if (!canEdit() || revision !== startingRevision || request !== sourceRequest) return;
               targets = targets.map((target) => target.nodeId === node.id && target.target === 1
                 ? { nodeId: node.id, target: 1, ...analyzed } : target);
             }
@@ -143,7 +148,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
               { nodeId: node.id, sourceRate: decoded.sourceRate, stereo: decoded.stereo, label: decoded.label }];
             validateGraphAssets(project.signal, assets);
             commit(project.signal, `Loaded ${file.name} into ${spec.label.toLowerCase()} ${node.id}${node.type === 'main-voice-bank' ? ' with a new prepared source target' : ''}. Start audio to hear it.`, assets, targets);
-          } catch (error) { fail(error); }
+          } catch (error) { if (revision === startingRevision && request === sourceRequest) fail(error); }
           finally { input.value = ''; }
         });
         source.append(input);
@@ -161,6 +166,25 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
           });
           article.appendChild(clear);
         }
+        const useBuiltin = document.createElement('button');
+        useBuiltin.type = 'button';
+        useBuiltin.className = 'graph-edit graph-remove';
+        useBuiltin.textContent = 'Use built-in source';
+        useBuiltin.setAttribute('aria-label', `Use built-in source for ${spec.label} ${node.id}`);
+        useBuiltin.addEventListener('click', () => {
+          if (!canEdit()) return;
+          try {
+            const source = builtinSample();
+            const assets = [...(project.graphAssets ?? []).filter((item) => item.nodeId !== node.id),
+              { nodeId: node.id, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }];
+            const targets = node.type === 'main-voice-bank'
+              ? (project.graphTargets ?? []).map((target) => target.nodeId === node.id && target.target === 1
+                ? defaultMainTargets(node.id)[1] : target)
+              : project.graphTargets ?? [];
+            commit(project.signal, `Restored built-in source for ${spec.label.toLowerCase()} ${node.id}. Start audio to hear it.`, assets, targets);
+          } catch (error) { fail(error); }
+        });
+        article.appendChild(useBuiltin);
       }
       if (node.type === 'main-voice-bank') {
         const importLabel = document.createElement('label');
@@ -174,11 +198,12 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
         importInput.addEventListener('change', async () => {
           const file = importInput.files?.[0];
           if (!file) return;
+          const startingRevision = revision;
           try {
             if (!canEdit()) throw new Error('Stop audio before opening a Main bank state.');
             if (file.size > 45 * 1024 * 1024) throw new Error('Main bank state must be smaller than 45 MB.');
             const parsed = parseProjectDocument(JSON.parse(await file.text()), mainVoiceBankProject, parseMainVoiceBankState).state;
-            if (!canEdit()) throw new Error('Project view changed while opening the Main bank state.');
+            if (!canEdit() || revision !== startingRevision) return;
             const source = parsed.source.kind === 'builtin' ? builtinSample() : parsed.source;
             const signal = structuredClone(project.signal);
             for (const parameter of mainVoiceBankProject.parameters) {
@@ -189,7 +214,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
             const assets = [...(project.graphAssets ?? []).filter((asset) => asset.nodeId !== node.id),
               { nodeId: node.id, sourceRate: source.sourceRate, stereo: source.stereo, label: source.label ?? 'Built-in two-tone source' }];
             commit(signal, `Imported ${file.name} into Main bank ${node.id}. Its prepared targets and controls are ready; start audio to hear it.`, assets, targets);
-          } catch (error) { fail(error); }
+          } catch (error) { if (revision === startingRevision) fail(error); }
           finally { importInput.value = ''; }
         });
         importLabel.append(importInput);
@@ -386,14 +411,15 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files?.[0];
     if (!file) return;
+    const startingRevision = revision;
     try {
       if (!canEdit()) throw new Error('Stop audio before opening a graph.');
       if (file.size > 45 * 1024 * 1024) throw new Error('Graph project must be smaller than 45 MB.');
       const contents = await file.text();
-      if (!canEdit()) throw new Error('Project view changed while opening the graph.');
+      if (!canEdit() || revision !== startingRevision) return;
       const bundle = parseGraphBundle(JSON.parse(contents));
       commit(bundle.signal, `Opened ${file.name} with ${bundle.assets.length} sample assets and ${bundle.targets.length} partial targets. Start audio to compile the restored graph.`, bundle.assets, bundle.targets);
-    } catch (error) { fail(error); }
+    } catch (error) { if (revision === startingRevision) fail(error); }
     finally { fileInput.value = ''; }
   }, { signal: listeners.signal });
   render();
