@@ -3,12 +3,13 @@
 
 use std::ffi::CStr;
 use std::ptr::null_mut;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use crossbeam_queue::ArrayQueue;
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_native::host_buffers::{HostBuffers, RawHostBlock};
+use manifold_native::host_values::ValueBank;
 use manifold_native::parameters::{
     HOST_SLOT_BASE, HOST_SLOT_COUNT, HostParameter, TimedAutomation,
 };
@@ -22,6 +23,7 @@ use crate::util::{copy_wstring, read_stream, write_stream};
 const MAX_MESSAGES: usize = 1024;
 
 struct Runtime {
+    values: Arc<ValueBank>,
     prepared: PreparedNativeProject,
     buffers: HostBuffers,
     automation: Vec<TimedAutomation>,
@@ -38,7 +40,7 @@ pub(crate) struct GraphProcessor {
     configuration: Mutex<Option<(f32, usize)>>,
     state: Mutex<Vec<u8>>,
     descriptors: Mutex<[Option<HostParameter>; HOST_SLOT_COUNT]>,
-    normalized: [AtomicU32; HOST_SLOT_COUNT],
+    values: Mutex<Arc<ValueBank>>,
     sidechain_active: AtomicBool,
     sidechain_arrangement: AtomicU64,
     peer: Mutex<Option<ComPtr<IConnectionPoint>>>,
@@ -63,14 +65,19 @@ impl GraphProcessor {
             configuration: Mutex::new(None),
             state: Mutex::new(DEFAULT_PROJECT.to_vec()),
             descriptors: Mutex::new(descriptors),
-            normalized: values.map(|value| AtomicU32::new((value as f32).to_bits())),
+            values: Mutex::new(Arc::new(ValueBank::new(values.map(|value| value as f32)))),
             sidechain_active: AtomicBool::new(false),
             sidechain_arrangement: AtomicU64::new(SpeakerArr::kStereo),
             peer: Mutex::new(None),
         }
     }
 
-    fn prepared(bytes: &[u8], rate: f32, frames: usize) -> Option<Box<Runtime>> {
+    fn prepared(
+        bytes: &[u8],
+        rate: f32,
+        frames: usize,
+        values: Arc<ValueBank>,
+    ) -> Option<Box<Runtime>> {
         let project = NativeProject::parse(bytes).ok()?;
         let document: serde_json::Value = serde_json::from_slice(bytes).ok()?;
         let midi_node = document["signal"]["nodes"]
@@ -96,6 +103,7 @@ impl GraphProcessor {
                 })
         });
         Some(Box::new(Runtime {
+            values,
             prepared,
             buffers: HostBuffers::prepare(frames),
             automation: Vec::with_capacity(MAX_MESSAGES),
@@ -108,14 +116,15 @@ impl GraphProcessor {
     fn capture_state(&self) -> Option<Vec<u8>> {
         let state = self.state.lock().ok()?;
         let descriptors = self.descriptors.lock().ok()?;
+        let bank = self.values.lock().ok()?;
+        let values = bank.read_all();
         let mut document: serde_json::Value = serde_json::from_slice(&state).ok()?;
         let entries = document["signal"]["initialParameters"].as_array_mut()?;
         for (slot, descriptor) in descriptors.iter().enumerate() {
             let Some(descriptor) = descriptor else {
                 continue;
             };
-            let normalized = f32::from_bits(self.normalized[slot].load(Ordering::Acquire));
-            let physical = descriptor.from_normalized(normalized)?;
+            let physical = descriptor.from_normalized(values[slot])?;
             if let Some(entry) = entries.iter_mut().find(|entry| {
                 entry["nodeId"] == descriptor.node && entry["id"] == descriptor.local_id
             }) {
@@ -132,13 +141,12 @@ impl GraphProcessor {
     fn publish_snapshot(&self, runtime: &Runtime) {
         let parameters = runtime.prepared.processor.host_parameters();
         let physical = runtime.prepared.processor.current_parameter_values();
-        for (slot, index) in runtime.slot_indices.iter().enumerate() {
-            if let Some(index) = index {
-                if let Some(value) = parameters[*index].to_normalized(physical[*index]) {
-                    self.normalized[slot].store(value.to_bits(), Ordering::Release);
-                }
-            }
-        }
+        let values = std::array::from_fn(|slot| {
+            runtime.slot_indices[slot]
+                .and_then(|index| parameters[index].to_normalized(physical[index]))
+                .unwrap_or_else(|| runtime.values.read_slot(slot))
+        });
+        runtime.values.write_all(values);
     }
 
     fn retire_old(&self) {
@@ -179,13 +187,14 @@ impl GraphProcessor {
         };
         let descriptors = slot_descriptors(&project);
         let values = normalized_values(&descriptors);
+        let bank = Arc::new(ValueBank::new(values.map(|value| value as f32)));
         self.retire_old();
         let replacement = if self.active.load(Ordering::Acquire) {
             let Some((rate, frames)) = self.configuration.lock().ok().and_then(|guard| *guard)
             else {
                 return kResultFalse;
             };
-            let Some(runtime) = Self::prepared(&bytes, rate, frames) else {
+            let Some(runtime) = Self::prepared(&bytes, rate, frames, Arc::clone(&bank)) else {
                 return kResultFalse;
             };
             Some(runtime)
@@ -198,11 +207,12 @@ impl GraphProcessor {
         let Ok(mut bound) = self.descriptors.lock() else {
             return kResultFalse;
         };
+        let Ok(mut current_bank) = self.values.lock() else {
+            return kResultFalse;
+        };
         *state = bytes;
         *bound = descriptors;
-        for (slot, value) in values.iter().enumerate() {
-            self.normalized[slot].store((*value as f32).to_bits(), Ordering::Release);
-        }
+        *current_bank = bank;
         if let Some(runtime) = replacement {
             let previous = self.pending.swap(Box::into_raw(runtime), Ordering::AcqRel);
             if !previous.is_null() {
@@ -377,7 +387,10 @@ impl IComponentTrait for GraphProcessor {
         let Some(state) = self.capture_state() else {
             return kResultFalse;
         };
-        let Some(runtime) = Self::prepared(&state, rate, frames) else {
+        let Some(bank) = self.values.lock().ok().map(|bank| Arc::clone(&bank)) else {
+            return kResultFalse;
+        };
+        let Some(runtime) = Self::prepared(&state, rate, frames, bank) else {
             return kResultFalse;
         };
         self.publish_snapshot(&runtime);
@@ -764,6 +777,98 @@ mod tests {
     use super::*;
     use manifold_native::host_buffers::{HostBuffers, RawHostBlock};
     use vst3::ComWrapper;
+
+    #[test]
+    fn live_saves_keep_one_value_block_and_one_imported_generation() {
+        let component = GraphProcessor::new();
+        let descriptors = *component.descriptors.lock().unwrap();
+        let continuous: Vec<_> = descriptors
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, descriptor)| {
+                descriptor
+                    .filter(|descriptor| !descriptor.discrete)
+                    .map(|descriptor| (slot, descriptor))
+            })
+            .collect();
+        let (first_slot, first) = continuous[0];
+        let (second_slot, second) = continuous[1];
+        let bank = Arc::clone(&component.values.lock().unwrap());
+        let initial = bank.read_all();
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                for index in 0..20_000 {
+                    let mut values = initial;
+                    values[first_slot] = if index & 1 == 0 { 0.2 } else { 0.8 };
+                    values[second_slot] = if index & 1 == 0 { 0.8 } else { 0.2 };
+                    bank.write_all(values);
+                }
+            });
+            for _ in 0..128 {
+                let saved = component.capture_state().unwrap();
+                let document: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+                let entries = document["signal"]["initialParameters"].as_array().unwrap();
+                let physical = |descriptor: HostParameter| {
+                    entries
+                        .iter()
+                        .find(|entry| {
+                            entry["nodeId"] == descriptor.node && entry["id"] == descriptor.local_id
+                        })
+                        .unwrap()["value"]
+                        .as_f64()
+                        .unwrap() as f32
+                };
+                let pair = (
+                    first.to_normalized(physical(first)).unwrap(),
+                    second.to_normalized(physical(second)).unwrap(),
+                );
+                if (pair.0 - initial[first_slot]).abs() > 1e-5
+                    || (pair.1 - initial[second_slot]).abs() > 1e-5
+                {
+                    assert!((pair.0 + pair.1 - 1.).abs() < 1e-5, "{pair:?}");
+                }
+                NativeProject::parse(&saved).unwrap();
+            }
+        });
+
+        let mut setup = ProcessSetup {
+            processMode: 0,
+            symbolicSampleSize: SymbolicSampleSizes_::kSample32 as i32,
+            maxSamplesPerBlock: 128,
+            sampleRate: 48_000.,
+        };
+        assert_eq!(unsafe { component.setupProcessing(&mut setup) }, kResultOk);
+        assert_eq!(unsafe { component.setActive(1) }, kResultOk);
+        let running = AtomicBool::new(true);
+        let old_runtime = component.current.load(Ordering::Acquire) as usize;
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                while running.load(Ordering::Acquire) {
+                    component.publish_snapshot(unsafe { &*(old_runtime as *const Runtime) });
+                }
+            });
+            let tone = include_bytes!("../../../projects/graph-workspace/tone-texture.json");
+            for index in 0..40 {
+                let next = if index & 1 == 0 {
+                    tone.as_slice()
+                } else {
+                    DEFAULT_PROJECT
+                };
+                assert_eq!(component.restore_bytes(next.to_vec()), kResultOk);
+                for _ in 0..3 {
+                    let saved = component.capture_state().unwrap();
+                    let project = NativeProject::parse(&saved).unwrap();
+                    assert_eq!(
+                        project.host_bindings().len(),
+                        if index & 1 == 0 { 12 } else { 10 }
+                    );
+                }
+            }
+            running.store(false, Ordering::Release);
+        });
+        component.publish_pending();
+        assert_eq!(unsafe { component.setActive(0) }, kResultOk);
+    }
 
     struct TestEvents(Vec<Event>);
     impl Class for TestEvents {

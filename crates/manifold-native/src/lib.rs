@@ -9,6 +9,7 @@ use manifold_core::sine_bank::PartialSet;
 use manifold_core::temporal_partials::TemporalFrame;
 
 pub mod host_buffers;
+pub mod host_values;
 pub mod parameters;
 pub mod project;
 

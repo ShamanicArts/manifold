@@ -6,7 +6,7 @@ use std::cell::UnsafeCell;
 use std::ffi::{CStr, c_char, c_void};
 use std::ptr::{self, null, null_mut};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 
 #[cfg(target_os = "linux")]
 use crate::graph_gui::{GuiMessage, GuiMessageKind, GuiState};
@@ -37,6 +37,7 @@ use clap_sys::process::{
 use clap_sys::stream::{clap_istream, clap_ostream};
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_native::host_buffers::{HostBuffers, RawHostBlock};
+use manifold_native::host_values::ValueBank;
 use manifold_native::parameters::{
     HOST_SLOT_BASE, HOST_SLOT_COUNT, HostParameter, TimedAutomation,
 };
@@ -46,56 +47,6 @@ const DEFAULT: &[u8] = include_bytes!("../../../projects/graph-workspace/note-vo
 const MAX_AUTOMATION: usize = 4096;
 const MAX_NOTES: usize = 1024;
 const MAX_STATE: usize = 45 * 1024 * 1024;
-
-/// One graph generation's fixed host values. The active audio runtime is its
-/// only writer; inactive flushes use the same bank when processing is stopped.
-struct ValueBank {
-    sequence: AtomicU64,
-    values: [AtomicU32; HOST_SLOT_COUNT],
-}
-
-impl ValueBank {
-    fn new(values: [f32; HOST_SLOT_COUNT]) -> Self {
-        Self {
-            sequence: AtomicU64::new(0),
-            values: values.map(|value| AtomicU32::new(value.to_bits())),
-        }
-    }
-
-    fn write_all(&self, values: [f32; HOST_SLOT_COUNT]) {
-        self.sequence.fetch_add(1, Ordering::SeqCst);
-        for (slot, value) in values.into_iter().enumerate() {
-            self.values[slot].store(value.to_bits(), Ordering::SeqCst);
-        }
-        self.sequence.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn write_slot(&self, slot: usize, value: f32) {
-        self.sequence.fetch_add(1, Ordering::SeqCst);
-        self.values[slot].store(value.to_bits(), Ordering::SeqCst);
-        self.sequence.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn read_all(&self) -> [f32; HOST_SLOT_COUNT] {
-        loop {
-            let before = self.sequence.load(Ordering::SeqCst);
-            if before & 1 != 0 {
-                std::hint::spin_loop();
-                continue;
-            }
-            let values = std::array::from_fn(|slot| {
-                f32::from_bits(self.values[slot].load(Ordering::SeqCst))
-            });
-            if before == self.sequence.load(Ordering::SeqCst) {
-                return values;
-            }
-        }
-    }
-
-    fn read_slot(&self, slot: usize) -> f32 {
-        f32::from_bits(self.values[slot].load(Ordering::Acquire))
-    }
-}
 
 struct Runtime {
     bank: usize,
