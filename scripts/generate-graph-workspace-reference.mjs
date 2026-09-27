@@ -8,6 +8,7 @@ const directory = resolve('web/public/reference/graph-workspace');
 mkdirSync(directory, { recursive: true });
 const seed = JSON.parse(readFileSync('projects/graph-workspace/project.json', 'utf8')).signal;
 const texture = JSON.parse(readFileSync('projects/graph-workspace/tone-texture.json', 'utf8')).signal;
+const noteVoice = JSON.parse(readFileSync('projects/graph-workspace/note-voice.json', 'utf8')).signal;
 let distorted = addNode(seed, 'distortion');
 distorted = setConnection(distorted, 4, 0, 2);
 distorted = setConnection(distorted, 3, 0, 4);
@@ -30,6 +31,13 @@ const cases = [
   { id: 'distortion', label: 'Input → Gain → Distortion', graph: distorted },
   { id: 'cv', label: 'Input → Gain → Distortion → CV gain', graph: cv },
   { id: 'texture', label: 'Oscillator + noise → SVF → CV gain', graph: texture },
+  { id: 'note-voice', label: 'MIDI → +7 transpose → voice → SVF', graph: noteVoice,
+    events: [
+      { frame: 16, kind: 0, channel: 15, note: 60, velocity: 100 },
+      { frame: 2048, kind: 0, channel: 15, note: 64, velocity: 96 },
+      { frame: 4096, kind: 1, channel: 15, note: 60, velocity: 0 },
+      { frame: 6144, kind: 1, channel: 15, note: 64, velocity: 0 },
+    ] },
 ];
 for (const entry of cases) {
   entry.output = `${entry.id}.f32`;

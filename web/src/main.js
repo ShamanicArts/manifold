@@ -13,6 +13,7 @@ import adsrProject from '../../projects/adsr/project.json';
 import noiseProject from '../../projects/noise/project.json';
 import patchProject from '../../projects/synth-patch/project.json';
 import graphWorkspaceProject from '../../projects/graph-workspace/project.json';
+import { graphNoteTarget } from './graph/topology.js';
 import modulationProject from '../../projects/modulated-gain/project.json';
 import distortionProject from '../../projects/distortion/project.json';
 import phaserProject from '../../projects/phaser/project.json';
@@ -176,8 +177,8 @@ const projects = {
   'graph-workspace': {
     project: graphWorkspaceProject,
     title: 'Graph workspace',
-    description: 'Build a stereo graph from Rust audio and CV nodes. Typed ports, cycle checks, and project JSON make topology changes inspectable before the next audio start.',
-    signal: 'Live input → editable Rust graph → stereo output',
+    description: 'Build a stereo graph from Rust audio, CV, and MIDI nodes. Typed ports, cycle checks, and project JSON make topology changes inspectable before the next audio start.',
+    signal: 'Audio / CV / MIDI → editable Rust graph → stereo output',
   },
   modulation: {
     project: modulationProject,
@@ -1458,7 +1459,7 @@ function renderSineBankEditor() {
 function renderPrimitive(family) {
   graphEditor?.destroy();
   graphEditor = null;
-  midiBrowserUrl.value = new URL(`?primitive=${['sample-instrument', 'main-voice-bank', 'midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator'].includes(family) ? family : 'voice'}`, location.href).href;
+  midiBrowserUrl.value = new URL(`?primitive=${['sample-instrument', 'main-voice-bank', 'midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator', 'graph-workspace'].includes(family) ? family : 'voice'}`, location.href).href;
   const { project, title, description, signal } = projects[family];
   finishMainStateRestore();
   if (project.patch && !patchedSignals.has(family)) patchedSignals.set(family, structuredClone(project.signal));
@@ -1580,12 +1581,18 @@ function renderPrimitive(family) {
       onChange: (edited) => {
         byId('signal-path').textContent = `${edited.nodes.length} Rust nodes · ${edited.connections.length} typed routes · stereo output`;
         const internal = edited.inputSource === 'none';
+        const hasNotes = graphNoteTarget(edited) !== null;
         byId('input-label').textContent = internal ? 'Instrument' : 'Live input';
         byId('source').disabled = internal;
         byId('source').hidden = internal;
+        byId('keyboard-section').hidden = !hasNotes;
+        byId('midi-access-section').hidden = !hasNotes;
+        byId('midi-output-section').hidden = !edited.nodes.some((node) => node.type === 'midi-transpose');
+        byId('graph-midi-permission-note').hidden = !hasNotes;
+        if (hasNotes) resetNoteEvents();
         if (!audio.running) toggle.textContent = internal ? 'Start instrument' : 'Start audio';
         document.querySelector('.measurement-hint').textContent = internal
-          ? 'Start the instrument to see the output spectrum. The comparison below is a fixed native Rust capture.'
+          ? hasNotes ? 'Start the instrument, then play the keyboard. The comparison below is a fixed native Rust capture.' : 'Start the instrument to see the output spectrum. The comparison below is a fixed native Rust capture.'
           : 'Start audio to view the processed live input.';
       },
       onParameter: (nodeId, id, value) => audio.setNodeParameter(nodeId, id, value),
@@ -1598,9 +1605,12 @@ function renderPrimitive(family) {
   byId('input-label').textContent = isInstrument ? 'Instrument' : 'Live input';
   byId('source').disabled = isInstrument;
   const sampleView = ['sample-region', 'sample-instrument', 'main-voice-bank'].includes(family);
-  byId('keyboard-section').hidden = !['voice', 'midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator', 'sample-instrument', 'main-voice-bank'].includes(family);
-  byId('midi-output-section').hidden = !['midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator'].includes(family);
-  byId('midi-access-section').hidden = !['voice', 'midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator', 'sample-instrument', 'main-voice-bank'].includes(family);
+  byId('keyboard-section').hidden = !['voice', 'midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator', 'sample-instrument', 'main-voice-bank'].includes(family)
+    && !(family === 'graph-workspace' && graphNoteTarget(project.signal) !== null);
+  byId('midi-output-section').hidden = !['midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator'].includes(family)
+    && !(family === 'graph-workspace' && project.signal.nodes.some((node) => node.type === 'midi-transpose'));
+  byId('midi-access-section').hidden = byId('keyboard-section').hidden;
+  byId('graph-midi-permission-note').hidden = family !== 'graph-workspace' || graphNoteTarget(project.signal) === null;
   byId('sample-section').hidden = !sampleView;
   byId('slot-state-section').hidden = !hasFxState(family);
   byId('slot-state-file').disabled = audio.running;
@@ -1626,7 +1636,7 @@ function renderPrimitive(family) {
   samplePlaying = false;
   sampleVoicePositions = Array(8).fill(-1);
   sampleActiveVoices = 0;
-  if (family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper' || family === 'midi-arpeggiator' || family === 'sample-instrument' || family === 'main-voice-bank') resetNoteEvents();
+  if (!byId('keyboard-section').hidden) resetNoteEvents();
   if (mode) {
     byId('modes').style.gridTemplateColumns = `repeat(${family === 'standalone-fx-host' ? 3 : isFxFamily(family) && mode.choices.length === 9 ? 3 : family === 'waveshaper' || isFxFamily(family) ? 4 : mode.choices.length}, minmax(0, 1fr))`;
     const buttons = mode.choices.map((choice, index) => {
@@ -1822,7 +1832,8 @@ const midiHeld = new MidiHoldState();
 const keyboardDevice = Symbol('on-screen keyboard');
 const noteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 let lastMidiTraceSequence = 0;
-const noteTarget = () => activeFamily === 'midi-transpose' || activeFamily === 'midi-note-filter' || activeFamily === 'midi-scale-quantizer' || activeFamily === 'midi-velocity-mapper' || activeFamily === 'midi-arpeggiator' ? 3 : activeFamily === 'voice' ? 1 : activeFamily === 'sample-instrument' || activeFamily === 'main-voice-bank' ? 2 : null;
+const noteTarget = () => activeFamily === 'graph-workspace' ? graphNoteTarget(activeProject.signal)
+  : activeFamily === 'midi-transpose' || activeFamily === 'midi-note-filter' || activeFamily === 'midi-scale-quantizer' || activeFamily === 'midi-velocity-mapper' || activeFamily === 'midi-arpeggiator' ? 3 : activeFamily === 'voice' ? 1 : activeFamily === 'sample-instrument' || activeFamily === 'main-voice-bank' ? 2 : null;
 function resetNoteEvents() {
   const placeholder = document.createElement('li');
   placeholder.textContent = 'Play the keyboard to inspect note events.';
@@ -1833,10 +1844,12 @@ function resetNoteEvents() {
   lastMidiTraceSequence = 0;
 }
 function showMidiTrace(events) {
-  if (!['midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator'].includes(activeFamily)) return;
+  const graphEffects = activeFamily === 'graph-workspace'
+    ? new Set(activeProject.signal.nodes.filter((node) => node.type === 'midi-transpose').map((node) => node.id)) : null;
+  if (!graphEffects && !['midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator'].includes(activeFamily)) return;
   const list = byId('midi-output-events');
   for (const event of events) {
-    if (event.sequence <= lastMidiTraceSequence || event.nodeId !== 4) continue;
+    if (event.sequence <= lastMidiTraceSequence || !(graphEffects ? graphEffects.has(event.nodeId) : event.nodeId === 4)) continue;
     lastMidiTraceSequence = event.sequence;
     if (list.firstChild?.textContent === 'Start the instrument to inspect transformed events.') list.replaceChildren();
     const item = document.createElement('li');
@@ -2074,7 +2087,8 @@ function startMonitoring() {
     animateSpectrum();
     return;
   }
-  if (activeFamily === 'midi-transpose' || activeFamily === 'midi-note-filter' || activeFamily === 'midi-scale-quantizer' || activeFamily === 'midi-velocity-mapper' || activeFamily === 'midi-arpeggiator') {
+  if (activeFamily === 'midi-transpose' || activeFamily === 'midi-note-filter' || activeFamily === 'midi-scale-quantizer' || activeFamily === 'midi-velocity-mapper' || activeFamily === 'midi-arpeggiator'
+    || activeFamily === 'graph-workspace' && activeProject.signal.nodes.some((node) => node.type === 'midi-transpose')) {
     audio.requestMidiTrace();
     meterTimer = setInterval(() => audio.requestMidiTrace(), 100);
     animateSpectrum();

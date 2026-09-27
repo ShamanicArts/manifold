@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust authored graph topology",
-  "sourceSha256": "ed60fa0c2af4bd99b13310eeffca648196eac0e4cd2baccd37be576c4fe1f2d4",
+  "sourceSha256": "be90763f56200f819e50bfe5fbddee6a4ca16388ac11b35d72f636863d6ea340",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 8192,
@@ -377,6 +377,147 @@
         ]
       },
       "output": "texture.f32"
+    },
+    {
+      "id": "note-voice",
+      "label": "MIDI → +7 transpose → voice → SVF",
+      "graph": {
+        "inputs": 2,
+        "outputs": 2,
+        "inputSource": "none",
+        "nodes": [
+          {
+            "id": 1,
+            "type": "input.raw"
+          },
+          {
+            "id": 3,
+            "type": "output"
+          },
+          {
+            "id": 4,
+            "type": "midi-input"
+          },
+          {
+            "id": 5,
+            "type": "midi-transpose",
+            "a": 0
+          },
+          {
+            "id": 6,
+            "type": "voice-synth"
+          },
+          {
+            "id": 7,
+            "type": "svf"
+          }
+        ],
+        "connections": [
+          {
+            "from": 4,
+            "to": 5,
+            "inputPort": 0
+          },
+          {
+            "from": 5,
+            "to": 6,
+            "inputPort": 0
+          },
+          {
+            "from": 6,
+            "to": 7,
+            "inputPort": 0
+          },
+          {
+            "from": 7,
+            "to": 3,
+            "inputPort": 0
+          }
+        ],
+        "initialParameters": [
+          {
+            "nodeId": 5,
+            "id": 0,
+            "value": 7
+          },
+          {
+            "nodeId": 6,
+            "id": 0,
+            "value": 0
+          },
+          {
+            "nodeId": 6,
+            "id": 1,
+            "value": 0.01
+          },
+          {
+            "nodeId": 6,
+            "id": 2,
+            "value": 0.12
+          },
+          {
+            "nodeId": 6,
+            "id": 3,
+            "value": 0.65
+          },
+          {
+            "nodeId": 6,
+            "id": 4,
+            "value": 0.18
+          },
+          {
+            "nodeId": 6,
+            "id": 5,
+            "value": 0.25
+          },
+          {
+            "nodeId": 7,
+            "id": 0,
+            "value": 0
+          },
+          {
+            "nodeId": 7,
+            "id": 1,
+            "value": 3200
+          },
+          {
+            "nodeId": 7,
+            "id": 2,
+            "value": 0.75
+          }
+        ]
+      },
+      "events": [
+        {
+          "frame": 16,
+          "kind": 0,
+          "channel": 15,
+          "note": 60,
+          "velocity": 100
+        },
+        {
+          "frame": 2048,
+          "kind": 0,
+          "channel": 15,
+          "note": 64,
+          "velocity": 96
+        },
+        {
+          "frame": 4096,
+          "kind": 1,
+          "channel": 15,
+          "note": 60,
+          "velocity": 0
+        },
+        {
+          "frame": 6144,
+          "kind": 1,
+          "channel": 15,
+          "note": 64,
+          "velocity": 0
+        }
+      ],
+      "output": "note-voice.f32"
     }
   ]
 }

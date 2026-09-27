@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { addNode, removeNode, setConnection, setInitialParameter,
-  setInputSource, captureGraphProject, parseGraphProject, validateTopology } from '../web/src/graph/topology.js';
+  setInputSource, graphNoteTarget, captureGraphProject, parseGraphProject, validateTopology } from '../web/src/graph/topology.js';
 
 const project = JSON.parse(readFileSync('projects/graph-workspace/project.json', 'utf8'));
 const texture = JSON.parse(readFileSync('projects/graph-workspace/tone-texture.json', 'utf8'));
+const noteVoice = JSON.parse(readFileSync('projects/graph-workspace/note-voice.json', 'utf8'));
 assert.deepEqual(parseGraphProject(texture), texture.signal);
+assert.deepEqual(parseGraphProject(noteVoice), noteVoice.signal);
+assert.equal(graphNoteTarget(noteVoice.signal), 4);
+assert.equal(graphNoteTarget(texture.signal), null);
+assert.throws(() => addNode(noteVoice.signal, 'midi-input'), /one MIDI input/);
+assert.throws(() => setConnection(noteVoice.signal, 6, 0, 1), /types/);
+assert.equal(graphNoteTarget(removeNode(noteVoice.signal, 4)), 6);
 assert.equal(texture.signal.inputSource, 'none');
 assert.equal(texture.signal.nodes.length, 8);
 const seed = validateTopology(project.signal);

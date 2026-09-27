@@ -27,6 +27,16 @@ export const NODE_TYPES = {
   'modulated-gain': { label: 'CV gain', code: 15, output: 'audio', inputs: ['audio', 'control'], args: { a: .5, b: .4 },
     parameters: [{ id: 0, label: 'Base', min: 0, max: 2, default: .5 },
       { id: 1, label: 'Depth', min: -2, max: 2, default: .4 }] },
+  'midi-input': { label: 'MIDI input', code: 54, output: 'midi', inputs: [] },
+  'midi-transpose': { label: 'MIDI transpose', code: 55, output: 'midi', inputs: ['midi'], args: { a: 0 },
+    parameters: [{ id: 0, label: 'Semitones', min: -24, max: 24, default: 0 }] },
+  'voice-synth': { label: 'Voice synth', code: 10, output: 'audio', inputs: ['midi'],
+    parameters: [{ id: 0, label: 'Waveform', choices: ['Sine', 'Saw', 'Square', 'Triangle'], default: 0 },
+      { id: 1, label: 'Attack', min: .001, max: 2, default: .01 },
+      { id: 2, label: 'Decay', min: .001, max: 2, default: .12 },
+      { id: 3, label: 'Sustain', min: 0, max: 1, default: .65 },
+      { id: 4, label: 'Release', min: .001, max: 3, default: .18 },
+      { id: 5, label: 'Level', min: 0, max: 1, default: .25 }] },
 };
 
 const PROJECT_FORMAT = 'manifold.project';
@@ -56,6 +66,9 @@ export function validateTopology(signal) {
   }
   if (nodes.get(1)?.type !== 'input.raw' || nodes.get(3)?.type !== 'output') {
     throw new Error('Graph needs its live input and output.');
+  }
+  if ([...nodes.values()].filter((node) => node.type === 'midi-input').length > 1) {
+    throw new Error('This graph accepts one MIDI input.');
   }
   const ports = new Set();
   const dependents = new Map([...nodes.keys()].map((id) => [id, []]));
@@ -152,6 +165,22 @@ export function setInputSource(signal, source) {
   const next = structuredClone(signal);
   next.inputSource = source;
   return validateTopology(next);
+}
+
+export function graphNoteTarget(signal) {
+  const reachable = new Set([3]);
+  let changed;
+  do {
+    changed = false;
+    for (const edge of signal.connections) {
+      if (reachable.has(edge.to) && !reachable.has(edge.from)) {
+        reachable.add(edge.from);
+        changed = true;
+      }
+    }
+  } while (changed);
+  return signal.nodes.find((node) => node.type === 'midi-input' && reachable.has(node.id))?.id
+    ?? signal.nodes.find((node) => node.type === 'voice-synth' && reachable.has(node.id))?.id ?? null;
 }
 
 export function captureGraphProject(signal) {

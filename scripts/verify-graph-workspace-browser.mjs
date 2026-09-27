@@ -15,7 +15,7 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/?primitive=graph-workspace`);
   await page.waitForFunction(() => document.querySelector('#comparison-result').textContent === 'Match');
-  assert.equal(await page.locator('#reference-case option').count(), 4);
+  assert.equal(await page.locator('#reference-case option').count(), 5);
   assert.match(await page.locator('#reference-title').textContent(), /Native Rust/);
   assert.ok(Number(await page.locator('#max-difference').textContent()) < 1e-5);
   await page.locator('#reference-case').selectOption('distortion');
@@ -26,6 +26,9 @@ try {
   assert.equal(await page.locator('#comparison-result').textContent(), 'Match');
   await page.locator('#reference-case').selectOption('texture');
   await page.waitForFunction(() => document.querySelector('#reference-status').textContent.includes('Oscillator + noise'));
+  assert.equal(await page.locator('#comparison-result').textContent(), 'Match');
+  await page.locator('#reference-case').selectOption('note-voice');
+  await page.waitForFunction(() => document.querySelector('#reference-status').textContent.includes('MIDI → +7 transpose'));
   assert.equal(await page.locator('#comparison-result').textContent(), 'Match');
   assert.equal(await page.locator('.graph-node').count(), 3);
   await page.locator('#audio-toggle').click();
@@ -128,8 +131,41 @@ try {
   await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
   assert.equal(await page.locator('#graph-source-mode').inputValue(), 'none');
   assert.equal(await page.locator('#source').isDisabled(), true);
+  await page.locator('#graph-load-note').click();
+  assert.equal(await page.locator('.graph-node').count(), 6);
+  assert.equal(await page.locator('#keyboard-section').isVisible(), true);
+  assert.equal(await page.locator('#midi-output-section').isVisible(), true);
+  assert.equal(await page.locator('#graph-midi-permission-note').isVisible(), true);
+  await page.waitForFunction(() => document.querySelector('#reference-case').value === 'note-voice');
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
+  await page.locator('#module-title').click();
+  await page.keyboard.down('a');
+  await page.waitForFunction(() => document.querySelector('#midi-events').textContent.includes('On · C4'));
+  await page.waitForFunction(() => document.querySelector('#midi-output-events').textContent.includes('G4 (67)'));
+  await page.keyboard.up('a');
+  const transpose = page.locator('input[data-node="5"][data-parameter="0"]');
+  await transpose.fill('12');
+  await transpose.press('Tab');
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('in Rust and project state'));
+  await page.locator('#module-title').click();
+  await page.keyboard.down('a');
+  await page.waitForFunction(() => document.querySelector('#midi-output-events').textContent.includes('C5 (72)'));
+  await page.keyboard.up('a');
+  await page.locator('#audio-toggle').click();
+  const noteDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const noteBundle = JSON.parse((await readFile(await (await noteDownload).path())).toString());
+  assert.equal(noteBundle.signal.initialParameters.find((entry) => entry.nodeId === 5 && entry.id === 0).value, 12);
+  await page.locator('#graph-load-tone').click();
+  await page.locator('#graph-project-file').setInputFiles([{
+    name: 'note-voice.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(noteBundle)),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
+  assert.equal(await page.locator('input[data-node="5"][data-parameter="0"]').inputValue(), '12');
+  assert.equal(await page.locator('#keyboard-section').isVisible(), true);
   assert.deepEqual(errors, []);
-  console.log('Graph workspace browser: stopped topology edits, native/Wasm references, live parameters, parked-node rejection, internal-source study, project reopen passed');
+  console.log('Graph workspace browser: typed Audio/CV/MIDI editing, native/Wasm references, keyboard-transposed notes, live controls, project reopen passed');
 } finally {
   await browser.close();
 }

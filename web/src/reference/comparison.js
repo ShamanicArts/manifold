@@ -891,6 +891,16 @@ export function renderWasm(engine, family, manifest, input, selected) {
   const meterSnapshots = meterCount ? new Float32Array(Math.ceil(manifest.frames / block) * meterCount) : null;
   for (let offset = 0; offset < manifest.frames; offset += block) {
     const count = Math.min(block, manifest.frames - offset);
+    if (family === 'graph-workspace') {
+      const target = selected.graph.nodes.find((node) => node.type === 'midi-input')?.id
+        ?? selected.graph.nodes.find((node) => node.type === 'voice-synth')?.id;
+      for (const event of selected.events ?? []) {
+        if (event.frame >= offset && event.frame < offset + count) {
+          if (target == null || engine.manifold_event_push(target, event.frame - offset, event.kind,
+            event.channel, event.note, event.velocity) !== 1) throw new Error('Graph workspace MIDI event failed');
+        }
+      }
+    }
     if (isFxSwitchFamily(family)) {
       for (const [frame, type] of selected.switches) {
         if (frame === offset && engine.manifold_set_node_parameter(2, 0, type) !== 1) {
@@ -1328,7 +1338,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
     const selected = manifest.cases.find((entry) => entry.id === chooser.value);
     byId('reference-status').textContent = 'Comparing…';
     const transition = family === 'graph-workspace'
-      ? `${selected.graph.nodes.length} nodes · ${selected.graph.connections.length} typed routes`
+      ? `${selected.graph.nodes.length} nodes · ${selected.graph.connections.length} typed routes${selected.events ? ` · ${selected.events.length} timed notes` : ''}`
       : family === 'svf'
       ? `cutoff ${selected.cutoffBefore.toLocaleString()} → ${selected.cutoffAfter.toLocaleString()} Hz`
       : family === 'crossfader'

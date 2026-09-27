@@ -1,4 +1,5 @@
 //! Native output for graphs assembled by the browser topology editor.
+use manifold_core::events::{EventKind, TimedEvent};
 use manifold_core::graph::{Connection, GraphDescription, NodeKind, NodeSpec};
 use std::io::Write;
 
@@ -70,13 +71,57 @@ fn tone_texture() -> GraphDescription {
     GraphDescription { nodes, connections }
 }
 
+fn note_voice() -> GraphDescription {
+    let nodes = vec![
+        NodeSpec {
+            id: 1,
+            kind: NodeKind::InputRaw,
+        },
+        NodeSpec {
+            id: 3,
+            kind: NodeKind::Output,
+        },
+        NodeSpec {
+            id: 4,
+            kind: NodeKind::MidiInput,
+        },
+        NodeSpec {
+            id: 5,
+            kind: NodeKind::MidiTranspose { semitones: 0.0 },
+        },
+        NodeSpec {
+            id: 6,
+            kind: NodeKind::VoiceSynth,
+        },
+        NodeSpec {
+            id: 7,
+            kind: NodeKind::Svf,
+        },
+    ];
+    let connections = [(4, 5, 0), (5, 6, 0), (6, 7, 0), (7, 3, 0)]
+        .map(|(from, to, input_port)| Connection {
+            from,
+            to,
+            input_port,
+        })
+        .to_vec();
+    GraphDescription { nodes, connections }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 3 || !["seed", "distortion", "cv", "texture"].contains(&args[1].as_str()) {
-        return Err("usage: render_graph_workspace seed|distortion|cv|texture OUTPUT".into());
+    if args.len() != 3
+        || !["seed", "distortion", "cv", "texture", "note-voice"].contains(&args[1].as_str())
+    {
+        return Err(
+            "usage: render_graph_workspace seed|distortion|cv|texture|note-voice OUTPUT".into(),
+        );
     }
     if args[1] == "texture" {
-        return render(tone_texture(), &args[2]);
+        return render(tone_texture(), &args[2], false);
+    }
+    if args[1] == "note-voice" {
+        return render(note_voice(), &args[2], true);
     }
     let distorted = args[1] != "seed";
     let cv = args[1] == "cv";
@@ -153,11 +198,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         to: 3,
         input_port: 0,
     });
-    render(GraphDescription { nodes, connections }, &args[2])
+    render(GraphDescription { nodes, connections }, &args[2], false)
 }
 
-fn render(description: GraphDescription, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn render(
+    description: GraphDescription,
+    path: &str,
+    note_events: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut plan = description.compile(48_000.0, 128)?;
+    if note_events && !plan.set_parameter(5, 0, 7.0) {
+        return Err("MIDI transpose parameter unavailable".into());
+    }
+    let event_schedule = [
+        (
+            16,
+            EventKind::NoteOn {
+                channel: 15,
+                note: 60,
+                velocity: 100,
+            },
+        ),
+        (
+            2048,
+            EventKind::NoteOn {
+                channel: 15,
+                note: 64,
+                velocity: 96,
+            },
+        ),
+        (
+            4096,
+            EventKind::NoteOff {
+                channel: 15,
+                note: 60,
+            },
+        ),
+        (
+            6144,
+            EventKind::NoteOff {
+                channel: 15,
+                note: 64,
+            },
+        ),
+    ];
     let mut pcm = Vec::with_capacity(8192 * 2 * 4);
     for block in 0..64 {
         let mut input_left = [0.0_f32; 128];
@@ -170,7 +254,22 @@ fn render(description: GraphDescription, path: &str) -> Result<(), Box<dyn std::
         }
         let mut left = [0.0_f32; 128];
         let mut right = [0.0_f32; 128];
-        plan.process([&input_left, &input_right], [&mut left, &mut right]);
+        if note_events {
+            let start = block * 128;
+            let timed: Vec<_> = event_schedule
+                .iter()
+                .filter(|(frame, _)| *frame >= start && *frame < start + 128)
+                .map(|(frame, kind)| TimedEvent {
+                    offset: frame - start,
+                    node: 4,
+                    kind: *kind,
+                })
+                .collect();
+            plan.process_with_events([&input_left, &input_right], [&mut left, &mut right], &timed)
+                .map_err(|_| "timed MIDI event rejected")?;
+        } else {
+            plan.process([&input_left, &input_right], [&mut left, &mut right]);
+        }
         for (&l, &r) in left.iter().zip(&right) {
             pcm.extend_from_slice(&l.to_le_bytes());
             pcm.extend_from_slice(&r.to_le_bytes());

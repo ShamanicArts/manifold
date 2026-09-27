@@ -18,6 +18,7 @@ globalThis.registerProcessor = (_, processor) => { Processor = processor; };
 await import(pathToFileURL(resolve('web/src/audio/filter-processor.js')).href);
 const seed = JSON.parse(readFileSync('projects/graph-workspace/project.json', 'utf8')).signal;
 const texture = JSON.parse(readFileSync('projects/graph-workspace/tone-texture.json', 'utf8')).signal;
+const noteVoice = JSON.parse(readFileSync('projects/graph-workspace/note-voice.json', 'utf8')).signal;
 let distorted = addNode(seed, 'distortion');
 distorted = setConnection(distorted, 4, 0, 2);
 distorted = setConnection(distorted, 3, 0, 4);
@@ -30,7 +31,7 @@ cv = setConnection(cv, 3, 0, 6);
 
 const workspace = mkdtempSync(join(tmpdir(), 'manifold-graph-'));
 try {
-  for (const [mode, signal] of [['seed', seed], ['distortion', distorted], ['cv', cv], ['texture', texture]]) {
+  for (const [mode, signal] of [['seed', seed], ['distortion', distorted], ['cv', cv], ['texture', texture], ['note-voice', noteVoice]]) {
     const output = join(workspace, `${mode}.f32`);
     execFileSync('cargo', ['run', '--quiet', '-p', 'manifold-core', '--example',
       'render_graph_workspace', '--', mode, output], { cwd: resolve('.'), stdio: 'pipe' });
@@ -40,6 +41,13 @@ try {
       type: 'init', wasmBytes: readFileSync('web/dist/manifold_filter.wasm'), graph: signal,
     } });
     assert.deepEqual(messages.at(-1), { type: 'ready' }, `${mode} prepared`);
+    if (mode === 'note-voice') {
+      for (const [frame, kind, note, velocity] of [[16, 0, 60, 100], [2048, 0, 64, 96],
+        [4096, 1, 60, 0], [6144, 1, 64, 0]]) {
+        await processor.port.onmessage({ data: { type: 'event', nodeId: 4, frame, kind,
+          channel: 15, note, velocity } });
+      }
+    }
     const wasm = new Float32Array(8192 * 2);
     for (let block = 0; block < 64; block++) {
       const inputLeft = new Float32Array(128);
@@ -105,7 +113,7 @@ try {
     assert.ok([...left, ...right].every(Number.isFinite), `${type} produced finite audio`);
     if (type === 'gain') assert.ok(Math.abs(left.at(-1) - .7 * .35) < .01, 'acknowledged gain reaches the audio output');
   }
-  console.log('Palette: all eight addable node kinds prepared and processed in the Wasm worklet');
+  console.log(`Palette: all ${Object.values(NODE_TYPES).filter((entry) => !entry.fixedId).length} addable node kinds prepared and processed in the Wasm worklet`);
 } finally {
   rmSync(workspace, { recursive: true, force: true });
 }

@@ -1,6 +1,7 @@
 import { NODE_TYPES, addNode, removeNode, setConnection, setInitialParameter,
   setInputSource, captureGraphProject, parseGraphProject } from './topology.js';
 import toneTexture from '../../../projects/graph-workspace/tone-texture.json';
+import noteVoice from '../../../projects/graph-workspace/note-voice.json';
 
 // Edits a project description outside the AudioWorklet. The next start compiles it in Rust.
 export function mountGraphEditor(section, project, { isRunning, isActive, onChange, onParameter, onTemplateLoaded }) {
@@ -10,6 +11,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   const addButton = section.querySelector('#graph-add-node');
   const sourceMode = section.querySelector('#graph-source-mode');
   const loadTone = section.querySelector('#graph-load-tone');
+  const loadNote = section.querySelector('#graph-load-note');
   const fileInput = section.querySelector('#graph-project-file');
   const exportButton = section.querySelector('#graph-project-export');
   const listeners = new AbortController();
@@ -94,7 +96,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
         const row = document.createElement('label');
         row.className = 'graph-field';
         const text = document.createElement('span');
-        text.textContent = `${kind === 'control' ? 'CV' : 'Audio'} input ${port + 1}`;
+        text.textContent = `${kind === 'control' ? 'CV' : kind === 'midi' ? 'MIDI' : 'Audio'} input ${port + 1}`;
         const select = document.createElement('select');
         select.className = 'graph-edit';
         select.dataset.to = String(node.id);
@@ -185,6 +187,13 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
       onTemplateLoaded?.('texture');
     }
     catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadNote.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      commit(parseGraphProject(noteVoice), 'Loaded the note voice. Start the instrument, then play the on-screen keyboard.');
+      onTemplateLoaded?.('note-voice');
+    } catch (error) { fail(error); }
   }, { signal: listeners.signal });
   exportButton.addEventListener('click', () => {
     if (!isActive()) return;
