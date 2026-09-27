@@ -33,13 +33,72 @@ const sampleRoot = mountCompactSlider($('sample-root'), { label: 'Root', min: 12
   step: 1, value: 60, style: { colour: '#fbbf24', bg: '#2b2008' } });
 const sampleBlend = mountCompactSlider($('sample-blend'), { label: 'Blend', min: 0, max: 1,
   step: .01, value: 0, style: { colour: '#f59e0b', bg: '#2a1b08' } });
+const sampleXfade = mountCompactSlider($('sample-xfade'), { label: 'X-Fade', min: 0, max: 50,
+  step: 1, value: 10, style: { colour: '#f472b6', bg: '#2b1020' } });
+const sampleStretch = mountCompactSlider($('sample-stretch'), { label: 'Stretch', min: .25, max: 4,
+  step: .25, value: 1, style: { colour: '#22d3ee', bg: '#08212a' } });
+const blendPitch = mountCompactSlider($('blend-pitch'), { label: 'Pitch', min: -24, max: 24,
+  step: 1, value: 0, style: { colour: '#f472b6', bg: '#2b1020' } });
+const blendDepth = mountCompactSlider($('blend-depth'), { label: 'Depth', min: 0, max: 1,
+  step: .01, value: .5, style: { colour: '#fb923c', bg: '#2a1708' } });
+const sourceOutput = mountCompactSlider($('source-output'), { label: 'Output', min: 0, max: 2,
+  step: .01, value: 1, style: { colour: '#34d399', bg: '#10231d' } });
 let sampleBarsValue = 1, sampleBlendValue = 0;
+let sourceTab = 'sample', latestSamplePeaks = [];
 sampleBars.onChange(value => { sampleBarsValue = value; });
 sampleRoot.onChange(value => synthParameter(2, value));
 sampleBlend.onChange(value => { sampleBlendValue = value; synthParameter(1, value * 2 - 1); });
-const paintSampleSliders = () => { sampleBars.paint(); sampleRoot.paint(); sampleBlend.paint(); };
+sampleXfade.onChange(value => synthParameter(20, value / 100));
+sampleStretch.onChange(value => synthParameter(16, value));
+blendPitch.onChange(value => synthParameter(4, value));
+blendDepth.onChange(value => synthParameter(7, value));
+sourceOutput.onChange(value => synthParameter(15, value));
+const paintSampleSliders = () => { [sampleBars, sampleRoot, sampleBlend, sampleXfade,
+  sampleStretch, blendPitch, blendDepth, sourceOutput].forEach(slider => slider.paint()); };
 new ResizeObserver(paintSampleSliders).observe($('sample-root'));
 requestAnimationFrame(paintSampleSliders);
+function drawSourceGraph(peaks = latestSamplePeaks) {
+  const canvas = $('source-graph'), ctx = canvas.getContext('2d');
+  ctx.setTransform(2, 0, 0, 2, 0, 0);
+  ctx.fillStyle = '#0d1420'; ctx.fillRect(0, 0, 270, 164);
+  ctx.strokeStyle = '#213248'; ctx.lineWidth = 1; ctx.beginPath();
+  ctx.moveTo(0, 82.5); ctx.lineTo(270, 82.5); ctx.stroke();
+  if (sourceTab === 'wave') {
+    const shape = Number($('synth-wave').value);
+    ctx.strokeStyle = '#38bdf8'; ctx.beginPath();
+    for (let x = 0; x < 270; x++) {
+      const phase = (x / 135) % 1;
+      const sine = Math.sin(phase * Math.PI * 2);
+      const saw = phase * 2 - 1;
+      const value = [sine, saw, phase < .5 ? 1 : -1,
+        1 - 4 * Math.abs(phase - .5), .45 * sine + .55 * saw][shape];
+      const y = 82 - value * 58;
+      if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  } else {
+    ctx.strokeStyle = '#22d3ee';
+    for (let bin = 0; bin < peaks.length; bin++) {
+      const x = 2 + bin * 266 / peaks.length;
+      const height = Math.max(1, peaks[bin] * 71);
+      ctx.beginPath(); ctx.moveTo(x, 82 - height); ctx.lineTo(x, 82 + height); ctx.stroke();
+    }
+  }
+}
+for (const tab of document.querySelectorAll('[data-source-tab]')) {
+  tab.addEventListener('click', () => {
+    sourceTab = tab.dataset.sourceTab;
+    for (const button of document.querySelectorAll('[data-source-tab]')) {
+      button.setAttribute('aria-selected', String(button === tab));
+    }
+    for (const name of ['wave', 'sample', 'blend']) {
+      $(`source-${name}-panel`).hidden = name !== sourceTab;
+    }
+    requestAnimationFrame(paintSampleSliders);
+    drawSourceGraph();
+  });
+}
+drawSourceGraph();
 function resetSampleCaptureUI() {
   $('sample-cap').textContent = 'Cap';
   $('sample-cap').classList.remove('recording');
@@ -302,6 +361,8 @@ const stateNames = ['Empty', 'Playing', 'Recording', 'Stopped', 'Paused'];
 const stateColors = ['#64748b', '#34d399', '#ef4444', '#fde047', '#a78bfa'];
 function render(data) {
   latest = data;
+  latestSamplePeaks = data.samplePeaks ?? [];
+  drawSourceGraph();
   if (document.activeElement !== $('tempo')) $('tempo').value = Math.round(data.tempo);
   if (document.activeElement !== $('mode')) $('mode').value = String(data.mode);
   $('rec').classList.toggle('active', data.recording);
@@ -480,6 +541,7 @@ async function start() {
         $('sample-length').textContent = `${Math.round(data.frames / context.sampleRate * 1000)}ms`;
         sampleBlend.setValue(1, true);
         status(`${source === 0 ? 'Live' : `L${source}`} ${mode === 1 ? 'Free ' : ''}sample captured. Play the keyboard to hear the Sample voice.`);
+        post({ type: 'snapshot' });
       }
       else if (data.type === 'rejected') status('That looper action could not be applied.');
       else handleTransfer(data);
@@ -487,6 +549,15 @@ async function start() {
     synthParameter(0, Number($('synth-wave').value));
     synthParameter(1, sampleBlendValue * 2 - 1);
     synthParameter(2, 60);
+    synthParameter(3, Number($('blend-keytrack').value));
+    synthParameter(4, 0);
+    synthParameter(5, Number($('sample-pitch-mode').value));
+    synthParameter(6, Number($('blend-mode').value));
+    synthParameter(7, .5);
+    synthParameter(15, 1);
+    synthParameter(16, 1);
+    synthParameter(19, $('wave-render-mode').classList.contains('add') ? 1 : 0);
+    synthParameter(20, .1);
     if (sourceKind === 'microphone') {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
       sourceNode = context.createMediaStreamSource(stream);
@@ -530,7 +601,20 @@ async function stop() {
 }
 $('audio-button').onclick = start;
 $('source').onchange = () => { $('file-label').hidden = $('source').value !== 'file'; $('pitch-label').hidden = $('source').value !== 'oscillator'; };
-$('synth-wave').onchange = () => synthParameter(0, Number($('synth-wave').value));
+$('synth-wave').onchange = () => { synthParameter(0, Number($('synth-wave').value)); drawSourceGraph(); };
+$('wave-render-mode').onclick = () => {
+  const add = $('wave-render-mode').classList.toggle('add');
+  $('wave-render-mode').textContent = add ? 'Add' : 'Std';
+  synthParameter(19, add ? 1 : 0);
+};
+$('sample-pitch-mode').onchange = () => {
+  const mode = Number($('sample-pitch-mode').value);
+  synthParameter(5, mode);
+  $('sample-stretch').hidden = mode === 0;
+  requestAnimationFrame(paintSampleSliders);
+};
+$('blend-mode').onchange = () => synthParameter(6, Number($('blend-mode').value));
+$('blend-keytrack').onchange = () => synthParameter(3, Number($('blend-keytrack').value));
 $('pitch').onchange = () => { if (sourceNode?.frequency) sourceNode.frequency.setTargetAtTime(Math.max(60, Math.min(1200, Number($('pitch').value))), context.currentTime, .01); };
 $('mode').onchange = () => control(project.controls.mode, Number($('mode').value));
 $('tempo').onchange = () => control(project.controls.tempo, Number($('tempo').value));

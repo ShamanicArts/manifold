@@ -111,6 +111,14 @@ impl MainInstrument {
         self.sample_rate
     }
 
+    pub fn synth_sample_frames(&self) -> usize {
+        self.synth.sample_frames()
+    }
+
+    pub fn synth_sample_peak(&self, start: usize, end: usize) -> f32 {
+        self.synth.sample_peak(start, end)
+    }
+
     pub fn process(&mut self, dry: [&[f32]; 2], output: [&mut [f32]; 2]) {
         let frames = dry[0].len();
         assert_eq!(dry[1].len(), frames);

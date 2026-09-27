@@ -112,8 +112,10 @@ impl MainVoiceBank {
             envelope.set_parameter(1, 0.08);
             envelope.set_parameter(2, 0.8);
             envelope.set_parameter(3, 0.16);
+            let mut player = SampleRegion::new(sample_rate);
+            player.set_parameter(8, 0.1);
             MainVoice {
-                player: SampleRegion::new(sample_rate),
+                player,
                 oscillator: Oscillator::new(sample_rate, 261.62555, 0.0, 0),
                 vocoder: PhaseVocoder::new(sample_rate, [0.0, 0.0, 1.0, 0.0, order as f32]),
                 ring_sample_to_wave: RingModulator::new(sample_rate, [120.0, 0.0, 0.0, 0.0, 0.0]),
@@ -339,6 +341,11 @@ impl MainVoiceBank {
                 }
             }
             19 => self.original_add_wave = value >= 0.5,
+            20 => {
+                for voice in &mut self.voices {
+                    voice.player.set_parameter(8, value.clamp(0.0, 0.5));
+                }
+            }
             _ => return false,
         }
         true
@@ -458,6 +465,14 @@ impl MainVoiceBank {
             }),
             _ => None,
         }
+    }
+
+    pub fn sample_frames(&self) -> usize {
+        self.voices[0].player.sample_frames()
+    }
+
+    pub fn sample_peak(&self, start: usize, end: usize) -> f32 {
+        self.voices[0].player.sample_peak(start, end)
     }
 
     pub fn process_planar(&mut self, output: [&mut [f32]; 2]) {

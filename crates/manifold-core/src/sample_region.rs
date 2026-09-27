@@ -210,6 +210,24 @@ impl SampleRegion {
         }
     }
 
+    pub fn sample_frames(&self) -> usize {
+        self.stereo.len() / 2
+    }
+
+    /// Bounded display peak in chronological sample order.
+    pub fn sample_peak(&self, start: usize, end: usize) -> f32 {
+        let first = start.min(self.sample_frames());
+        let last = end.min(self.sample_frames());
+        let stride = ((last.saturating_sub(first) + 63) / 64).max(1);
+        let mut peak = 0.0_f32;
+        for frame in (first..last).step_by(stride) {
+            peak = peak
+                .max(self.stereo[frame * 2].abs())
+                .max(self.stereo[frame * 2 + 1].abs());
+        }
+        peak
+    }
+
     /// Old Main's per-block modulator reads an integer playback cursor divided by sample length.
     pub fn legacy_normalized_position(&self) -> f32 {
         let frames = self.stereo.len() / 2;
@@ -396,5 +414,15 @@ mod tests {
         assert_eq!(reverse[..3], [-1., -1., 1.]);
         assert!(reverse[3].abs() < 0.0001);
         assert_eq!(reverse[4], 1.);
+    }
+
+    #[test]
+    fn display_peaks_follow_uploaded_sample_head_to_tail() {
+        let mut player = SampleRegion::new(8_000.0);
+        assert!(player.load_stereo(vec![0.8, -0.7, 0.8, -0.7, 0.1, -0.05, 0.1, -0.05], 8_000.0));
+        assert_eq!(player.sample_frames(), 4);
+        assert!((player.sample_peak(0, 2) - 0.8).abs() < 1e-6);
+        assert!((player.sample_peak(2, 4) - 0.1).abs() < 1e-6);
+        assert_eq!(player.sample_peak(4, 8), 0.0);
     }
 }

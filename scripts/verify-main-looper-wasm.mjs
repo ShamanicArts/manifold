@@ -50,6 +50,9 @@ for (let offset = 0; offset < capturedFrames; offset += 128) {
   assert.equal(e.manifold_looper_sample_publish_chunk(offset, Math.min(128, capturedFrames - offset)), 1);
 }
 assert.equal(e.manifold_looper_sample_publish_finish(), 1);
+assert.equal(e.manifold_looper_synth_sample_frames(), 1_000);
+assert.ok(Math.abs(e.manifold_looper_synth_sample_peak(0, 1_000) - .35) < 1e-5);
+assert.equal(e.manifold_looper_synth_parameter(20, .25), 1);
 assert.equal(e.manifold_looper_synth_parameter(1, 1), 1);
 assert.equal(e.manifold_looper_synth_note(0, 60, 100), 1);
 let samplePeak = 0;
@@ -69,6 +72,7 @@ for (let offset = 0; offset < 1_000; offset += 128) {
   assert.equal(e.manifold_looper_sample_publish_chunk(offset, Math.min(128, 1_000 - offset)), 1);
 }
 assert.equal(e.manifold_looper_sample_publish_finish(), 1);
+assert.ok(Math.abs(e.manifold_looper_synth_sample_peak(0, 1_000) - .22) < 1e-5);
 assert.equal(e.manifold_looper_command(5, 0), 1);
 assert.equal(e.manifold_looper_synth_note(0, 60, 100), 1);
 let layerSamplePeak = 0;

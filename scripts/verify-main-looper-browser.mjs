@@ -25,7 +25,17 @@ try {
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Live sample captured'), { timeout: 15000 });
   assert.notEqual(await page.locator('#sample-length').textContent(), '0ms');
   assert.equal(await page.locator('#sample-blend').getAttribute('aria-valuenow'), '1');
+  await page.waitForFunction(() => {
+    const canvas = document.querySelector('#source-graph');
+    const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    let marked = 0;
+    for (let offset = 0; offset < pixels.length; offset += 4) {
+      if (pixels[offset] === 34 && pixels[offset + 1] === 211 && pixels[offset + 2] === 238) marked++;
+    }
+    return marked > 100;
+  }, { timeout: 3000 });
   await page.screenshot({ path: new URL('../web/public/main-live-sample.png', import.meta.url).pathname, fullPage: true });
+  await page.locator('.source-module').screenshot({ path: new URL('../web/public/main-source-panel.png', import.meta.url).pathname });
   await page.locator('#sample-source-select').selectOption('1');
   await page.locator('#sample-cap').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('L1 sample captured'), { timeout: 15000 });
@@ -41,6 +51,15 @@ try {
   assert.ok(Number.parseInt(await page.locator('#sample-length').textContent(), 10) >= 150);
   await page.screenshot({ path: new URL('../web/public/main-free-sample.png', import.meta.url).pathname, fullPage: true });
   await page.locator('#sample-mode').click();
+  await page.locator('#sample-pitch-mode').selectOption('1');
+  assert.equal(await page.locator('#sample-stretch').isVisible(), true);
+  await page.locator('#sample-pitch-mode').selectOption('0');
+  await page.locator('[data-source-tab="wave"]').click();
+  await page.locator('#synth-wave').selectOption('1');
+  assert.equal(await page.locator('[data-source-tab="wave"]').getAttribute('aria-selected'), 'true');
+  await page.locator('[data-source-tab="blend"]').click();
+  assert.equal(await page.locator('#blend-keytrack').inputValue(), '2');
+  await page.locator('[data-source-tab="sample"]').click();
   const inferredTempo = Number(await page.locator('#tempo').inputValue());
   assert.ok(inferredTempo > 90 && inferredTempo < 160, `First Loop tempo: ${inferredTempo}`);
   await page.locator('.donut').nth(1).click();
@@ -117,5 +136,5 @@ try {
   assert.ok(lastSegment.x + lastSegment.width <= frame.x + frame.width + 1);
   assert.ok(await narrow.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await narrow.screenshot({ path: new URL('../web/public/main-looper-narrow.png', import.meta.url).pathname, fullPage: true });
-  console.log(`Main looper browser: four strips, first loop ${inferredTempo} BPM, Live/L1 Retro Cap, L1 Free Cap/STOP, traditional arm/fire, reverse scrub, session save/reopen, decoded file and Rust synth capture passed`);
+  console.log(`Main looper browser: four strips, first loop ${inferredTempo} BPM, Live/L1 Retro Cap, L1 Free Cap/STOP, Source waveform/tabs, traditional arm/fire, reverse scrub, session save/reopen, decoded file and Rust synth capture passed`);
 } finally { await browser.close(); }

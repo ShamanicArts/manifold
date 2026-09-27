@@ -166,6 +166,24 @@ pub extern "C" fn manifold_looper_synth_parameter(id: u32, value: f32) -> u32 {
     })
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_synth_sample_frames() -> u32 {
+    LOOPER.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .map_or(0, |e| e.instrument.synth_sample_frames() as u32)
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_synth_sample_peak(start: u32, end: u32) -> f32 {
+    LOOPER.with(|slot| {
+        slot.borrow().as_ref().map_or(0.0, |e| {
+            e.instrument.synth_sample_peak(start as usize, end as usize)
+        })
+    })
+}
+
 /// Source 0 = dry Live input; 1-4 = loop playback after gate, before volume.
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_looper_sample_capture(source: u32, bars: f32) -> u32 {

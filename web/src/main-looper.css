@@ -479,111 +479,72 @@ body {
 }
 
 .synth-source {
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  gap:20px;
-  width:1280px;
-  max-width:100%;
-  min-height:78px;
-  margin:0 0 12px;
-  padding:10px 14px;
-  border:1px solid #253348;
-  background:#101827;
-  font-size:11px
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 18px;
+  width: 1280px;
+  max-width: 100%;
+  margin: 0 0 12px;
+  color: #cbd5e1;
+  font-size: 11px;
 }
 
-.synth-source[hidden] {
-  display:none
+.source-module {
+  position: relative;
+  flex: none;
+  width: 560px;
+  height: 246px;
+  max-width: 100%;
+  background: #121a2f;
+  border: 1px solid #1f2b4d;
+  border-radius: 10px;
 }
-
-.synth-source>div:first-child {
-  width:270px;
-  flex:none;
-  display:flex;
-  flex-direction:column;
-  gap:4px
-}
-
-.sample-source {
-  display:grid;
-  grid-template-columns:repeat(3, 76px) 48px;
-  align-items:center;
-  gap:6px;
-  padding:6px 8px;
-  background:#0d1420;
-  border:1px solid #1a1a3a;
-}
-
-.sample-source-label { grid-column:1; color:#22d3ee!important; }
-.synth-source .sample-source select { grid-column:2; grid-row:1; height:20px; min-width:0; width:56px; border:0; background:#1e293b; color:#22d3ee; font-size:10px; }
-.sample-source #sample-mode { grid-column:3; grid-row:1; height:20px; border:0; background:#475569; color:#e2e8f0; font-size:10px; cursor:pointer; }
-.sample-source #sample-mode.free { background:#0ea5e9; color:#07121d; }
-.sample-source #sample-cap { grid-column:4; grid-row:1; height:20px; border:0; background:#334155; color:#e2e8f0; font-size:10px; cursor:pointer; }
-.sample-source #sample-cap.recording { background:#dc2626; color:white; }
-.sample-source button:disabled { opacity:.5; cursor:default; }
-.source-slider { height:20px; width:76px; cursor:ew-resize; }
-.source-slider canvas { display:block; width:100%; height:100%; }
-#sample-length { grid-column:4; grid-row:2; text-align:right; font-size:10px; }
-
-.synth-source strong {
-  color:#dbeafe;
-  font-size:12px
-}
-
-.synth-source span {
-  color:#94a3b8;
-  line-height:1.25
-}
-
-.synth-source label {
-  display:flex;
-  flex-direction:column;
-  gap:5px;
-  color:#94a3b8
-}
-
-.synth-source select {
-  height:27px;
-  min-width:120px;
-  border:1px solid #334155;
-  background:#18263b;
-  color:#e2e8f0
-}
-
-.synth-keys {
-  display:flex;
-  gap:2px;
-  margin-left:auto;
-  max-width:100%;
-  overflow-x:auto
-}
-
-.synth-key {
-  height:48px;
-  width:39px;
-  border:1px solid #43516a;
-  border-radius:0 0 3px 3px;
-  cursor:pointer;
-  font-size:10px;
-  touch-action:none
-}
-
-.synth-key.white {
-  background:#e2e8f0;
-  color:#172033
-}
-
-.synth-key.black {
-  height:40px;
-  background:#18263b;
-  color:#e2e8f0
-}
-
-.synth-key.held {
-  background:#38bdf8;
-  color:#0b1220
-}
+.source-title { position: absolute; left: 16px; top: 8px; color: #7dd3fc; font-size: 12px; font-weight: 600; }
+.source-length { position: absolute; left: 210px; top: 10px; width: 80px; color: #94a3b8; font-size: 10px; }
+#source-graph { position: absolute; left: 10px; top: 28px; width: 270px; height: 164px; background: #0d1420; border: 1px solid #1a1a3a; border-radius: 6px; }
+.source-tabhost { position: absolute; left: 290px; top: 28px; width: 260px; height: 182px; overflow: hidden; background: #0b1220; border: 1px solid #1f2937; border-radius: 6px; }
+.source-tabbar { display: flex; height: 24px; background: #0d1420; }
+.source-tabbar button { flex: 1; border: 0; border-right: 1px solid #0b1220; background: #1e293b; color: #94a3b8; font-size: 10px; cursor: pointer; }
+.source-tabbar button[aria-selected="true"] { background: #2563eb; color: white; }
+.source-tabpage { position: absolute; inset: 24px 0 0; }
+.source-tabpage[hidden], .source-slider[hidden] { display: none; }
+.source-tabpage select, .source-tabpage button { height: 20px; border: 0; border-radius: 0; background: #1e293b; color: #22d3ee; font-size: 10px; cursor: pointer; }
+.source-tabpage button { color: #e2e8f0; }
+.source-tabpage button:disabled, .source-tabpage select:disabled { opacity: .5; cursor: default; }
+#synth-wave { position: absolute; left: 4px; top: 4px; width: 84px; color: #38bdf8; }
+#wave-render-mode { position: absolute; left: 94px; top: 4px; width: 84px; }
+#wave-render-mode.add { background: #2563eb; color: white; }
+.sample-source { position: absolute; left: 4px; top: 4px; display: flex; align-items: center; gap: 4px; }
+#sample-source-select { width: 56px; }
+#sample-mode { width: 56px; background: #475569; }
+#sample-mode.free { background: #0ea5e9; color: #07121d; }
+#sample-cap { width: 48px; background: #334155; }
+#sample-cap.recording { background: #dc2626; color: white; }
+#sample-pitch-mode { position: absolute; left: 4px; top: 30px; width: 170px; color: #a78bfa; }
+.source-slider { height: 20px; cursor: ew-resize; }
+.source-slider canvas { display: block; width: 100%; height: 100%; }
+#sample-bars, #sample-root, #sample-xfade, #sample-stretch { position: absolute; left: 10px; width: 200px; }
+#sample-bars { top: 56px; }
+#sample-root { top: 82px; }
+#sample-xfade { top: 108px; }
+#sample-stretch { top: 134px; }
+#blend-mode { position: absolute; left: 4px; top: 4px; width: 68px; }
+#blend-keytrack { position: absolute; left: 78px; top: 4px; width: 132px; }
+#blend-pitch, #blend-depth { position: absolute; left: 10px; width: 200px; }
+#blend-pitch { top: 34px; }
+#blend-depth { top: 60px; }
+.source-footer-blend, .source-footer-output { position: absolute; top: 214px; width: 76px; height: 24px; }
+.source-footer-blend { left: 305px; }
+.source-footer-output { left: 389px; }
+.source-play-area { display: flex; flex: 1 1 520px; min-width: 0; min-height: 120px; flex-direction: column; gap: 9px; padding: 8px 0; }
+.source-play-area strong { color: #dbeafe; font-size: 12px; }
+.source-play-area span { max-width: 58ch; color: #94a3b8; line-height: 1.35; }
+.synth-keys { display: flex; gap: 2px; max-width: 100%; overflow-x: auto; margin-top: auto; }
+.synth-key { height: 48px; width: 39px; flex: none; border: 1px solid #43516a; border-radius: 0 0 3px 3px; cursor: pointer; font-size: 10px; touch-action: none; }
+.synth-key.white { background: #e2e8f0; color: #172033; }
+.synth-key.black { height: 40px; background: #18263b; color: #e2e8f0; }
+.synth-key.held { background: #38bdf8; color: #0b1220; }
 
 .instrument-frame {
   width:100%;
