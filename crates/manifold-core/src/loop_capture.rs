@@ -5,6 +5,7 @@ pub struct LoopCapture {
     right: Vec<f32>,
     staged: Vec<f32>,
     staging: Option<Staging>,
+    retrospective: bool,
     write: usize,
     length: usize,
     start: usize,
@@ -25,11 +26,28 @@ struct Staging {
     start: usize,
     length: usize,
     copied: usize,
+    prefix_zero: usize,
 }
 
 impl LoopCapture {
     pub fn new(sample_rate: f32, capacity_seconds: f32, mix: f32) -> Self {
-        let seconds = capacity_seconds.clamp(0.05, 30.0);
+        Self::new_with_mode(sample_rate, capacity_seconds, mix, false)
+    }
+
+    pub fn new_retrospective(sample_rate: f32, capacity_seconds: f32) -> Self {
+        Self::new_with_mode(sample_rate, capacity_seconds, 0.0, true)
+    }
+
+    fn new_with_mode(
+        sample_rate: f32,
+        capacity_seconds: f32,
+        mix: f32,
+        retrospective: bool,
+    ) -> Self {
+        let seconds = capacity_seconds.clamp(
+            if retrospective { 1.0 } else { 0.05 },
+            if retrospective { 120.0 } else { 30.0 },
+        );
         let size = ((sample_rate * seconds).round() as usize).max(1);
         let mix = mix.clamp(0.0, 1.0);
         Self {
@@ -37,11 +55,12 @@ impl LoopCapture {
             right: vec![0.0; size],
             staged: Vec::new(),
             staging: None,
+            retrospective,
             write: 0,
             length: 0,
             start: 0,
             position: 0.0,
-            recording: false,
+            recording: retrospective,
             playing: false,
             overdub: false,
             reversed: false,
@@ -62,7 +81,7 @@ impl LoopCapture {
         self.length = 0;
         self.start = 0;
         self.position = 0.0;
-        self.recording = false;
+        self.recording = self.retrospective;
         self.playing = false;
         self.overdub = false;
         self.speed = self.target_speed;
@@ -71,7 +90,7 @@ impl LoopCapture {
 
     /// 0 record, 1 play, 2 overdub, 3 speed, 4 reverse, 5 wet mix, 6 overdub level.
     pub fn set_parameter(&mut self, id: u32, value: f32) -> bool {
-        if !value.is_finite() {
+        if !value.is_finite() || self.retrospective {
             return false;
         }
         match id {
@@ -128,18 +147,32 @@ impl LoopCapture {
 
     /// Start a frozen window. Allocation is confined to the caller's control path.
     pub fn begin_staged_snapshot(&mut self) -> bool {
-        if !self.recording || self.length == 0 || self.staging.is_some() {
+        self.begin_staged_snapshot_recent(0)
+    }
+
+    /// A nonzero request chooses a trailing window; retrospective history is
+    /// padded with leading silence before the ring has received enough input.
+    pub fn begin_staged_snapshot_recent(&mut self, requested_frames: usize) -> bool {
+        if !self.recording || self.staging.is_some() {
             return false;
         }
-        self.staged.resize(self.length * 2, 0.0);
+        let length = if requested_frames == 0 {
+            self.length
+        } else if self.retrospective {
+            requested_frames.min(self.left.len())
+        } else {
+            requested_frames.min(self.length)
+        };
+        if length == 0 {
+            return false;
+        }
+        let available = length.min(self.length);
+        self.staged.resize(length * 2, 0.0);
         self.staging = Some(Staging {
-            start: if self.length == self.left.len() {
-                self.write
-            } else {
-                0
-            },
-            length: self.length,
+            start: (self.write + self.left.len() - available) % self.left.len(),
+            length,
             copied: 0,
+            prefix_zero: length - available,
         });
         true
     }
@@ -188,9 +221,14 @@ impl LoopCapture {
         let budget = block_frames.saturating_mul(16).min(8192).max(block_frames);
         let end = (stage.copied + budget).min(stage.length);
         for frame in stage.copied..end {
-            let index = (stage.start + frame) % self.left.len();
-            self.staged[frame * 2] = self.left[index];
-            self.staged[frame * 2 + 1] = self.right[index];
+            if frame < stage.prefix_zero {
+                self.staged[frame * 2] = 0.0;
+                self.staged[frame * 2 + 1] = 0.0;
+            } else {
+                let index = (stage.start + frame - stage.prefix_zero) % self.left.len();
+                self.staged[frame * 2] = self.left[index];
+                self.staged[frame * 2 + 1] = self.right[index];
+            }
         }
         stage.copied = end;
     }
@@ -415,6 +453,29 @@ mod tests {
         capture.set_parameter(0, 0.0);
         capture.set_parameter(0, 1.0);
         assert_eq!(capture.staged_status(), None);
+    }
+
+    #[test]
+    fn retrospective_capture_runs_without_record_control_and_pads_early_history() {
+        let mut capture = LoopCapture::new_retrospective(100.0, 1.0);
+        assert!(!capture.set_parameter(0, 0.0));
+        let mut left = [0.; 3];
+        let mut right = [0.; 3];
+        capture.process_planar([&[1., 2., 3.], &[4., 5., 6.]], [&mut left, &mut right]);
+        assert_eq!(left, [1., 2., 3.]);
+        assert_eq!(right, [4., 5., 6.]);
+        assert!(capture.begin_staged_snapshot_recent(5));
+        capture.process_planar([&[7., 8., 9.], &[7., 8., 9.]], [&mut left, &mut right]);
+        assert_eq!(
+            capture.take_staged(),
+            Some(vec![0., 0., 0., 0., 1., 4., 2., 5., 3., 6.])
+        );
+        capture.reset();
+        capture.process_planar([&[0.5; 3], &[0.25; 3]], [&mut left, &mut right]);
+        assert_eq!(left, [0.5; 3]);
+        assert!(capture.begin_staged_snapshot_recent(2));
+        capture.process_planar([&[0.; 3], &[0.; 3]], [&mut left, &mut right]);
+        assert_eq!(capture.take_staged(), Some(vec![0.5, 0.25, 0.5, 0.25]));
     }
 
     #[test]

@@ -538,6 +538,9 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             capacity_seconds: a,
             mix: b,
         },
+        66 => NodeKind::RetrospectiveCapture {
+            capacity_seconds: a,
+        },
         21 => NodeKind::SpectrumAnalyzer {
             sensitivity: a,
             smoothing: b,
@@ -1527,10 +1530,14 @@ pub extern "C" fn manifold_capture_length(node_id: u32) -> u32 {
 
 /// Begin a frozen recording-window copy; later render blocks advance it in bounded slices.
 #[unsafe(no_mangle)]
-pub extern "C" fn manifold_capture_stage_begin(node_id: u32) -> u32 {
+pub extern "C" fn manifold_capture_stage_begin(node_id: u32, requested_frames: u32) -> u32 {
     ENGINE.with(|slot| {
         slot.borrow_mut().as_mut().map_or(0, |engine| {
-            u32::from(engine.plan.begin_capture_staging(node_id.into()))
+            u32::from(
+                engine
+                    .plan
+                    .begin_capture_staging(node_id.into(), requested_frames as usize),
+            )
         })
     })
 }

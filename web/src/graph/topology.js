@@ -28,6 +28,7 @@ export const NODE_TYPES = {
       { id: 5, label: 'Loop mix', min: 0, max: 1, default: 1 },
       { id: 6, label: 'Overdub level', min: 0, max: 1, default: .5 },
     ] },
+  'retrospective-capture': { label: 'Retrospective capture', code: 66, output: 'audio', inputs: ['audio'], args: { a: 30, b: 0 } },
   oscillator: { label: 'Oscillator', code: 11, output: 'audio', inputs: ['audio'], args: { a: 220, b: .4 },
     parameters: [{ id: 0, label: 'Waveform', choices: ['Sine', 'Saw', 'Square', 'Triangle', 'Blend'], default: 0 },
       { id: 1, label: 'Frequency', min: 20, max: 16000, default: 220 },

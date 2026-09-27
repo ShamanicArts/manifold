@@ -89,6 +89,11 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .graph-remove { border: 0; background: none; color: #bca8a3; font-size: 10px; cursor: pointer; }
 .graph-field { display: grid; grid-template-columns: 78px minmax(0, 1fr); align-items: center; gap: 5px; margin-top: 5px; font-size: 10px; color: #b4c0c9; }
 .graph-field select, .graph-field input { width: 100%; }
+.graph-capture-controls { display: grid; gap: 5px; margin-top: 8px; }
+.graph-capture-controls select, .graph-capture-controls .gate-button { width: 100%; }
+.graph-capture-window { display: flex; gap: 6px; align-items: center; font-size: 10px; color: #b4c0c9; }
+.graph-capture-window[hidden] { display: none; }
+.graph-capture-window input { width: 58px; margin-left: auto; }
 .graph-parameter-controls { display: grid; grid-template-columns: minmax(0, 1fr) 48px; align-items: center; gap: 4px 6px; min-width: 0; }
 .graph-parameter-controls > .graph-parameter { grid-column: 1 / -1; min-width: 0; }
 .graph-slot-label { grid-column: 1; justify-self: end; white-space: nowrap; color: #91aab7; font: 9px ui-monospace, monospace; }

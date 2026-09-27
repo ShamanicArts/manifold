@@ -360,11 +360,11 @@ export class BrowserAudioHost {
     return this.publishCaptureRequest(captureId, instrumentId, false);
   }
 
-  publishLiveCapture(captureId, instrumentId) {
-    return this.publishCaptureRequest(captureId, instrumentId, true);
+  publishLiveCapture(captureId, instrumentId, windowSeconds = 0) {
+    return this.publishCaptureRequest(captureId, instrumentId, true, windowSeconds);
   }
 
-  publishCaptureRequest(captureId, instrumentId, live) {
+  publishCaptureRequest(captureId, instrumentId, live, windowSeconds = 0) {
     if (!this.processor || !this.ready) return Promise.reject(new Error('Start audio before publishing a take.'));
     if (live && [...this.pendingPublishes.values()].some((pending) => pending.live)) {
       return Promise.reject(new Error('A recording window is already being published.'));
@@ -378,7 +378,7 @@ export class BrowserAudioHost {
         }
       }, 10_000);
       this.pendingPublishes.set(requestId, { resolve, reject, timeout, live, captureId, instrumentId, stereo: null, poll: null });
-      this.processor.port.postMessage({ type: live ? 'capture-publish-live' : 'capture-publish', requestId, captureId, instrumentId });
+      this.processor.port.postMessage({ type: live ? 'capture-publish-live' : 'capture-publish', requestId, captureId, instrumentId, windowSeconds });
     });
   }
 

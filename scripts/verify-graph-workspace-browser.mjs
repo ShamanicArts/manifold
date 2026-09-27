@@ -621,8 +621,31 @@ try {
   await page.locator('#audio-toggle').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('test oscillator + oscillator sidechain'));
   await page.locator('#audio-toggle').click();
+  await page.locator('#graph-load-retrospective-sampler').click();
+  assert.equal(await page.locator('.graph-node').count(), 5);
+  assert.equal(await page.locator('select[data-node="6"]').count(), 0, 'retrospective capture has no record switch');
+  assert.equal(await page.locator('input[aria-label="Recent window seconds for sample instrument 5"]').inputValue(), '2');
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · test oscillator'));
+  await page.waitForTimeout(180);
+  await page.locator('button[aria-label="Capture recent window for sample instrument 5"]').click();
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('Recent history 6 is now the source'));
+  const retrospectiveDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const retrospectiveBundle = JSON.parse((await readFile(await (await retrospectiveDownload).path())).toString());
+  assert.equal(retrospectiveBundle.signal.nodes.find((node) => node.id === 6).type, 'retrospective-capture');
+  assert.equal(retrospectiveBundle.assets[0].label, 'Recent history 6');
+  assert.ok(retrospectiveBundle.assets[0].frames > 80_000 && retrospectiveBundle.assets[0].frames < 100_000);
+  await page.locator('#audio-toggle').click();
+  await page.locator('#graph-workspace-section').screenshot({ path: 'web/public/graph-retrospective-sampler-controls.png' });
+  await page.locator('#graph-load-tone').click();
+  await page.locator('#graph-project-file').setInputFiles([{
+    name: 'retrospective-sampler.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(retrospectiveBundle)),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
+  assert.match(await page.locator('input[aria-label="Sample instrument 5 audio file"]').locator('..').textContent(), /Recent history 6/);
   assert.deepEqual(errors, []);
-  console.log(`Graph workspace browser: live and sidechain sampler capture (${capturedHz.toFixed(1)} Hz), source analysis and rejection, per-voice motion and shaping, 14 native/Wasm references passed`);
+  console.log(`Graph workspace browser: live, sidechain (${capturedHz.toFixed(1)} Hz), and retrospective sampler capture, source analysis and rejection, per-voice motion and shaping, 14 native/Wasm references passed`);
 } finally {
   await browser.close();
 }

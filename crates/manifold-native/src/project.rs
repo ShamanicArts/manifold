@@ -561,8 +561,17 @@ impl NativeProject {
                         },
                     }
                 }
-                "gain" | "loop-capture" | "sum2" | "midi-transpose" | "main-voice-bank"
-                | "oscillator" | "noise" | "lfo" | "modulated-gain" | "effect-slot-legacy" => {
+                "gain"
+                | "loop-capture"
+                | "retrospective-capture"
+                | "sum2"
+                | "midi-transpose"
+                | "main-voice-bank"
+                | "oscillator"
+                | "noise"
+                | "lfo"
+                | "modulated-gain"
+                | "effect-slot-legacy" => {
                     let a = float(
                         entry
                             .get("a")
@@ -647,6 +656,13 @@ impl NativeProject {
                             NodeKind::LoopCapture {
                                 capacity_seconds: a,
                                 mix: b,
+                            }
+                        } else if kind == "retrospective-capture" {
+                            if a != 30.0 || b != 0.0 {
+                                return Err(ProjectError::Invalid("retrospective arguments"));
+                            }
+                            NodeKind::RetrospectiveCapture {
+                                capacity_seconds: a,
                             }
                         } else {
                             if a != 1.0 || b != 1.0 {
@@ -1331,11 +1347,16 @@ mod tests {
 
     #[test]
     fn browser_live_sampler_template_is_accepted() {
-        let json = include_bytes!("../../../projects/graph-workspace/live-sampler.json");
-        NativeProject::parse(json)
-            .unwrap()
-            .prepare(48_000.0, 128)
-            .unwrap();
+        for json in [
+            include_bytes!("../../../projects/graph-workspace/live-sampler.json").as_slice(),
+            include_bytes!("../../../projects/graph-workspace/retrospective-sampler.json")
+                .as_slice(),
+        ] {
+            NativeProject::parse(json)
+                .unwrap()
+                .prepare(48_000.0, 128)
+                .unwrap();
+        }
     }
 
     #[test]

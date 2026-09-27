@@ -246,6 +246,9 @@ pub enum NodeKind {
         capacity_seconds: f32,
         mix: f32,
     },
+    RetrospectiveCapture {
+        capacity_seconds: f32,
+    },
     SampleRegion,
     SampleInstrument,
     MainVoiceBank {
@@ -363,6 +366,7 @@ impl NodeKind {
             | Self::EffectSlotLegacy { .. }
             | Self::EffectSlotHostSwitch { .. }
             | Self::LoopCapture { .. }
+            | Self::RetrospectiveCapture { .. }
             | Self::SpectrumAnalyzer { .. }
             | Self::FftSpectrum { .. }
             | Self::EnvelopeFollower { .. }
@@ -542,6 +546,9 @@ impl NodeKind {
                 capacity_seconds.is_finite()
                     && (0.05..=30.0).contains(capacity_seconds)
                     && mix.is_finite()
+            }
+            Self::RetrospectiveCapture { capacity_seconds } => {
+                capacity_seconds.is_finite() && (1.0..=120.0).contains(capacity_seconds)
             }
             Self::SpectrumAnalyzer {
                 sensitivity,
@@ -1003,6 +1010,9 @@ impl Kernel {
                 capacity_seconds,
                 mix,
             } => Self::LoopCapture(LoopCapture::new(sample_rate, *capacity_seconds, *mix)),
+            NodeKind::RetrospectiveCapture { capacity_seconds } => Self::LoopCapture(
+                LoopCapture::new_retrospective(sample_rate, *capacity_seconds),
+            ),
             NodeKind::SampleRegion => Self::SampleRegion(SampleRegion::new(sample_rate)),
             NodeKind::SampleInstrument => {
                 Self::SampleInstrument(SampleInstrument::new(sample_rate))
@@ -1242,6 +1252,7 @@ struct CompiledNode {
     input_signals: Vec<SignalKind>,
     output_signal: SignalKind,
     active: bool,
+    always_active: bool,
     scratch: Vec<f32>,
 }
 
@@ -1382,9 +1393,13 @@ impl GraphDescription {
             return Err(GraphError::Cycle);
         }
 
-        // Keep only nodes that can reach Output. Unused sources cost nothing per block.
+        // Retrospective captures are processing roots even without an audible route.
+        // Their ancestors provide input, while unrelated sources remain parked.
         let mut live = vec![false; self.nodes.len()];
         let mut stack = vec![output];
+        stack.extend(self.nodes.iter().enumerate().filter_map(|(index, node)| {
+            matches!(node.kind, NodeKind::RetrospectiveCapture { .. }).then_some(index)
+        }));
         while let Some(index) = stack.pop() {
             if live[index] {
                 continue;
@@ -1410,6 +1425,10 @@ impl GraphDescription {
                     .collect(),
                 output_signal: self.nodes[index].kind.output_signal(),
                 active: live[index],
+                always_active: matches!(
+                    self.nodes[index].kind,
+                    NodeKind::RetrospectiveCapture { .. }
+                ),
                 scratch: vec![0.0; max_frames * 2],
             });
         }
@@ -1703,6 +1722,11 @@ impl ExecutionPlan {
             node.active = false;
         }
         self.nodes[self.output_index].active = true;
+        for node in &mut self.nodes {
+            if node.always_active {
+                node.active = true;
+            }
+        }
         for index in (0..self.nodes.len()).rev() {
             if self.nodes[index].active {
                 for port in 0..self.nodes[index].sources.len() {
@@ -1801,12 +1825,14 @@ impl ExecutionPlan {
             })
     }
 
-    pub fn begin_capture_staging(&mut self, node: NodeId) -> bool {
+    pub fn begin_capture_staging(&mut self, node: NodeId, requested_frames: usize) -> bool {
         self.nodes
             .iter_mut()
             .find(|entry| entry.id == node)
             .is_some_and(|entry| match &mut entry.kernel {
-                Kernel::LoopCapture(loop_node) => loop_node.begin_staged_snapshot(),
+                Kernel::LoopCapture(loop_node) => {
+                    loop_node.begin_staged_snapshot_recent(requested_frames)
+                }
                 _ => false,
             })
     }
@@ -2872,6 +2898,37 @@ mod tests {
             process(&mut plan, &[1.0; 8], &[0.5; 8]),
             [vec![0.0; 8], vec![0.0; 8]]
         );
+    }
+
+    #[test]
+    fn disconnected_retrospective_root_records_without_audible_input() {
+        let graph = GraphDescription {
+            nodes: vec![
+                node(1, NodeKind::InputRaw),
+                node(3, NodeKind::Output),
+                node(
+                    6,
+                    NodeKind::RetrospectiveCapture {
+                        capacity_seconds: 1.0,
+                    },
+                ),
+            ],
+            connections: vec![edge(1, 6, 0)],
+        };
+        let mut plan = graph.compile(100.0, 8).unwrap();
+        assert_eq!(plan.node_count(), 3);
+        assert_eq!(
+            process(&mut plan, &[1., 2., 3.], &[4., 5., 6.]),
+            [vec![0.; 3], vec![0.; 3]]
+        );
+        assert!(plan.begin_capture_staging(6, 5));
+        assert_eq!(
+            process(&mut plan, &[7.; 3], &[8.; 3]),
+            [vec![0.; 3], vec![0.; 3]]
+        );
+        let mut stereo = [0.; 10];
+        assert_eq!(plan.copy_capture_staged_interleaved(6, 0, &mut stereo), 5);
+        assert_eq!(stereo, [0., 0., 0., 0., 1., 4., 2., 5., 3., 6.]);
     }
 
     #[test]
