@@ -1,0 +1,14 @@
+{
+  "host": "REAPER Linux VST3",
+  "project": "sample-voice-with-source.json",
+  "projectBytes": 5121056,
+  "import": "editor JSON file input",
+  "savedAndReopened": true,
+  "renderFrames": 48000,
+  "channels": 2,
+  "peak": 0.047568321228027344,
+  "reference": "native Rust",
+  "peakError": 5.960464477539063e-08,
+  "assetFrames": 480000,
+  "render": "graph-vst3-reaper-large-sample-import.wav"
+}

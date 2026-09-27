@@ -244,7 +244,11 @@ class X11:
 
 
 def main() -> None:
-    sample_import = "--sample-import" in sys.argv
+    max_sample_import = "--max-sample-import" in sys.argv
+    large_sample_import = "--large-sample-import" in sys.argv or max_sample_import
+    sample_import = "--sample-import" in sys.argv or large_sample_import
+    sample_frames = 1_440_000 if max_sample_import else 480_000 if large_sample_import else 48_000
+    sample_review = "max-sample" if max_sample_import else "large-sample" if large_sample_import else "sample"
     manual_picker = "--manual-picker" in sys.argv
     direct_import = "--direct-import" in sys.argv or sample_import or manual_picker
     slot_automation = "--slot-automation" in sys.argv
@@ -270,11 +274,11 @@ def main() -> None:
                 if sample_import:
                     bundle = json.loads((ROOT / "projects/graph-workspace/sample-voice.json").read_text())
                     pcm = array("f")
-                    for frame in range(48_000):
+                    for frame in range(sample_frames):
                         value = 0.25 * math.sin(2 * math.pi * 440 * frame / 48_000)
                         pcm.extend((value, value))
                     bundle["assets"] = [{"nodeId": 5, "sourceRate": 48_000,
-                                         "frames": 48_000, "label": "440 Hz source",
+                                         "frames": sample_frames, "label": "440 Hz source",
                                          "pcmF32Base64": base64.b64encode(pcm.tobytes()).decode("ascii")}]
                     imported_project = work / "sample-voice-with-source.json"
                     imported_project.write_text(json.dumps(bundle, separators=(",", ":")))
@@ -438,12 +442,24 @@ reaper.defer(poll)
                     elif direct_import:
                         if manual_picker:
                             x11.choose_file(window, imported_project)
-                        time.sleep(1)
-                        (work / "command.txt").write_text("query")
-                        value = float(wait_for(work / "query.txt", "done").split()[1])
+                        if large_sample_import:
+                            deadline = time.monotonic() + 120
+                            while True:
+                                (work / "query.txt").unlink(missing_ok=True)
+                                (work / "command.txt").write_text("query")
+                                value = float(wait_for(work / "query.txt", "done").split()[1])
+                                if abs(value - .5) < 1e-4:
+                                    break
+                                if time.monotonic() > deadline:
+                                    raise AssertionError(f"large project did not reach REAPER; slot 0={value}")
+                                time.sleep(.5)
+                        else:
+                            time.sleep(1)
+                            (work / "command.txt").write_text("query")
+                            value = float(wait_for(work / "query.txt", "done").split()[1])
                         if not sample_import:
                             assert value < 0.1, f"direct JSON import did not reach the host: slot 0={value}"
-                        imported = x11.capture(window, "graph-vst3-reaper-editor-sample-import.png"
+                        imported = x11.capture(window, f"graph-vst3-reaper-editor-{sample_review}-import.png"
                                                if sample_import else "graph-vst3-reaper-editor-direct-import.png")
                         (work / "command.txt").write_text("save")
                         wait_for(work / "save.txt", "done")
@@ -551,7 +567,7 @@ reaper.defer(poll)
                 peak = max(abs(value) for value in actual)
                 error = max(abs(a - b) for a, b in zip(actual, expected))
                 assert peak > 0.01 and error < 1e-7, (peak, error)
-                target = PUBLIC / ("graph-vst3-reaper-sample-import.wav" if sample_import
+                target = PUBLIC / (f"graph-vst3-reaper-{sample_review}-import.wav" if sample_import
                                    else "graph-vst3-reaper-direct-import.wav")
                 target.write_bytes(rendered.read_bytes())
                 reference = "native Rust" if sample_import else "preset render"
@@ -562,10 +578,10 @@ reaper.defer(poll)
                     "import": "editor JSON file input", "savedAndReopened": True,
                     "renderFrames": 48_000, "channels": 2, "peak": peak,
                     "reference": reference, "peakError": error,
-                    "assetFrames": 48_000 if sample_import else 0,
+                    "assetFrames": sample_frames if sample_import else 0,
                     "render": target.name,
                 }
-                (PUBLIC / ("graph-vst3-reaper-sample-import.json" if sample_import
+                (PUBLIC / (f"graph-vst3-reaper-{sample_review}-import.json" if sample_import
                            else "graph-vst3-reaper-direct-import.json")).write_text(
                     json.dumps(metrics, indent=2) + "\n")
                 print(f"Fresh REAPER render after direct import: peak={peak:.6f}, "

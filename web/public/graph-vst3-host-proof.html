@@ -61,7 +61,7 @@
   </section>
   <section class="panel">
     <h2>Embedded sample survives editor import</h2>
-    <p>The same path imported a 513,055-byte sample instrument project containing 48,000 stereo PCM frames. REAPER saved it, reopened it in a fresh process, and rendered a MIDI note through the Rust sample instrument. The full 48,000-frame output differs from direct native Rust by at most 5.96e-8.</p>
+    <p>The same path imported a 513,055-byte sample instrument project containing 48,000 stereo PCM frames. REAPER saved it, reopened it in a fresh process, and rendered a MIDI note through the Rust sample instrument. The full 48,000-frame output differs from direct native Rust by at most 5.96e-8. The <a href="/graph-large-import-proof.html">larger import proof</a> extends this through a 15.36 MB JSON project with a 30-second stereo source.</p>
     <figure><img src="/graph-vst3-reaper-editor-sample-import.png" alt="REAPER hosting the directly imported sample instrument project with original compact controls"><figcaption>The open graph editor after direct sample project import: 5 nodes, 17 bound controls, and the original compact widget renderers.</figcaption></figure>
     <audio controls preload="metadata" src="/graph-vst3-reaper-sample-import.wav"></audio>
     <p class="small"><a href="/graph-vst3-reaper-sample-import.wav">Download actual REAPER sample render</a> · <a href="/graph-vst3-reaper-sample-import.json">Measurements</a></p>

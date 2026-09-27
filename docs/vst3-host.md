@@ -108,6 +108,9 @@ source, actual REAPER WAV renders, plots, and machine-readable measurements.
    a DAW load browser-authored project bundles; REAPER restores Tone Texture
    and renders audio matching native Rust. Direct JSON import works in its
    [native graph editor](../web/public/graph-vst3-host-proof.html).
+   A [30-second source import](../web/public/graph-large-import-proof.html)
+   carried 15.36 MB of project JSON through REAPER save and reopen; the first
+   second of output matched direct Rust.
    [Browser and native editor slot reassignment](../web/public/graph-host-slot-proof.html)
    now survives REAPER save and changes audio through a fixed host ID. An
    existing REAPER envelope also follows its occupied slot after two controls

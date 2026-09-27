@@ -55,11 +55,22 @@ mode generates a 513,055-byte project with 48,000 stereo PCM frames, imports
 it through the same editor control, saves and reopens the REAPER project, and
 compares the MIDI render with direct native Rust. Peak sample error is
 `5.96e-8` over all 48,000 stereo frames. A host may impose a smaller
-private-message size than REAPER; still larger embedded sample projects and
-other hosts need verification. The automated `--direct-import` probe injects
+private-message size than REAPER. The automated `--direct-import` probe injects
 a `File` into the input handler. The separate `--manual-picker` mode opens
 the native file chooser under isolated Xvfb, selects Tone Texture JSON, and
 checks the same saved-project audio result.
+
+The same probe's `--large-sample-import` and `--max-sample-import` modes now
+exercise 10- and 30-second 48 kHz stereo sources. Their browser-compatible
+projects contain 5,121,056 and 15,361,057 JSON bytes respectively. REAPER
+accepts both through the editor, saves them, and reopens them in a fresh process;
+each one-second MIDI render matches direct native Rust within `5.96e-8` peak
+sample error over 48,000 stereo frames. The 30-second source reaches the
+per-asset frame limit, but only its first second of playback was rendered.
+The [large import review](../web/public/graph-large-import-proof.html) shows the
+actual editor and audio. The VST3 project bound is 45 MiB, so this evidence
+establishes REAPER capacity through 15.36 MB, not the whole bound or other hosts.
+
 The browser graph workbench can now reassign each bound parameter to a displayed
 host slot 1–128. An occupied slot swaps the two bindings; the exported JSON
 preserves the mapping through preset export and host state. Changing a binding

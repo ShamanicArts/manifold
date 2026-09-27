@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manifold · Large graph import proof</title>
+  <style>
+    :root { color-scheme: dark; background: #11151b; color: #e8edf2; font: 15px/1.55 system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { max-width: 1050px; margin: 0 auto; padding: 44px 24px 80px; }
+    a { color: #a8d5ed; }
+    h1 { margin: 8px 0 16px; max-width: 820px; font-size: clamp(2rem, 5vw, 3.35rem); line-height: 1.06; letter-spacing: -.045em; }
+    h2 { font-size: 1.18rem; margin: 0 0 12px; }
+    p { color: #bdc9d3; margin: 0 0 15px; }
+    .eyebrow { color: #8dcab9; font-size: .73rem; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; }
+    .lead { max-width: 780px; font-size: 1.15rem; }
+    .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 26px 0; }
+    .metric, section { border: 1px solid #34414d; border-radius: 8px; background: #19212a; }
+    .metric { padding: 18px; }
+    .metric strong { display: block; font-size: 1.9rem; line-height: 1.12; font-variant-numeric: tabular-nums; }
+    .metric span { color: #a9bac7; font-size: .85rem; }
+    section { padding: 22px; margin: 16px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; }
+    th, td { padding: 10px; border-bottom: 1px solid #364653; text-align: left; font-variant-numeric: tabular-nums; }
+    th { color: #9fb8c9; font-size: .76rem; text-transform: uppercase; letter-spacing: .07em; }
+    .review { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(240px, 1fr); gap: 18px; align-items: start; }
+    figure { margin: 0; }
+    img { display: block; max-width: 100%; height: auto; border: 1px solid #43515f; border-radius: 5px; }
+    figcaption { color: #aebdc9; font-size: .86rem; margin-top: 7px; }
+    audio { display: block; width: 100%; margin: 14px 0; }
+    .files { display: flex; flex-wrap: wrap; gap: 8px; margin: 13px 0 0; }
+    .files a { display: inline-block; border: 1px solid #536575; border-radius: 4px; padding: 8px 11px; background: #253443; text-decoration: none; }
+    .small { font-size: .86rem; }
+    code { font: .93em ui-monospace, SFMono-Regular, monospace; color: #d0dce6; }
+    @media (max-width: 720px) { .metrics, .review { grid-template-columns: 1fr; } table { font-size: .83rem; } th, td { padding: 7px 4px; } }
+  </style>
+</head>
+<body>
+  <div class="eyebrow">Manifold v2 · Graph VST3 import checkpoint</div>
+  <h1>A 15 MB browser graph reopened and rendered in REAPER.</h1>
+  <p class="lead">The native Graph VST3 editor imported project JSON containing a 30-second stereo PCM source. Rust prepared the graph outside the audio callback; REAPER saved it and a fresh process rendered audio through the original Manifold widget controls.</p>
+  <div class="metrics">
+    <div class="metric"><strong>15,361,057</strong><span>project JSON bytes accepted by REAPER</span></div>
+    <div class="metric"><strong>1,440,000</strong><span>stereo source frames, 30 seconds at 48 kHz</span></div>
+    <div class="metric"><strong>5.96e-8</strong><span>peak error against direct Rust over the host render</span></div>
+  </div>
+  <section>
+    <h2>Import sizes checked through the same editor path</h2>
+    <table>
+      <thead><tr><th>Source</th><th>JSON bytes</th><th>REAPER save / reopen</th><th>Peak error vs Rust</th></tr></thead>
+      <tbody>
+        <tr><td>1 second stereo</td><td>513,055</td><td>Passed</td><td>5.96e-8</td></tr>
+        <tr><td>10 seconds stereo</td><td>5,121,056</td><td>Passed</td><td>5.96e-8</td></tr>
+        <tr><td>30 seconds stereo</td><td>15,361,057</td><td>Passed</td><td>5.96e-8</td></tr>
+      </tbody>
+    </table>
+    <p class="small">The 30-second source reaches this project's per-asset frame limit. The graph format permits a larger total project than this one asset; private-message capacity above 15.36 MB and behavior in other DAWs remain unverified.</p>
+  </section>
+  <section>
+    <h2>The actual editor and host render</h2>
+    <div class="review">
+      <figure><img src="/graph-vst3-reaper-editor-max-sample-import.png" alt="REAPER hosting the Graph VST3 editor after importing a 30-second source project, with original compact sample instrument controls"><figcaption>The open REAPER editor after direct JSON import: five nodes, 17 bound controls, and the ported original compact widgets.</figcaption></figure>
+      <div>
+        <p>The browser project held 48 kHz stereo 440 Hz PCM, encoded in JSON. The editor transferred bounded chunks to the controller; the connected Rust processor validated and prepared the replacement before publishing it at a host block boundary.</p>
+        <p>The saved REAPER project rendered one second with MIDI note 60 from 0.125 to 0.5 seconds. All 48,000 stereo output frames match a direct native Rust render within 5.96e-8 peak sample error. This tests import, recall, and the first second of playback; it does not measure playback through the entire 30-second source.</p>
+        <audio controls preload="metadata" src="/graph-vst3-reaper-max-sample-import.wav"></audio>
+        <div class="files"><a href="/graph-vst3-reaper-max-sample-import.wav">Download REAPER WAV</a><a href="/graph-vst3-reaper-max-sample-import.json">30-second measurements</a><a href="/graph-vst3-reaper-large-sample-import.json">10-second measurements</a></div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <h2>Repeat the check</h2>
+    <p>Build the Linux VST3 bundle, start an isolated X server, then run <code>python scripts/probe-reaper-graph-vst3-gui.py --max-sample-import</code> with <code>MANIFOLD_ISOLATED_DISPLAY=1</code> and that server's <code>DISPLAY</code>. The 30-second case passed three runs with the same audio comparison. The <a href="/graph-vst3-host-proof.html">general host proof</a> covers the smaller imports and the <a href="/graph-host-slot-proof.html">slot proof</a> covers automation and original widget gestures.</p>
+  </section>
+</body>
+</html>
