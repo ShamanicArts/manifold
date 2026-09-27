@@ -1,6 +1,7 @@
 //! Platform-independent audio kernels. The prepared filter allocates nothing in process.
 
 pub mod bitcrusher;
+pub mod capture_timing;
 pub mod chorus;
 pub mod compressor;
 pub mod cv_utilities;
