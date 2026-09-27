@@ -13,16 +13,16 @@
           <div class="source-tabbar" role="tablist" aria-label="Source sections"><button type="button" data-source-tab="wave" role="tab">Wave</button><button type="button" data-source-tab="sample" role="tab" aria-selected="true">Sample</button><button type="button" data-source-tab="blend" role="tab">Blend</button></div>
           <div id="source-wave-panel" class="source-tabpage" hidden>
             <select id="synth-wave" aria-label="Wave shape"><option value="0">Sine</option><option value="1">Saw</option><option value="2">Square</option><option value="3">Triangle</option><option value="4">Blend</option></select>
-            <button id="wave-render-mode" type="button">Std</button>
+            <div id="wave-render-mode" class="source-segments" role="group" aria-label="Wave render mode"><button type="button" data-value="0" aria-pressed="true">Std</button><button type="button" data-value="1" aria-pressed="false">Add</button></div>
           </div>
           <div id="source-sample-panel" class="source-tabpage">
             <div class="sample-source" aria-label="Main Sample capture"><select id="sample-source-select" aria-label="Sample source"><option value="0">Live</option><option value="1">L1</option><option value="2">L2</option><option value="3">L3</option><option value="4">L4</option></select><button id="sample-mode" type="button" aria-label="Sample capture mode">Retro</button><button id="sample-cap" type="button">Cap</button></div>
-            <select id="sample-pitch-mode" aria-label="Sample pitch mode"><option value="0">Classic</option><option value="1">PVoc</option><option value="2">HQ</option></select>
+            <div id="sample-pitch-mode" class="source-segments" role="group" aria-label="Sample pitch mode"><button type="button" data-value="0" aria-pressed="true">Classic</button><button type="button" data-value="1" aria-pressed="false">PVoc</button><button type="button" data-value="2" aria-pressed="false">HQ</button></div>
             <div id="sample-bars" class="source-slider"></div><div id="sample-root" class="source-slider"></div><div id="sample-xfade" class="source-slider"></div><div id="sample-stretch" class="source-slider" hidden></div>
           </div>
           <div id="source-blend-panel" class="source-tabpage" hidden>
             <select id="blend-mode" aria-label="Blend mode"><option value="0">Mix</option><option value="1">Ring</option><option value="2">FM</option><option value="3">Sync</option><option value="4">Add</option><option value="5">Morph</option></select>
-            <select id="blend-keytrack" aria-label="Blend key tracking"><option value="0">Wave</option><option value="1">Sample</option><option value="2" selected>Both</option></select>
+            <div id="blend-keytrack" class="source-segments" role="group" aria-label="Blend key tracking"><button type="button" data-value="0" aria-pressed="false">Wave</button><button type="button" data-value="1" aria-pressed="false">Sample</button><button type="button" data-value="2" aria-pressed="true">Both</button></div>
             <div id="blend-pitch" class="source-slider"></div><div id="blend-depth" class="source-slider"></div>
           </div>
         </div>

@@ -26,6 +26,16 @@ const layerControl = (layer, id, value) => post({ type: 'layer-control', layer, 
 const command = (id, value = 0) => post({ type: 'command', id, value });
 const synthNote = (kind, note = 0, velocity = 0) => post({ type: 'synth-note', kind, note, velocity });
 const synthParameter = (id, value) => post({ type: 'synth-parameter', id, value });
+const selectedSegment = id => Number($(id).querySelector('[aria-pressed="true"]').dataset.value);
+function wireSegments(id, change) {
+  const group = $(id);
+  group.addEventListener('click', ({ target }) => {
+    const button = target.closest('button[data-value]');
+    if (!button || !group.contains(button)) return;
+    for (const option of group.querySelectorAll('button[data-value]')) option.setAttribute('aria-pressed', String(option === button));
+    change(Number(button.dataset.value));
+  });
+}
 
 const sampleBars = mountCompactSlider($('sample-bars'), { label: 'Bars', min: .0625, max: 16,
   step: .0625, value: 1, style: { colour: '#22d3ee', bg: '#08212a' } });
@@ -549,14 +559,14 @@ async function start() {
     synthParameter(0, Number($('synth-wave').value));
     synthParameter(1, sampleBlendValue * 2 - 1);
     synthParameter(2, 60);
-    synthParameter(3, Number($('blend-keytrack').value));
+    synthParameter(3, selectedSegment('blend-keytrack'));
     synthParameter(4, 0);
-    synthParameter(5, Number($('sample-pitch-mode').value));
+    synthParameter(5, selectedSegment('sample-pitch-mode'));
     synthParameter(6, Number($('blend-mode').value));
     synthParameter(7, .5);
     synthParameter(15, 1);
     synthParameter(16, 1);
-    synthParameter(19, $('wave-render-mode').classList.contains('add') ? 1 : 0);
+    synthParameter(19, selectedSegment('wave-render-mode'));
     synthParameter(20, .1);
     if (sourceKind === 'microphone') {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
@@ -602,19 +612,14 @@ async function stop() {
 $('audio-button').onclick = start;
 $('source').onchange = () => { $('file-label').hidden = $('source').value !== 'file'; $('pitch-label').hidden = $('source').value !== 'oscillator'; };
 $('synth-wave').onchange = () => { synthParameter(0, Number($('synth-wave').value)); drawSourceGraph(); };
-$('wave-render-mode').onclick = () => {
-  const add = $('wave-render-mode').classList.toggle('add');
-  $('wave-render-mode').textContent = add ? 'Add' : 'Std';
-  synthParameter(19, add ? 1 : 0);
-};
-$('sample-pitch-mode').onchange = () => {
-  const mode = Number($('sample-pitch-mode').value);
+wireSegments('wave-render-mode', mode => synthParameter(19, mode));
+wireSegments('sample-pitch-mode', mode => {
   synthParameter(5, mode);
   $('sample-stretch').hidden = mode === 0;
   requestAnimationFrame(paintSampleSliders);
-};
+});
 $('blend-mode').onchange = () => synthParameter(6, Number($('blend-mode').value));
-$('blend-keytrack').onchange = () => synthParameter(3, Number($('blend-keytrack').value));
+wireSegments('blend-keytrack', mode => synthParameter(3, mode));
 $('pitch').onchange = () => { if (sourceNode?.frequency) sourceNode.frequency.setTargetAtTime(Math.max(60, Math.min(1200, Number($('pitch').value))), context.currentTime, .01); };
 $('mode').onchange = () => control(project.controls.mode, Number($('mode').value));
 $('tempo').onchange = () => control(project.controls.tempo, Number($('tempo').value));

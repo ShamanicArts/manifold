@@ -513,15 +513,18 @@ body {
 .source-tabpage button { color: #e2e8f0; }
 .source-tabpage button:disabled, .source-tabpage select:disabled { opacity: .5; cursor: default; }
 #synth-wave { position: absolute; left: 4px; top: 4px; width: 84px; color: #38bdf8; }
+.source-segments { display: flex; height: 20px; background: #1e293b; }
+.source-segments button { flex: 1; min-width: 0; padding: 0 2px; color: #94a3b8; }
+.source-segments button[aria-pressed="true"] { background: #2563eb; color: #fff; }
 #wave-render-mode { position: absolute; left: 94px; top: 4px; width: 84px; }
-#wave-render-mode.add { background: #2563eb; color: white; }
 .sample-source { position: absolute; left: 4px; top: 4px; display: flex; align-items: center; gap: 4px; }
 #sample-source-select { width: 56px; }
 #sample-mode { width: 56px; background: #475569; }
 #sample-mode.free { background: #0ea5e9; color: #07121d; }
 #sample-cap { width: 48px; background: #334155; }
 #sample-cap.recording { background: #dc2626; color: white; }
-#sample-pitch-mode { position: absolute; left: 4px; top: 30px; width: 170px; color: #a78bfa; }
+#sample-pitch-mode { position: absolute; left: 4px; top: 30px; width: 170px; }
+#sample-pitch-mode button[aria-pressed="true"] { background: #8b5cf6; }
 .source-slider { height: 20px; cursor: ew-resize; }
 .source-slider canvas { display: block; width: 100%; height: 100%; }
 #sample-bars, #sample-root, #sample-xfade, #sample-stretch { position: absolute; left: 10px; width: 200px; }
