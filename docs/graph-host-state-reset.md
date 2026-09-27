@@ -99,8 +99,14 @@ and decay pairs, with neither control mixed across blocks. A fresh REAPER
 process renders the last saved project against native Rust at 5.96e-8 peak
 error across 48,000 stereo frames. See
 `scripts/probe-reaper-graph-clap-live-state.py` and
-`web/public/graph-clap-reaper-live-state.json`. Repeated project swaps and
-large embedded-PCM live saves under DAW transport remain open.
+`web/public/graph-clap-reaper-live-state.json`. The same probe imports the
+44,742,408-byte four-source project through the original Graph editor, waits
+until REAPER's own state contains it, then saves three times during playback.
+All three decoded DAW states retain the same four embedded PCM assets and 11
+nodes; the last one reopens in fresh REAPER and matches native Rust within
+5.96e-8 over 48,000 stereo frames. The large-run metrics are in
+`web/public/graph-clap-reaper-large-live-state.json`. Repeated live project
+swaps under DAW transport remain open.
 
 The existing [CLAP host proof](clap-host.md) covers pointer gestures, fresh
 REAPER project recall, MIDI audio, editor import, and official validator

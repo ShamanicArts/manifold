@@ -1,8 +1,9 @@
 {
   "host": "REAPER Linux CLAP",
   "live_saves": 8,
+  "project_bytes": 1153,
   "first_play_position": 0.144,
-  "last_play_position": 0.944,
+  "last_play_position": 0.88,
   "saved_bytes": [
     5185,
     5181,
@@ -47,6 +48,8 @@
       1.6002000570297241
     ]
   ],
+  "saved_nodes": 6,
+  "saved_assets": 0,
   "fresh_render_frames": 48000,
   "fresh_render_peak": 0.11553776264190674,
   "peak_error_vs_native": 5.960464477539063e-08

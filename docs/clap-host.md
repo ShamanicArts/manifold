@@ -163,7 +163,12 @@ matches one block. Isolated REAPER now saves Note Voice eight times while
 transport plays. Its decoded state files contain whole attack/decay pairs;
 the final state reopens in a fresh REAPER process and renders within 5.96e-8
 peak error against native Rust. Further live DAW save stress with repeated
-project swaps and large embedded PCM remains to be exercised.
+project swaps remains to be exercised. A second isolated REAPER run imports
+the 44.7 MB four-source project through the original editor, saves it three
+times during playback, and verifies all four embedded PCM assets in each
+decoded state. A fresh-process render of the final save matches native Rust
+within 5.96e-8 peak error. Run
+`scripts/probe-reaper-graph-clap-live-state.py --project /tmp/manifold-four-source-bench.json --count 3`.
 
 The browser's per-effect control memory is now reflected in the live CLAP
 parameter values and its saved project state. Type switches request a host
