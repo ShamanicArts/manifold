@@ -89,10 +89,20 @@ try {
     const processor = new Processor();
     await processor.port.onmessage({ data: { type: 'init', wasmBytes: readFileSync('web/dist/manifold_filter.wasm'), graph: signal } });
     assert.deepEqual(messages.at(-1), { type: 'ready' }, `${type} palette graph compiled`);
+    if (type === 'gain') {
+      await processor.port.onmessage({ data: { type: 'parameter-request', requestId: 1, nodeId, id: 0, value: .35 } });
+      assert.deepEqual(messages.at(-1), { type: 'parameter-applied', requestId: 1, accepted: true });
+      await processor.port.onmessage({ data: { type: 'parameter-request', requestId: 2, nodeId, id: 99, value: .35 } });
+      assert.deepEqual(messages.at(-1), { type: 'parameter-applied', requestId: 2, accepted: false });
+    }
     const left = new Float32Array(128);
     const right = new Float32Array(128);
-    processor.process([[new Float32Array(128), new Float32Array(128)]], [[left, right]]);
+    const source = type === 'gain' ? new Float32Array(128).fill(1) : new Float32Array(128);
+    for (let block = 0; block < (type === 'gain' ? 24 : 1); block++) {
+      processor.process([[source, source]], [[left, right]]);
+    }
     assert.ok([...left, ...right].every(Number.isFinite), `${type} produced finite audio`);
+    if (type === 'gain') assert.ok(Math.abs(left.at(-1) - .7 * .35) < .01, 'acknowledged gain reaches the audio output');
   }
   console.log('Palette: all eight addable node kinds prepared and processed in the Wasm worklet');
 } finally {

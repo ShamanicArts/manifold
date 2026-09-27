@@ -84,6 +84,11 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
             if (!this.uploadPartials(partials)) throw new Error('Invalid initial partial set');
           }
           this.port.postMessage({ type: 'ready' });
+        } else if (data.type === 'parameter-request' && this.engine) {
+          const accepted = Number.isInteger(data.nodeId) && Number.isInteger(data.id)
+            && Number.isFinite(data.value)
+            && this.engine.manifold_set_node_parameter(data.nodeId, data.id, data.value) === 1;
+          this.port.postMessage({ type: 'parameter-applied', requestId: data.requestId, accepted });
         } else if (data.type === 'parameter' && this.engine) {
           this.engine.manifold_set_node_parameter(data.nodeId, data.id, data.value);
         } else if (data.type === 'directional-parameter' && this.engine) {

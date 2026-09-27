@@ -17,6 +17,8 @@ export class BrowserAudioHost {
     this.pendingCapture = null;
     this.pendingRoutes = new Map();
     this.nextRouteRequest = 1;
+    this.pendingParameters = new Map();
+    this.nextParameterRequest = 1;
     this.ready = false;
   }
 
@@ -60,6 +62,14 @@ export class BrowserAudioHost {
               this.pendingRoutes.delete(data.requestId);
               clearTimeout(pending.timeout);
               data.accepted ? pending.resolve() : pending.reject(new Error('Rust rejected this control route.'));
+            }
+          }
+          if (data.type === 'parameter-applied') {
+            const pending = this.pendingParameters.get(data.requestId);
+            if (pending) {
+              this.pendingParameters.delete(data.requestId);
+              clearTimeout(pending.timeout);
+              data.accepted ? pending.resolve() : pending.reject(new Error('Rust rejected this node parameter.'));
             }
           }
           if ((data.type === 'capture' || data.type === 'capture-error') && this.pendingCapture) {
@@ -189,6 +199,18 @@ export class BrowserAudioHost {
     });
   }
 
+  setNodeParameter(nodeId, id, value) {
+    if (!this.processor || !this.ready) return Promise.reject(new Error('Wait for audio to start before changing a node parameter.'));
+    return new Promise((resolve, reject) => {
+      const requestId = this.nextParameterRequest++;
+      const timeout = setTimeout(() => {
+        if (this.pendingParameters.delete(requestId)) reject(new Error('Node parameter update timed out.'));
+      }, 4_000);
+      this.pendingParameters.set(requestId, { resolve, reject, timeout });
+      this.processor.port.postMessage({ type: 'parameter-request', requestId, nodeId, id, value });
+    });
+  }
+
   sendEvent(nodeId, kind, note = 0, velocity = 0, offset = 0, channel = 0) {
     this.processor?.port.postMessage({ type: 'event', nodeId, kind, channel, note, velocity, offset });
   }
@@ -231,6 +253,11 @@ export class BrowserAudioHost {
       pending.reject(new Error('Audio stopped during a route change.'));
     }
     this.pendingRoutes.clear();
+    for (const pending of this.pendingParameters.values()) {
+      clearTimeout(pending.timeout);
+      pending.reject(new Error('Audio stopped during a node parameter change.'));
+    }
+    this.pendingParameters.clear();
     this.ready = false;
     if (this.pendingCapture) {
       clearTimeout(this.pendingCapture.timeout);

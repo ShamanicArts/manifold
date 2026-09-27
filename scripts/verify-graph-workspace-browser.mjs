@@ -28,6 +28,11 @@ try {
   await page.locator('#audio-toggle').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running'));
   assert.equal(await page.locator('#graph-add-node').isDisabled(), true);
+  const gain = page.locator('input[data-node="2"][data-parameter="0"]');
+  assert.equal(await gain.isDisabled(), false);
+  await gain.fill('0.35');
+  await gain.press('Tab');
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('in Rust and project state'));
   await page.locator('#audio-toggle').click();
 
   await page.locator('#graph-add-type').selectOption('distortion');
@@ -62,6 +67,7 @@ try {
   assert.equal(bundle.signal.nodes.length, 6);
   assert.equal(bundle.signal.connections.length, 5);
   assert.equal(bundle.signal.initialParameters.find((entry) => entry.nodeId === 4 && entry.id === 0).value, 9);
+  assert.equal(bundle.signal.initialParameters.find((entry) => entry.nodeId === 2 && entry.id === 0).value, .35);
   await page.locator('button[aria-label="Remove Distortion node 4"]').click();
   assert.equal(await page.locator('.graph-node').count(), 5);
   await page.locator('#graph-project-file').setInputFiles([{
@@ -78,8 +84,18 @@ try {
   assert.equal(await page.locator('select[data-to="6"][data-port="1"]').inputValue(), '5');
   await page.locator('#audio-toggle').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running'));
+  await page.locator('#audio-toggle').click();
+  await page.locator('#graph-add-type').selectOption('noise');
+  await page.locator('#graph-add-node').click();
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running'));
+  const parkedLevel = page.locator('input[data-node="7"][data-parameter="0"]');
+  await parkedLevel.fill('0.2');
+  await parkedLevel.press('Tab');
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('Rust rejected this node parameter'));
+  assert.equal(await parkedLevel.inputValue(), '0.08');
   assert.deepEqual(errors, []);
-  console.log('Graph workspace browser: stopped node and Audio/CV topology edits, Rust/Wasm starts, cycle rejection, project reopen passed');
+  console.log('Graph workspace browser: stopped topology edits, acknowledged live parameter, parked-node rejection, Rust/Wasm starts, cycle rejection, project reopen passed');
 } finally {
   await browser.close();
 }

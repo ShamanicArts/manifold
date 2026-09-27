@@ -2,7 +2,7 @@ import { NODE_TYPES, addNode, removeNode, setConnection, setInitialParameter,
   captureGraphProject, parseGraphProject } from './topology.js';
 
 // Edits a project description outside the AudioWorklet. The next start compiles it in Rust.
-export function mountGraphEditor(section, project, { isRunning, isActive, onChange }) {
+export function mountGraphEditor(section, project, { isRunning, isActive, onChange, onParameter }) {
   const nodesRoot = section.querySelector('#graph-nodes');
   const status = section.querySelector('#graph-status');
   const addType = section.querySelector('#graph-add-type');
@@ -12,16 +12,21 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   const listeners = new AbortController();
   let busy = false;
   let destroyed = false;
+  const pendingParameters = new Set();
 
   addType.replaceChildren(...Object.entries(NODE_TYPES).filter(([, spec]) => !spec.fixedId)
     .map(([type, spec]) => new Option(spec.label, type)));
 
   const canEdit = () => !destroyed && isActive() && !isRunning() && !busy;
-  function refreshRunning() {
+  const canChangeParameter = () => !destroyed && isActive() && !busy;
+  function refreshRunning(updateStatus = true) {
     const disabled = !canEdit();
     section.querySelectorAll('.graph-edit').forEach((control) => { control.disabled = disabled; });
+    section.querySelectorAll('.graph-parameter').forEach((control) => {
+      control.disabled = !canChangeParameter() || pendingParameters.has(`${control.dataset.node}:${control.dataset.parameter}`);
+    });
     fileInput.disabled = disabled;
-    if (isActive()) status.textContent = `${project.signal.nodes.length} nodes · ${project.signal.connections.length} connections · ${disabled ? 'stop audio to edit topology' : 'start audio to compile this graph in Rust'}`;
+    if (updateStatus && isActive()) status.textContent = `${project.signal.nodes.length} nodes · ${project.signal.connections.length} connections · ${isRunning() ? 'parameters update live; stop audio to edit topology' : 'start audio to compile this graph in Rust'}`;
   }
   function commit(signal, message) {
     project.signal = signal;
@@ -107,18 +112,29 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
           input.max = String(parameter.max);
           input.step = 'any';
         }
-        input.className = 'graph-edit';
+        input.className = 'graph-parameter';
         input.dataset.node = String(node.id);
         input.dataset.parameter = String(parameter.id);
         input.setAttribute('aria-label', `${spec.label} ${node.id} ${parameter.label}`);
         input.value = String(entry.value);
-        input.addEventListener('change', () => {
-          if (!canEdit()) return;
+        input.addEventListener('change', async () => {
+          if (!canChangeParameter()) return;
+          const key = `${node.id}:${parameter.id}`;
           try {
             if (input.value.trim() === '') throw new Error('Enter a parameter value.');
-            commit(setInitialParameter(project.signal, node.id, parameter.id, Number(input.value)), `Updated ${spec.label} ${node.id} ${parameter.label}. Start audio to compile.`);
+            const value = Number(input.value);
+            setInitialParameter(project.signal, node.id, parameter.id, value);
+            if (isRunning()) {
+              pendingParameters.add(key);
+              input.disabled = true;
+              await onParameter(node.id, parameter.id, value);
+            }
+            if (!canChangeParameter()) return;
+            commit(setInitialParameter(project.signal, node.id, parameter.id, value),
+              `Updated ${spec.label} ${node.id} ${parameter.label}${isRunning() ? ' in Rust and project state.' : '. Start audio to compile.'}`);
           }
-          catch (error) { input.value = String(entry.value); fail(error); }
+          catch (error) { input.value = String(project.signal.initialParameters.find((item) => item.nodeId === node.id && item.id === parameter.id)?.value ?? entry.value); fail(error); }
+          finally { pendingParameters.delete(key); refreshRunning(false); }
         });
         row.append(text, input);
         article.appendChild(row);

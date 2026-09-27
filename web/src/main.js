@@ -1580,6 +1580,7 @@ function renderPrimitive(family) {
       onChange: (edited) => {
         byId('signal-path').textContent = `${edited.nodes.length} Rust nodes · ${edited.connections.length} typed routes · stereo output`;
       },
+      onParameter: (nodeId, id, value) => audio.setNodeParameter(nodeId, id, value),
     });
   }
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
