@@ -557,6 +557,14 @@ try {
   await page.locator('select[data-node="6"][data-parameter="0"]').selectOption('1');
   await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('in Rust and project state'));
   await page.waitForTimeout(180);
+  await page.locator('button[aria-label="Use current recording for sample instrument 5"]').click();
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('Recording window 6 is now the source'));
+  assert.equal(await page.locator('select[data-node="6"][data-parameter="0"]').inputValue(), '1', 'recording remains active');
+  const recordingWindowDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const recordingWindowBundle = JSON.parse((await readFile(await (await recordingWindowDownload).path())).toString());
+  assert.equal(recordingWindowBundle.assets[0].label, 'Recording window 6');
+  assert.ok(recordingWindowBundle.assets[0].frames > 1000, 'live snapshot is saved in the graph bundle');
   await page.locator('select[data-node="6"][data-parameter="0"]').selectOption('0');
   await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('in Rust and project state'));
   await page.locator('button[aria-label="Use stopped take for sample instrument 5"]').click();

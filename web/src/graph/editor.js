@@ -239,23 +239,30 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
           publish.className = 'gate-button graph-capture-action';
           publish.textContent = 'Use stopped take';
           publish.setAttribute('aria-label', `Use stopped take for sample instrument ${node.id}`);
-          publish.addEventListener('click', async () => {
+          const publishLive = document.createElement('button');
+          publishLive.type = 'button';
+          publishLive.className = 'gate-button graph-capture-action';
+          publishLive.textContent = 'Use current recording';
+          publishLive.setAttribute('aria-label', `Use current recording for sample instrument ${node.id}`);
+          const useCapture = async (live) => {
             if (!isRunning() || !canChangeParameter()) return;
             const startingRevision = revision;
             busy = true;
             refreshRunning(false);
-            status.textContent = `Publishing loop capture ${source.value} to sample instrument ${node.id}…`;
+            status.textContent = `Publishing ${live ? 'recording window' : 'stopped take'} ${source.value} to sample instrument ${node.id}…`;
             try {
-              const asset = await onCapturePublish(Number(source.value), node.id);
+              const asset = await onCapturePublish(Number(source.value), node.id, live);
               if (destroyed || revision !== startingRevision || !isActive() || !isRunning()) return;
               const assets = [...(project.graphAssets ?? []).filter((item) => item.nodeId !== node.id),
                 { nodeId: node.id, sourceRate: asset.sourceRate, stereo: asset.stereo,
-                  label: `Loop take ${source.value}` }];
-              commit(project.signal, `Loop take ${source.value} is now the source for new notes. Held notes keep their previous source; project bundle includes the take.`, assets);
+                  label: `${live ? 'Recording window' : 'Loop take'} ${source.value}` }];
+              commit(project.signal, `${live ? 'Recording window' : 'Loop take'} ${source.value} is now the source for new notes. Held notes keep their previous source; project bundle includes the take.`, assets);
             } catch (error) { if (revision === startingRevision) fail(error); }
             finally { busy = false; refreshRunning(false); }
-          });
-          row.append(source, publish);
+          };
+          publish.addEventListener('click', () => useCapture(false));
+          publishLive.addEventListener('click', () => useCapture(true));
+          row.append(source, publish, publishLive);
           article.append(row);
         }
       }
@@ -621,7 +628,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
     try {
       const source = builtinSample();
       const signal = parseGraphProject(liveSampler);
-      commit(signal, 'Loaded the live sampler. Start audio, record a loop take, stop recording, then publish it to the sample instrument.',
+      commit(signal, 'Loaded the live sampler. Start audio and record Loop capture 6. Publish the current recording window to Sample instrument 5 at any time, or stop and use the completed take.',
         [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
       onTemplateLoaded?.('live-sampler');
     } catch (error) { fail(error); }
@@ -631,7 +638,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
     try {
       const source = builtinSample();
       const signal = parseGraphProject(sidechainSampler);
-      commit(signal, 'Loaded separate main and sidechain inputs. Start audio, record Loop capture 6, stop, then publish its sidechain take to Sample instrument 5.',
+      commit(signal, 'Loaded separate main and sidechain inputs. Start audio and record Loop capture 6; publish its current window while recording continues, or stop and use the completed sidechain take.',
         [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
       onTemplateLoaded?.('sidechain-sampler');
     } catch (error) { fail(error); }

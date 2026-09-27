@@ -175,9 +175,32 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 4);
           this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
           this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted });
+        } else if (data.type === 'capture-publish-live' && this.engine) {
+          const frames = this.engine.manifold_capture_snapshot_length(data.captureId);
+          if (!frames) {
+            this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted: false });
+            return;
+          }
+          const stereo = new Float32Array(frames * 2);
+          for (let offset = 0; offset < frames;) {
+            const count = Math.min(this.capacity, frames - offset);
+            const copied = this.engine.manifold_capture_snapshot_copy(data.captureId, offset, count);
+            if (copied !== count) throw new Error('Recording window changed during snapshot');
+            stereo.set(new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), copied * 2), offset * 2);
+            offset += copied;
+          }
+          const accepted = this.engine.manifold_capture_publish_live(data.captureId, data.instrumentId) === 1;
+          this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 4);
+          this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
+          this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted,
+            sourceRate: sampleRate, stereo: accepted ? stereo : undefined }, accepted ? [stereo.buffer] : []);
         }
       } catch (error) {
-        this.port.postMessage({ type: data.type === 'capture-request' ? 'capture-error' : 'error', message: String(error) });
+        if (data.type === 'capture-publish-live' || data.type === 'capture-publish') {
+          this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted: false, message: String(error) });
+        } else {
+          this.port.postMessage({ type: data.type === 'capture-request' ? 'capture-error' : 'error', message: String(error) });
+        }
       }
     };
   }

@@ -101,7 +101,11 @@ export class BrowserAudioHost {
             if (pending) {
               this.pendingPublishes.delete(data.requestId);
               clearTimeout(pending.timeout);
-              data.accepted ? pending.resolve() : pending.reject(new Error('Rust rejected the capture publication. Stop recording and try again.'));
+              data.accepted
+                ? pending.resolve(pending.live ? { sourceRate: data.sourceRate, stereo: data.stereo } : undefined)
+                : pending.reject(new Error(data.message ?? (pending.live
+                  ? 'Rust rejected the recording window publication.'
+                  : 'Rust rejected the capture publication. Stop recording and try again.')));
             }
           }
           if ((data.type === 'capture' || data.type === 'capture-error') && this.pendingCapture) {
@@ -315,14 +319,22 @@ export class BrowserAudioHost {
   }
 
   publishCapture(captureId, instrumentId) {
+    return this.publishCaptureRequest(captureId, instrumentId, false);
+  }
+
+  publishLiveCapture(captureId, instrumentId) {
+    return this.publishCaptureRequest(captureId, instrumentId, true);
+  }
+
+  publishCaptureRequest(captureId, instrumentId, live) {
     if (!this.processor || !this.ready) return Promise.reject(new Error('Start audio before publishing a take.'));
     return new Promise((resolve, reject) => {
       const requestId = this.nextPublishRequest++;
       const timeout = setTimeout(() => {
         if (this.pendingPublishes.delete(requestId)) reject(new Error('Capture publication timed out.'));
       }, 10_000);
-      this.pendingPublishes.set(requestId, { resolve, reject, timeout });
-      this.processor.port.postMessage({ type: 'capture-publish', requestId, captureId, instrumentId });
+      this.pendingPublishes.set(requestId, { resolve, reject, timeout, live });
+      this.processor.port.postMessage({ type: live ? 'capture-publish-live' : 'capture-publish', requestId, captureId, instrumentId });
     });
   }
 

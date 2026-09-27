@@ -104,14 +104,32 @@ impl LoopCapture {
         (!self.recording).then_some(self.length)
     }
 
+    /// Current ring window, ordered oldest to newest, including while recording.
+    pub fn snapshot_length(&self) -> usize {
+        self.length
+    }
+
     /// Copy a bounded chunk without allocating. The caller may invoke this between blocks.
     pub fn copy_capture_interleaved(&self, start_frame: usize, output: &mut [f32]) -> usize {
-        if self.recording || start_frame >= self.length {
+        if self.recording {
             return 0;
         }
+        self.copy_snapshot_interleaved(start_frame, output)
+    }
+
+    /// Copy the current ring window between process blocks, including while recording.
+    pub fn copy_snapshot_interleaved(&self, start_frame: usize, output: &mut [f32]) -> usize {
+        if start_frame >= self.length {
+            return 0;
+        }
+        let start = if self.recording && self.length == self.left.len() {
+            self.write
+        } else {
+            self.start
+        };
         let frames = (output.len() / 2).min(self.length - start_frame);
         for frame in 0..frames {
-            let index = (self.start + start_frame + frame) % self.left.len();
+            let index = (start + start_frame + frame) % self.left.len();
             output[frame * 2] = self.left[index];
             output[frame * 2 + 1] = self.right[index];
         }
@@ -258,6 +276,27 @@ mod tests {
         assert_eq!(loop_node.copy_capture_interleaved(0, &mut [0.0; 4]), 0);
         loop_node.set_parameter(0, 0.0);
         assert_eq!(loop_node.capture_length(), Some(2));
+    }
+
+    #[test]
+    fn live_snapshot_tracks_wrapped_ring_without_stopping() {
+        let mut capture = LoopCapture::new(100.0, 0.05, 1.0);
+        capture.set_parameter(0, 1.0);
+        let mut left = [0.0; 7];
+        let mut right = [0.0; 7];
+        capture.process_planar(
+            [&[1., 2., 3., 4., 5., 6., 7.], &[0.; 7]],
+            [&mut left, &mut right],
+        );
+        assert_eq!(capture.capture_length(), None);
+        assert_eq!(capture.snapshot_length(), 5);
+        let mut snapshot = [0.; 10];
+        assert_eq!(capture.copy_snapshot_interleaved(0, &mut snapshot), 5);
+        assert_eq!(snapshot, [3., 0., 4., 0., 5., 0., 6., 0., 7., 0.]);
+        capture.process_planar([&[8., 9.], &[0.; 2]], [&mut left[..2], &mut right[..2]]);
+        assert_eq!(capture.copy_snapshot_interleaved(0, &mut snapshot), 5);
+        assert_eq!(snapshot, [5., 0., 6., 0., 7., 0., 8., 0., 9., 0.]);
+        assert_eq!(capture.copy_capture_interleaved(0, &mut snapshot), 0);
     }
 
     #[test]
