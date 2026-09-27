@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Manifold · Standalone FX module review</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #dfe8eb; background: #101820; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(980px, calc(100% - 36px)); margin: 0 auto; padding: 48px 0 80px; }
+    header { display: flex; justify-content: space-between; gap: 20px; align-items: center; padding-bottom: 18px; border-bottom: 1px solid #3d5660; }
+    .brand, a { color: #80dce0; }
+    a { text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .eyebrow { color: #80dce0; font: 11px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .12em; }
+    h1 { font: 400 clamp(38px, 6vw, 66px) Georgia, serif; margin: 28px 0 12px; }
+    .lead { max-width: 730px; color: #b9c9cf; line-height: 1.6; }
+    .primary { display: inline-block; margin-top: 17px; padding: 12px 18px; background: #266965; border: 1px solid #5ed5c4; color: white; }
+    h2 { font: 400 30px Georgia, serif; margin: 48px 0 16px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .card { padding: 17px; border: 1px solid #3c535d; background: #192630; }
+    .card span { display: block; margin-bottom: 9px; color: #91adb6; font: 10px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .1em; }
+    .card strong { font-size: 18px; font-weight: 500; }
+    .card p, li { color: #b6c8ce; font-size: 13px; line-height: 1.6; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 13px 8px; border-bottom: 1px solid #374d56; text-align: left; vertical-align: top; }
+    th { color: #92aeb8; font-weight: 500; }
+    ul { padding-left: 20px; }
+    .caveat { border-left: 2px solid #dba96b; padding-left: 15px; color: #d6c6b1; line-height: 1.6; }
+    @media (max-width: 680px) { .grid { grid-template-columns: 1fr; } header { align-items: start; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header><div class="brand">MANIFOLD / CHECKPOINT</div><a href="/">Primitive workbench ↗</a></header>
+    <p class="eyebrow">Authored module reconstruction · Standalone FX</p>
+    <h1>Primitives assembled into a project.</h1>
+    <p class="lead">The legacy Standalone FX shell now runs as a dedicated browser module. Its Chorus configuration brings the old control surface together with a Rust/Wasm effect graph, so you can test a project as a whole rather than inspect isolated controls.</p>
+    <a class="primary" href="/fx-module.html">Open the live FX module ↗</a>
+
+    <h2>What crossed the boundary</h2>
+    <div class="grid">
+      <div class="card"><span>Source layout</span><strong>472 × 220 shell</strong><p>Effect selector, XY surface with assignable axes, compact sliders, and dry/wet mix from the old Lua widget tree.</p></div>
+      <div class="card"><span>Behavior</span><strong>21 effect types</strong><p>The original parameter names and normalized defaults are carried over. Each type remembers its five control values.</p></div>
+      <div class="card"><span>Audio</span><strong>Rust/Wasm</strong><p>The existing project graph runs in an AudioWorklet. The host offers a test oscillator or microphone and an output meter.</p></div>
+    </div>
+
+    <h2>Source to browser mapping</h2>
+    <table><thead><tr><th>Legacy source</th><th>Browser module</th><th>Check</th></tr></thead><tbody>
+      <tr><td>Standalone_FX export shell</td><td>472 × 220 device frame</td><td>Desktop layout inspected at source dimensions</td></tr>
+      <tr><td>FX slot dropdown + per-type labels</td><td>21 effect choices, dynamic controls</td><td>Chorus has five controls; Reverb has two</td></tr>
+      <tr><td>XY panel + X/Y assignments</td><td>Canvas pad + axis selectors</td><td>Pointer drag changes both linked sliders</td></tr>
+      <tr><td>Compact slider widgets</td><td>Colored browser controls</td><td>Values reach the Rust/Wasm graph</td></tr>
+      <tr><td>Slot parameters and state</td><td>Portable v2 JSON state</td><td>Type switches remember values; reset and file roundtrip work</td></tr>
+    </tbody></table>
+
+    <h2>Verified in the browser</h2>
+    <ul><li>Production Vite build; desktop and mobile layouts without horizontal overflow.</li><li>Twenty-one selector entries, live Chorus/Reverb controls, XY dragging, remembered values, reset, JSON download/open.</li><li>Rust/Wasm AudioWorklet started from the module and produced a measured oscillator output without page errors.</li></ul>
+    <p class="caveat">The Filter/SVF graph visual and pagination mode from the legacy widget are still pending. The audio path currently uses the selected-only slot; its type-switch tails and gain envelope differ from the old persistent graph. Legacy plug-in preset import and VST3 hosting remain separate work.</p>
+  </main>
+</body>
+</html>

@@ -8,6 +8,8 @@ The new Manifold core: portable Rust DSP, browser and native host adapters, and 
 
 ## Try the primitive workbench
 
+The [Standalone FX module](web/fx-module.html) is the first dedicated reconstruction of an authored legacy panel. It assembles the 472 × 220 shell, 21 effect choices, assignable XY pad, compact controls, and portable state around the Rust/Wasm effect slot. The [module review](web/public/standalone-fx-module-review.html) maps the old widgets to the browser implementation and records the browser checks and remaining visual/audio differences.
+
 Requirements: Rust with `wasm32-unknown-unknown`, Node.js, and a modern browser.
 
 ```sh

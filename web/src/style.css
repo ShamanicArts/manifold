@@ -19,6 +19,9 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .toolbar-separator { color: #667482; font-weight: 400; }
 .toolbar-current { color: #b8c5ce; font-weight: 500; }
 .toolbar-context { font-size: 11px; color: #91a0aa; }
+.toolbar-links { display: flex; align-items: center; gap: 18px; font-size: 11px; }
+.toolbar-links a { color: #aae2df; text-decoration: none; white-space: nowrap; }
+.toolbar-links a:hover { text-decoration: underline; }
 .workspace { max-width: 1540px; margin: 0 auto; display: grid; grid-template-columns: 210px 285px minmax(0, 1fr); grid-template-rows: minmax(300px, auto) auto; gap: 18px; padding: 22px; }
 .library { grid-row: 1 / 3; align-self: start; position: sticky; top: 18px; max-height: calc(100vh - 36px); overflow-y: auto; padding: 16px 0; border: 1px solid #303c49; background: #151d26; border-radius: 6px; }
 .library-heading { padding: 0 15px 13px; }
