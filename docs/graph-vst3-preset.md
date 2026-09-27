@@ -71,6 +71,13 @@ The [large import review](../web/public/graph-large-import-proof.html) shows the
 actual editor and audio. The VST3 project bound is 45 MiB, so this evidence
 establishes REAPER capacity through 15.36 MB, not the whole bound or other hosts.
 
+The `--multi-sample-import` probe adds a second sample instrument with a separate
+10-second 660 Hz stereo asset, routes both instruments through an audio sum, and
+imports a 10,241,747-byte project. After REAPER save and fresh-process reopen,
+all 48,000 stereo render frames match direct Rust within `5.96e-8` peak error.
+Muting only the second asset changes the native render by 0.0214 RMS, confirming
+both sources contribute. The review page shows the scrolled original controls.
+
 The browser graph workbench can now reassign each bound parameter to a displayed
 host slot 1–128. An occupied slot swaps the two bindings; the exported JSON
 preserves the mapping through preset export and host state. Changing a binding

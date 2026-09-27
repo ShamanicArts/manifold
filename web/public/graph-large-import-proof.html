@@ -69,8 +69,20 @@
     </div>
   </section>
   <section>
+    <h2>Two independent sources in one saved graph</h2>
+    <p>A second sample instrument carries its own 10-second 660 Hz stereo source. The original 440 Hz source feeds an SVF filter; both instrument outputs meet at the graph's audio sum. This 10,241,747-byte project has seven nodes and 31 bound controls. REAPER saved it and reopened it in a fresh process; its full one-second render matched direct native Rust within 5.96e-8 peak sample error.</p>
+    <div class="review">
+      <figure><img src="/graph-vst3-reaper-editor-multi-sample-secondary.png" alt="REAPER Graph VST3 editor scrolled to the second original Manifold sample instrument, showing compact sliders and dropdowns"><figcaption>The second sample instrument's original compact controls in the native VST3 editor. The first instrument and SVF controls sit above it.</figcaption></figure>
+      <div>
+        <p>Muting only the second source changes the direct Rust render by 0.0214 RMS, so the matching host audio includes both assets. The imported 10-second sources were checked through the first second of playback.</p>
+        <audio controls preload="metadata" src="/graph-vst3-reaper-multi-sample-import.wav"></audio>
+        <div class="files"><a href="/graph-vst3-reaper-multi-sample-import.wav">Download two-source REAPER WAV</a><a href="/graph-vst3-reaper-multi-sample-import.json">Two-source measurements</a></div>
+      </div>
+    </div>
+  </section>
+  <section>
     <h2>Repeat the check</h2>
-    <p>Build the Linux VST3 bundle, start an isolated X server, then run <code>python scripts/probe-reaper-graph-vst3-gui.py --max-sample-import</code> with <code>MANIFOLD_ISOLATED_DISPLAY=1</code> and that server's <code>DISPLAY</code>. The 30-second case passed three runs with the same audio comparison. The <a href="/graph-vst3-host-proof.html">general host proof</a> covers the smaller imports and the <a href="/graph-host-slot-proof.html">slot proof</a> covers automation and original widget gestures.</p>
+    <p>Build the Linux VST3 bundle, start an isolated X server, then run <code>python scripts/probe-reaper-graph-vst3-gui.py --max-sample-import</code> or <code>--multi-sample-import</code> with <code>MANIFOLD_ISOLATED_DISPLAY=1</code> and that server's <code>DISPLAY</code>. The 30-second case passed three runs; the two-source case passed two runs. The <a href="/graph-vst3-host-proof.html">general host proof</a> covers the smaller imports and the <a href="/graph-host-slot-proof.html">slot proof</a> covers automation and original widget gestures.</p>
   </section>
 </body>
 </html>

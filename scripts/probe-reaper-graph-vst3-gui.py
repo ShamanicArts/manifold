@@ -172,6 +172,17 @@ class X11:
         assert test.XTestFakeButtonEvent(self.display, 1, 0, 0)
         self.lib.XFlush(self.display)
 
+    def scroll_down(self, window: int, ticks: int) -> None:
+        x, y = self.origin(window)
+        test = c.CDLL("libXtst.so.6")
+        test.XTestFakeMotionEvent.argtypes = [c.c_void_p, c.c_int, c.c_int, c.c_int, c.c_ulong]
+        test.XTestFakeButtonEvent.argtypes = [c.c_void_p, c.c_uint, c.c_int, c.c_ulong]
+        assert test.XTestFakeMotionEvent(self.display, -1, x + 700, y + 450, 0)
+        for _ in range(ticks):
+            assert test.XTestFakeButtonEvent(self.display, 5, 1, 0)
+            assert test.XTestFakeButtonEvent(self.display, 5, 0, 0)
+        self.lib.XFlush(self.display)
+
     def assign_first_slot(self, window: int, displayed: int) -> None:
         x, y = self.origin(window)
         self.click(x + 43, y + 211)
@@ -245,10 +256,12 @@ class X11:
 
 def main() -> None:
     max_sample_import = "--max-sample-import" in sys.argv
-    large_sample_import = "--large-sample-import" in sys.argv or max_sample_import
+    multi_sample_import = "--multi-sample-import" in sys.argv
+    large_sample_import = "--large-sample-import" in sys.argv or max_sample_import or multi_sample_import
     sample_import = "--sample-import" in sys.argv or large_sample_import
     sample_frames = 1_440_000 if max_sample_import else 480_000 if large_sample_import else 48_000
-    sample_review = "max-sample" if max_sample_import else "large-sample" if large_sample_import else "sample"
+    sample_review = ("multi-sample" if multi_sample_import else "max-sample" if max_sample_import
+                     else "large-sample" if large_sample_import else "sample")
     manual_picker = "--manual-picker" in sys.argv
     direct_import = "--direct-import" in sys.argv or sample_import or manual_picker
     slot_automation = "--slot-automation" in sys.argv
@@ -280,8 +293,32 @@ def main() -> None:
                     bundle["assets"] = [{"nodeId": 5, "sourceRate": 48_000,
                                          "frames": sample_frames, "label": "440 Hz source",
                                          "pcmF32Base64": base64.b64encode(pcm.tobytes()).decode("ascii")}]
+                    if multi_sample_import:
+                        second = array("f")
+                        for frame in range(sample_frames):
+                            value = 0.25 * math.sin(2 * math.pi * 660 * frame / 48_000)
+                            second.extend((value, value))
+                        bundle["assets"].append({"nodeId": 7, "sourceRate": 48_000,
+                                                 "frames": sample_frames, "label": "660 Hz source",
+                                                 "pcmF32Base64": base64.b64encode(second.tobytes()).decode("ascii")})
+                        bundle["signal"]["nodes"].extend([{"id": 7, "type": "sample-instrument"},
+                                                            {"id": 8, "type": "sum2", "a": 1, "b": 1}])
+                        connections = bundle["signal"]["connections"]
+                        connections.remove({"from": 6, "to": 3, "inputPort": 0})
+                        connections.extend([{"from": 4, "to": 7, "inputPort": 0},
+                                            {"from": 6, "to": 8, "inputPort": 0},
+                                            {"from": 7, "to": 8, "inputPort": 1},
+                                            {"from": 8, "to": 3, "inputPort": 0}])
+                        bundle["signal"]["initialParameters"].extend(
+                            {**entry, "nodeId": 7} for entry in
+                            bundle["signal"]["initialParameters"][:] if entry["nodeId"] == 5)
                     imported_project = work / "sample-voice-with-source.json"
                     imported_project.write_text(json.dumps(bundle, separators=(",", ":")))
+                    if multi_sample_import:
+                        subprocess.run(["cargo", "run", "-q", "-p", "manifold-native", "--example",
+                                        "render_graph_midi_audio", "--", str(imported_project),
+                                        str(work / "preflight.f32"), "1024", "6000", "24000", "100"],
+                                       cwd=ROOT, check=True, timeout=120)
                 else:
                     with wave.open(str(work / "silence.wav"), "wb") as source:
                         source.setnchannels(2)
@@ -447,7 +484,7 @@ reaper.defer(poll)
                             while True:
                                 (work / "query.txt").unlink(missing_ok=True)
                                 (work / "command.txt").write_text("query")
-                                value = float(wait_for(work / "query.txt", "done").split()[1])
+                                value = float(wait_for(work / "query.txt", "done", 90).split()[1])
                                 if abs(value - .5) < 1e-4:
                                     break
                                 if time.monotonic() > deadline:
@@ -461,6 +498,10 @@ reaper.defer(poll)
                             assert value < 0.1, f"direct JSON import did not reach the host: slot 0={value}"
                         imported = x11.capture(window, f"graph-vst3-reaper-editor-{sample_review}-import.png"
                                                if sample_import else "graph-vst3-reaper-editor-direct-import.png")
+                        if multi_sample_import:
+                            x11.scroll_down(window, 7)
+                            time.sleep(.4)
+                            x11.capture(window, "graph-vst3-reaper-editor-multi-sample-secondary.png")
                         (work / "command.txt").write_text("save")
                         wait_for(work / "save.txt", "done")
                         print(f"REAPER direct JSON import: slot 0={value:.3f}; capture: {imported}")
@@ -567,6 +608,23 @@ reaper.defer(poll)
                 peak = max(abs(value) for value in actual)
                 error = max(abs(a - b) for a, b in zip(actual, expected))
                 assert peak > 0.01 and error < 1e-7, (peak, error)
+                second_contribution = None
+                if multi_sample_import:
+                    muted = json.loads(imported_project.read_text())
+                    muted["assets"][1]["pcmF32Base64"] = base64.b64encode(
+                        bytes(sample_frames * 8)).decode("ascii")
+                    muted_path = work / "second-source-muted.json"
+                    muted_path.write_text(json.dumps(muted, separators=(",", ":")))
+                    muted_audio = work / "second-source-muted.f32"
+                    subprocess.run(["cargo", "run", "-q", "-p", "manifold-native", "--example",
+                                    "render_graph_midi_audio", "--", str(muted_path),
+                                    str(muted_audio), "1024", "6000", "24000", "100"],
+                                   cwd=ROOT, check=True, timeout=120)
+                    silent_second = array("f")
+                    silent_second.frombytes(muted_audio.read_bytes())
+                    second_contribution = math.sqrt(sum((a - b) ** 2 for a, b in
+                                                        zip(expected, silent_second)) / len(expected))
+                    assert second_contribution > .01, second_contribution
                 target = PUBLIC / (f"graph-vst3-reaper-{sample_review}-import.wav" if sample_import
                                    else "graph-vst3-reaper-direct-import.wav")
                 target.write_bytes(rendered.read_bytes())
@@ -579,6 +637,8 @@ reaper.defer(poll)
                     "renderFrames": 48_000, "channels": 2, "peak": peak,
                     "reference": reference, "peakError": error,
                     "assetFrames": sample_frames if sample_import else 0,
+                    **({"assetCount": 2, "secondAssetContributionRms": second_contribution}
+                       if multi_sample_import else {}),
                     "render": target.name,
                 }
                 (PUBLIC / (f"graph-vst3-reaper-{sample_review}-import.json" if sample_import
