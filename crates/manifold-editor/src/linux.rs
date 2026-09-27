@@ -127,7 +127,14 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             if Path::new(path).exists() {
                 let request = fs::read_to_string(path).unwrap_or_default();
                 let _ = fs::remove_file(path);
-                if let Some(bars) = request
+                if request.trim() == "free:arm" {
+                    let _ = webview.evaluate_script(
+                        "const mode=document.getElementById('graph-capture-mode'); mode.value='free'; mode.dispatchEvent(new Event('change')); document.getElementById('graph-capture-go').click();"
+                    );
+                } else if request.trim() == "free:stop" {
+                    let _ = webview
+                        .evaluate_script("document.getElementById('graph-capture-go')?.click();");
+                } else if let Some(bars) = request
                     .trim()
                     .strip_prefix("bars:")
                     .and_then(|value| value.parse::<f64>().ok())

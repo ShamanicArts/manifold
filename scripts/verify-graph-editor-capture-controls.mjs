@@ -52,8 +52,26 @@ try {
   const barStart = await page.evaluate(() => window.__captureMessages.filter((message) => message.kind === 'capture-start').at(-1));
   assert.deepEqual(barStart, { version: 1, kind: 'capture-start', nodeId: 10, bars: 0.5 });
   await page.evaluate(() => window.manifoldCaptureResult(false, 'Host tempo unavailable.'));
+  await page.locator('#graph-capture-mode').selectOption('free');
+  assert.equal(await page.locator('#graph-capture-seconds').isHidden(), true);
+  assert.equal(await page.locator('#graph-capture-go').textContent(), 'Arm free capture');
+  await page.locator('#graph-capture-go').click();
+  assert.deepEqual(await page.evaluate(() => window.__captureMessages.at(-1)),
+    { version: 1, kind: 'capture-free-arm', nodeId: 10 });
+  assert.equal(await page.locator('#graph-capture-go').isDisabled(), true);
+  await page.evaluate(() => window.manifoldEditorStatus('Free capture armed. Press Stop free capture to publish.'));
+  assert.equal(await page.locator('#graph-capture-go').textContent(), 'Stop free capture');
+  assert.equal(await page.locator('#graph-capture-source').isDisabled(), true);
+  await page.locator('#graph-capture-go').click();
+  assert.deepEqual(await page.evaluate(() => window.__captureMessages.at(-1)),
+    { version: 1, kind: 'capture-free-stop', nodeId: 10 });
+  await page.evaluate(() => window.manifoldEditorStatus('Freezing free capture…'));
+  await page.waitForFunction(() => window.__captureMessages.filter((message) => message.kind === 'capture-finish').length >= 2);
+  await page.evaluate(() => window.manifoldCaptureResult(true, 'Free capture published.'));
+  assert.equal(await page.locator('#graph-capture-go').textContent(), 'Arm free capture');
+  assert.equal(await page.locator('#graph-capture-source').isEnabled(), true);
   assert.deepEqual(errors, []);
-  console.log('Graph editor capture: seconds and bars requests, result poll, and completion passed');
+  console.log('Graph editor capture: seconds, bars, free arm/stop, result poll, and completion passed');
 } finally {
   await browser.close();
 }

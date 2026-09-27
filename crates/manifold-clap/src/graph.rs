@@ -293,6 +293,44 @@ impl Instance {
         accepted
     }
 
+    pub(super) fn request_capture_free_arm(&self, node: u32) -> bool {
+        let Ok(_control) = self.control.lock() else {
+            return false;
+        };
+        let Ok(mut window) = self.capture_window.lock() else {
+            return false;
+        };
+        let accepted = self
+            .capture_mailbox
+            .lock()
+            .ok()
+            .and_then(|mailbox| mailbox.clone())
+            .is_some_and(|mailbox| mailbox.arm_free(node));
+        if accepted {
+            *window = None;
+        }
+        accepted
+    }
+
+    pub(super) fn request_capture_free_stop(&self, node: u32) -> bool {
+        let Ok(_control) = self.control.lock() else {
+            return false;
+        };
+        let Ok(mut window) = self.capture_window.lock() else {
+            return false;
+        };
+        let accepted = self
+            .capture_mailbox
+            .lock()
+            .ok()
+            .and_then(|mailbox| mailbox.clone())
+            .is_some_and(|mailbox| mailbox.stop_free(node));
+        if accepted {
+            *window = Some(CaptureWindow::Free);
+        }
+        accepted
+    }
+
     pub(super) fn finish_capture(&self, instrument: u32, label: &str) -> Option<bool> {
         let _control = self.control.lock().ok()?;
         let mailbox = self
@@ -2039,6 +2077,26 @@ mod tests {
             -2.0,
             "the prior sidechain ring survived publication"
         );
+        drop(second);
+        assert!(instance.request_capture_free_arm(10));
+        for _ in 0..3 {
+            assert_eq!(unsafe { process(plugin, &block) }, CLAP_PROCESS_CONTINUE);
+        }
+        assert!(instance.request_capture_free_stop(10));
+        let mut free_published = false;
+        for _ in 0..100 {
+            assert_eq!(unsafe { process(plugin, &block) }, CLAP_PROCESS_CONTINUE);
+            if let Some(result) = instance.finish_capture(5, "CLAP free take") {
+                assert!(result);
+                free_published = true;
+                break;
+            }
+        }
+        assert!(free_published);
+        let free_state: serde_json::Value =
+            serde_json::from_slice(&instance.state_bytes().unwrap()).unwrap();
+        assert_eq!(free_state["signal"]["captureWindowMode"], "free");
+        assert_eq!(free_state["assets"][0]["frames"], 384);
         instance.deactivate();
     }
 

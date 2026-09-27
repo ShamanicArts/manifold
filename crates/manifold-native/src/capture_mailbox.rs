@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crossbeam_queue::ArrayQueue;
+use manifold_core::capture_timing::free_frames_from_offsets;
 
 use crate::NativeProcessor;
 
@@ -19,9 +20,10 @@ pub enum CaptureError {
 }
 
 #[derive(Clone, Copy)]
-struct Request {
-    node: u32,
-    frames: usize,
+enum Request {
+    Window { node: u32, frames: usize },
+    FreeArm { node: u32 },
+    FreeStop { node: u32 },
 }
 
 enum Outcome {
@@ -34,7 +36,8 @@ enum Outcome {
 }
 
 struct Active {
-    request: Request,
+    node: u32,
+    frames: usize,
     pcm: Vec<f32>,
     copied: usize,
 }
@@ -42,6 +45,7 @@ struct Active {
 pub struct CaptureMailbox {
     max_frames: usize,
     busy: AtomicBool,
+    free_stop_queued: AtomicBool,
     requests: ArrayQueue<Request>,
     free: ArrayQueue<Vec<f32>>,
     ready: ArrayQueue<Outcome>,
@@ -58,7 +62,8 @@ impl CaptureMailbox {
         Some(Arc::new(Self {
             max_frames,
             busy: AtomicBool::new(false),
-            requests: ArrayQueue::new(1),
+            free_stop_queued: AtomicBool::new(false),
+            requests: ArrayQueue::new(2),
             free,
             ready: ArrayQueue::new(1),
         }))
@@ -77,8 +82,50 @@ impl CaptureMailbox {
         {
             return false;
         }
-        if self.requests.push(Request { node, frames }).is_err() {
+        if self
+            .requests
+            .push(Request::Window { node, frames })
+            .is_err()
+        {
             self.busy.store(false, Ordering::Release);
+            return false;
+        }
+        true
+    }
+
+    /// The callback records the cursor when it next services the command.
+    pub fn arm_free(&self, node: u32) -> bool {
+        if node == 0
+            || self.free.is_empty()
+            || self
+                .busy
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_err()
+        {
+            return false;
+        }
+        self.free_stop_queued.store(false, Ordering::Release);
+        if self.requests.push(Request::FreeArm { node }).is_err() {
+            self.busy.store(false, Ordering::Release);
+            return false;
+        }
+        true
+    }
+
+    /// A second request may queue directly behind arm; equal offsets produce
+    /// one frame, matching the old free trigger.
+    pub fn stop_free(&self, node: u32) -> bool {
+        if node == 0
+            || !self.busy.load(Ordering::Acquire)
+            || self
+                .free_stop_queued
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_err()
+        {
+            return false;
+        }
+        if self.requests.push(Request::FreeStop { node }).is_err() {
+            self.free_stop_queued.store(false, Ordering::Release);
             return false;
         }
         true
@@ -89,6 +136,7 @@ impl CaptureMailbox {
     pub fn take(self: &Arc<Self>) -> Option<Result<CapturedWindow, CaptureError>> {
         let outcome = self.ready.pop()?;
         self.busy.store(false, Ordering::Release);
+        self.free_stop_queued.store(false, Ordering::Release);
         Some(match outcome {
             Outcome::Ready { node, frames, pcm } => Ok(CapturedWindow {
                 node,
@@ -131,6 +179,7 @@ impl Drop for CapturedWindow {
 pub struct AudioCaptureWorker {
     mailbox: Arc<CaptureMailbox>,
     active: Option<Active>,
+    armed: Option<(u32, usize, usize)>,
 }
 
 impl AudioCaptureWorker {
@@ -138,25 +187,60 @@ impl AudioCaptureWorker {
         Self {
             mailbox,
             active: None,
+            armed: None,
         }
     }
 
     pub fn service(&mut self, processor: &mut NativeProcessor) {
         if self.active.is_none() {
-            let Some(request) = self.mailbox.requests.pop() else {
+            let Some(command) = self.mailbox.requests.pop() else {
                 return;
+            };
+            let (node, frames) = match command {
+                Request::FreeArm { node } => {
+                    self.armed = processor
+                        .retrospective_cursor(node.into())
+                        .map(|(start, capacity)| (node, start, capacity));
+                    return;
+                }
+                Request::FreeStop { node } => {
+                    let Some((armed_node, start, capacity)) = self.armed.take() else {
+                        self.fail(CaptureError::StageRejected);
+                        return;
+                    };
+                    let Some((end, current_capacity)) = processor.retrospective_cursor(node.into())
+                    else {
+                        self.fail(CaptureError::StageRejected);
+                        return;
+                    };
+                    if armed_node != node || current_capacity != capacity {
+                        self.fail(CaptureError::StageRejected);
+                        return;
+                    }
+                    let Some(frames) =
+                        free_frames_from_offsets(start as i64, end as i64, capacity as u32)
+                            .map(|frames| frames as usize)
+                            .filter(|frames| *frames <= self.mailbox.max_frames)
+                    else {
+                        self.fail(CaptureError::StageRejected);
+                        return;
+                    };
+                    (node, frames)
+                }
+                Request::Window { node, frames } => (node, frames),
             };
             let Some(pcm) = self.mailbox.free.pop() else {
                 self.fail(CaptureError::StageLost);
                 return;
             };
-            if !processor.begin_prepared_capture_staging(request.node.into(), request.frames) {
+            if !processor.begin_prepared_capture_staging(node.into(), frames) {
                 let _ = self.mailbox.free.push(pcm);
                 self.fail(CaptureError::StageRejected);
                 return;
             }
             self.active = Some(Active {
-                request,
+                node,
+                frames,
                 pcm,
                 copied: 0,
             });
@@ -164,7 +248,8 @@ impl AudioCaptureWorker {
         let Some(active) = self.active.as_mut() else {
             return;
         };
-        let node = active.request.node;
+        let node = active.node;
+        let requested_frames = active.frames;
         match processor.capture_staging_status(node.into()) {
             Some(false) => return,
             Some(true) => {}
@@ -174,11 +259,11 @@ impl AudioCaptureWorker {
             }
         }
         let length = processor.capture_staged_length(node.into());
-        if length != Some(active.request.frames) {
+        if length != Some(requested_frames) {
             self.finish_failure(processor, CaptureError::StageLost);
             return;
         }
-        let frames = (active.request.frames - active.copied).min(COPY_FRAMES_PER_SERVICE);
+        let frames = (active.frames - active.copied).min(COPY_FRAMES_PER_SERVICE);
         let offset = active.copied * 2;
         if processor.copy_capture_staged_interleaved(
             node.into(),
@@ -190,12 +275,12 @@ impl AudioCaptureWorker {
             return;
         }
         active.copied += frames;
-        if active.copied == active.request.frames {
+        if active.copied == requested_frames {
             let done = self.active.take().unwrap();
             processor.cancel_capture_staging(node.into());
             let pushed = self.mailbox.ready.push(Outcome::Ready {
                 node,
-                frames: done.request.frames,
+                frames: requested_frames,
                 pcm: done.pcm,
             });
             debug_assert!(pushed.is_ok());
@@ -204,7 +289,7 @@ impl AudioCaptureWorker {
 
     fn finish_failure(&mut self, processor: &mut NativeProcessor, error: CaptureError) {
         if let Some(active) = self.active.take() {
-            processor.cancel_capture_staging(active.request.node.into());
+            processor.cancel_capture_staging(active.node.into());
             let _ = self.mailbox.free.push(active.pcm);
         }
         self.fail(error);
@@ -221,7 +306,9 @@ impl Drop for AudioCaptureWorker {
         if let Some(active) = self.active.take() {
             let _ = self.mailbox.free.push(active.pcm);
             self.fail(CaptureError::StageLost);
-        } else if self.mailbox.requests.pop().is_some() {
+        } else if self.mailbox.requests.pop().is_some()
+            || (self.mailbox.busy.load(Ordering::Acquire) && self.mailbox.ready.is_empty())
+        {
             self.fail(CaptureError::StageLost);
         }
     }
@@ -354,5 +441,98 @@ mod tests {
         let queued = AudioCaptureWorker::new(Arc::clone(&mailbox));
         drop(queued);
         assert!(matches!(mailbox.take(), Some(Err(CaptureError::StageLost))));
+        let mut prepared = NativeProject::parse(include_bytes!(
+            "../../../projects/graph-workspace/retrospective-multisource.json"
+        ))
+        .unwrap()
+        .prepare_with_state(48_000.0, 128)
+        .unwrap();
+        assert!(mailbox.arm_free(10));
+        let mut armed = AudioCaptureWorker::new(Arc::clone(&mailbox));
+        armed.service(&mut prepared.processor);
+        drop(armed);
+        assert!(matches!(mailbox.take(), Some(Err(CaptureError::StageLost))));
+        assert!(mailbox.request(10, 128));
+    }
+
+    #[test]
+    fn free_start_stop_uses_audio_block_cursors_and_reopens_as_a_sample() {
+        let original =
+            include_bytes!("../../../projects/graph-workspace/retrospective-multisource.json");
+        let project = NativeProject::parse(original).unwrap();
+        let mut prepared = project.prepare_with_state(48_000.0, 128).unwrap();
+        let mailbox = CaptureMailbox::new(48_000).unwrap();
+        let mut worker = AudioCaptureWorker::new(Arc::clone(&mailbox));
+        let main = [0.0; 128];
+        let side = [-0.25; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        let mut block =
+            |worker: &mut AudioCaptureWorker,
+             prepared: &mut crate::project::PreparedNativeProject| {
+                worker.service(&mut prepared.processor);
+                prepared
+                    .processor
+                    .process(AudioBlock {
+                        main: Some([&main, &main]),
+                        sidechain: Some([&side, &side]),
+                        output: [&mut left, &mut right],
+                        events: &[],
+                    })
+                    .unwrap();
+                worker.service(&mut prepared.processor);
+            };
+        block(&mut worker, &mut prepared);
+        assert!(mailbox.arm_free(10));
+        worker.service(&mut prepared.processor);
+        assert!(!mailbox.arm_free(6));
+        assert!(!mailbox.request(6, 128));
+        for _ in 0..3 {
+            block(&mut worker, &mut prepared);
+        }
+        assert!(mailbox.stop_free(10));
+        assert!(!mailbox.stop_free(10));
+        let captured = loop {
+            block(&mut worker, &mut prepared);
+            if let Some(result) = mailbox.take() {
+                break result.unwrap();
+            }
+        };
+        assert_eq!(captured.node, 10);
+        assert_eq!(captured.frames, 384);
+        assert!(
+            captured
+                .stereo()
+                .iter()
+                .all(|value| (*value + 1.0).abs() < 1e-6)
+        );
+        let saved = NativeProject::embed_capture_asset_with_window(
+            original,
+            10,
+            5,
+            captured.stereo(),
+            48_000,
+            "Free sidechain",
+            crate::host_transport::CaptureWindow::Free,
+        )
+        .unwrap();
+        let document: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+        assert_eq!(document["signal"]["captureWindowMode"], "free");
+        assert_eq!(document["assets"][0]["frames"], 384);
+        NativeProject::parse(&saved)
+            .unwrap()
+            .prepare(48_000.0, 128)
+            .unwrap();
+        drop(captured);
+        assert!(mailbox.arm_free(10));
+        worker.service(&mut prepared.processor);
+        assert!(mailbox.stop_free(10));
+        let one_frame = loop {
+            block(&mut worker, &mut prepared);
+            if let Some(result) = mailbox.take() {
+                break result.unwrap();
+            }
+        };
+        assert_eq!(one_frame.frames, 1);
     }
 }

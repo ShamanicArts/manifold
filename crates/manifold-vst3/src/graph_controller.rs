@@ -69,6 +69,33 @@ impl GraphShared {
         self.capture_window(node, bars, c"manifold.graph.capture.bars.v1")
     }
 
+    pub fn capture_free_arm(&self, node: u32) -> Result<(), &'static str> {
+        self.capture_free_command(node, c"manifold.graph.capture.free.arm.v1")
+    }
+
+    pub fn capture_free_stop(&self, node: u32) -> Result<(), &'static str> {
+        self.capture_free_command(node, c"manifold.graph.capture.free.stop.v1")
+    }
+
+    fn capture_free_command(&self, node: u32, kind: &std::ffi::CStr) -> Result<(), &'static str> {
+        if node == 0 {
+            return Err("invalid capture source");
+        }
+        let (message, peer) = self.capture_message(kind)?;
+        let attributes = unsafe { ComRef::from_raw(message.getAttributes()) }
+            .ok_or("host message has no attributes")?;
+        let request = node.to_le_bytes();
+        if unsafe { attributes.setBinary(c"node".as_ptr(), request.as_ptr().cast(), 4) }
+            != kResultOk
+        {
+            return Err("host rejected free capture request");
+        }
+        if unsafe { peer.notify(message.as_ptr()) } != kResultOk {
+            return Err("processor rejected free capture request");
+        }
+        Ok(())
+    }
+
     fn capture_window(
         &self,
         node: u32,

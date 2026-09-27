@@ -8,6 +8,7 @@ use manifold_core::capture_timing::{retrospective_frames, samples_per_bar_at_met
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CaptureWindow {
     Seconds(f64),
+    Free,
     Bars {
         bars: f64,
         tempo_bpm: f64,

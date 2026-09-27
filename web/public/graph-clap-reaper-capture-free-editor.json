@@ -1,0 +1,16 @@
+{
+  "host": "REAPER Linux CLAP",
+  "editorGesture": "Free start/stop",
+  "sourceNode": 6,
+  "instrumentNode": 5,
+  "captureFrames": 24576,
+  "capturePeak": 0.5,
+  "savedAndReopened": true,
+  "freshRenderFrames": 288000,
+  "freshRenderPeak": 0.09842514991760254,
+  "leadPeak": 0.0,
+  "peakErrorVsNative": 5.960464477539063e-08,
+  "editorScreenshot": "graph-clap-reaper-capture-free-editor.png",
+  "windowMode": "free",
+  "effectiveSeconds": 0.512
+}

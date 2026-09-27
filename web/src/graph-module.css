@@ -17,7 +17,9 @@ h1 { margin: 0; font-size: 26px; line-height: 1.1; font-weight: 600; letter-spac
 .graph-capture[hidden] { display: none; }
 .graph-capture label { display: inline-flex; align-items: center; gap: 6px; }
 .graph-capture select, .graph-capture input { height: 25px; background: #172b3b; border: 1px solid #416179; color: #e2edf0; font: inherit; padding: 2px 5px; }
+.graph-capture select { appearance: none; -webkit-appearance: none; padding-right: 16px; background-color: #172b3b; color-scheme: dark; }
 .graph-capture input { width: 56px; }
+.graph-capture input[hidden] { display: none; }
 .graph-capture button { margin-left: auto; }
 #graph-source { margin-left: auto; color: #91a5b9; }
 #graph-widget-root { display: grid; grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); align-items: start; gap: 12px; }

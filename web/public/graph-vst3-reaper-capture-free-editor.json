@@ -1,0 +1,16 @@
+{
+  "host": "REAPER Linux VST3",
+  "editorGesture": "Free start/stop",
+  "sourceNode": 6,
+  "instrumentNode": 5,
+  "captureFrames": 16384,
+  "capturePeak": 0.5,
+  "savedAndReopened": true,
+  "freshRenderFrames": 288000,
+  "freshRenderPeak": 0.13919425010681152,
+  "leadPeak": 0.0,
+  "peakErrorVsNative": 5.960464477539063e-08,
+  "editorScreenshot": "graph-vst3-reaper-capture-free-editor.png",
+  "windowMode": "free",
+  "effectiveSeconds": 0.3413333333333333
+}

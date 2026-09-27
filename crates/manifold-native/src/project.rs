@@ -517,6 +517,11 @@ impl NativeProject {
                     signal["captureWindowMode"] = serde_json::json!("seconds");
                     signal["captureWindowSeconds"] = serde_json::json!(seconds);
                 }
+                crate::host_transport::CaptureWindow::Free => {
+                    signal["captureWindowMode"] = serde_json::json!("free");
+                    signal["captureWindowSeconds"] =
+                        serde_json::json!((stereo.len() / 2) as f64 / f64::from(source_rate));
+                }
                 crate::host_transport::CaptureWindow::Bars {
                     bars,
                     tempo_bpm,

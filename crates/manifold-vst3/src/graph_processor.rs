@@ -185,6 +185,38 @@ impl GraphProcessor {
         accepted
     }
 
+    fn request_capture_free_arm(&self, node: u32) -> bool {
+        let Ok(mut window) = self.capture_window.lock() else {
+            return false;
+        };
+        let accepted = self
+            .capture_mailbox
+            .lock()
+            .ok()
+            .and_then(|mailbox| mailbox.clone())
+            .is_some_and(|mailbox| mailbox.arm_free(node));
+        if accepted {
+            *window = None;
+        }
+        accepted
+    }
+
+    fn request_capture_free_stop(&self, node: u32) -> bool {
+        let Ok(mut window) = self.capture_window.lock() else {
+            return false;
+        };
+        let accepted = self
+            .capture_mailbox
+            .lock()
+            .ok()
+            .and_then(|mailbox| mailbox.clone())
+            .is_some_and(|mailbox| mailbox.stop_free(node));
+        if accepted {
+            *window = Some(CaptureWindow::Free);
+        }
+        accepted
+    }
+
     /// Poll from a control thread, encode portable state, then queue a prepared
     /// replacement. `None` means the callback has not finished staging yet.
     fn finish_capture(&self, instrument: u32, label: &str) -> Option<bool> {
@@ -617,6 +649,29 @@ impl IConnectionPointTrait for GraphProcessor {
                 self.request_capture_bars(node, window)
             } else {
                 self.request_capture_seconds(node, window)
+            };
+            return if accepted { kResultOk } else { kResultFalse };
+        }
+        if kind == b"manifold.graph.capture.free.arm.v1"
+            || kind == b"manifold.graph.capture.free.stop.v1"
+        {
+            let mut data: *const std::ffi::c_void = std::ptr::null();
+            let mut size = 0;
+            if unsafe { attributes.getBinary(c"node".as_ptr(), &mut data, &mut size) } != kResultOk
+                || data.is_null()
+                || size != 4
+            {
+                return kResultFalse;
+            }
+            let node = u32::from_le_bytes(
+                unsafe { std::slice::from_raw_parts(data.cast::<u8>(), 4) }
+                    .try_into()
+                    .unwrap(),
+            );
+            let accepted = if kind == b"manifold.graph.capture.free.arm.v1" {
+                self.request_capture_free_arm(node)
+            } else {
+                self.request_capture_free_stop(node)
             };
             return if accepted { kResultOk } else { kResultFalse };
         }
@@ -1498,6 +1553,38 @@ mod tests {
             "the prior sidechain ring survived publication"
         );
         drop(second);
+        let arm = capture_message("manifold.graph.capture.free.arm.v1");
+        let arm_attributes = unsafe { ComRef::from_raw(arm.getAttributes()) }.unwrap();
+        let node = 10_u32.to_le_bytes();
+        assert_eq!(
+            unsafe { arm_attributes.setBinary(c"node".as_ptr(), node.as_ptr().cast(), 4) },
+            kResultOk
+        );
+        assert_eq!(unsafe { component.notify(arm.as_ptr()) }, kResultOk);
+        for _ in 0..3 {
+            assert_eq!(unsafe { component.process(&mut data) }, kResultOk);
+        }
+        let stop = capture_message("manifold.graph.capture.free.stop.v1");
+        let stop_attributes = unsafe { ComRef::from_raw(stop.getAttributes()) }.unwrap();
+        assert_eq!(
+            unsafe { stop_attributes.setBinary(c"node".as_ptr(), node.as_ptr().cast(), 4) },
+            kResultOk
+        );
+        assert_eq!(unsafe { component.notify(stop.as_ptr()) }, kResultOk);
+        let mut free_published = false;
+        for _ in 0..100 {
+            assert_eq!(unsafe { component.process(&mut data) }, kResultOk);
+            if let Some(result) = component.finish_capture(5, "VST3 free take") {
+                assert!(result);
+                free_published = true;
+                break;
+            }
+        }
+        assert!(free_published);
+        let free_state: serde_json::Value =
+            serde_json::from_slice(&component.capture_state().unwrap()).unwrap();
+        assert_eq!(free_state["signal"]["captureWindowMode"], "free");
+        assert_eq!(free_state["assets"][0]["frames"], 384);
         assert_eq!(component.restore_bytes(authored.to_vec()), kResultOk);
         assert_eq!(unsafe { component.process(&mut data) }, kResultOk);
         let fresh_mailbox = component.capture_mailbox.lock().unwrap().clone().unwrap();

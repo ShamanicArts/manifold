@@ -23,6 +23,7 @@ const gestures = new Set();
 let captureTimer = null;
 let captureInstrument = null;
 let captureStarted = false;
+let freeCaptureArmed = false;
 const status = (message) => { byId('graph-status').textContent = message; };
 const send = (kind, id, value) => {
   if (!editorMode) return;
@@ -56,11 +57,15 @@ function paint(snapshot) {
   active = snapshot;
   const nextSignature = JSON.stringify([snapshot.nodes, snapshot.controls.map(({ id, nodeId, parameterId, min, max, discrete }) =>
     [id, nodeId, parameterId, min, max, discrete])]);
-  if (captureTimer && nextSignature !== signature) {
+  if ((captureTimer || freeCaptureArmed) && nextSignature !== signature) {
     clearInterval(captureTimer);
     captureTimer = null;
     captureStarted = false;
+    freeCaptureArmed = false;
     byId('graph-capture-go').disabled = false;
+    byId('graph-capture-source').disabled = false;
+    byId('graph-capture-mode').disabled = false;
+    byId('graph-capture-go').textContent = 'Capture to instrument';
     status('Capture interrupted by a project change.');
   }
   const sources = snapshot.nodes.filter(({ type }) => type === 'retrospective-capture' || type === 'loop-capture');
@@ -175,20 +180,31 @@ function paint(snapshot) {
   }
   byId('graph-count').textContent = `${snapshot.nodes.length} nodes · ${snapshot.controls.length} bound controls`;
   byId('graph-source').textContent = editorMode ? 'DAW host' : 'Browser preview';
-  if (!captureTimer) status(editorMode ? 'Host automation and widget gestures use fixed graph slots.'
+  if (!captureTimer && !freeCaptureArmed) status(editorMode ? 'Host automation and widget gestures use fixed graph slots.'
     : 'Inspect the original widgets here. Open the workbench to hear this graph.');
 }
 
 window.manifoldEditorReceive = (snapshot) => paint(snapshot);
 window.manifoldEditorStatus = (message) => {
   status(message);
+  if (message.startsWith('Free capture armed')) {
+    freeCaptureArmed = true;
+    byId('graph-capture-go').disabled = false;
+    byId('graph-capture-go').textContent = 'Stop free capture';
+    byId('graph-capture-source').disabled = true;
+    byId('graph-capture-mode').disabled = true;
+  }
   if (captureTimer && message.startsWith('Freezing')) captureStarted = true;
 };
 window.manifoldCaptureResult = (ok, message) => {
   if (captureTimer) clearInterval(captureTimer);
   captureTimer = null;
   captureStarted = false;
+  freeCaptureArmed = false;
   byId('graph-capture-go').disabled = false;
+  byId('graph-capture-source').disabled = false;
+  byId('graph-capture-mode').disabled = false;
+  byId('graph-capture-go').textContent = byId('graph-capture-mode').value === 'free' ? 'Arm free capture' : 'Capture to instrument';
   status(message || (ok ? 'Capture published.' : 'Capture failed.'));
 };
 if (window.__manifoldPendingState) {
@@ -201,7 +217,11 @@ byId('graph-note').addEventListener('click', () => paint(snapshotFromProject(not
 byId('graph-tone').addEventListener('click', () => paint(snapshotFromProject(toneTexture)));
 byId('graph-capture-mode').addEventListener('change', () => {
   const bars = byId('graph-capture-mode').value === 'bars';
+  const free = byId('graph-capture-mode').value === 'free';
   const input = byId('graph-capture-seconds');
+  input.hidden = free;
+  byId('graph-capture-window-label').textContent = free ? 'Mode' : 'Window';
+  byId('graph-capture-go').textContent = free ? 'Arm free capture' : 'Capture to instrument';
   input.min = bars ? '0.0625' : '0.05';
   input.max = bars ? '16' : '30';
   input.step = bars ? '0.0625' : '0.05';
@@ -211,18 +231,29 @@ byId('graph-capture-go').addEventListener('click', () => {
   const nodeId = Number(byId('graph-capture-source').value);
   const duration = Number(byId('graph-capture-seconds').value);
   const bars = byId('graph-capture-mode').value === 'bars';
+  const free = byId('graph-capture-mode').value === 'free';
   if (!Number.isInteger(nodeId) || !Number.isInteger(captureInstrument)
-    || !Number.isFinite(duration) || duration < (bars ? 0.0625 : 0.05)
-    || duration > (bars ? 16 : 30) || !window.ipc?.postMessage) {
+    || (!free && (!Number.isFinite(duration) || duration < (bars ? 0.0625 : 0.05)
+    || duration > (bars ? 16 : 30))) || !window.ipc?.postMessage) {
     status(`Choose a source and a window from ${bars ? '1/16 to 16 bars' : '0.05 to 30 seconds'}.`);
     return;
   }
   if (captureTimer) clearInterval(captureTimer);
   byId('graph-capture-go').disabled = true;
   captureStarted = false;
+  if (free && !freeCaptureArmed) {
+    window.ipc.postMessage(JSON.stringify({ version: 1, kind: 'capture-free-arm', nodeId }));
+    status(`Arming free capture from node ${nodeId}…`);
+    return;
+  }
+  if (free) {
+    window.ipc.postMessage(JSON.stringify({ version: 1, kind: 'capture-free-stop', nodeId }));
+    status(`Marking the end of free capture from node ${nodeId}…`);
+  } else {
   window.ipc.postMessage(JSON.stringify({ version: 1, kind: 'capture-start', nodeId,
     ...(bars ? { bars: duration } : { seconds: duration }) }));
   status(`Capturing ${duration} ${bars ? 'bars' : 'seconds'} from node ${nodeId}…`);
+  }
   const deadline = Date.now() + 15_000;
   captureTimer = setInterval(() => {
     if (Date.now() > deadline) {

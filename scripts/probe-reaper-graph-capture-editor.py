@@ -31,7 +31,9 @@ def wait_for(path: Path, timeout: float = 15) -> str:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if path.exists():
-            return path.read_text()
+            value = path.read_text()
+            if value:
+                return value
         time.sleep(0.1)
     raise TimeoutError(f"waiting for {path}")
 
@@ -76,7 +78,9 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--format", choices=("clap", "vst3"), default="vst3")
     parser.add_argument("--bars", type=float, help="capture this many bars at 90 BPM in 3/4")
+    parser.add_argument("--free", action="store_true", help="arm and stop free capture through the packaged editor")
     args = parser.parse_args()
+    assert not (args.free and args.bars is not None)
     if args.bars is not None:
         assert 0.0625 <= args.bars <= 16
     assert os.environ.get("MANIFOLD_ISOLATED_DISPLAY") == "1"
@@ -188,13 +192,19 @@ reaper.defer(poll)
                     time.sleep(3)
                     (work / "capture-go.status").unlink(missing_ok=True)
                     (work / "capture-go").write_text(
-                        f"bars:{args.bars}" if args.bars is not None else "go")
-                    if args.format == "vst3":
+                        "free:arm" if args.free else f"bars:{args.bars}" if args.bars is not None else "go")
+                    if args.free:
+                        status = wait_for(work / "capture-go.status", 15)
+                        assert status.startswith("Free capture armed"), status
+                        time.sleep(.3)
+                        (work / "capture-go.status").unlink(missing_ok=True)
+                        (work / "capture-go").write_text("free:stop")
+                    elif args.format == "vst3":
                         time.sleep(.5)
                         command("stop")
                     status = wait_for(work / "capture-go.status", 15)
                     assert status.startswith("Freezing"), status
-                    if args.format == "vst3":
+                    if args.format == "vst3" and not args.free:
                         command("play")
                     time.sleep(3)
                     command("stop")
@@ -207,11 +217,17 @@ reaper.defer(poll)
                             break
                         assert time.monotonic() < deadline, "editor capture did not publish an asset"
                     asset = state["assets"][0]
-                    expected_frames = (round(48000 * 60 / 90 * 3 * args.bars)
+                    expected_frames = (asset["frames"] if args.free else
+                                       round(48000 * 60 / 90 * 3 * args.bars)
                                        if args.bars is not None else 96000)
                     assert asset["nodeId"] == 5 and asset["frames"] == expected_frames, asset
+                    if args.free:
+                        assert 1000 < expected_frames < 96000, expected_frames
                     capture_signal = state["signal"]
-                    if args.bars is not None:
+                    if args.free:
+                        assert capture_signal["captureWindowMode"] == "free", capture_signal
+                        assert capture_signal["captureWindowSeconds"] == expected_frames / 48000, capture_signal
+                    elif args.bars is not None:
                         assert capture_signal["captureWindowMode"] == "bars", capture_signal
                         assert capture_signal["captureWindowBars"] == args.bars, capture_signal
                         assert capture_signal["captureTempoBpm"] == 90, capture_signal
@@ -225,7 +241,7 @@ reaper.defer(poll)
                     pcm.frombytes(base64.b64decode(asset["pcmF32Base64"]))
                     peak = max(abs(sample) for sample in pcm)
                     assert .45 < peak < .55, peak
-                    suffix = "-bars" if args.bars is not None else ""
+                    suffix = "-free" if args.free else "-bars" if args.bars is not None else ""
                     screenshot = ROOT / f"web/public/graph-{args.format}-reaper-capture{suffix}-editor.png"
                     subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "x11grab",
                                     "-window_id", hex(x11.editor()), "-i", os.environ["DISPLAY"],
@@ -268,7 +284,7 @@ reaper.defer(poll)
                            for actual, reference in zip(samples, expected))
         lead_peak = max(abs(sample) for sample in samples[:4800 * 2])
         assert lead_peak < 1e-6 and parity_error < 1e-5, (lead_peak, parity_error)
-        result = {"host": f"REAPER Linux {args.format.upper()}", "editorGesture": "Capture to instrument",
+        result = {"host": f"REAPER Linux {args.format.upper()}", "editorGesture": "Free start/stop" if args.free else "Capture to instrument",
                   "sourceNode": 6, "instrumentNode": 5, "captureFrames": asset["frames"],
                   "capturePeak": peak, "savedAndReopened": True,
                   "freshRenderFrames": len(samples) // 2, "freshRenderPeak": render_peak,
@@ -277,6 +293,8 @@ reaper.defer(poll)
         if args.bars is not None:
             result.update({"windowMode": "bars", "bars": args.bars,
                            "hostTempoBpm": 90, "hostMeter": "3/4"})
+        if args.free:
+            result.update({"windowMode": "free", "effectiveSeconds": expected_frames / 48000})
         (ROOT / f"web/public/graph-{args.format}-reaper-capture{suffix}-editor.json").write_text(
             json.dumps(result, indent=2) + "\n")
         print(json.dumps(result))

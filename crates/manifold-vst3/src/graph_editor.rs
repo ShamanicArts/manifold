@@ -38,6 +38,8 @@ enum EditorAction {
     Assign { id: u32, slot: u32 },
     CaptureStart { node: u32, seconds: f64 },
     CaptureBars { node: u32, bars: f64 },
+    CaptureFreeArm { node: u32 },
+    CaptureFreeStop { node: u32 },
     CaptureFinish { instrument: u32 },
 }
 
@@ -130,6 +132,14 @@ impl State {
             EditorAction::CaptureBars { node, bars } => Some(match self.shared.capture_start_bars(node, bars) {
                 Ok(()) => (format!("Freezing {bars} bars from capture node {node}…"), None),
                 Err(reason) => (format!("Capture failed: {reason}. Play the DAW transport to supply tempo and meter."), Some(false)),
+            }),
+            EditorAction::CaptureFreeArm { node } => Some(match self.shared.capture_free_arm(node) {
+                Ok(()) => (format!("Free capture armed from node {node}. Press Stop free capture to publish."), None),
+                Err(reason) => (format!("Capture failed: {reason}."), Some(false)),
+            }),
+            EditorAction::CaptureFreeStop { node } => Some(match self.shared.capture_free_stop(node) {
+                Ok(()) => (format!("Freezing free capture from node {node}…"), None),
+                Err(reason) => (format!("Capture failed: {reason}."), Some(false)),
             }),
             EditorAction::CaptureFinish { instrument } => match self.shared.capture_finish(instrument) {
                 Ok(None) => None,
@@ -340,6 +350,20 @@ impl IPlugViewTrait for View {
                             }) {
                                 submit(EditorAction::CaptureStart { node, seconds });
                             }
+                        }
+                        continue;
+                    }
+                    Some("capture-free-arm" | "capture-free-stop") => {
+                        if let Some(node) = value["nodeId"]
+                            .as_u64()
+                            .and_then(|id| u32::try_from(id).ok())
+                            .filter(|id| *id > 0)
+                        {
+                            submit(if value["kind"] == "capture-free-arm" {
+                                EditorAction::CaptureFreeArm { node }
+                            } else {
+                                EditorAction::CaptureFreeStop { node }
+                            });
                         }
                         continue;
                     }

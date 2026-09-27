@@ -384,6 +384,30 @@ fn receive(instance: &Instance, reader: impl BufRead) {
                     }
                 }
             }
+            Some("capture-free-arm" | "capture-free-stop") => {
+                if let Some(node) = message["nodeId"]
+                    .as_u64()
+                    .and_then(|id| u32::try_from(id).ok())
+                    .filter(|id| *id > 0)
+                {
+                    let accepted = if message["kind"] == "capture-free-arm" {
+                        instance.request_capture_free_arm(node)
+                    } else {
+                        instance.request_capture_free_stop(node)
+                    };
+                    if accepted {
+                        instance
+                            .gui
+                            .status(if message["kind"] == "capture-free-arm" {
+                                "Free capture armed. Press Stop free capture to publish."
+                            } else {
+                                "Freezing free capture…"
+                            });
+                    } else {
+                        instance.gui.capture_result(false, "Free capture request was rejected. Keep the DAW processing audio and try again.");
+                    }
+                }
+            }
             Some("gesture-begin" | "parameter" | "gesture-end") => {
                 let kind = match message["kind"].as_str().unwrap() {
                     "gesture-begin" => GuiMessageKind::Begin,
