@@ -1,5 +1,6 @@
 // Browser authoring contract for a subset of Rust's prepared typed graph.
 // Rust compilation remains the final authority when playback starts.
+import { encodePcm, decodePcm } from '../state/stereo-source.js';
 export const NODE_TYPES = {
   'input.raw': { label: 'Live input', code: 0, output: 'audio', inputs: [], fixedId: 1 },
   output: { label: 'Output', code: 7, output: null, inputs: ['audio'], fixedId: 3 },
@@ -37,6 +38,23 @@ export const NODE_TYPES = {
       { id: 3, label: 'Sustain', min: 0, max: 1, default: .65 },
       { id: 4, label: 'Release', min: .001, max: 3, default: .18 },
       { id: 5, label: 'Level', min: 0, max: 1, default: .25 }] },
+  'sample-instrument': { label: 'Sample instrument', code: 27, output: 'audio', inputs: ['midi'],
+    parameters: [
+      { id: 0, label: 'Root note', min: 36, max: 84, default: 60 },
+      { id: 1, label: 'Key tracking', min: 0, max: 1, default: 1 },
+      { id: 2, label: 'Level', min: 0, max: .5, default: .25 },
+      { id: 3, label: 'Speed', min: .25, max: 2, default: 1 },
+      { id: 4, label: 'Reverse', choices: ['Forward', 'Reverse'], default: 0 },
+      { id: 5, label: 'One shot', choices: ['Loop', 'One shot'], default: 0 },
+      { id: 6, label: 'Play start', min: 0, max: 1, default: 0 },
+      { id: 7, label: 'Loop start', min: 0, max: 1, default: 0 },
+      { id: 8, label: 'Loop end', min: 0, max: 1, default: 1 },
+      { id: 9, label: 'Crossfade', min: 0, max: .5, default: .08 },
+      { id: 10, label: 'Release', min: 0, max: .2, default: .01 },
+      { id: 11, label: 'Unison', min: 1, max: 4, default: 1 },
+      { id: 12, label: 'Detune', min: 0, max: 100, default: 0 },
+      { id: 13, label: 'Spread', min: 0, max: 1, default: 0 },
+    ] },
 };
 
 const PROJECT_FORMAT = 'manifold.project';
@@ -180,18 +198,59 @@ export function graphNoteTarget(signal) {
     }
   } while (changed);
   return signal.nodes.find((node) => node.type === 'midi-input' && reachable.has(node.id))?.id
-    ?? signal.nodes.find((node) => node.type === 'voice-synth' && reachable.has(node.id))?.id ?? null;
+    ?? signal.nodes.find((node) => ['voice-synth', 'sample-instrument'].includes(node.type) && reachable.has(node.id))?.id ?? null;
 }
 
-export function captureGraphProject(signal) {
-  return { format: PROJECT_FORMAT, schemaVersion: PROJECT_VERSION, projectId,
-    signal: validateTopology(signal) };
+export function validateGraphAssets(signal, assets) {
+  if (!Array.isArray(assets) || assets.length > 4) throw new Error('Graph supports at most four sample assets.');
+  const seen = new Set();
+  let bytes = 0;
+  return assets.map((asset) => {
+    const frames = asset?.stereo?.length / 2;
+    bytes += asset?.stereo?.byteLength ?? 0;
+    if (!asset || !Number.isInteger(asset.nodeId) || seen.has(asset.nodeId)
+      || signal.nodes.find((node) => node.id === asset.nodeId)?.type !== 'sample-instrument'
+      || !Number.isInteger(asset.sourceRate) || asset.sourceRate < 8000 || asset.sourceRate > 384000
+      || !(asset.stereo instanceof Float32Array) || !Number.isInteger(frames) || frames < 1
+      || frames > Math.min(48000 * 30, asset.sourceRate * 30)
+      || bytes > 32 * 1024 * 1024
+      || typeof asset.label !== 'string' || asset.label.length > 200
+      || asset.stereo.some((value) => !Number.isFinite(value))) throw new Error('Invalid graph sample asset.');
+    seen.add(asset.nodeId);
+    return asset;
+  });
 }
 
-export function parseGraphProject(document) {
+export function captureGraphProject(signal, assets = []) {
+  const graph = validateTopology(signal);
+  const checked = validateGraphAssets(graph, assets);
+  return { format: PROJECT_FORMAT, schemaVersion: PROJECT_VERSION, projectId, signal: graph,
+    ...(checked.length ? { assets: checked.map((asset) => ({ nodeId: asset.nodeId,
+      sourceRate: asset.sourceRate, frames: asset.stereo.length / 2, label: asset.label,
+      pcmF32Base64: encodePcm(asset.stereo) })) } : {}) };
+}
+
+export function parseGraphBundle(document) {
   if (document?.format !== PROJECT_FORMAT || document.schemaVersion !== PROJECT_VERSION
-    || document.projectId !== projectId || !sameKeys(document, ['format', 'schemaVersion', 'projectId', 'signal'])) {
+    || document.projectId !== projectId
+    || !(sameKeys(document, ['format', 'schemaVersion', 'projectId', 'signal'])
+      || sameKeys(document, ['format', 'schemaVersion', 'projectId', 'signal', 'assets']))) {
     throw new Error('This is not a supported graph workspace project.');
   }
-  return validateTopology(document.signal);
+  const signal = validateTopology(document.signal);
+  if ((Object.hasOwn(document, 'assets') && !Array.isArray(document.assets))
+    || (document.assets?.length ?? 0) > 4) {
+    throw new Error('Graph supports at most four sample assets.');
+  }
+  const assets = (document.assets ?? []).map((asset) => {
+    if (!asset || !sameKeys(asset, ['nodeId', 'sourceRate', 'frames', 'label', 'pcmF32Base64'])
+      || !Number.isInteger(asset.frames) || asset.frames < 1 || asset.frames > 48000 * 30) {
+      throw new Error('Invalid graph sample asset.');
+    }
+    return { nodeId: asset.nodeId, sourceRate: asset.sourceRate, label: asset.label,
+      stereo: decodePcm(asset.pcmF32Base64, asset.frames) };
+  });
+  return { signal, assets: validateGraphAssets(signal, assets) };
 }
+
+export function parseGraphProject(document) { return parseGraphBundle(document).signal; }

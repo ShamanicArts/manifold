@@ -1,7 +1,7 @@
 // Compare native Rust and the actual Wasm worklet for edited graph shapes.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -19,6 +19,7 @@ await import(pathToFileURL(resolve('web/src/audio/filter-processor.js')).href);
 const seed = JSON.parse(readFileSync('projects/graph-workspace/project.json', 'utf8')).signal;
 const texture = JSON.parse(readFileSync('projects/graph-workspace/tone-texture.json', 'utf8')).signal;
 const noteVoice = JSON.parse(readFileSync('projects/graph-workspace/note-voice.json', 'utf8')).signal;
+const sampleVoice = JSON.parse(readFileSync('projects/graph-workspace/sample-voice.json', 'utf8')).signal;
 let distorted = addNode(seed, 'distortion');
 distorted = setConnection(distorted, 4, 0, 2);
 distorted = setConnection(distorted, 3, 0, 4);
@@ -31,17 +32,21 @@ cv = setConnection(cv, 3, 0, 6);
 
 const workspace = mkdtempSync(join(tmpdir(), 'manifold-graph-'));
 try {
-  for (const [mode, signal] of [['seed', seed], ['distortion', distorted], ['cv', cv], ['texture', texture], ['note-voice', noteVoice]]) {
+  for (const [mode, signal] of [['seed', seed], ['distortion', distorted], ['cv', cv], ['texture', texture], ['note-voice', noteVoice], ['sample-voice', sampleVoice]]) {
     const output = join(workspace, `${mode}.f32`);
+    const source = mode === 'sample-voice' ? readFileSync('web/public/reference/graph-workspace/sample-source.f32') : null;
+    if (source) writeFileSync(join(workspace, 'sample-source.f32'), source);
     execFileSync('cargo', ['run', '--quiet', '-p', 'manifold-core', '--example',
       'render_graph_workspace', '--', mode, output], { cwd: resolve('.'), stdio: 'pipe' });
     globalThis.currentFrame = 0;
     const processor = new Processor();
     await processor.port.onmessage({ data: {
       type: 'init', wasmBytes: readFileSync('web/dist/manifold_filter.wasm'), graph: signal,
+      samples: mode === 'sample-voice' ? [{ nodeId: 5, sourceRate: 48000,
+        stereo: new Float32Array(source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength)) }] : [],
     } });
     assert.deepEqual(messages.at(-1), { type: 'ready' }, `${mode} prepared`);
-    if (mode === 'note-voice') {
+    if (mode === 'note-voice' || mode === 'sample-voice') {
       for (const [frame, kind, note, velocity] of [[16, 0, 60, 100], [2048, 0, 64, 96],
         [4096, 1, 60, 0], [6144, 1, 64, 0]]) {
         await processor.port.onmessage({ data: { type: 'event', nodeId: 4, frame, kind,

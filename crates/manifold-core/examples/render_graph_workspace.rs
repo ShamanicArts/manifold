@@ -108,20 +108,64 @@ fn note_voice() -> GraphDescription {
     GraphDescription { nodes, connections }
 }
 
+fn sample_voice() -> GraphDescription {
+    let nodes = vec![
+        NodeSpec {
+            id: 1,
+            kind: NodeKind::InputRaw,
+        },
+        NodeSpec {
+            id: 3,
+            kind: NodeKind::Output,
+        },
+        NodeSpec {
+            id: 4,
+            kind: NodeKind::MidiInput,
+        },
+        NodeSpec {
+            id: 5,
+            kind: NodeKind::SampleInstrument,
+        },
+        NodeSpec {
+            id: 6,
+            kind: NodeKind::Svf,
+        },
+    ];
+    let connections = [(4, 5, 0), (5, 6, 0), (6, 3, 0)]
+        .map(|(from, to, input_port)| Connection {
+            from,
+            to,
+            input_port,
+        })
+        .to_vec();
+    GraphDescription { nodes, connections }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
     if args.len() != 3
-        || !["seed", "distortion", "cv", "texture", "note-voice"].contains(&args[1].as_str())
+        || ![
+            "seed",
+            "distortion",
+            "cv",
+            "texture",
+            "note-voice",
+            "sample-voice",
+        ]
+        .contains(&args[1].as_str())
     {
         return Err(
-            "usage: render_graph_workspace seed|distortion|cv|texture|note-voice OUTPUT".into(),
+            "usage: render_graph_workspace seed|distortion|cv|texture|note-voice|sample-voice OUTPUT".into(),
         );
     }
     if args[1] == "texture" {
-        return render(tone_texture(), &args[2], false);
+        return render(tone_texture(), &args[2], false, false);
     }
     if args[1] == "note-voice" {
-        return render(note_voice(), &args[2], true);
+        return render(note_voice(), &args[2], true, false);
+    }
+    if args[1] == "sample-voice" {
+        return render(sample_voice(), &args[2], true, true);
     }
     let distorted = args[1] != "seed";
     let cv = args[1] == "cv";
@@ -198,17 +242,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         to: 3,
         input_port: 0,
     });
-    render(GraphDescription { nodes, connections }, &args[2], false)
+    render(
+        GraphDescription { nodes, connections },
+        &args[2],
+        false,
+        false,
+    )
 }
 
 fn render(
     description: GraphDescription,
     path: &str,
     note_events: bool,
+    sample_source: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut plan = description.compile(48_000.0, 128)?;
-    if note_events && !plan.set_parameter(5, 0, 7.0) {
+    if note_events && !sample_source && !plan.set_parameter(5, 0, 7.0) {
         return Err("MIDI transpose parameter unavailable".into());
+    }
+    if sample_source {
+        let source = std::fs::read(
+            std::path::Path::new(path)
+                .parent()
+                .unwrap()
+                .join("sample-source.f32"),
+        )?;
+        let stereo = source
+            .chunks_exact(4)
+            .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
+            .collect();
+        if !plan.load_sample_stereo(5, stereo, 48_000.0) {
+            return Err("sample instrument source rejected".into());
+        }
     }
     let event_schedule = [
         (

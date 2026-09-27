@@ -5,6 +5,27 @@ import { createRequire } from 'node:module';
 
 const requireFromWeb = createRequire(new URL('../web/package.json', import.meta.url));
 const { chromium } = requireFromWeb('playwright-core');
+function wavSource(frames = 4800) {
+  const wav = Buffer.alloc(44 + frames * 4);
+  wav.write('RIFF', 0);
+  wav.writeUInt32LE(wav.length - 8, 4);
+  wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(2, 22);
+  wav.writeUInt32LE(48000, 24);
+  wav.writeUInt32LE(48000 * 4, 28);
+  wav.writeUInt16LE(4, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(frames * 4, 40);
+  for (let frame = 0; frame < frames; frame++) {
+    const value = Math.round(Math.sin(frame * Math.PI * 2 * 330 / 48000) * 12000);
+    wav.writeInt16LE(value, 44 + frame * 4);
+    wav.writeInt16LE(-value, 46 + frame * 4);
+  }
+  return wav;
+}
 const browser = await chromium.launch({
   executablePath: process.env.MANIFOLD_CHROMIUM ?? '/usr/bin/chromium', headless: true,
   args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required'],
@@ -15,7 +36,7 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/?primitive=graph-workspace`);
   await page.waitForFunction(() => document.querySelector('#comparison-result').textContent === 'Match');
-  assert.equal(await page.locator('#reference-case option').count(), 5);
+  assert.equal(await page.locator('#reference-case option').count(), 6);
   assert.match(await page.locator('#reference-title').textContent(), /Native Rust/);
   assert.ok(Number(await page.locator('#max-difference').textContent()) < 1e-5);
   await page.locator('#reference-case').selectOption('distortion');
@@ -30,6 +51,10 @@ try {
   await page.locator('#reference-case').selectOption('note-voice');
   await page.waitForFunction(() => document.querySelector('#reference-status').textContent.includes('MIDI → +7 transpose'));
   assert.equal(await page.locator('#comparison-result').textContent(), 'Match');
+  await page.locator('#reference-case').selectOption('sample-voice');
+  await page.waitForFunction(() => document.querySelector('#reference-status').textContent.includes('MIDI → sample voice'));
+  assert.equal(await page.locator('#comparison-result').textContent(), 'Match');
+  assert.ok(Number(await page.locator('#max-difference').textContent()) < 1e-5);
   assert.equal(await page.locator('.graph-node').count(), 3);
   await page.locator('#audio-toggle').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running'));
@@ -164,8 +189,71 @@ try {
   await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
   assert.equal(await page.locator('input[data-node="5"][data-parameter="0"]').inputValue(), '12');
   assert.equal(await page.locator('#keyboard-section').isVisible(), true);
+  await page.locator('#graph-load-sample').click();
+  assert.equal(await page.locator('.graph-node').count(), 5);
+  assert.match(await page.locator('.graph-sample-file').textContent(), /Built-in two-tone source/);
+  assert.equal(await page.locator('#keyboard-section').isVisible(), true);
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
+  await page.locator('#module-title').click();
+  await page.keyboard.down('a');
+  await page.waitForFunction(() => document.querySelector('#midi-events').textContent.includes('On · C4'));
+  await page.keyboard.up('a');
+  await page.locator('#audio-toggle').click();
+  const sampleDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const sampleBundle = JSON.parse((await readFile(await (await sampleDownload).path())).toString());
+  assert.equal(sampleBundle.assets.length, 1);
+  assert.equal(sampleBundle.assets[0].nodeId, 5);
+  assert.equal(sampleBundle.assets[0].frames, 24000);
+  await page.locator('#graph-load-tone').click();
+  await page.locator('#graph-project-file').setInputFiles([{
+    name: 'sample-voice.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(sampleBundle)),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
+  assert.match(await page.locator('.graph-sample-file').textContent(), /Built-in two-tone source/);
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
+  await page.locator('#audio-toggle').click();
+  const corrupted = structuredClone(sampleBundle);
+  corrupted.assets[0].nodeId = 6;
+  await page.locator('#graph-project-file').setInputFiles([{
+    name: 'corrupt-sample.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(corrupted)),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('Invalid graph sample asset'));
+  assert.match(await page.locator('.graph-sample-file').textContent(), /Built-in two-tone source/);
+  const wav = wavSource();
+  await page.locator('input[aria-label="Sample instrument 5 audio file"]').setInputFiles([{
+    name: 'replacement.wav', mimeType: 'audio/wav', buffer: wav,
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('Loaded replacement.wav'));
+  assert.match(await page.locator('.graph-sample-file').textContent(), /replacement.wav/);
+  await page.locator('#graph-add-type').selectOption('sample-instrument');
+  await page.locator('#graph-add-node').click();
+  await page.locator('input[aria-label="Sample instrument 7 audio file"]').setInputFiles([{
+    name: 'second.wav', mimeType: 'audio/wav', buffer: wav,
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('Loaded second.wav'));
+  assert.equal(await page.locator('.graph-node-parked').count(), 2);
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
+  await page.locator('#audio-toggle').click();
+  await page.locator('select[data-to="7"][data-port="0"]').selectOption('4');
+  await page.locator('#graph-add-type').selectOption('sum2');
+  await page.locator('#graph-add-node').click();
+  await page.locator('select[data-to="8"][data-port="0"]').selectOption('6');
+  await page.locator('select[data-to="8"][data-port="1"]').selectOption('7');
+  await page.locator('select[data-to="3"][data-port="0"]').selectOption('8');
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
+  await page.locator('#audio-toggle').click();
+  const multiDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const multiBundle = JSON.parse((await readFile(await (await multiDownload).path())).toString());
+  assert.deepEqual(multiBundle.assets.map((asset) => asset.nodeId), [5, 7]);
+  assert.deepEqual(multiBundle.assets.map((asset) => asset.frames), [4800, 4800]);
   assert.deepEqual(errors, []);
-  console.log('Graph workspace browser: typed Audio/CV/MIDI editing, native/Wasm references, keyboard-transposed notes, live controls, project reopen passed');
+  console.log('Graph workspace browser: typed Audio/CV/MIDI editing, sample voice asset playback and reopen, native/Wasm references, live controls passed');
 } finally {
   await browser.close();
 }

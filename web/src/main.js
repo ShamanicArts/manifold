@@ -1597,6 +1597,8 @@ function renderPrimitive(family) {
       },
       onParameter: (nodeId, id, value) => audio.setNodeParameter(nodeId, id, value),
       onTemplateLoaded: (caseId) => referenceLab?.selectCase(caseId),
+      decodeSample: decodeFileSource,
+      builtinSample: demoSample,
     });
   }
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
@@ -2694,7 +2696,8 @@ toggle.addEventListener('click', async () => {
       await audio.start(byId('source').value, values, activeProject,
         ['sample-region', 'sample-instrument', 'main-voice-bank'].includes(activeFamily) ? loadedSample ?? demoSample()
           : activeFamily === 'granulator' ? loadedGranulatorSource
-            : activeFamily === 'main-sample-blend' ? loadedSineSource ?? demoSample() : null);
+            : activeFamily === 'main-sample-blend' ? loadedSineSource ?? demoSample()
+              : activeFamily === 'graph-workspace' ? activeProject.graphAssets ?? [] : null);
       if (noteTarget() !== null && Number(pitchBend.value) !== 0) pitchBend.dispatchEvent(new Event('input'));
     }
     const isInstrument = projects[activeFamily].project.signal.inputSource === 'none';

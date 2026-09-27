@@ -106,10 +106,22 @@ export class BrowserAudioHost {
           .map((parameter) => ({ nodeId: slot.id, id: parameter.nodeParameterId,
             value: values.get(parameter.id) ?? parameter.default })));
       }
-      const upload = sample ? { nodeId: 2, sourceRate: sample.sourceRate, stereo: sample.stereo.slice() } : null;
+      const reachable = new Set(graph.nodes.filter((node) => node.type === 'output').map((node) => node.id));
+      for (let changed = true; changed;) {
+        changed = false;
+        for (const edge of graph.connections) {
+          if (reachable.has(edge.to) && !reachable.has(edge.from)) {
+            reachable.add(edge.from);
+            changed = true;
+          }
+        }
+      }
+      const uploads = (Array.isArray(sample) ? sample : sample ? [sample] : [])
+        .filter((asset) => project.id !== 'manifold.graph-workspace' || reachable.has(asset.nodeId))
+        .map((asset) => ({ nodeId: asset.nodeId ?? 2, sourceRate: asset.sourceRate, stereo: asset.stereo.slice() }));
       const partials = project.extraPartials?.length ? [project.partials, ...project.extraPartials] : project.partials ?? null;
-      processor.port.postMessage({ type: 'init', wasmBytes, graph, sample: upload, partials },
-        upload ? [wasmBytes, upload.stereo.buffer] : [wasmBytes]);
+      processor.port.postMessage({ type: 'init', wasmBytes, graph, samples: uploads, partials },
+        [wasmBytes, ...uploads.map((asset) => asset.stereo.buffer)]);
       await ready;
       this.ready = true;
       this.parameters = new Map(project.parameters.map((parameter) => [parameter.id, parameter]));

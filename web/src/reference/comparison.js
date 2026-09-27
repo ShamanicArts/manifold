@@ -758,6 +758,13 @@ export function renderWasm(engine, family, manifest, input, selected) {
       throw new Error(`Graph workspace parameter ${parameter.nodeId}/${parameter.id} failed`);
     }
   }
+  if (family === 'graph-workspace' && selected.sampleNodeId != null) {
+    if (engine.manifold_sample_begin(selected.sampleNodeId, manifest.sampleFrames, manifest.sampleSourceRate) !== 1) {
+      throw new Error('Graph workspace sample preparation failed');
+    }
+    new Float32Array(engine.memory.buffer, engine.manifold_sample_ptr(), manifest.sampleData.length).set(manifest.sampleData);
+    if (engine.manifold_sample_commit() !== 1) throw new Error('Graph workspace sample commit failed');
+  }
   if (family === 'sine-bank') {
     if (engine.manifold_partials_begin(2, selected.partials.length / 4, 440) !== 1) throw new Error('Wasm sine bank upload begin failed');
     new Float32Array(engine.memory.buffer, engine.manifold_partials_ptr(), selected.partials.length).set(selected.partials);
@@ -1174,6 +1181,10 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
       if (family === 'sample-region' || family === 'sample-instrument' || family === 'main-voice-bank' || family === 'main-sample-blend') {
         next.sampleData = await loadFloat32(family, next.sample);
         if (next.sampleData.length !== next.sampleFrames * 2) throw new Error('Invalid sample fixture size');
+      }
+      if (family === 'graph-workspace' && next.sample) {
+        next.sampleData = await loadFloat32(family, next.sample);
+        if (next.sampleData.length !== next.sampleFrames * 2) throw new Error('Invalid graph sample fixture size');
       }
       if (family === 'main-sample-blend') {
         next.waveTargetData = await loadFloat32(family, next.waveTarget);

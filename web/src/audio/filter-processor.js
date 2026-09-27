@@ -60,8 +60,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
               throw new Error(`Invalid initial parameter: ${parameter.nodeId}/${parameter.id}`);
             }
           }
-          if (data.sample) {
-            const { nodeId, sourceRate, stereo } = data.sample;
+          for (const { nodeId, sourceRate, stereo } of data.samples ?? (data.sample ? [data.sample] : [])) {
             const frames = stereo.length / 2;
             if (engine.manifold_sample_begin(nodeId, frames, sourceRate) !== 1) throw new Error('Sample preparation failed');
             const ptr = engine.manifold_sample_ptr();

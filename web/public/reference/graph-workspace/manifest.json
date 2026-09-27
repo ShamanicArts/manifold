@@ -1,13 +1,16 @@
 {
   "version": 1,
   "reference": "native Rust authored graph topology",
-  "sourceSha256": "be90763f56200f819e50bfe5fbddee6a4ca16388ac11b35d72f636863d6ea340",
+  "sourceSha256": "ec00972ee1942b743bbe947b5eef56bfe06af7dd0269991515319aeb38cc60e4",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 8192,
   "blockSize": 128,
   "stepFrame": 4096,
   "input": "input.f32",
+  "sample": "sample-source.f32",
+  "sampleFrames": 24000,
+  "sampleSourceRate": 48000,
   "cases": [
     {
       "id": "seed",
@@ -518,6 +521,173 @@
         }
       ],
       "output": "note-voice.f32"
+    },
+    {
+      "id": "sample-voice",
+      "label": "MIDI → sample voice → SVF",
+      "graph": {
+        "inputs": 2,
+        "outputs": 2,
+        "inputSource": "none",
+        "nodes": [
+          {
+            "id": 1,
+            "type": "input.raw"
+          },
+          {
+            "id": 3,
+            "type": "output"
+          },
+          {
+            "id": 4,
+            "type": "midi-input"
+          },
+          {
+            "id": 5,
+            "type": "sample-instrument"
+          },
+          {
+            "id": 6,
+            "type": "svf"
+          }
+        ],
+        "connections": [
+          {
+            "from": 4,
+            "to": 5,
+            "inputPort": 0
+          },
+          {
+            "from": 5,
+            "to": 6,
+            "inputPort": 0
+          },
+          {
+            "from": 6,
+            "to": 3,
+            "inputPort": 0
+          }
+        ],
+        "initialParameters": [
+          {
+            "nodeId": 5,
+            "id": 0,
+            "value": 60
+          },
+          {
+            "nodeId": 5,
+            "id": 1,
+            "value": 1
+          },
+          {
+            "nodeId": 5,
+            "id": 2,
+            "value": 0.25
+          },
+          {
+            "nodeId": 5,
+            "id": 3,
+            "value": 1
+          },
+          {
+            "nodeId": 5,
+            "id": 4,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 5,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 6,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 7,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 8,
+            "value": 1
+          },
+          {
+            "nodeId": 5,
+            "id": 9,
+            "value": 0.08
+          },
+          {
+            "nodeId": 5,
+            "id": 10,
+            "value": 0.01
+          },
+          {
+            "nodeId": 5,
+            "id": 11,
+            "value": 1
+          },
+          {
+            "nodeId": 5,
+            "id": 12,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 13,
+            "value": 0
+          },
+          {
+            "nodeId": 6,
+            "id": 0,
+            "value": 0
+          },
+          {
+            "nodeId": 6,
+            "id": 1,
+            "value": 3200
+          },
+          {
+            "nodeId": 6,
+            "id": 2,
+            "value": 0.75
+          }
+        ]
+      },
+      "events": [
+        {
+          "frame": 16,
+          "kind": 0,
+          "channel": 15,
+          "note": 60,
+          "velocity": 100
+        },
+        {
+          "frame": 2048,
+          "kind": 0,
+          "channel": 15,
+          "note": 64,
+          "velocity": 96
+        },
+        {
+          "frame": 4096,
+          "kind": 1,
+          "channel": 15,
+          "note": 60,
+          "velocity": 0
+        },
+        {
+          "frame": 6144,
+          "kind": 1,
+          "channel": 15,
+          "note": 64,
+          "velocity": 0
+        }
+      ],
+      "sampleNodeId": 5,
+      "output": "sample-voice.f32"
     }
   ]
 }

@@ -1,10 +1,11 @@
 import { NODE_TYPES, addNode, removeNode, setConnection, setInitialParameter,
-  setInputSource, captureGraphProject, parseGraphProject } from './topology.js';
+  setInputSource, captureGraphProject, parseGraphProject, parseGraphBundle, validateGraphAssets } from './topology.js';
 import toneTexture from '../../../projects/graph-workspace/tone-texture.json';
 import noteVoice from '../../../projects/graph-workspace/note-voice.json';
+import sampleVoice from '../../../projects/graph-workspace/sample-voice.json';
 
 // Edits a project description outside the AudioWorklet. The next start compiles it in Rust.
-export function mountGraphEditor(section, project, { isRunning, isActive, onChange, onParameter, onTemplateLoaded }) {
+export function mountGraphEditor(section, project, { isRunning, isActive, onChange, onParameter, onTemplateLoaded, decodeSample, builtinSample }) {
   const nodesRoot = section.querySelector('#graph-nodes');
   const status = section.querySelector('#graph-status');
   const addType = section.querySelector('#graph-add-type');
@@ -12,6 +13,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   const sourceMode = section.querySelector('#graph-source-mode');
   const loadTone = section.querySelector('#graph-load-tone');
   const loadNote = section.querySelector('#graph-load-note');
+  const loadSample = section.querySelector('#graph-load-sample');
   const fileInput = section.querySelector('#graph-project-file');
   const exportButton = section.querySelector('#graph-project-export');
   const listeners = new AbortController();
@@ -33,8 +35,10 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
     fileInput.disabled = disabled;
     if (updateStatus && isActive()) status.textContent = `${project.signal.nodes.length} nodes · ${project.signal.connections.length} connections · ${isRunning() ? 'parameters update live; stop audio to edit topology' : 'start audio to compile this graph in Rust'}`;
   }
-  function commit(signal, message) {
+  function commit(signal, message, assets = project.graphAssets ?? []) {
+    const checked = validateGraphAssets(signal, assets.filter((asset) => signal.nodes.some((node) => node.id === asset.nodeId && node.type === 'sample-instrument')));
     project.signal = signal;
+    project.graphAssets = checked;
     render();
     status.textContent = message;
     onChange?.(signal);
@@ -91,6 +95,35 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
         heading.append(remove);
       }
       article.appendChild(heading);
+      if (node.type === 'sample-instrument') {
+        const asset = project.graphAssets?.find((item) => item.nodeId === node.id);
+        const source = document.createElement('label');
+        source.className = 'sample-file graph-sample-file';
+        source.textContent = asset ? `Source: ${asset.label} · ${(asset.stereo.length / 2 / asset.sourceRate).toFixed(2)} s · replace file`
+          : 'No source loaded · choose audio file';
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'audio/*,.wav,.aiff,.aif,.flac,.mp3,.ogg';
+        input.className = 'graph-edit';
+        input.setAttribute('aria-label', `Sample instrument ${node.id} audio file`);
+        input.addEventListener('change', async () => {
+          const file = input.files?.[0];
+          if (!file) return;
+          try {
+            if (!canEdit()) throw new Error('Stop audio before loading a sample.');
+            status.textContent = `Decoding ${file.name}…`;
+            const decoded = await decodeSample(file);
+            if (!canEdit()) throw new Error('Project view changed while decoding the sample.');
+            const assets = [...(project.graphAssets ?? []).filter((item) => item.nodeId !== node.id),
+              { nodeId: node.id, sourceRate: decoded.sourceRate, stereo: decoded.stereo, label: decoded.label }];
+            validateGraphAssets(project.signal, assets);
+            commit(project.signal, `Loaded ${file.name} into sample instrument ${node.id}. Start audio to hear it.`, assets);
+          } catch (error) { fail(error); }
+          finally { input.value = ''; }
+        });
+        source.append(input);
+        article.appendChild(source);
+      }
       for (let port = 0; port < spec.inputs.length; port++) {
         const kind = spec.inputs[port];
         const row = document.createElement('label');
@@ -183,7 +216,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   loadTone.addEventListener('click', () => {
     if (!canEdit()) return;
     try {
-      commit(parseGraphProject(toneTexture), 'Loaded the tone and noise study. Start the instrument to hear its Rust graph.');
+      commit(parseGraphProject(toneTexture), 'Loaded the tone and noise study. Start the instrument to hear its Rust graph.', []);
       onTemplateLoaded?.('texture');
     }
     catch (error) { fail(error); }
@@ -191,21 +224,31 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   loadNote.addEventListener('click', () => {
     if (!canEdit()) return;
     try {
-      commit(parseGraphProject(noteVoice), 'Loaded the note voice. Start the instrument, then play the on-screen keyboard.');
+      commit(parseGraphProject(noteVoice), 'Loaded the note voice. Start the instrument, then play the on-screen keyboard.', []);
       onTemplateLoaded?.('note-voice');
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadSample.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      const source = builtinSample();
+      const signal = parseGraphProject(sampleVoice);
+      commit(signal, 'Loaded the sample voice study with a built-in source. Start the instrument, then play the keyboard.',
+        [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
+      onTemplateLoaded?.('sample-voice');
     } catch (error) { fail(error); }
   }, { signal: listeners.signal });
   exportButton.addEventListener('click', () => {
     if (!isActive()) return;
     try {
-      const bundle = captureGraphProject(project.signal);
+      const bundle = captureGraphProject(project.signal, project.graphAssets ?? []);
       const url = URL.createObjectURL(new Blob([`${JSON.stringify(bundle, null, 2)}\n`], { type: 'application/json' }));
       const link = document.createElement('a');
       link.href = url;
       link.download = 'manifold-graph-workspace-project.json';
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      status.textContent = `Downloaded ${bundle.signal.nodes.length} nodes and ${bundle.signal.connections.length} connections.`;
+      status.textContent = `Downloaded ${bundle.signal.nodes.length} nodes, ${bundle.signal.connections.length} connections, and ${bundle.assets?.length ?? 0} sample assets.`;
     } catch (error) { fail(error); }
   }, { signal: listeners.signal });
   fileInput.addEventListener('change', async () => {
@@ -213,10 +256,11 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
     if (!file) return;
     try {
       if (!canEdit()) throw new Error('Stop audio before opening a graph.');
-      if (file.size > 1024 * 1024) throw new Error('Graph project must be smaller than 1 MB.');
+      if (file.size > 45 * 1024 * 1024) throw new Error('Graph project must be smaller than 45 MB.');
       const contents = await file.text();
       if (!canEdit()) throw new Error('Project view changed while opening the graph.');
-      commit(parseGraphProject(JSON.parse(contents)), `Opened ${file.name}. Start audio to compile the restored graph.`);
+      const bundle = parseGraphBundle(JSON.parse(contents));
+      commit(bundle.signal, `Opened ${file.name} with ${bundle.assets.length} sample assets. Start audio to compile the restored graph.`, bundle.assets);
     } catch (error) { fail(error); }
     finally { fileInput.value = ''; }
   }, { signal: listeners.signal });

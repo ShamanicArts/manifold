@@ -1,14 +1,23 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { addNode, removeNode, setConnection, setInitialParameter,
-  setInputSource, graphNoteTarget, captureGraphProject, parseGraphProject, validateTopology } from '../web/src/graph/topology.js';
+  setInputSource, graphNoteTarget, captureGraphProject, parseGraphProject, parseGraphBundle, validateTopology } from '../web/src/graph/topology.js';
 
 const project = JSON.parse(readFileSync('projects/graph-workspace/project.json', 'utf8'));
 const texture = JSON.parse(readFileSync('projects/graph-workspace/tone-texture.json', 'utf8'));
 const noteVoice = JSON.parse(readFileSync('projects/graph-workspace/note-voice.json', 'utf8'));
+const sampleVoice = JSON.parse(readFileSync('projects/graph-workspace/sample-voice.json', 'utf8'));
 assert.deepEqual(parseGraphProject(texture), texture.signal);
 assert.deepEqual(parseGraphProject(noteVoice), noteVoice.signal);
 assert.equal(graphNoteTarget(noteVoice.signal), 4);
+assert.deepEqual(parseGraphProject(sampleVoice), sampleVoice.signal);
+assert.equal(graphNoteTarget(sampleVoice.signal), 4);
+const source = { nodeId: 5, sourceRate: 48000, stereo: new Float32Array([.25, -.25, .5, -.5]), label: 'Two frames' };
+const sampleBundle = captureGraphProject(sampleVoice.signal, [source]);
+assert.deepEqual(parseGraphBundle(JSON.parse(JSON.stringify(sampleBundle))).assets, [source]);
+assert.throws(() => parseGraphBundle({ ...sampleBundle, assets: [{ ...sampleBundle.assets[0], nodeId: 6 }] }), /sample asset/);
+assert.throws(() => parseGraphBundle({ ...sampleBundle, assets: null }), /at most four sample assets/);
+assert.throws(() => parseGraphBundle({ ...sampleBundle, assets: [{ ...sampleBundle.assets[0], pcmF32Base64: 'bad' }] }), /stereo PCM/);
 assert.equal(graphNoteTarget(texture.signal), null);
 assert.throws(() => addNode(noteVoice.signal, 'midi-input'), /one MIDI input/);
 assert.throws(() => setConnection(noteVoice.signal, 6, 0, 1), /types/);
