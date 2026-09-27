@@ -29,7 +29,9 @@ run at 90 BPM in 3/4 captures 48,000 frames for half a bar at 48 kHz. The
 saved state records the requested bars and actual host tempo and meter; a fresh
 render is silent before MIDI and matches direct Rust within `5.96e-8` peak
 sample error. The [bar review](../web/public/native-host-bars-review.html)
-compares this with CLAP. Free-mode start/stop offsets remain open work.
+compares this with CLAP. The [free capture review](../web/public/native-free-capture-review.html)
+adds arm/stop ring cursors through both packaged editors. Each REAPER project
+saves and reopens its measured free take; fresh renders match direct Rust.
 
 `manifold_native::project::NativeProject::parse` accepts the browser's `manifold.project` schema v1 for all eight authored graph workspace bundles. The `project.json` in that directory is an older standalone format, not a graph workspace bundle. The loader validates graph shape, node arguments, routes, parameter IDs and ranges, asset limits, source rate, frame count, base64 byte count, finite PCM, Main partial targets, and optional temporal source recipes. `prepare` compiles and installs parameters, PCM, partial targets, and analyzed temporal frames away from the audio callback. The supported node kinds are `input.raw`, `input.sidechain`, `output`, `midi-input`, `midi-transpose`, `voice-synth`, `gain`, `sum2`, `svf`, `loop-capture`, `sample-instrument`, `sample-region`, `granulator`, `oscillator`, `noise`, `lfo`, `modulated-gain`, and `main-voice-bank`. Tests render audible native output from the note, region, granular, texture, and Main bank routes. An embedded Main sample and a temporal recipe also restore and sound. Browser source recipes are metadata, since the native host supplies its own main and sidechain buses. A saved temporal bundle now has matching native and Wasm audio output.
 
