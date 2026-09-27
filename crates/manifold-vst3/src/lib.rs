@@ -2,6 +2,8 @@
 //! The browser Wasm and native host paths both execute manifold-core DSP.
 
 mod controller;
+#[cfg(target_os = "linux")]
+mod editor;
 mod processor;
 mod util;
 

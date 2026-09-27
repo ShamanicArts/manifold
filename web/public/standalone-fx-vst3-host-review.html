@@ -26,7 +26,11 @@
     th { color: #8ca5b7; font-weight: 500; }
     code { color: #c7e5e3; }
     .note { border-left: 2px solid #caab77; padding: 2px 0 2px 16px; }
-    @media (max-width: 650px) { .grid { grid-template-columns: 1fr; } }
+    .captures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    figure { margin: 0; }
+    img { display: block; width: 100%; height: auto; border: 1px solid #334155; }
+    figcaption { color: #9fb1c0; font-size: 12px; line-height: 1.5; padding-top: 8px; }
+    @media (max-width: 650px) { .grid, .captures { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -48,11 +52,17 @@
         <tr><td>Audio</td><td>Stereo planar f32 host buffers enter prepared native scratch. A 128-frame adapter test matches the authored native project sample for sample.</td></tr>
         <tr><td>Automation</td><td>Seven fixed parameters accept normalized host queues with sample offsets and feed the Rust graph without allocation in the callback.</td></tr>
         <tr><td>State</td><td>Processor and controller round-trip the authored project JSON, including the selected effect and all 21 remembered control sets.</td></tr>
-        <tr><td>Independent validation</td><td>Steinberg's official SDK 3.8.1 validator reported 537 passed and zero failed tests on this bundle.</td></tr>
+        <tr><td>Native editor</td><td>The VST3 <code>IPlugView</code> embeds the same packaged slider and XY widget code as CLAP. The host run loop dispatches queued begin/value/end messages to <code>IComponentHandler</code> on its UI thread.</td></tr>
+        <tr><td>Independent validation</td><td>Steinberg's official SDK 3.8.1 validator reported 537 passed and zero failed tests on this bundle. The isolated host probe opened an X11 child and captured a visible host parameter change.</td></tr>
       </tbody>
     </table>
-    <h2>Editor and next host gate</h2>
-    <p class="note">The VST3 controller currently provides a generic host parameter UI. The exact original widget renderer is embedded in the <a href="/standalone-fx-editor-bridge-review.html">CLAP native editor proof</a>; its VST3 <code>IPlugView</code> bridge is the next step. Real DAW pointer gestures and multi-instance behavior are still to be tested.</p>
+    <h2>The actual native VST3 editor</h2>
+    <p>These captures are from one packaged <code>IPlugView</code> in an isolated X11 host. It runs the same ported widget module as the <a href="/standalone-fx-editor-bridge-review.html">CLAP native editor</a>. The second frame follows host Mix automation from 0.72 to 0.20.</p>
+    <div class="captures">
+      <figure><img src="/standalone-fx-vst3-editor.png" alt="Native VST3 Reverb editor with the ported XY pad and sliders at Mix 0.72" /><figcaption>Host opens the view with Reverb and its remembered Room and Damp controls.</figcaption></figure>
+      <figure><img src="/standalone-fx-vst3-editor-automation.png" alt="Same native VST3 editor after host Mix changes to 0.20" /><figcaption>Same view after the host changes Mix to 0.20.</figcaption></figure>
+    </div>
+    <p class="note">A host run loop unit test verifies widget gesture begin/value/end callbacks in order. A physical pointer gesture recorded through a production DAW, multiple instances, and editor reopen still need validation. Audio Unit and Windows/macOS bundles remain separate export steps.</p>
     <p>Build locally with <code>./scripts/build-vst3.sh</code>. The resulting bundle is <code>target/vst3/ManifoldFX.vst3</code>. <a href="/standalone-fx-host-review.html">Compare the CLAP host checkpoint ↗</a></p>
   </main>
 </body>

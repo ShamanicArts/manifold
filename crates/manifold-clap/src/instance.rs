@@ -973,6 +973,13 @@ pub(crate) unsafe extern "C" fn gui_set_parent(
             if message["version"] != 1 {
                 continue;
             }
+            if message["kind"] == "editor-ready" {
+                // The first state command can race the initial web navigation.
+                // Re-send once the actual widget module has registered its receiver.
+                let instance = unsafe { &*(address as *const Instance) };
+                instance.send_editor_state();
+                continue;
+            }
             let kind = match message["kind"].as_str() {
                 Some("gesture-begin") => GuiMessageKind::Begin,
                 Some("parameter") => GuiMessageKind::Value,

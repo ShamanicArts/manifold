@@ -24,11 +24,14 @@ at `target/vst3/ManifoldFX.vst3`.
 - The first module has one stereo audio bus pair. MIDI and sidechain buses
   belong to the later general graph export.
 
-The controller currently returns no `IPlugView`. Hosts can show their generic
-parameter editor; the original Standalone FX slider and XY widgets are already
-embedded in the [CLAP editor](clap-host.md), but are not yet connected to
-VST3. A VST3 web editor needs a host UI-thread `IPlugView` bridge so widget
-gestures can call `IComponentHandler` safely. This is the next UI boundary.
+On Linux the controller now returns an `IPlugView` that embeds the same
+packaged original slider and XY widget module as the [CLAP editor](clap-host.md).
+The companion process reads editor IPC on its own thread. A bounded queue and
+the host's `Linux::IRunLoop` timer deliver begin/value/end gestures to
+`IComponentHandler` on the host UI thread. The editor sends an explicit ready
+message after its JavaScript receiver is registered, so the initial host state
+is not lost during webview navigation. A host parameter update refreshes the
+visible controls in the same window.
 
 ## Reproduce the checks
 
@@ -37,21 +40,25 @@ cargo test -p manifold-vst3
 ./scripts/build-vst3.sh
 # With Steinberg VST3 SDK 3.8.1 validator built locally:
 /path/to/validator -e target/vst3/ManifoldFX.vst3
+# Under an isolated headless Weston/Xwayland display:
+MANIFOLD_ISOLATED_DISPLAY=1 python3 scripts/probe-vst3-gui.py
 ```
 
-The three local adapter tests create both classes via the exported factory,
+The four local adapter tests create both classes via the exported factory,
 compare a 128-frame processed block sample for sample with `NativeProject`,
-and round-trip authored state through the processor and controller. Steinberg's
+round-trip authored state through the processor and controller, and drive
+ordered widget gestures through a mock host run loop. Steinberg's
 official SDK 3.8.1 validator reported **537 tests passed, 0 failed** for the
-built Linux bundle. This establishes the generic host audio, parameter, and
-state path; it does not establish behavior in a production DAW or a VST3
-custom editor. The CLAP editor has a separate [visual/host review](../web/public/standalone-fx-editor-bridge-review.html).
+built Linux bundle. The isolated host probe attached the packaged VST3 editor
+as a child X11 window and captured a visible Mix update from 0.72 to 0.20.
+The [visual review](../web/public/standalone-fx-vst3-host-review.html) contains
+both captures. A production DAW and a real pointer through the native VST3
+window remain untested.
 
 ## Next host gates
 
-1. Add `IPlugView` with the packaged original widget renderer and an editor
-   message pump on the host UI thread. Exercise a physical pointer gesture
-   through `beginEdit`, `performEdit`, and `endEdit` in a VST3 host.
+1. Exercise a physical pointer gesture through `beginEdit`, `performEdit`, and
+   `endEdit` in a production VST3 host.
 2. Test multiple instances, state recall, external automation, editor
    reopen, and varied DAW audio configurations.
 3. Export the general graph through fixed 128 macro parameters, typed MIDI

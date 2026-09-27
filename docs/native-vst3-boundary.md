@@ -50,7 +50,6 @@ The first adapter pins [`vst3` 0.3.0](https://github.com/coupler-rs/vst3-rs), a 
 
 ## Order of work
 
-1. Connect the Standalone FX VST3 controller to the exact packaged browser widget renderer through an `IPlugView` and a host UI runloop timer. Keep the companion process and IPC off the audio callback.
-2. Exercise pointer gestures, host automation, state recall, multiple instances, and the editor in a real DAW. The current validator confirms the backend and generic controller only.
-3. Implement the general graph module's fixed 128-slot controller, optional sidechain and event buses, and full browser project state. Compare Main and sampler routes against native/Wasm fixtures.
-4. Package and validate Windows/macOS bundles, then test physical devices, timing, and underrun telemetry.
+1. Exercise physical pointer gestures, host automation, state recall, multiple instances, and editor reopen in a real DAW. The Linux `IPlugView` now renders the packaged original widgets in an isolated host, and its UI-thread gesture queue passes a mock run loop test.
+2. Implement the general graph module's fixed 128-slot controller, optional sidechain and event buses, and full browser project state. Compare Main and sampler routes against native/Wasm fixtures.
+3. Package and validate Windows/macOS bundles, then test physical devices, timing, and underrun telemetry.

@@ -1011,6 +1011,7 @@ name = "manifold-vst3"
 version = "0.1.0"
 dependencies = [
  "crossbeam-queue",
+ "libc",
  "manifold-native",
  "serde_json",
  "vst3",

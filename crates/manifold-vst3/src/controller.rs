@@ -1,14 +1,24 @@
 use std::ffi::c_char;
-use std::ptr;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
-use manifold_native::project::NativeProject;
-use vst3::{Class, Steinberg::Vst::*, Steinberg::*, uid};
+use manifold_native::{DEFAULT_TYPE_PARAMETERS, project::NativeProject};
+use vst3::{Class, ComPtr, ComRef, Steinberg::Vst::*, Steinberg::*, uid};
+
+#[cfg(target_os = "linux")]
+use crate::editor;
 
 use crate::util::{DEFAULTS, LABELS, TYPES, copy_wstring, read_stream, utf16_string};
 
 pub(crate) struct Controller {
+    pub(crate) shared: Arc<Shared>,
+}
+
+pub(crate) struct Shared {
     normalized: [AtomicU64; 7],
+    pub(crate) memories: Mutex<[[f32; 5]; 21]>,
+    pub(crate) handler: Mutex<Option<ComPtr<IComponentHandler>>>,
+    version: AtomicU64,
 }
 
 impl Controller {
@@ -16,12 +26,50 @@ impl Controller {
 
     pub fn new() -> Self {
         Self {
-            normalized: DEFAULTS.map(|value| AtomicU64::new((value as f64).to_bits())),
+            shared: Arc::new(Shared {
+                normalized: DEFAULTS.map(|value| AtomicU64::new((value as f64).to_bits())),
+                memories: Mutex::new(DEFAULT_TYPE_PARAMETERS),
+                handler: Mutex::new(None),
+                version: AtomicU64::new(1),
+            }),
         }
     }
 
     fn value(&self, id: usize) -> f64 {
+        self.shared.value(id)
+    }
+}
+
+impl Shared {
+    pub(crate) fn value(&self, id: usize) -> f64 {
         f64::from_bits(self.normalized[id].load(Ordering::Acquire))
+    }
+
+    pub(crate) fn set_value(&self, id: usize, value: f64) {
+        self.normalized[id].store(value.to_bits(), Ordering::Release);
+        if id == 0 {
+            let selected = (value * 20.).round() as usize;
+            if let Ok(memories) = self.memories.lock() {
+                if let Some(row) = memories.get(selected) {
+                    for (offset, value) in row.iter().enumerate() {
+                        self.normalized[offset + 2]
+                            .store((*value as f64).to_bits(), Ordering::Release);
+                    }
+                }
+            }
+        } else if id >= 2 {
+            let selected = (self.value(0) * 20.).round() as usize;
+            if selected < 21 {
+                if let Ok(mut memories) = self.memories.lock() {
+                    memories[selected][id - 2] = value as f32;
+                }
+            }
+        }
+        self.version.fetch_add(1, Ordering::AcqRel);
+    }
+
+    pub(crate) fn editor_version(&self) -> u64 {
+        self.version.load(Ordering::Acquire)
     }
 }
 
@@ -56,8 +104,12 @@ impl IEditControllerTrait for Controller {
             } else {
                 parameter.initial as f64
             };
-            self.normalized[id].store(normalized.to_bits(), Ordering::Release);
+            self.shared.normalized[id].store(normalized.to_bits(), Ordering::Release);
         }
+        if let Ok(mut memories) = self.shared.memories.lock() {
+            *memories = project.fx_type_parameters();
+        }
+        self.shared.version.fetch_add(1, Ordering::AcqRel);
         kResultOk
     }
 
@@ -149,14 +201,37 @@ impl IEditControllerTrait for Controller {
         if id >= 7 || !value.is_finite() || !(0. ..=1.).contains(&value) {
             return kInvalidArgument;
         }
-        self.normalized[id as usize].store(value.to_bits(), Ordering::Release);
+        self.shared.set_value(id as usize, value);
+        if id == 0 {
+            if let Some(handler) = self
+                .shared
+                .handler
+                .lock()
+                .ok()
+                .and_then(|slot| slot.clone())
+            {
+                unsafe { handler.restartComponent(RestartFlags_::kParamValuesChanged) };
+            }
+        }
         kResultOk
     }
 
-    unsafe fn setComponentHandler(&self, _handler: *mut IComponentHandler) -> tresult {
+    unsafe fn setComponentHandler(&self, handler: *mut IComponentHandler) -> tresult {
+        let Ok(mut slot) = self.shared.handler.lock() else {
+            return kResultFalse;
+        };
+        *slot = unsafe { ComRef::from_raw(handler) }.map(|handler| handler.to_com_ptr());
         kResultOk
     }
-    unsafe fn createView(&self, _name: *const c_char) -> *mut IPlugView {
-        ptr::null_mut()
+    unsafe fn createView(&self, name: *const c_char) -> *mut IPlugView {
+        #[cfg(target_os = "linux")]
+        {
+            return editor::create_view(name, self.shared.clone());
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = name;
+            std::ptr::null_mut()
+        }
     }
 }

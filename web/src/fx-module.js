@@ -428,6 +428,7 @@ if (editorMode) {
     window.manifoldEditorReceive(window.__manifoldPendingState);
     delete window.__manifoldPendingState;
   }
+  window.ipc?.postMessage(JSON.stringify({ version: 1, kind: "editor-ready" }));
 }
 byId("open-state").addEventListener("change", async (event) => {
   const file = event.target.files?.[0];
