@@ -19,6 +19,28 @@ pub fn samples_per_bar(host_value: Option<f64>, sample_rate: f64, tempo_bpm: f64
     Some(rate * 240.0 / tempo)
 }
 
+/// A host or authored project with an explicit meter can derive its own bar
+/// length. Tempo remains quarter notes per minute; 6/8 is three quarters.
+pub fn samples_per_bar_at_meter(
+    sample_rate: f64,
+    tempo_bpm: f64,
+    numerator: u32,
+    denominator: u32,
+) -> Option<f64> {
+    if !sample_rate.is_finite()
+        || sample_rate <= 0.0
+        || !tempo_bpm.is_finite()
+        || tempo_bpm <= 0.0
+        || numerator == 0
+        || denominator == 0
+    {
+        return None;
+    }
+    let value =
+        sample_rate * 60.0 / tempo_bpm * f64::from(numerator) * 4.0 / f64::from(denominator);
+    (value.is_finite() && value > 0.0).then_some(value)
+}
+
 /// `sample_synth.lua` rounds retrospective bars to the nearest frame, with a
 /// minimum of one. Its public bar setting is clamped to 1/16–16 bars.
 pub fn retrospective_frames(samples_per_bar: f64, bars: f64) -> Option<u32> {
@@ -71,6 +93,14 @@ mod tests {
         assert_eq!(retrospective_frames(96_000.0, 0.0625), Some(6_000));
         assert_eq!(retrospective_frames(10.0, 0.25), Some(3));
         assert_eq!(retrospective_frames(96_000.0, 17.0), Some(1_536_000));
+        assert_eq!(
+            samples_per_bar_at_meter(48_000.0, 90.0, 3, 4),
+            Some(96_000.0)
+        );
+        assert_eq!(
+            samples_per_bar_at_meter(48_000.0, 120.0, 7, 8),
+            Some(84_000.0)
+        );
     }
 
     #[test]

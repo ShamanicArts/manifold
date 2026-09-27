@@ -690,17 +690,31 @@ try {
   const sideHz = sourceHz(sideSourceBundle.assets[0]);
   assert.ok(mainHz > 145 && mainHz < 185, `main capture should be 165 Hz, got ${mainHz}`);
   assert.ok(sideHz > 300 && sideHz < 360, `sidechain capture should be 330 Hz, got ${sideHz}`);
+  const meterNumerator = page.locator('input[aria-label="Capture meter numerator for sample instrument 5"]');
+  await meterNumerator.fill('3');
+  await meterNumerator.press('Tab');
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('Capture meter: 3/4'));
+  await page.locator('button[aria-label="Capture recent window for sample instrument 5"]').click();
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('Recent history 10 is now the source'));
+  const meterDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const meterBundle = JSON.parse((await readFile(await (await meterDownload).path())).toString());
+  assert.equal(meterBundle.assets[0].frames, 7200, '0.1 bar at 120 BPM in 3/4 is 0.15 seconds');
+  assert.equal(meterBundle.signal.captureTimeSignatureNumerator, 3);
+  assert.equal(meterBundle.signal.captureTimeSignatureDenominator, 4);
+  assert.equal(meterBundle.signal.captureWindowSeconds, .15);
   await page.locator('#audio-toggle').click();
   await page.locator('#graph-workspace-section').screenshot({ path: 'web/public/graph-multisource-sampler-controls.png' });
   await page.locator('#graph-load-tone').click();
   await page.locator('#graph-project-file').setInputFiles([{
-    name: 'retrospective-multisource.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(sideSourceBundle)),
+    name: 'retrospective-multisource.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(meterBundle)),
   }]);
   await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
   assert.equal(await page.locator('#graph-sidechain-mode').inputValue(), 'oscillator');
   assert.equal(await sourceSelect.inputValue(), '10');
   assert.equal(await page.locator('select[aria-label="Capture window unit for sample instrument 5"]').inputValue(), 'bars');
   assert.equal(await page.locator('input[aria-label="Capture length bars for sample instrument 5"]').inputValue(), '0.1');
+  assert.equal(await meterNumerator.inputValue(), '3');
   assert.match(await page.locator('input[aria-label="Sample instrument 5 audio file"]').locator('..').textContent(), /Recent history 10/);
   assert.deepEqual(errors, []);
   console.log(`Graph workspace browser: live, sidechain (${capturedHz.toFixed(1)} Hz), retrospective and two-source sampler capture (${mainHz.toFixed(1)}/${sideHz.toFixed(1)} Hz), source analysis and 14 native/Wasm references passed`);

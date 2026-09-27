@@ -33,6 +33,11 @@ assert.throws(() => setSidechainSource(sidechainSampler.signal, 'bad'), /Invalid
 assert.deepEqual(parseGraphProject(multisourceSampler), multisourceSampler.signal);
 assert.throws(() => validateTopology({ ...multisourceSampler.signal, captureWindowBars: 0 }), /Invalid graph/);
 assert.throws(() => validateTopology({ ...multisourceSampler.signal, captureWindowMode: 'beats' }), /Invalid graph/);
+const metered = { ...multisourceSampler.signal, captureTimeSignatureNumerator: 3,
+  captureTimeSignatureDenominator: 4 };
+assert.deepEqual(validateTopology(metered), metered);
+assert.throws(() => validateTopology({ ...metered, captureTimeSignatureDenominator: 0 }), /Invalid graph/);
+assert.throws(() => validateTopology({ ...metered, captureTimeSignatureDenominator: undefined }), /Invalid graph/);
 const missingTempo = { ...multisourceSampler.signal };
 delete missingTempo.captureTempoBpm;
 assert.throws(() => validateTopology(missingTempo), /Invalid graph/);

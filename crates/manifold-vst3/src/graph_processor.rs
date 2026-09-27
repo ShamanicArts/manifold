@@ -10,6 +10,7 @@ use crossbeam_queue::ArrayQueue;
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_native::capture_mailbox::{AudioCaptureWorker, CaptureMailbox};
 use manifold_native::host_buffers::{HostBuffers, RawHostBlock};
+use manifold_native::host_transport::{CaptureWindow, HostBarClock};
 use manifold_native::host_values::ValueBank;
 use manifold_native::parameters::{
     HOST_SLOT_BASE, HOST_SLOT_COUNT, HostParameter, TimedAutomation,
@@ -24,6 +25,7 @@ use crate::util::{copy_wstring, read_stream, write_stream};
 const MAX_MESSAGES: usize = 1024;
 
 struct Runtime {
+    sample_rate: f64,
     capture_worker: Option<AudioCaptureWorker>,
     preserve_capture_history: bool,
     values: Arc<ValueBank>,
@@ -40,11 +42,13 @@ pub(crate) struct GraphProcessor {
     pending: AtomicPtr<Runtime>,
     retired: ArrayQueue<usize>,
     active: AtomicBool,
+    bar_clock: HostBarClock,
     configuration: Mutex<Option<(f32, usize)>>,
     state: Mutex<Vec<u8>>,
     descriptors: Mutex<[Option<HostParameter>; HOST_SLOT_COUNT]>,
     values: Mutex<Arc<ValueBank>>,
     capture_mailbox: Mutex<Option<Arc<CaptureMailbox>>>,
+    capture_window: Mutex<Option<CaptureWindow>>,
     sidechain_active: AtomicBool,
     sidechain_arrangement: AtomicU64,
     peer: Mutex<Option<ComPtr<IConnectionPoint>>>,
@@ -66,11 +70,13 @@ impl GraphProcessor {
             pending: AtomicPtr::new(null_mut()),
             retired: ArrayQueue::new(64),
             active: AtomicBool::new(false),
+            bar_clock: HostBarClock::new(),
             configuration: Mutex::new(None),
             state: Mutex::new(DEFAULT_PROJECT.to_vec()),
             descriptors: Mutex::new(descriptors),
             values: Mutex::new(Arc::new(ValueBank::new(values.map(|value| value as f32)))),
             capture_mailbox: Mutex::new(None),
+            capture_window: Mutex::new(None),
             sidechain_active: AtomicBool::new(false),
             sidechain_arrangement: AtomicU64::new(SpeakerArr::kStereo),
             peer: Mutex::new(None),
@@ -108,6 +114,7 @@ impl GraphProcessor {
                 })
         });
         Some(Box::new(Runtime {
+            sample_rate: rate as f64,
             capture_worker: None,
             preserve_capture_history: false,
             values,
@@ -151,9 +158,31 @@ impl GraphProcessor {
         else {
             return false;
         };
-        seconds.is_finite()
-            && (0.05..=30.0).contains(&seconds)
-            && self.request_capture(node, (rate * seconds).round() as usize)
+        if !seconds.is_finite() || !(0.05..=30.0).contains(&seconds) {
+            return false;
+        }
+        let Ok(mut window) = self.capture_window.lock() else {
+            return false;
+        };
+        let accepted = self.request_capture(node, (rate * seconds).round() as usize);
+        if accepted {
+            *window = Some(CaptureWindow::Seconds(seconds));
+        }
+        accepted
+    }
+
+    fn request_capture_bars(&self, node: u32, bars: f64) -> bool {
+        let Some((frames, timing)) = self.bar_clock.window(bars, 1_440_000) else {
+            return false;
+        };
+        let Ok(mut window) = self.capture_window.lock() else {
+            return false;
+        };
+        let accepted = self.request_capture(node, frames);
+        if accepted {
+            *window = Some(timing);
+        }
+        accepted
     }
 
     /// Poll from a control thread, encode portable state, then queue a prepared
@@ -168,6 +197,7 @@ impl GraphProcessor {
         let Ok(window) = result else {
             return Some(false);
         };
+        let request = self.capture_window.lock().ok()?.take();
         let state = self.capture_state()?;
         let rate = self
             .configuration
@@ -176,14 +206,27 @@ impl GraphProcessor {
             .and_then(|value| *value)?
             .0
             .round() as u32;
-        let Ok(bytes) = NativeProject::embed_capture_asset(
-            &state,
-            window.node,
-            instrument,
-            window.stereo(),
-            rate,
-            label,
-        ) else {
+        let bytes = if let Some(request) = request {
+            NativeProject::embed_capture_asset_with_window(
+                &state,
+                window.node,
+                instrument,
+                window.stereo(),
+                rate,
+                label,
+                request,
+            )
+        } else {
+            NativeProject::embed_capture_asset(
+                &state,
+                window.node,
+                instrument,
+                window.stereo(),
+                rate,
+                label,
+            )
+        };
+        let Ok(bytes) = bytes else {
             return Some(false);
         };
         Some(self.restore_bytes_with_history(bytes, true) == kResultOk)
@@ -233,6 +276,10 @@ impl GraphProcessor {
 
     fn deactivate(&self) {
         self.active.store(false, Ordering::Release);
+        self.bar_clock.clear();
+        if let Ok(mut window) = self.capture_window.lock() {
+            *window = None;
+        }
         if let Ok(mut mailbox) = self.capture_mailbox.lock() {
             *mailbox = None;
         }
@@ -553,7 +600,7 @@ impl IConnectionPointTrait for GraphProcessor {
         let Some(attributes) = (unsafe { ComRef::from_raw(message.getAttributes()) }) else {
             return kResultFalse;
         };
-        if kind == b"manifold.graph.capture.start.v1" {
+        if kind == b"manifold.graph.capture.start.v1" || kind == b"manifold.graph.capture.bars.v1" {
             let mut data: *const std::ffi::c_void = std::ptr::null();
             let mut size = 0;
             if unsafe { attributes.getBinary(c"request".as_ptr(), &mut data, &mut size) }
@@ -565,12 +612,13 @@ impl IConnectionPointTrait for GraphProcessor {
             }
             let bytes = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), 12) };
             let node = u32::from_le_bytes(bytes[..4].try_into().unwrap());
-            let seconds = f64::from_le_bytes(bytes[4..12].try_into().unwrap());
-            return if self.request_capture_seconds(node, seconds) {
-                kResultOk
+            let window = f64::from_le_bytes(bytes[4..12].try_into().unwrap());
+            let accepted = if kind == b"manifold.graph.capture.bars.v1" {
+                self.request_capture_bars(node, window)
             } else {
-                kResultFalse
+                self.request_capture_seconds(node, window)
             };
+            return if accepted { kResultOk } else { kResultFalse };
         }
         if kind == b"manifold.graph.capture.finish.v1" {
             let mut data: *const std::ffi::c_void = std::ptr::null();
@@ -729,6 +777,23 @@ impl IAudioProcessorTrait for GraphProcessor {
             return kResultFalse;
         }
         let runtime = unsafe { &mut *pointer };
+        if !data.processContext.is_null() {
+            let context = unsafe { &*data.processContext };
+            let required = ProcessContext_::StatesAndFlags_::kTempoValid
+                | ProcessContext_::StatesAndFlags_::kTimeSigValid;
+            if context.state & required == required {
+                self.bar_clock.publish(
+                    runtime.sample_rate,
+                    context.tempo,
+                    context.timeSigNumerator,
+                    context.timeSigDenominator,
+                );
+            } else {
+                self.bar_clock.clear();
+            }
+        } else {
+            self.bar_clock.clear();
+        }
         if let Some(worker) = runtime.capture_worker.as_mut() {
             worker.service(&mut runtime.prepared.processor);
         }
@@ -787,7 +852,8 @@ impl IAudioProcessorTrait for GraphProcessor {
 
 impl IProcessContextRequirementsTrait for GraphProcessor {
     unsafe fn getProcessContextRequirements(&self) -> u32 {
-        0
+        IProcessContextRequirements_::Flags_::kNeedTempo
+            | IProcessContextRequirements_::Flags_::kNeedTimeSignature
     }
 }
 

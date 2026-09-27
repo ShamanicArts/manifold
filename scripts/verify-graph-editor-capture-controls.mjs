@@ -46,8 +46,14 @@ try {
   await page.evaluate(() => window.manifoldCaptureResult(true, 'Captured source published.'));
   assert.equal(await page.locator('#graph-capture-go').isEnabled(), true);
   assert.match(await page.locator('#graph-status').textContent(), /Captured source published/);
+  await page.locator('#graph-capture-mode').selectOption('bars');
+  await page.locator('#graph-capture-seconds').fill('0.5');
+  await page.locator('#graph-capture-go').click();
+  const barStart = await page.evaluate(() => window.__captureMessages.filter((message) => message.kind === 'capture-start').at(-1));
+  assert.deepEqual(barStart, { version: 1, kind: 'capture-start', nodeId: 10, bars: 0.5 });
+  await page.evaluate(() => window.manifoldCaptureResult(false, 'Host tempo unavailable.'));
   assert.deepEqual(errors, []);
-  console.log('Graph editor capture: source/window request, result poll, and completion passed');
+  console.log('Graph editor capture: seconds and bars requests, result poll, and completion passed');
 } finally {
   await browser.close();
 }

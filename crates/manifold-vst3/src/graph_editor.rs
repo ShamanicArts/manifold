@@ -37,6 +37,7 @@ enum EditorAction {
     Import(ImportResult),
     Assign { id: u32, slot: u32 },
     CaptureStart { node: u32, seconds: f64 },
+    CaptureBars { node: u32, bars: f64 },
     CaptureFinish { instrument: u32 },
 }
 
@@ -125,6 +126,10 @@ impl State {
             EditorAction::CaptureStart { node, seconds } => Some(match self.shared.capture_start(node, seconds) {
                 Ok(()) => (format!("Freezing {seconds} seconds from capture node {node}…"), None),
                 Err(reason) => (format!("Capture failed: {reason}."), Some(false)),
+            }),
+            EditorAction::CaptureBars { node, bars } => Some(match self.shared.capture_start_bars(node, bars) {
+                Ok(()) => (format!("Freezing {bars} bars from capture node {node}…"), None),
+                Err(reason) => (format!("Capture failed: {reason}. Play the DAW transport to supply tempo and meter."), Some(false)),
             }),
             EditorAction::CaptureFinish { instrument } => match self.shared.capture_finish(instrument) {
                 Ok(None) => None,
@@ -323,9 +328,16 @@ impl IPlugViewTrait for View {
                         let node = value["nodeId"]
                             .as_u64()
                             .and_then(|id| u32::try_from(id).ok());
+                        let bars = value["bars"].as_f64();
                         let seconds = value["seconds"].as_f64();
-                        if let (Some(node), Some(seconds)) = (node, seconds) {
-                            if node > 0 && seconds.is_finite() && (0.05..=30.0).contains(&seconds) {
+                        if let Some(node) = node.filter(|node| *node > 0) {
+                            if let Some(bars) = bars
+                                .filter(|bars| bars.is_finite() && (0.0625..=16.0).contains(bars))
+                            {
+                                submit(EditorAction::CaptureBars { node, bars });
+                            } else if let Some(seconds) = seconds.filter(|seconds| {
+                                seconds.is_finite() && (0.05..=30.0).contains(seconds)
+                            }) {
                                 submit(EditorAction::CaptureStart { node, seconds });
                             }
                         }

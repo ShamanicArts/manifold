@@ -1,5 +1,5 @@
-//! CLAP graph instrument. Project parsing and runtime replacement happen on the
-//! host main thread; the audio callback only uses prepared, bounded storage.
+//! CLAP graph adapter. Project parsing and runtime replacement happen off the
+//! audio callback, which only uses prepared, bounded storage.
 
 #[cfg(target_os = "linux")]
 use std::cell::UnsafeCell;
@@ -14,8 +14,9 @@ use clap_sys::audio_buffer::clap_audio_buffer;
 use clap_sys::events::{
     CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_CHOKE, CLAP_EVENT_NOTE_OFF, CLAP_EVENT_NOTE_ON,
     CLAP_EVENT_PARAM_GESTURE_BEGIN, CLAP_EVENT_PARAM_GESTURE_END, CLAP_EVENT_PARAM_VALUE,
-    clap_event_header, clap_event_note, clap_event_param_gesture, clap_event_param_value,
-    clap_input_events, clap_output_events,
+    CLAP_TRANSPORT_HAS_TEMPO, CLAP_TRANSPORT_HAS_TIME_SIGNATURE, clap_event_header,
+    clap_event_note, clap_event_param_gesture, clap_event_param_value, clap_input_events,
+    clap_output_events,
 };
 use clap_sys::ext::audio_ports::{
     CLAP_AUDIO_PORT_IS_MAIN, CLAP_EXT_AUDIO_PORTS, CLAP_PORT_STEREO, clap_audio_port_info,
@@ -38,6 +39,7 @@ use clap_sys::stream::{clap_istream, clap_ostream};
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_native::capture_mailbox::{AudioCaptureWorker, CaptureMailbox};
 use manifold_native::host_buffers::{HostBuffers, RawHostBlock};
+use manifold_native::host_transport::{CaptureWindow, HostBarClock};
 use manifold_native::host_values::ValueBank;
 use manifold_native::parameters::{
     HOST_SLOT_BASE, HOST_SLOT_COUNT, HostParameter, TimedAutomation,
@@ -50,6 +52,7 @@ const MAX_NOTES: usize = 1024;
 const MAX_STATE: usize = 45 * 1024 * 1024;
 
 struct Runtime {
+    sample_rate: f64,
     capture_worker: Option<AudioCaptureWorker>,
     preserve_capture_history: bool,
     bank: usize,
@@ -68,10 +71,12 @@ pub(crate) struct Instance {
     pending: AtomicPtr<Runtime>,
     retired: AtomicPtr<Runtime>,
     active: AtomicBool,
+    bar_clock: HostBarClock,
     control: Mutex<()>,
     configuration: Mutex<Option<(f32, usize)>>,
     state: Mutex<Vec<u8>>,
     capture_mailbox: Mutex<Option<Arc<CaptureMailbox>>>,
+    capture_window: Mutex<Option<CaptureWindow>>,
     descriptors: Mutex<[Option<HostParameter>; HOST_SLOT_COUNT]>,
     value_banks: [ValueBank; 2],
     active_bank: AtomicUsize,
@@ -165,10 +170,12 @@ impl Instance {
             pending: AtomicPtr::new(null_mut()),
             retired: AtomicPtr::new(null_mut()),
             active: AtomicBool::new(false),
+            bar_clock: HostBarClock::new(),
             control: Mutex::new(()),
             configuration: Mutex::new(None),
             state: Mutex::new(DEFAULT.to_vec()),
             capture_mailbox: Mutex::new(None),
+            capture_window: Mutex::new(None),
             descriptors: Mutex::new(descriptors),
             value_banks: [ValueBank::new(normalized), ValueBank::new(normalized)],
             active_bank: AtomicUsize::new(0),
@@ -209,6 +216,7 @@ impl Instance {
                 })
         });
         Some(Box::new(Runtime {
+            sample_rate: rate as f64,
             capture_worker: None,
             preserve_capture_history: false,
             bank,
@@ -255,9 +263,34 @@ impl Instance {
         else {
             return false;
         };
-        seconds.is_finite()
-            && (0.05..=30.0).contains(&seconds)
-            && self.request_capture(node, (rate * seconds).round() as usize)
+        if !seconds.is_finite() || !(0.05..=30.0).contains(&seconds) {
+            return false;
+        }
+        let Ok(mut window) = self.capture_window.lock() else {
+            return false;
+        };
+        let accepted = self.request_capture(node, (rate * seconds).round() as usize);
+        if accepted {
+            *window = Some(CaptureWindow::Seconds(seconds));
+        }
+        accepted
+    }
+
+    pub(super) fn request_capture_bars(&self, node: u32, bars: f64) -> bool {
+        let Ok(_control) = self.control.lock() else {
+            return false;
+        };
+        let Some((frames, timing)) = self.bar_clock.window(bars, 1_440_000) else {
+            return false;
+        };
+        let Ok(mut window) = self.capture_window.lock() else {
+            return false;
+        };
+        let accepted = self.request_capture(node, frames);
+        if accepted {
+            *window = Some(timing);
+        }
+        accepted
     }
 
     pub(super) fn finish_capture(&self, instrument: u32, label: &str) -> Option<bool> {
@@ -271,6 +304,7 @@ impl Instance {
         let Ok(window) = result else {
             return Some(false);
         };
+        let request = self.capture_window.lock().ok()?.take();
         let state = self.state_bytes()?;
         let rate = self
             .configuration
@@ -279,14 +313,27 @@ impl Instance {
             .and_then(|value| *value)?
             .0
             .round() as u32;
-        let Ok(bytes) = NativeProject::embed_capture_asset(
-            &state,
-            window.node,
-            instrument,
-            window.stereo(),
-            rate,
-            label,
-        ) else {
+        let bytes = if let Some(request) = request {
+            NativeProject::embed_capture_asset_with_window(
+                &state,
+                window.node,
+                instrument,
+                window.stereo(),
+                rate,
+                label,
+                request,
+            )
+        } else {
+            NativeProject::embed_capture_asset(
+                &state,
+                window.node,
+                instrument,
+                window.stereo(),
+                rate,
+                label,
+            )
+        };
+        let Ok(bytes) = bytes else {
             return Some(false);
         };
         // A capture only changes PCM and capture metadata. Keep the fixed host
@@ -477,8 +524,12 @@ impl Instance {
     }
     fn deactivate_locked(&self) {
         self.active.store(false, Ordering::Release);
+        self.bar_clock.clear();
         if let Ok(mut mailbox) = self.capture_mailbox.lock() {
             *mailbox = None;
+        }
+        if let Ok(mut window) = self.capture_window.lock() {
+            *window = None;
         }
         for pointer in [&self.current, &self.pending, &self.retired] {
             let old = pointer.swap(null_mut(), Ordering::AcqRel);
@@ -1082,6 +1133,23 @@ unsafe extern "C" fn process(
     }
     let runtime = unsafe { &mut *pointer };
     let block = unsafe { &*block };
+    if !block.transport.is_null() {
+        let transport = unsafe { &*block.transport };
+        if transport.flags & (CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_TIME_SIGNATURE)
+            == CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_TIME_SIGNATURE
+        {
+            instance.bar_clock.publish(
+                runtime.sample_rate,
+                transport.tempo,
+                i32::from(transport.tsig_num),
+                i32::from(transport.tsig_denom),
+            );
+        } else {
+            instance.bar_clock.clear();
+        }
+    } else {
+        instance.bar_clock.clear();
+    }
     if !unsafe { collect(block.in_events, block.frames_count as usize, runtime) } {
         return CLAP_PROCESS_ERROR;
     }

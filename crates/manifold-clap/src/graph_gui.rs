@@ -341,17 +341,27 @@ fn receive(instance: &Instance, reader: impl BufRead) {
                 let node = message["nodeId"]
                     .as_u64()
                     .and_then(|id| u32::try_from(id).ok());
+                let bars = message["bars"].as_f64();
                 let seconds = message["seconds"].as_f64();
-                if let (Some(node), Some(seconds)) = (node, seconds) {
-                    if node > 0 && seconds.is_finite() && (0.05..=30.0).contains(&seconds) {
-                        if instance.request_capture_seconds(node, seconds) {
-                            instance.gui.status("Freezing the selected source…");
-                        } else {
-                            instance.gui.capture_result(
+                if let Some(node) = node.filter(|node| *node > 0) {
+                    let accepted = if let Some(bars) =
+                        bars.filter(|bars| bars.is_finite() && (0.0625..=16.0).contains(bars))
+                    {
+                        instance.request_capture_bars(node, bars)
+                    } else if let Some(seconds) = seconds
+                        .filter(|seconds| seconds.is_finite() && (0.05..=30.0).contains(seconds))
+                    {
+                        instance.request_capture_seconds(node, seconds)
+                    } else {
+                        false
+                    };
+                    if accepted {
+                        instance.gui.status("Freezing the selected source…");
+                    } else {
+                        instance.gui.capture_result(
                                 false,
-                                "Capture could not start for this source and window.",
+                                "Capture could not start. Play the DAW transport for bar timing, or choose a shorter window.",
                             );
-                        }
                     }
                 }
             }

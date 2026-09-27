@@ -468,8 +468,71 @@ impl NativeProject {
         source_rate: u32,
         label: &str,
     ) -> Result<Vec<u8>, ProjectError> {
+        Self::embed_capture_asset_inner(
+            state,
+            capture,
+            instrument,
+            stereo,
+            source_rate,
+            label,
+            None,
+        )
+    }
+
+    pub fn embed_capture_asset_with_window(
+        state: &[u8],
+        capture: u32,
+        instrument: u32,
+        stereo: &[f32],
+        source_rate: u32,
+        label: &str,
+        window: crate::host_transport::CaptureWindow,
+    ) -> Result<Vec<u8>, ProjectError> {
+        Self::embed_capture_asset_inner(
+            state,
+            capture,
+            instrument,
+            stereo,
+            source_rate,
+            label,
+            Some(window),
+        )
+    }
+
+    fn embed_capture_asset_inner(
+        state: &[u8],
+        capture: u32,
+        instrument: u32,
+        stereo: &[f32],
+        source_rate: u32,
+        label: &str,
+        window: Option<crate::host_transport::CaptureWindow>,
+    ) -> Result<Vec<u8>, ProjectError> {
         let parsed = Self::parse(state)?;
         let mut document = parsed.document;
+        if let Some(window) = window {
+            let signal = &mut document["signal"];
+            match window {
+                crate::host_transport::CaptureWindow::Seconds(seconds) => {
+                    signal["captureWindowMode"] = serde_json::json!("seconds");
+                    signal["captureWindowSeconds"] = serde_json::json!(seconds);
+                }
+                crate::host_transport::CaptureWindow::Bars {
+                    bars,
+                    tempo_bpm,
+                    numerator,
+                    denominator,
+                } => {
+                    signal["captureWindowMode"] = serde_json::json!("bars");
+                    signal["captureWindowBars"] = serde_json::json!(bars);
+                    signal["captureTempoBpm"] = serde_json::json!(tempo_bpm);
+                    signal["captureTimeSignatureNumerator"] = serde_json::json!(numerator);
+                    signal["captureTimeSignatureDenominator"] = serde_json::json!(denominator);
+                    signal["captureWindowSeconds"] =
+                        serde_json::json!((stereo.len() / 2) as f64 / f64::from(source_rate));
+                }
+            }
+        }
         replace_sample_asset(
             &mut document,
             instrument,
@@ -617,6 +680,8 @@ impl NativeProject {
                 "captureWindowMode",
                 "captureWindowBars",
                 "captureTempoBpm",
+                "captureTimeSignatureNumerator",
+                "captureTimeSignatureDenominator",
             ],
         )?;
         if required(signal, "inputs") != 2 || required(signal, "outputs") != 2 {
@@ -645,6 +710,24 @@ impl NativeProject {
         }
         if let Some(tempo) = signal.get("captureTempoBpm") {
             float(tempo, 20.0, 300.0)?;
+        }
+        for key in [
+            "captureTimeSignatureNumerator",
+            "captureTimeSignatureDenominator",
+        ] {
+            if let Some(value) = signal.get(key) {
+                let number = value
+                    .as_u64()
+                    .ok_or(ProjectError::Invalid("capture meter"))?;
+                if !(1..=128).contains(&number) {
+                    return Err(ProjectError::Invalid("capture meter"));
+                }
+            }
+        }
+        if signal.get("captureTimeSignatureNumerator").is_some()
+            != signal.get("captureTimeSignatureDenominator").is_some()
+        {
+            return Err(ProjectError::Invalid("capture meter"));
         }
         if signal
             .get("captureWindowMode")

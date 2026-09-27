@@ -125,9 +125,21 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     gtk::glib::timeout_add_local(Duration::from_millis(16), move || {
         if let Some(path) = probe_capture.as_deref() {
             if Path::new(path).exists() {
+                let request = fs::read_to_string(path).unwrap_or_default();
                 let _ = fs::remove_file(path);
-                let _ = webview
-                    .evaluate_script("document.getElementById('graph-capture-go')?.click();");
+                if let Some(bars) = request
+                    .trim()
+                    .strip_prefix("bars:")
+                    .and_then(|value| value.parse::<f64>().ok())
+                    .filter(|value| value.is_finite() && (0.0625..=16.0).contains(value))
+                {
+                    let _ = webview.evaluate_script(&format!(
+                        "document.getElementById('graph-capture-mode').value='bars'; document.getElementById('graph-capture-seconds').value='{bars}'; document.getElementById('graph-capture-go').click();"
+                    ));
+                } else {
+                    let _ = webview
+                        .evaluate_script("document.getElementById('graph-capture-go')?.click();");
+                }
             }
         }
         while let Ok(line) = receiver.try_recv() {

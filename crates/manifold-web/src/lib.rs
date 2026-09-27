@@ -1581,6 +1581,26 @@ pub extern "C" fn manifold_capture_tempo_frames(
         .unwrap_or(0)
 }
 
+/// Convert an explicit meter and tempo into the same bounded retrospective
+/// frame decision used by native hosts.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_capture_meter_frames(
+    sample_rate: f64,
+    tempo_bpm: f64,
+    numerator: u32,
+    denominator: u32,
+    bars: f64,
+) -> u32 {
+    manifold_core::capture_timing::samples_per_bar_at_meter(
+        sample_rate,
+        tempo_bpm,
+        numerator,
+        denominator,
+    )
+    .and_then(|samples| manifold_core::capture_timing::retrospective_frames(samples, bars))
+    .unwrap_or(0)
+}
+
 /// 0 idle/invalid, 1 copying, 2 ready.
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_capture_stage_status(node_id: u32) -> u32 {

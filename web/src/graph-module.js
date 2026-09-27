@@ -199,19 +199,30 @@ if (window.__manifoldPendingState) {
 }
 byId('graph-note').addEventListener('click', () => paint(snapshotFromProject(noteVoice)));
 byId('graph-tone').addEventListener('click', () => paint(snapshotFromProject(toneTexture)));
+byId('graph-capture-mode').addEventListener('change', () => {
+  const bars = byId('graph-capture-mode').value === 'bars';
+  const input = byId('graph-capture-seconds');
+  input.min = bars ? '0.0625' : '0.05';
+  input.max = bars ? '16' : '30';
+  input.step = bars ? '0.0625' : '0.05';
+  input.value = bars ? '1' : '2';
+});
 byId('graph-capture-go').addEventListener('click', () => {
   const nodeId = Number(byId('graph-capture-source').value);
-  const seconds = Number(byId('graph-capture-seconds').value);
+  const duration = Number(byId('graph-capture-seconds').value);
+  const bars = byId('graph-capture-mode').value === 'bars';
   if (!Number.isInteger(nodeId) || !Number.isInteger(captureInstrument)
-    || !Number.isFinite(seconds) || seconds < 0.05 || seconds > 30 || !window.ipc?.postMessage) {
-    status('Choose a source and a window from 0.05 to 30 seconds.');
+    || !Number.isFinite(duration) || duration < (bars ? 0.0625 : 0.05)
+    || duration > (bars ? 16 : 30) || !window.ipc?.postMessage) {
+    status(`Choose a source and a window from ${bars ? '1/16 to 16 bars' : '0.05 to 30 seconds'}.`);
     return;
   }
   if (captureTimer) clearInterval(captureTimer);
   byId('graph-capture-go').disabled = true;
   captureStarted = false;
-  window.ipc.postMessage(JSON.stringify({ version: 1, kind: 'capture-start', nodeId, seconds }));
-  status(`Capturing ${seconds} seconds from node ${nodeId}…`);
+  window.ipc.postMessage(JSON.stringify({ version: 1, kind: 'capture-start', nodeId,
+    ...(bars ? { bars: duration } : { seconds: duration }) }));
+  status(`Capturing ${duration} ${bars ? 'bars' : 'seconds'} from node ${nodeId}…`);
   const deadline = Date.now() + 15_000;
   captureTimer = setInterval(() => {
     if (Date.now() > deadline) {

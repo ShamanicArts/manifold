@@ -10,6 +10,7 @@ use manifold_core::temporal_partials::TemporalFrame;
 
 pub mod capture_mailbox;
 pub mod host_buffers;
+pub mod host_transport;
 pub mod host_values;
 pub mod parameters;
 pub mod project;

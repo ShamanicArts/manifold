@@ -75,7 +75,10 @@ def mute_host_stream(pid: int) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--format", choices=("clap", "vst3"), default="vst3")
+    parser.add_argument("--bars", type=float, help="capture this many bars at 90 BPM in 3/4")
     args = parser.parse_args()
+    if args.bars is not None:
+        assert 0.0625 <= args.bars <= 16
     assert os.environ.get("MANIFOLD_ISOLATED_DISPLAY") == "1"
     assert os.environ.get("DISPLAY") and os.environ["DISPLAY"] != ":0"
     if args.format == "clap":
@@ -104,6 +107,7 @@ def main() -> None:
         script.write_text(f"""
 reaper.GetSetProjectInfo(0,'PROJECT_SRATE',48000,true)
 reaper.GetSetProjectInfo(0,'PROJECT_SRATE_USE',1,true)
+{"assert(reaper.SetTempoTimeSigMarker(0,-1,0,-1,-1,90,3,4,false))" if args.bars is not None else ""}
 reaper.InsertTrackAtIndex(0,true)
 local track=reaper.GetTrack(0,0)
 reaper.SetOnlyTrackSelected(track)
@@ -183,7 +187,8 @@ reaper.defer(poll)
                     mute_host_stream(process.pid)
                     time.sleep(3)
                     (work / "capture-go.status").unlink(missing_ok=True)
-                    (work / "capture-go").write_text("go")
+                    (work / "capture-go").write_text(
+                        f"bars:{args.bars}" if args.bars is not None else "go")
                     if args.format == "vst3":
                         time.sleep(.5)
                         command("stop")
@@ -202,12 +207,26 @@ reaper.defer(poll)
                             break
                         assert time.monotonic() < deadline, "editor capture did not publish an asset"
                     asset = state["assets"][0]
-                    assert asset["nodeId"] == 5 and asset["frames"] == 96000, asset
+                    expected_frames = (round(48000 * 60 / 90 * 3 * args.bars)
+                                       if args.bars is not None else 96000)
+                    assert asset["nodeId"] == 5 and asset["frames"] == expected_frames, asset
+                    capture_signal = state["signal"]
+                    if args.bars is not None:
+                        assert capture_signal["captureWindowMode"] == "bars", capture_signal
+                        assert capture_signal["captureWindowBars"] == args.bars, capture_signal
+                        assert capture_signal["captureTempoBpm"] == 90, capture_signal
+                        assert capture_signal["captureTimeSignatureNumerator"] == 3, capture_signal
+                        assert capture_signal["captureTimeSignatureDenominator"] == 4, capture_signal
+                        assert capture_signal["captureWindowSeconds"] == expected_frames / 48000, capture_signal
+                    else:
+                        assert capture_signal["captureWindowMode"] == "seconds", capture_signal
+                        assert capture_signal["captureWindowSeconds"] == 2, capture_signal
                     pcm = array("f")
                     pcm.frombytes(base64.b64decode(asset["pcmF32Base64"]))
                     peak = max(abs(sample) for sample in pcm)
                     assert .45 < peak < .55, peak
-                    screenshot = ROOT / f"web/public/graph-{args.format}-reaper-capture-editor.png"
+                    suffix = "-bars" if args.bars is not None else ""
+                    screenshot = ROOT / f"web/public/graph-{args.format}-reaper-capture{suffix}-editor.png"
                     subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "x11grab",
                                     "-window_id", hex(x11.editor()), "-i", os.environ["DISPLAY"],
                                     "-frames:v", "1", "-y", str(screenshot)],
@@ -255,7 +274,10 @@ reaper.defer(poll)
                   "freshRenderFrames": len(samples) // 2, "freshRenderPeak": render_peak,
                   "leadPeak": lead_peak, "peakErrorVsNative": parity_error,
                   "editorScreenshot": screenshot.name}
-        (ROOT / f"web/public/graph-{args.format}-reaper-capture-editor.json").write_text(
+        if args.bars is not None:
+            result.update({"windowMode": "bars", "bars": args.bars,
+                           "hostTempoBpm": 90, "hostMeter": "3/4"})
+        (ROOT / f"web/public/graph-{args.format}-reaper-capture{suffix}-editor.json").write_text(
             json.dumps(result, indent=2) + "\n")
         print(json.dumps(result))
 

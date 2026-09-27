@@ -187,13 +187,18 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted });
         } else if (data.type === 'capture-publish-live' && this.engine) {
           const barsRequested = data.windowBars !== undefined;
+          const numerator = data.meterNumerator ?? 4;
+          const denominator = data.meterDenominator ?? 4;
           const requestedFrames = barsRequested
-            ? this.engine.manifold_capture_tempo_frames(sampleRate, data.tempoBpm, data.windowBars)
+            ? this.engine.manifold_capture_meter_frames(sampleRate, data.tempoBpm,
+              numerator, denominator, data.windowBars)
             : Number.isFinite(data.windowSeconds) && data.windowSeconds > 0
               ? Math.round(Math.min(30, data.windowSeconds) * sampleRate) : 0;
           const validWindow = !barsRequested || (Number.isFinite(data.tempoBpm) && data.tempoBpm >= 20
             && data.tempoBpm <= 300 && Number.isFinite(data.windowBars)
             && data.windowBars >= .0625 && data.windowBars <= 16
+            && Number.isInteger(numerator) && numerator >= 1 && numerator <= 128
+            && Number.isInteger(denominator) && denominator >= 1 && denominator <= 128
             && requestedFrames > 0 && requestedFrames <= Math.round(30 * sampleRate));
           const accepted = validWindow && this.engine.manifold_capture_stage_begin(data.captureId, requestedFrames) === 1;
           this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 4);

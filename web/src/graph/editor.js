@@ -332,6 +332,39 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
           const tempoLabel = document.createElement('label');
           tempoLabel.className = 'graph-capture-window';
           tempoLabel.append('Tempo', tempoBpm, 'BPM');
+          const meterNumerator = document.createElement('input');
+          const meterDenominator = document.createElement('input');
+          for (const [input, value, part] of [
+            [meterNumerator, project.signal.captureTimeSignatureNumerator ?? 4, 'numerator'],
+            [meterDenominator, project.signal.captureTimeSignatureDenominator ?? 4, 'denominator'],
+          ]) {
+            input.type = 'number';
+            input.className = 'graph-capture-action';
+            input.min = '1';
+            input.max = '128';
+            input.step = '1';
+            input.value = String(value);
+            input.setAttribute('aria-label', `Capture meter ${part} for sample instrument ${node.id}`);
+          }
+          const updateMeter = () => {
+            if (!canChangeParameter()) return;
+            const numerator = Number(meterNumerator.value);
+            const denominator = Number(meterDenominator.value);
+            if (!Number.isInteger(numerator) || numerator < 1 || numerator > 128
+              || !Number.isInteger(denominator) || denominator < 1 || denominator > 128) {
+              meterNumerator.value = String(project.signal.captureTimeSignatureNumerator ?? 4);
+              meterDenominator.value = String(project.signal.captureTimeSignatureDenominator ?? 4);
+              fail(new Error('Choose a capture meter from 1 to 128 in each field.'));
+              return;
+            }
+            commit({ ...project.signal, captureTimeSignatureNumerator: numerator,
+              captureTimeSignatureDenominator: denominator }, `Capture meter: ${numerator}/${denominator}.`);
+          };
+          meterNumerator.addEventListener('change', updateMeter);
+          meterDenominator.addEventListener('change', updateMeter);
+          const meterLabel = document.createElement('label');
+          meterLabel.className = 'graph-capture-window';
+          meterLabel.append('Meter', meterNumerator, '/', meterDenominator);
           const publish = document.createElement('button');
           publish.type = 'button';
           publish.className = 'gate-button graph-capture-action';
@@ -350,6 +383,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
             windowLabel.hidden = !retrospective || bars;
             barsLabel.hidden = !retrospective || !bars;
             tempoLabel.hidden = !retrospective || !bars;
+            meterLabel.hidden = !retrospective || !bars;
             publish.hidden = retrospective;
             publishLive.textContent = retrospective ? 'Capture recent window' : 'Use current recording';
             publishLive.setAttribute('aria-label', `${retrospective ? 'Capture recent window' : 'Use current recording'} for sample instrument ${node.id}`);
@@ -364,20 +398,26 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
             const barsMode = retrospective && windowMode.value === 'bars';
             const bars = Number(windowBars.value);
             const tempo = Number(tempoBpm.value);
+            const numerator = Number(meterNumerator.value);
+            const denominator = Number(meterDenominator.value);
             if (retrospective && !barsMode && (!Number.isFinite(seconds) || seconds < .05 || seconds > 30)) {
               fail(new Error('Choose a capture window from 0.05 to 30 seconds.'));
               return;
             }
             if (barsMode && (!Number.isFinite(bars) || bars < .0625 || bars > 16
-              || !Number.isFinite(tempo) || tempo < 20 || tempo > 300 || bars * 240 / tempo > 30)) {
-              fail(new Error('Choose 1/16–16 bars and 20–300 BPM within the 30-second source ring.'));
+              || !Number.isFinite(tempo) || tempo < 20 || tempo > 300
+              || !Number.isInteger(numerator) || numerator < 1 || numerator > 128
+              || !Number.isInteger(denominator) || denominator < 1 || denominator > 128
+              || bars * 60 / tempo * numerator * 4 / denominator > 30)) {
+              fail(new Error('Choose 1/16–16 bars, 20–300 BPM, and a meter within the 30-second source ring.'));
               return;
             }
             busy = true;
             refreshRunning(false);
             status.textContent = `Publishing ${retrospective ? 'recent history' : live ? 'recording window' : 'stopped take'} ${source.value} to sample instrument ${node.id}…`;
             try {
-              const window = barsMode ? { windowBars: bars, tempoBpm: tempo } : seconds;
+              const window = barsMode ? { windowBars: bars, tempoBpm: tempo,
+                meterNumerator: numerator, meterDenominator: denominator } : seconds;
               const asset = await onCapturePublish(Number(source.value), node.id, live, window);
               if (destroyed || revision !== startingRevision || !isActive() || !isRunning()) return;
               const label = `${retrospective ? 'Recent history' : live ? 'Recording window' : 'Loop take'} ${source.value}`;
@@ -386,14 +426,17 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
                   label }];
               const signal = { ...project.signal, selectedCaptureNodeId: Number(source.value),
                 ...(retrospective ? barsMode ? { captureWindowMode: 'bars', captureWindowBars: bars,
-                  captureTempoBpm: tempo } : { captureWindowMode: 'seconds', captureWindowSeconds: seconds } : {}) };
+                  captureTempoBpm: tempo, captureTimeSignatureNumerator: numerator,
+                  captureTimeSignatureDenominator: denominator,
+                  captureWindowSeconds: asset.stereo.length / 2 / asset.sourceRate }
+                  : { captureWindowMode: 'seconds', captureWindowSeconds: seconds } : {}) };
               commit(signal, `${label} is now the source for new notes. Held notes keep their previous source; project bundle includes the take.`, assets);
             } catch (error) { if (revision === startingRevision) fail(error); }
             finally { busy = false; refreshRunning(false); }
           };
           publish.addEventListener('click', () => useCapture(false));
           publishLive.addEventListener('click', () => useCapture(true));
-          row.append(source, windowMode, windowLabel, barsLabel, tempoLabel, publish, publishLive);
+          row.append(source, windowMode, windowLabel, barsLabel, tempoLabel, meterLabel, publish, publishLive);
           article.append(row);
         }
       }

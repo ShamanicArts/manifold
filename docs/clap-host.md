@@ -101,6 +101,16 @@ signal peak, and at most `5.96e-8` sample error against the direct native Rust
 render over the first second. The host probe asserts those parity thresholds
 for both CLAP and VST3.
 
+The same packaged editor now offers seconds or host bars. At 90 BPM in 3/4,
+a half-bar request through REAPER Graph CLAP captures exactly 48,000 frames at
+48 kHz. The saved project records the selected half bar, actual host tempo and
+meter, and the effective one-second window. A fresh host render has zero
+pre-note audio and matches direct Rust within `5.96e-8` peak sample error.
+The audio callback publishes one atomic timing snapshot; the editor worker
+derives its bounded frame request outside processing. A missing host tempo or
+meter rejects a bar request. The [bar review](../web/public/native-host-bars-review.html)
+shows both native formats and their editor surfaces.
+
 ## Standalone FX
 
 The Linux CLAP module is the first loadable native host for the authored

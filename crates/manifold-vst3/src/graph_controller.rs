@@ -59,12 +59,28 @@ impl GraphShared {
         if node == 0 || !seconds.is_finite() || !(0.05..=30.0).contains(&seconds) {
             return Err("invalid capture window");
         }
-        let (message, peer) = self.capture_message(c"manifold.graph.capture.start.v1")?;
+        self.capture_window(node, seconds, c"manifold.graph.capture.start.v1")
+    }
+
+    pub fn capture_start_bars(&self, node: u32, bars: f64) -> Result<(), &'static str> {
+        if node == 0 || !bars.is_finite() || !(0.0625..=16.0).contains(&bars) {
+            return Err("invalid bar window");
+        }
+        self.capture_window(node, bars, c"manifold.graph.capture.bars.v1")
+    }
+
+    fn capture_window(
+        &self,
+        node: u32,
+        window: f64,
+        kind: &std::ffi::CStr,
+    ) -> Result<(), &'static str> {
+        let (message, peer) = self.capture_message(kind)?;
         let attributes = unsafe { ComRef::from_raw(message.getAttributes()) }
             .ok_or("host message has no attributes")?;
         let mut request = [0_u8; 12];
         request[..4].copy_from_slice(&node.to_le_bytes());
-        request[4..].copy_from_slice(&seconds.to_le_bytes());
+        request[4..].copy_from_slice(&window.to_le_bytes());
         if unsafe { attributes.setBinary(c"request".as_ptr(), request.as_ptr().cast(), 12) }
             != kResultOk
         {
