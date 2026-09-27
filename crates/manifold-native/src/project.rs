@@ -89,6 +89,20 @@ fn required<'a>(map: &'a serde_json::Map<String, Value>, key: &str) -> &'a Value
 fn parameter_range(kind: &str, id: u32) -> Option<(f32, f32, bool)> {
     let spec = match kind {
         "gain" => &[(0., 2., false)][..],
+        "midi-transpose" => &[(-24., 24., false)],
+        "oscillator" => &[(0., 4., true), (20., 16_000., false), (0., 1., false)],
+        "noise" => &[(0., 1., false), (0., 1., false)],
+        "lfo" => &[(0., 2., true), (0.05, 20., false)],
+        "modulated-gain" => &[(0., 2., false), (-2., 2., false)],
+        "voice-synth" => &[
+            (0., 3., true),
+            (0.001, 2., false),
+            (0.001, 2., false),
+            (0., 1., false),
+            (0.001, 3., false),
+            (0., 1., false),
+        ],
+        "svf" => &[(0., 3., true), (20., 20_000., false), (0.1, 1., false)],
         "loop-capture" => &[
             (0., 1., true),
             (0., 1., true),
@@ -112,6 +126,26 @@ fn parameter_range(kind: &str, id: u32) -> Option<(f32, f32, bool)> {
             (0., 0.2, false),
             (1., 4., false),
             (0., 100., false),
+            (0., 1., false),
+        ],
+        "sample-region" => match id {
+            0 => return Some((0.25, 2., false)),
+            1 | 2 => return Some((0., 1., true)),
+            3..=5 => return Some((0., 1., false)),
+            8 => return Some((0., 0.5, false)),
+            _ => return None,
+        },
+        "granulator" => &[
+            (1., 500., false),
+            (1., 100., false),
+            (0., 1., false),
+            (-24., 24., false),
+            (0., 1., false),
+            (0., 1., false),
+            (0., 1., true),
+            (0., 4., true),
+            (0., 1., true),
+            (0., 1., false),
             (0., 1., false),
         ],
         _ => &[],
@@ -188,7 +222,8 @@ impl NativeProject {
                 .as_str()
                 .ok_or(ProjectError::Invalid("node type"))?;
             let constructed = match kind {
-                "input.raw" | "input.sidechain" | "output" | "midi-input" | "sample-instrument" => {
+                "input.raw" | "input.sidechain" | "output" | "midi-input" | "sample-instrument"
+                | "sample-region" | "svf" | "granulator" | "voice-synth" => {
                     if entry.len() != 2 {
                         return Err(ProjectError::Invalid("node arguments"));
                     }
@@ -197,10 +232,17 @@ impl NativeProject {
                         "input.sidechain" => NodeKind::InputSidechain,
                         "output" => NodeKind::Output,
                         "midi-input" => NodeKind::MidiInput,
-                        _ => NodeKind::SampleInstrument,
+                        "sample-instrument" => NodeKind::SampleInstrument,
+                        "sample-region" => NodeKind::SampleRegion,
+                        "svf" => NodeKind::Svf,
+                        "voice-synth" => NodeKind::VoiceSynth,
+                        _ => NodeKind::Granulator {
+                            params: manifold_core::granulator::DEFAULTS,
+                        },
                     }
                 }
-                "gain" | "loop-capture" | "sum2" => {
+                "gain" | "loop-capture" | "sum2" | "midi-transpose" | "oscillator" | "noise"
+                | "lfo" | "modulated-gain" => {
                     let a = float(
                         entry
                             .get("a")
@@ -208,7 +250,19 @@ impl NativeProject {
                         -f32::MAX,
                         f32::MAX,
                     )?;
-                    if kind == "gain" {
+                    if kind == "midi-transpose" || kind == "lfo" {
+                        if entry.len() != 3 || a != if kind == "lfo" { 2.0 } else { 0.0 } {
+                            return Err(ProjectError::Invalid("node arguments"));
+                        }
+                        if kind == "lfo" {
+                            NodeKind::Lfo {
+                                waveform: 0,
+                                rate: a,
+                            }
+                        } else {
+                            NodeKind::MidiTranspose { semitones: a }
+                        }
+                    } else if kind == "gain" {
                         if entry.len() != 3 || a != 0.7 {
                             return Err(ProjectError::Invalid("gain arguments"));
                         }
@@ -224,7 +278,26 @@ impl NativeProject {
                         if entry.len() != 4 {
                             return Err(ProjectError::Invalid("node arguments"));
                         }
-                        if kind == "loop-capture" {
+                        if kind == "oscillator" {
+                            if a != 220.0 || b != 0.4 {
+                                return Err(ProjectError::Invalid("oscillator arguments"));
+                            }
+                            NodeKind::Oscillator {
+                                frequency: a,
+                                amplitude: b,
+                                waveform: 0,
+                            }
+                        } else if kind == "noise" {
+                            if a != 0.08 || b != 0.5 {
+                                return Err(ProjectError::Invalid("noise arguments"));
+                            }
+                            NodeKind::NoiseGenerator { level: a, color: b }
+                        } else if kind == "modulated-gain" {
+                            if a != 0.5 || b != 0.4 {
+                                return Err(ProjectError::Invalid("modulated gain arguments"));
+                            }
+                            NodeKind::ModulatedGain { base: a, depth: b }
+                        } else if kind == "loop-capture" {
                             if a != 2.0 || b != 1.0 {
                                 return Err(ProjectError::Invalid("capture arguments"));
                             }
@@ -304,13 +377,8 @@ impl NativeProject {
             host_parameters.push(HostParameter::new(node, id, min, max, discrete, value));
         }
         for (&node, kind) in &kinds {
-            let count = match kind.as_str() {
-                "gain" => 1,
-                "loop-capture" => 7,
-                "sample-instrument" => 14,
-                _ => 0,
-            };
-            if (0..count).any(|id| !seen.contains(&(node, id))) {
+            if (0..=13).any(|id| parameter_range(kind, id).is_some() && !seen.contains(&(node, id)))
+            {
                 return Err(ProjectError::Invalid("missing parameter"));
             }
         }
@@ -400,8 +468,10 @@ impl NativeProject {
                 &[],
             )?;
             let node = uint(required(entry, "nodeId"), 65_535)?;
-            if kinds.get(&node).map(String::as_str) != Some("sample-instrument")
-                || !asset_nodes.insert(node)
+            if !matches!(
+                kinds.get(&node).map(String::as_str),
+                Some("sample-instrument" | "sample-region" | "granulator")
+            ) || !asset_nodes.insert(node)
             {
                 return Err(ProjectError::Invalid("asset node"));
             }
@@ -542,6 +612,134 @@ mod tests {
             .unwrap()
             .prepare(48_000.0, 128)
             .unwrap();
+    }
+
+    #[test]
+    fn browser_region_and_granular_projects_prepare_natively() {
+        for project in [
+            include_bytes!("../../../projects/graph-workspace/region-voice.json").as_slice(),
+            include_bytes!("../../../projects/graph-workspace/granular-source.json").as_slice(),
+        ] {
+            NativeProject::parse(project)
+                .unwrap()
+                .prepare(48_000.0, 128)
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn browser_note_voice_and_sample_voice_prepare_natively() {
+        for project in [
+            include_bytes!("../../../projects/graph-workspace/note-voice.json").as_slice(),
+            include_bytes!("../../../projects/graph-workspace/sample-voice.json").as_slice(),
+        ] {
+            NativeProject::parse(project)
+                .unwrap()
+                .prepare(48_000.0, 128)
+                .unwrap();
+        }
+        let project = include_bytes!("../../../projects/graph-workspace/note-voice.json");
+        let mut processor = NativeProject::parse(project)
+            .unwrap()
+            .prepare(48_000.0, 128)
+            .unwrap();
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        let note = TimedEvent {
+            offset: 24,
+            node: 4,
+            kind: EventKind::NoteOn {
+                channel: 0,
+                note: 60,
+                velocity: 127,
+            },
+        };
+        processor
+            .process(AudioBlock {
+                main: None,
+                sidechain: None,
+                output: [&mut left, &mut right],
+                events: &[note],
+            })
+            .unwrap();
+        assert_eq!(left[..24], [0.0; 24]);
+        assert!(left[40..].iter().any(|sample| sample.abs() > 0.0001));
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn browser_tone_texture_cv_graph_renders_natively() {
+        let project = include_bytes!("../../../projects/graph-workspace/tone-texture.json");
+        let mut processor = NativeProject::parse(project)
+            .unwrap()
+            .prepare(48_000.0, 128)
+            .unwrap();
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        processor
+            .process(AudioBlock {
+                main: None,
+                sidechain: None,
+                output: [&mut left, &mut right],
+                events: &[],
+            })
+            .unwrap();
+        assert!(left.iter().any(|sample| sample.abs() > 0.0001));
+        assert!(left.iter().all(|sample| sample.is_finite()));
+        assert!(right.iter().all(|sample| sample.is_finite()));
+    }
+
+    #[test]
+    fn restored_region_and_granular_assets_render_audio() {
+        let pcm: Vec<f32> = (0..4800)
+            .flat_map(|i| {
+                let sample = (i as f32 * std::f32::consts::TAU * 330.0 / 48_000.0).sin() * 0.7;
+                [sample, sample]
+            })
+            .collect();
+        let bytes: Vec<u8> = pcm.iter().flat_map(|sample| sample.to_le_bytes()).collect();
+        for (document, note) in [
+            (
+                include_bytes!("../../../projects/graph-workspace/region-voice.json").as_slice(),
+                true,
+            ),
+            (
+                include_bytes!("../../../projects/graph-workspace/granular-source.json").as_slice(),
+                false,
+            ),
+        ] {
+            let mut bundle: Value = serde_json::from_slice(document).unwrap();
+            bundle["assets"] = json!([{ "nodeId": 5, "sourceRate": 48000, "frames": 4800,
+                "label": "restored sine", "pcmF32Base64": STANDARD.encode(&bytes) }]);
+            let mut processor = parse(&bundle).unwrap().prepare(48_000.0, 128).unwrap();
+            let event = TimedEvent {
+                offset: 24,
+                node: 4,
+                kind: EventKind::NoteOn {
+                    channel: 0,
+                    note: 60,
+                    velocity: 127,
+                },
+            };
+            let note_event = [event];
+            let mut audible = false;
+            for block in 0..32 {
+                let mut left = [0.0; 128];
+                let mut right = [0.0; 128];
+                processor
+                    .process(AudioBlock {
+                        main: None,
+                        sidechain: None,
+                        output: [&mut left, &mut right],
+                        events: if note && block == 0 { &note_event } else { &[] },
+                    })
+                    .unwrap();
+                audible |= left.iter().any(|sample| sample.abs() > 0.0001);
+                assert!(left.iter().all(|sample| sample.is_finite()));
+                assert_eq!(left, right);
+            }
+            assert!(audible, "restored source should sound");
+        }
     }
 
     #[test]
