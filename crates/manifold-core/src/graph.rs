@@ -1958,11 +1958,7 @@ impl ExecutionPlan {
         capture: NodeId,
         instrument: NodeId,
     ) -> bool {
-        if capture == instrument
-            || !self.nodes.iter().any(|entry| {
-                entry.id == instrument && matches!(entry.kernel, Kernel::SampleInstrument(_))
-            })
-        {
+        if capture == instrument || !self.accepts_sample_instrument(instrument) {
             return false;
         }
         let Some(stereo) = self
@@ -1981,6 +1977,29 @@ impl ExecutionPlan {
             .find(|entry| entry.id == instrument)
             .is_some_and(|entry| match &mut entry.kernel {
                 Kernel::SampleInstrument(player) => player.publish_stereo(stereo, self.sample_rate),
+                _ => false,
+            })
+    }
+
+    pub fn accepts_sample_instrument(&self, node: NodeId) -> bool {
+        self.nodes
+            .iter()
+            .any(|entry| entry.id == node && matches!(entry.kernel, Kernel::SampleInstrument(_)))
+    }
+
+    /// Publish already prepared PCM without restarting voices that use the
+    /// previous source. The caller owns the complete buffer off process().
+    pub fn publish_prepared_sample_to_instrument(
+        &mut self,
+        instrument: NodeId,
+        stereo: Vec<f32>,
+        source_rate: f32,
+    ) -> bool {
+        self.nodes
+            .iter_mut()
+            .find(|entry| entry.id == instrument)
+            .is_some_and(|entry| match &mut entry.kernel {
+                Kernel::SampleInstrument(player) => player.publish_stereo(stereo, source_rate),
                 _ => false,
             })
     }

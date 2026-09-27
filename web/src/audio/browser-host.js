@@ -102,11 +102,39 @@ export class BrowserAudioHost {
               this.pendingPublishes.delete(data.requestId);
               clearTimeout(pending.timeout);
               clearTimeout(pending.poll);
+              if (!data.accepted && pending.live) this.processor?.port.postMessage({
+                type: 'capture-stage-cancel', captureId: pending.captureId,
+              });
               data.accepted
                 ? pending.resolve(pending.live ? { sourceRate: data.sourceRate, stereo: pending.stereo } : undefined)
                 : pending.reject(new Error(data.message ?? (pending.live
                   ? 'Rust rejected the recording window publication.'
                   : 'Rust rejected the capture publication. Stop recording and try again.')));
+            }
+          }
+          if (data.type === 'capture-stage-commit-started') {
+            const pending = this.pendingPublishes.get(data.requestId);
+            if (pending?.live) this.processor.port.postMessage({
+              type: 'capture-stage-commit-status', requestId: data.requestId,
+            });
+          }
+          if (data.type === 'capture-stage-commit-status') {
+            const pending = this.pendingPublishes.get(data.requestId);
+            if (pending?.live) {
+              if (data.state === 1) {
+                pending.poll = setTimeout(() => {
+                  if (this.pendingPublishes.has(data.requestId)) this.processor?.port.postMessage({
+                    type: 'capture-stage-commit-status', requestId: data.requestId,
+                  });
+                }, 10);
+              } else if (data.state === 2) {
+                this.processor.port.postMessage({ type: 'capture-stage-commit-final', requestId: data.requestId });
+              } else {
+                this.pendingPublishes.delete(data.requestId);
+                clearTimeout(pending.timeout);
+                this.processor.port.postMessage({ type: 'capture-stage-cancel', captureId: pending.captureId });
+                pending.reject(new Error('Recording window was reset during source preparation.'));
+              }
             }
           }
           if (data.type === 'capture-stage-started' || data.type === 'capture-stage-status' || data.type === 'capture-stage-chunk') {
@@ -140,7 +168,7 @@ export class BrowserAudioHost {
                   this.processor.port.postMessage({ type: 'capture-stage-chunk', requestId: data.requestId,
                     captureId: pending.captureId, offset: next, frames: Math.min(pending.stereo.length / 2 - next, 16384) });
                 } else {
-                  this.processor.port.postMessage({ type: 'capture-stage-commit', requestId: data.requestId,
+                  this.processor.port.postMessage({ type: 'capture-stage-commit-bounded', requestId: data.requestId,
                     captureId: pending.captureId, instrumentId: pending.instrumentId });
                 }
               }

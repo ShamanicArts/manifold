@@ -28,9 +28,19 @@ struct WorkletEngine {
     output: Vec<f32>,
     events: Vec<TimedEvent>,
     sample_upload: Option<(u32, f32, Vec<f32>)>,
+    capture_publish: Option<CapturePublish>,
     partial_upload: Option<(u32, u32, PartialSet)>,
     temporal_upload: Option<(u32, Vec<f32>)>,
     temporal_raw_upload: Option<(u32, Vec<f32>, [f32; 10])>,
+}
+
+struct CapturePublish {
+    capture: u32,
+    instrument: u32,
+    source_rate: f32,
+    frames: usize,
+    copied: usize,
+    stereo: Vec<f32>,
 }
 
 struct AnalysisJob {
@@ -1022,6 +1032,7 @@ pub extern "C" fn manifold_prepare(sample_rate: f32, max_frames: u32) -> u32 {
             output: vec![0.0; capacity * 2],
             events: Vec::with_capacity(256),
             sample_upload: None,
+            capture_publish: None,
             partial_upload: None,
             temporal_upload: None,
             temporal_raw_upload: None,
@@ -1596,7 +1607,112 @@ pub extern "C" fn manifold_capture_stage_length(node_id: u32) -> u32 {
 pub extern "C" fn manifold_capture_stage_cancel(node_id: u32) -> u32 {
     ENGINE.with(|slot| {
         slot.borrow_mut().as_mut().map_or(0, |engine| {
+            if engine
+                .capture_publish
+                .as_ref()
+                .is_some_and(|job| job.capture == node_id)
+            {
+                engine.capture_publish = None;
+            }
             u32::from(engine.plan.cancel_capture_staging(node_id.into()))
+        })
+    })
+}
+
+/// Allocate the destination vector once in a user-triggered message handler.
+/// Its pages are filled in bounded slices after subsequent render blocks.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_capture_stage_publish_begin(
+    capture_id: u32,
+    instrument_id: u32,
+    source_rate: f32,
+) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            let Some(frames) = engine.plan.capture_staged_length(capture_id.into()) else {
+                return 0;
+            };
+            if capture_id == instrument_id
+                || !engine.plan.accepts_sample_instrument(instrument_id.into())
+                || engine.capture_publish.is_some()
+                || !source_rate.is_finite()
+                || !(8_000.0..=384_000.0).contains(&source_rate)
+                || frames == 0
+                || frames > MAX_SAMPLE_FRAMES
+                || frames > (source_rate as usize).saturating_mul(MAX_SAMPLE_SECONDS)
+            {
+                return 0;
+            }
+            engine.capture_publish = Some(CapturePublish {
+                capture: capture_id,
+                instrument: instrument_id,
+                source_rate,
+                frames,
+                copied: 0,
+                stereo: Vec::with_capacity(frames * 2),
+            });
+            1
+        })
+    })
+}
+
+/// Copy at most 2,048 frames into already reserved storage after a render
+/// block. Return 1 while copying, 2 when ready for control-side publication.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_capture_stage_publish_step(max_frames: u32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            let Some(job) = engine.capture_publish.as_mut() else {
+                return 0;
+            };
+            if max_frames == 0
+                || engine.plan.capture_staged_length(job.capture.into()) != Some(job.frames)
+            {
+                engine.capture_publish = None;
+                return 0;
+            }
+            if job.copied == job.frames {
+                return 2;
+            }
+            let next = (job.copied + (max_frames as usize).min(2048)).min(job.frames);
+            job.stereo.resize(next * 2, 0.0);
+            let copied = engine.plan.copy_capture_staged_interleaved(
+                job.capture.into(),
+                job.copied,
+                &mut job.stereo[job.copied * 2..next * 2],
+            );
+            if copied != next - job.copied {
+                engine.capture_publish = None;
+                return 0;
+            }
+            job.copied = next;
+            if next == job.frames { 2 } else { 1 }
+        })
+    })
+}
+
+/// Move the complete source into the instrument in a message handler. This
+/// does no full-window PCM copy; held notes retain their previous source.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_capture_stage_publish_finish() -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            let Some(job) = engine.capture_publish.take() else {
+                return 0;
+            };
+            if job.copied != job.frames {
+                engine.capture_publish = Some(job);
+                return 0;
+            }
+            let accepted = engine.plan.publish_prepared_sample_to_instrument(
+                job.instrument.into(),
+                job.stereo,
+                job.source_rate,
+            );
+            if accepted {
+                engine.plan.cancel_capture_staging(job.capture.into());
+            }
+            u32::from(accepted)
         })
     })
 }
@@ -1605,6 +1721,9 @@ pub extern "C" fn manifold_capture_stage_cancel(node_id: u32) -> u32 {
 pub extern "C" fn manifold_capture_stage_publish(capture_id: u32, instrument_id: u32) -> u32 {
     ENGINE.with(|slot| {
         slot.borrow_mut().as_mut().map_or(0, |engine| {
+            if engine.capture_publish.is_some() {
+                return 0;
+            }
             u32::from(
                 engine
                     .plan

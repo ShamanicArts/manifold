@@ -32,7 +32,7 @@ const render = () => {
   return performance.now() - start;
 };
 const baseline = Array.from({ length: 100 }, render);
-const begin = [], stagedRender = [], chunk = [], commit = [], blocksToReady = [];
+const begin = [], stagedRender = [], chunk = [], commitBegin = [], commitRender = [], commitFinish = [], blocksToReady = [], blocksToPublish = [];
 for (let attempt = 0; attempt < 30; attempt++) {
   const requestId = attempt + 2;
   let start = performance.now();
@@ -58,8 +58,21 @@ for (let attempt = 0; attempt < 30; attempt++) {
     if (processor.lastMessage?.type !== 'capture-stage-chunk') throw new Error('Chunk failed');
   }
   start = performance.now();
-  await processor.port.onmessage({ data: { type: 'capture-stage-commit', requestId, captureId: 6, instrumentId: 5 } });
-  commit.push(performance.now() - start);
+  await processor.port.onmessage({ data: { type: 'capture-stage-commit-bounded', requestId, captureId: 6, instrumentId: 5 } });
+  commitBegin.push(performance.now() - start);
+  if (processor.lastMessage?.type !== 'capture-stage-commit-started') throw new Error('Bounded commit did not start');
+  let copyBlocks = 0;
+  while (true) {
+    commitRender.push(render());
+    if (++copyBlocks > 100) throw new Error('Bounded commit did not finish');
+    await processor.port.onmessage({ data: { type: 'capture-stage-commit-status', requestId } });
+    if (processor.lastMessage?.state === 2) break;
+    if (processor.lastMessage?.state !== 1) throw new Error('Bounded commit was cancelled');
+  }
+  blocksToPublish.push(copyBlocks);
+  start = performance.now();
+  await processor.port.onmessage({ data: { type: 'capture-stage-commit-final', requestId } });
+  commitFinish.push(performance.now() - start);
   if (!processor.lastMessage?.accepted) throw new Error('Commit failed');
 }
 const summary = (values) => {
@@ -68,7 +81,9 @@ const summary = (values) => {
 };
 const report = { sampleRate: 48_000, frames: 96_000, channels: 2,
   quantumMs: 128 / 48_000 * 1000, blocksToReady: summary(blocksToReady),
-  baselineRender: summary(baseline), stagedRender: summary(stagedRender),
-  beginHandler: summary(begin), chunkHandler: summary(chunk), commitHandler: summary(commit),
+  blocksToPublish: summary(blocksToPublish),
+  baselineRender: summary(baseline), stagedRender: summary(stagedRender), commitRender: summary(commitRender),
+  beginHandler: summary(begin), chunkHandler: summary(chunk),
+  commitBeginHandler: summary(commitBegin), commitFinishHandler: summary(commitFinish),
   scope: 'Node synthetic AudioWorklet; no browser transfer, audio device, or underrun observation' };
 console.log(JSON.stringify(report, null, 2));

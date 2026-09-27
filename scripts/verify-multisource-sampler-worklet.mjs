@@ -27,17 +27,26 @@ const render = (main, sidechain) => {
   return left;
 };
 assert.equal(render(.25, -.25)[0], 0, 'both capture roots are silent until a note plays');
+for (let block = 0; block < 3; block++) render(.25, -.25);
 const capture = async (requestId, captureId, mainDuringCopy, sideDuringCopy) => {
   await send({ type: 'capture-publish-live', requestId, captureId, instrumentId: 5,
-    windowSeconds: 128 / 48_000 });
+    windowSeconds: 512 / 48_000 });
   assert.equal(messages.at(-1).accepted, true);
   render(mainDuringCopy, sideDuringCopy);
   await send({ type: 'capture-stage-status', requestId, captureId });
   assert.equal(messages.at(-1).state, 2);
-  assert.equal(messages.at(-1).frames, 128);
-  await send({ type: 'capture-stage-chunk', requestId, captureId, offset: 0, frames: 128 });
+  assert.equal(messages.at(-1).frames, 512);
+  await send({ type: 'capture-stage-chunk', requestId, captureId, offset: 0, frames: 512 });
   const stereo = messages.at(-1).stereo;
-  await send({ type: 'capture-stage-commit', requestId, captureId, instrumentId: 5 });
+  await send({ type: 'capture-stage-commit-bounded', requestId, captureId, instrumentId: 5 });
+  assert.equal(messages.at(-1).type, 'capture-stage-commit-started');
+  for (let block = 0; block < 3; block++) {
+    render(mainDuringCopy, sideDuringCopy);
+    await send({ type: 'capture-stage-commit-status', requestId });
+    if (messages.at(-1).state === 2) break;
+  }
+  assert.equal(messages.at(-1).state, 2);
+  await send({ type: 'capture-stage-commit-final', requestId });
   assert.equal(messages.at(-1).accepted, true);
   return stereo;
 };
@@ -46,6 +55,7 @@ assert.equal(main[0], 1, 'Audio Input source is staged at ×4');
 assert.equal(main.at(-2), 1);
 await send({ type: 'event', nodeId: 4, kind: 0, channel: 0, note: 60, velocity: 127 });
 assert.equal(render(.75, -.75)[0], .25, 'first note reads Audio Input while both rings keep recording');
+for (let block = 0; block < 4; block++) render(.75, -.75);
 const side = await capture(2, 10, 0, 0);
 assert.equal(side[0], -3, 'Sidechain source is independent and staged at ×4');
 assert.equal(side.at(-2), -3);
@@ -62,7 +72,16 @@ for (let block = 0; block < 64; block++) {
 }
 assert.equal(messages.at(-1).state, 2);
 assert.equal(messages.at(-1).frames, 6000, '1/16 bar at 120 BPM and 48 kHz is 6000 frames');
+await send({ type: 'capture-stage-commit-bounded', requestId: 3, captureId: 6, instrumentId: 5 });
+assert.equal(messages.at(-1).type, 'capture-stage-commit-started');
+await send({ type: 'capture-stage-commit-final', requestId: 3 });
+assert.equal(messages.at(-1).accepted, false, 'an early final message is rejected');
+assert.equal(processor.captureCommit.phase, 'copying', 'a premature message does not discard the active copy');
+render(0, 0);
+assert.equal(processor.captureCommit.phase, 'copying');
 await send({ type: 'capture-stage-cancel', captureId: 6 });
+assert.equal(processor.captureCommit, null, 'cancel clears an unfinished prepared source');
+assert.equal(processor.engine.manifold_capture_stage_status(6), 0);
 await send({ type: 'capture-publish-live', requestId: 4, captureId: 6, instrumentId: 5,
   windowBars: 16, tempoBpm: 120 });
 assert.equal(messages.at(-1).accepted, false, '32-second request exceeds the 30-second authored ring');

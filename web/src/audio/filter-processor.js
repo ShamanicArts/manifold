@@ -3,6 +3,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.engine = null;
+    this.captureCommit = null;
     this.inputView = null;
     this.outputView = null;
     this.capacity = 2048;
@@ -19,6 +20,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
       try {
         if (data.type === 'init') {
           this.pendingCount = 0;
+          this.captureCommit = null;
           const module = await WebAssembly.compile(data.wasmBytes);
           const instance = await WebAssembly.instantiate(module, {});
           const engine = instance.exports;
@@ -222,12 +224,48 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 4);
           this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
           this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted, sourceRate: sampleRate });
+        } else if (data.type === 'capture-stage-commit-bounded' && this.engine) {
+          const accepted = !this.captureCommit && this.engine.manifold_capture_stage_publish_begin(
+            data.captureId, data.instrumentId, sampleRate) === 1;
+          this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 4);
+          this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
+          if (accepted) {
+            this.captureCommit = { requestId: data.requestId, captureId: data.captureId, phase: 'copying' };
+            this.port.postMessage({ type: 'capture-stage-commit-started', requestId: data.requestId });
+          } else {
+            this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted: false });
+          }
+        } else if (data.type === 'capture-stage-commit-status' && this.engine) {
+          const phase = this.captureCommit?.requestId === data.requestId ? this.captureCommit.phase : null;
+          if (phase === 'failed') {
+            this.port.postMessage({ type: 'capture-published', requestId: data.requestId,
+              accepted: false, message: 'Recording window changed during source preparation.' });
+          } else {
+            this.port.postMessage({ type: 'capture-stage-commit-status', requestId: data.requestId,
+              state: phase === 'copying' ? 1 : phase === 'ready' ? 2 : 0 });
+          }
+        } else if (data.type === 'capture-stage-commit-final' && this.engine) {
+          const ready = this.captureCommit?.requestId === data.requestId && this.captureCommit.phase === 'ready';
+          if (!ready) {
+            this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted: false,
+              message: 'Recording window has not finished source preparation.' });
+            return;
+          }
+          const accepted = this.engine.manifold_capture_stage_publish_finish() === 1;
+          if (!accepted) this.engine.manifold_capture_stage_cancel(this.captureCommit.captureId);
+          this.captureCommit = null;
+          this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 4);
+          this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
+          this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted, sourceRate: sampleRate });
         } else if (data.type === 'capture-stage-cancel' && this.engine) {
           this.engine.manifold_capture_stage_cancel(data.captureId);
+          if (this.captureCommit?.captureId === data.captureId) this.captureCommit = null;
         }
       } catch (error) {
         if (data.type === 'capture-publish-live' || data.type === 'capture-publish'
-          || data.type === 'capture-stage-status' || data.type === 'capture-stage-chunk' || data.type === 'capture-stage-commit') {
+          || data.type === 'capture-stage-status' || data.type === 'capture-stage-chunk' || data.type === 'capture-stage-commit'
+          || data.type === 'capture-stage-commit-bounded' || data.type === 'capture-stage-commit-status'
+          || data.type === 'capture-stage-commit-final') {
           this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted: false, message: String(error) });
         } else {
           this.port.postMessage({ type: data.type === 'capture-request' ? 'capture-error' : 'error', message: String(error) });
@@ -370,6 +408,14 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
     for (let frame = 0; frame < frames; frame++) {
       output[0][frame] = result[frame];
       if (output[1]) output[1][frame] = result[this.capacity + frame];
+    }
+    if (this.captureCommit?.phase === 'copying') {
+      const state = this.engine.manifold_capture_stage_publish_step(2048);
+      if (state === 2) {
+        this.captureCommit.phase = 'ready';
+      } else if (state !== 1) {
+        this.captureCommit.phase = 'failed';
+      }
     }
     return true;
   }
