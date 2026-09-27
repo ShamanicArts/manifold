@@ -1,0 +1,15 @@
+{
+  "host": "REAPER Linux VST3",
+  "assignment": "original widget editor slot 1 to 2",
+  "existingEnvelopeSlot": 2,
+  "envelopePointNormalized": 0.75,
+  "normalizedBefore": 0.64583331346512,
+  "oldSlotAfter": 0.66666668653488,
+  "normalizedAfter": 0.75,
+  "savedAndReopened": true,
+  "renderFrames": 48000,
+  "channels": 2,
+  "peak": 0.19250249862670898,
+  "peakErrorVsNative": 5.960464477539063e-08,
+  "render": "graph-vst3-reaper-editor-slot-automation.wav"
+}

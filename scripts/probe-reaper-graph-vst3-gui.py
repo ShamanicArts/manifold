@@ -247,7 +247,10 @@ def main() -> None:
     sample_import = "--sample-import" in sys.argv
     manual_picker = "--manual-picker" in sys.argv
     direct_import = "--direct-import" in sys.argv or sample_import or manual_picker
-    slot_assign = "--slot-assign" in sys.argv
+    slot_automation = "--slot-automation" in sys.argv
+    slot_assign = "--slot-assign" in sys.argv or slot_automation
+    host_slot_index = 1 if slot_automation else 41
+    destination = 2 if slot_automation else 42
     assert not (slot_assign and direct_import), "run slot assignment as its own host probe"
     assert os.environ.get("MANIFOLD_ISOLATED_DISPLAY") == "1"
     assert os.environ.get("DISPLAY") and os.environ["DISPLAY"] != ":0"
@@ -325,12 +328,27 @@ local function poll()
    reaper.TrackFX_SetParamNormalized(track,fx,0,0.2)
    result:write('done ' .. tostring(reaper.TrackFX_GetParamNormalized(track,fx,0)))
   elseif command=='slot-query' then
-   result:write('done ' .. tostring(reaper.TrackFX_GetParamNormalized(track,fx,41)) .. ' ' .. tostring(reaper.TrackFX_GetParamNormalized(track,fx,0)))
+   result:write('done ' .. tostring(reaper.TrackFX_GetParamNormalized(track,fx,{host_slot_index})) .. ' ' .. tostring(reaper.TrackFX_GetParamNormalized(track,fx,0)))
+  elseif command=='envelope' then
+   local envelope=reaper.GetFXEnvelope(track,fx,1,true)
+   if not envelope then result:write('FAILED: envelope unavailable')
+   else
+    reaper.InsertEnvelopePointEx(envelope,-1,0,0.75,0,0,false,true)
+    reaper.InsertEnvelopePointEx(envelope,-1,1,0.75,0,0,false,true)
+    reaper.Envelope_SortPointsEx(envelope,-1)
+    reaper.GetSetEnvelopeInfo_String(envelope,'ACTIVE','1',true)
+    reaper.SetTrackAutomationMode(track,1)
+    result:write('done ' .. tostring(reaper.CountEnvelopePointsEx(envelope,-1)))
+   end
   elseif command=='slot-set' then
    reaper.TrackFX_SetParamNormalized(track,fx,41,0.75)
    reaper.SetEditCurPos(0,false,false)
    reaper.OnPlayButton()
    result:write('done ' .. tostring(reaper.TrackFX_GetParamNormalized(track,fx,41)))
+  elseif command=='slot-play' then
+   reaper.SetEditCurPos(0,false,false)
+   reaper.OnPlayButton()
+   result:write('done playing')
   elseif command=='query' then
    result:write('done ' .. tostring(reaper.TrackFX_GetParamNormalized(track,fx,0)))
   elseif command=='preset' then
@@ -385,22 +403,38 @@ reaper.defer(poll)
                     time.sleep(0.3)
                     x11.raise_fx()
                     if slot_assign:
-                        x11.assign_first_slot(window, 42)
+                        if slot_automation:
+                            (work / "command.txt").write_text("envelope")
+                            envelope_values = wait_for(work / "envelope.txt", "done").split()
+                            assert int(envelope_values[1]) == 2
+                        x11.assign_first_slot(window, destination)
                         time.sleep(1)
                         (work / "command.txt").write_text("slot-query")
                         slot_values = wait_for(work / "slot-query.txt", "done").split()
                         assigned = float(slot_values[1])
                         vacant = float(slot_values[2])
-                        assert abs(assigned - 31 / 48) < 1e-4, slot_values
-                        assert abs(vacant) < 1e-5, slot_values
-                        (work / "command.txt").write_text("slot-set")
-                        changed = float(wait_for(work / "slot-set.txt", "done").split()[1])
-                        assert abs(changed - 0.75) < 1e-5, changed
+                        if slot_automation:
+                            assert abs(assigned - 31 / 48) < 1e-4, slot_values
+                            # Give the existing Read-mode envelope a processing interval.
+                            (work / "command.txt").write_text("slot-play")
+                            wait_for(work / "slot-play.txt", "done")
+                        else:
+                            assert abs(assigned - 31 / 48) < 1e-4, slot_values
+                            assert abs(vacant) < 1e-5, slot_values
+                            (work / "command.txt").write_text("slot-set")
+                            changed = float(wait_for(work / "slot-set.txt", "done").split()[1])
+                            assert abs(changed - 0.75) < 1e-5, changed
                         time.sleep(1.2)
-                        slot_capture = x11.capture(window, "graph-vst3-reaper-editor-slot-assign.png")
+                        if slot_automation:
+                            (work / "slot-query.txt").unlink()
+                            (work / "command.txt").write_text("slot-query")
+                            changed = float(wait_for(work / "slot-query.txt", "done").split()[1])
+                            assert abs(changed - .75) < 1e-4, changed
+                        slot_capture = x11.capture(window, "graph-vst3-reaper-editor-slot-automation.png"
+                                                   if slot_automation else "graph-vst3-reaper-editor-slot-assign.png")
                         (work / "command.txt").write_text("save")
                         wait_for(work / "save.txt", "done")
-                        print(f"REAPER editor slot 1 -> 42: initial={assigned:.6f}, old slot={vacant:.6f}, changed={changed:.6f}; capture: {slot_capture}")
+                        print(f"REAPER editor slot 1 -> {destination}: initial={assigned:.6f}, old slot={vacant:.6f}, changed={changed:.6f}; capture: {slot_capture}")
                     elif direct_import:
                         if manual_picker:
                             x11.choose_file(window, imported_project)
@@ -453,6 +487,9 @@ reaper.defer(poll)
                 expected_project = json.loads((ROOT / "projects/graph-workspace/note-voice.json").read_text())
                 next(entry for entry in expected_project["signal"]["initialParameters"]
                      if entry["nodeId"] == 5 and entry["id"] == 0)["value"] = 12
+                if slot_automation:
+                    next(entry for entry in expected_project["signal"]["initialParameters"]
+                         if entry["nodeId"] == 6 and entry["id"] == 0)["value"] = round(vacant * 3)
                 native_project = work / "note-transpose-12.json"
                 native_project.write_text(json.dumps(expected_project))
                 native_path = work / "note-transpose-12.f32"
@@ -466,15 +503,20 @@ reaper.defer(poll)
                 error = max(abs(a - b) for a, b in zip(actual, expected))
                 peak = max(abs(value) for value in actual)
                 assert peak > .01 and error < 1e-7, (peak, error)
-                target = PUBLIC / "graph-vst3-reaper-editor-slot-assign.wav"
+                target = PUBLIC / ("graph-vst3-reaper-editor-slot-automation.wav" if slot_automation
+                                   else "graph-vst3-reaper-editor-slot-assign.wav")
                 target.write_bytes(rendered.read_bytes())
-                metrics = {"host": "REAPER Linux VST3", "assignment": "original widget editor slot 1 to 42",
+                metrics = {"host": "REAPER Linux VST3",
+                           "assignment": f"original widget editor slot 1 to {destination}",
+                           **({"existingEnvelopeSlot": 2, "envelopePointNormalized": .75}
+                              if slot_automation else {}),
                            "normalizedBefore": assigned, "oldSlotAfter": vacant,
                            "normalizedAfter": changed, "savedAndReopened": True,
                            "renderFrames": 48_000, "channels": 2,
                            "peak": peak, "peakErrorVsNative": error,
                            "render": target.name}
-                (PUBLIC / "graph-vst3-reaper-editor-slot-assign.json").write_text(
+                (PUBLIC / ("graph-vst3-reaper-editor-slot-automation.json" if slot_automation
+                           else "graph-vst3-reaper-editor-slot-assign.json")).write_text(
                     json.dumps(metrics, indent=2) + "\n")
                 print(f"Fresh REAPER render after native editor assignment: peak={peak:.6f}, peak error vs Rust={error:.2g}; {target}")
             if direct_import:

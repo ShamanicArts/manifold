@@ -78,10 +78,22 @@
     </div>
   </section>
   <section>
+    <h2>An existing DAW envelope follows its slot</h2>
+    <div class="native">
+      <figure><img src="/graph-vst3-reaper-editor-slot-automation.png" alt="REAPER graph editor with Semitones now in occupied slot 2 at plus 12 and Waveform moved to slot 1 as Square"><figcaption>Before the swap, REAPER's slot 2 envelope addressed Waveform. After the editor moved Semitones onto occupied slot 2, the two controls exchanged slots.</figcaption></figure>
+      <div>
+        <p>REAPER already held a two-point Read-mode envelope at normalized 0.75 on slot 2. An XTEST edit moved Semitones from slot 1 into that occupied slot, moving Waveform to slot 1. During playback the same envelope drove Semitones to +12 without rewriting the automation.</p>
+        <p>REAPER saved the project and rendered it in a fresh process. All 48,000 stereo frames matched a direct Rust render of the resulting Square-wave voice at +12 semitones within <strong>5.96e-8</strong> peak sample error. Three isolated runs gave the same result.</p>
+        <audio controls preload="metadata" src="/graph-vst3-reaper-editor-slot-automation.wav"></audio>
+        <div class="files"><a href="/graph-vst3-reaper-editor-slot-automation.wav">Download automated render</a><a href="/graph-vst3-reaper-editor-slot-automation.json">Automation measurements</a></div>
+      </div>
+    </div>
+  </section>
+  <section>
     <h2>Control contract and next steps</h2>
     <p>The VST3 class keeps 128 public parameter IDs. A project only changes which graph control each ID targets. Moving a control to an occupied slot swaps the pair; existing DAW automation on either slot will then reach the new target. The workbench states this beside the assignment controls.</p>
-    <p>Changing a slot in the native editor currently reloads the graph, which resets active voices and effect tails. Next: exercise reassignment against saved automation, then extend the general graph host adapter to CLAP. Windows and macOS VST3 packaging still need validation. The current host proof is Linux REAPER.</p>
-    <p class="small">Reproduce after building the web and VST3 bundles: <code>node scripts/verify-graph-workspace-browser.mjs</code>, then run <code>python scripts/probe-reaper-graph-host-slot.py</code> and <code>python scripts/probe-reaper-graph-vst3-gui.py --slot-assign</code> with <code>DISPLAY</code> on a disposable X server and <code>MANIFOLD_ISOLATED_DISPLAY=1</code>.</p>
+    <p>Changing a slot in the native editor currently reloads the graph, which resets active voices and effect tails. Next: test larger projects and other DAWs, then extend the general graph host adapter to CLAP. Windows and macOS VST3 packaging still need validation. The current host proof is Linux REAPER.</p>
+    <p class="small">Reproduce after building the web and VST3 bundles: <code>node scripts/verify-graph-workspace-browser.mjs</code>, then run <code>python scripts/probe-reaper-graph-host-slot.py</code>, <code>python scripts/probe-reaper-graph-vst3-gui.py --slot-assign</code>, and <code>python scripts/probe-reaper-graph-vst3-gui.py --slot-automation</code> with <code>DISPLAY</code> on a disposable X server and <code>MANIFOLD_ISOLATED_DISPLAY=1</code>.</p>
   </section>
 </body>
 </html>

@@ -74,3 +74,10 @@ moved Semitones from displayed slot 1 to 42, REAPER set the new slot to +12
 semitones, and a saved-project render matched direct native Rust within
 `5.96e-8` peak sample error over all 48,000 stereo frames. Changing a slot in
 the native editor reloads the graph and resets active voices and effect tails.
+The same isolated host probe's `--slot-automation` mode creates a Read-mode
+envelope on slot 2 while Waveform owns it, then moves Semitones from slot 1 to
+that occupied slot. Waveform moves to slot 1; the existing envelope drives
+Semitones to +12. A fresh-process REAPER render of the saved project matches
+direct Rust for the resulting Square-wave voice within `5.96e-8` peak sample
+error across 48,000 stereo frames. This verifies retargeting in REAPER; other
+hosts and larger projects remain separate validation work.
