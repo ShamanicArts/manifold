@@ -1,7 +1,7 @@
 {
   "format": "manifold.project",
   "version": 1,
-  "sessionVersion": 4,
+  "sessionVersion": 5,
   "id": "manifold.main-looper",
   "name": "Main Looper",
   "legacyReference": "UserScripts/projects/Main/dsp/looper_baseline.lua",
@@ -14,6 +14,6 @@
   "synthParameters": { "waveform": 0, "blend": 1, "sampleRoot": 2, "keytrack": 3, "samplePitch": 4, "pitchMode": 5, "blendMode": 6, "blendDepth": 7, "attack": 11, "decay": 12, "sustain": 13, "release": 14, "output": 15, "timeStretch": 16, "addWave": 19, "sampleXfade": 20, "filterMode": 21, "filterCutoff": 22, "filterResonance": 23 },
   "eqParameters": { "base": 64, "bandStride": 5, "output": 104, "mix": 105 },
   "fxParameters": { "fx1Base": 128, "fx2Base": 136, "typeOffset": 0, "mixOffset": 1, "firstParamOffset": 2, "paramCount": 5 },
-  "modulation": { "maxLfos": 4, "lfoParameters": { "shape": 0, "rate": 1, "depth": 2, "phase": 3, "retrig": 4 }, "routeParameters": { "source": 0, "target": 1, "amount": 2, "bias": 3, "mode": 4, "enabled": 5 }, "targets": { "none": 0, "filterCutoff": 22, "filterResonance": 23, "fx1Mix": 129, "fx2Mix": 137 } },
+  "modulation": { "maxLfos": 4, "lfoParameters": { "shape": 0, "rate": 1, "depth": 2, "phase": 3, "retrig": 4 }, "routeParameters": { "source": 0, "target": 1, "amount": 2, "bias": 3, "mode": 4, "enabled": 5 }, "atvParameters": { "amount": 0, "bias": 1, "sourceSlot": 2, "sourcePort": 3 }, "targets": { "none": 0, "filterCutoff": 22, "filterResonance": 23, "fx1Mix": 129, "fx2Mix": 137 } },
   "status": { "tempo": 0, "activeLayer": 1, "mode": 2, "recording": 3, "overdub": 4, "forwardBars": 5, "samplesPerBar": 6, "layerState": 7, "layerLength": 8, "layerPosition": 9, "layerBars": 10, "layerPending": 11, "capturedFrames": 12, "layerVolume": 13, "layerSpeed": 14, "layerMute": 15, "layerPlaying": 16, "targetBpm": 17, "overdubLengthPolicy": 18, "sampleRate": 19 }
 }

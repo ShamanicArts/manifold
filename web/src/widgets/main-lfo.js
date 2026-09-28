@@ -11,6 +11,10 @@ export function mountMainLfo(get, post, contract, slot = 0) {
   const state = { ...DEFAULT_LFO_STATE, route: { ...DEFAULT_LFO_STATE.route } };
   const canvas = get('lfo-preview'), ctx = canvas.getContext('2d');
   const shape = get('lfo-shape');
+  const routeHeading = get('mod-source').closest('.rack-route').querySelector('h2');
+  const paintRouteHeading = () => {
+    routeHeading.textContent = state.route.source === 4 ? 'ATV / Bias → target' : `LFO ${slot + 1} → target`;
+  };
   let phaseNow = 0, outputNow = 0;
   const seededStep = index => {
     const seed = Math.sin(index * 12.9898) * 43758.5453;
@@ -74,6 +78,7 @@ export function mountMainLfo(get, post, contract, slot = 0) {
     get(`mod-${key}`).addEventListener('change', event => {
       state.route[key] = Number(event.target.value);
       routeParam(id, state.route[key]);
+      if (key === 'source') paintRouteHeading();
       if (key === 'target') {
         state.route.enabled = state.route.target !== 0;
         get('mod-enabled').checked = state.route.enabled;
@@ -103,6 +108,7 @@ export function mountMainLfo(get, post, contract, slot = 0) {
       for (const key of ['amount', 'bias']) sliders[key].setValue(state.route[key]);
       for (const key of ['source', 'target', 'mode']) get(`mod-${key}`).value = String(state.route[key]);
       get('mod-enabled').checked = state.route.enabled;
+      paintRouteHeading();
       this.sendState(); this.paint();
     },
     sendState() {

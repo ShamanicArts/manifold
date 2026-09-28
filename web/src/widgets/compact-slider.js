@@ -90,7 +90,15 @@ export function mountCompactSlider(element, spec) {
     const baseT = clamp((value - min) / Math.max(0.001, max - min), 0, 1);
     const fontSize = Math.min(10, Math.max(7, height - 4));
     fillRoundedRect(ctx, 0, 0, width, height, 2, spec.style.bg);
-    fillRoundedRect(ctx, 0, 0, Math.max(0, round(width * baseT)), height, 2, fill);
+    if (spec.bidirectional) {
+      const centerX = round(width * clamp(((min + max) / 2 - min) / Math.max(.001, max - min), 0, 1));
+      const valueX = round(width * baseT);
+      fillRoundedRect(ctx, Math.min(centerX, valueX), 0, Math.abs(valueX - centerX), height, 2, fill);
+      ctx.fillStyle = rgba(0x70e2e8f0);
+      ctx.fillRect(Math.max(0, centerX - 1), 2, 2, Math.max(1, height - 4));
+    } else {
+      fillRoundedRect(ctx, 0, 0, Math.max(0, round(width * baseT)), height, 2, fill);
+    }
     fillRoundedRect(ctx, 0, 0, width, height, 2, hovered ? 0x50000000 : 0x44000000);
     if (label) {
       drawText(ctx, label, 4, 1, Math.max(1, width - 6), height, 0xb0000000, "left", fontSize);

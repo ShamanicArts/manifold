@@ -1,6 +1,7 @@
 //! Main's synth-to-looper routing, with all scratch prepared before processing.
 
 use crate::Filter;
+use crate::cv_utilities::AttenuverterBias;
 use crate::effect_slot::{self, EffectSlot};
 use crate::eq8::{self, Eq8};
 use crate::events::EventKind;
@@ -20,6 +21,11 @@ pub struct MainInstrument {
     lfos: [MainLfo; MAIN_LFO_SLOTS],
     lfo_active: [bool; MAIN_LFO_SLOTS],
     modulation: [MainModulationRoute; MAIN_LFO_SLOTS],
+    atv: AttenuverterBias,
+    atv_source_slot: usize,
+    atv_source_port: u32,
+    atv_input: f32,
+    atv_output: f32,
     filter_cutoff_base: f32,
     filter_resonance_base: f32,
     filter_cutoff_effective: f32,
@@ -81,7 +87,7 @@ impl MainModulationRoute {
             return false;
         }
         match id {
-            0 if (0.0..=3.0).contains(&value) && value.fract() == 0.0 => self.source = value as u32,
+            0 if (0.0..=4.0).contains(&value) && value.fract() == 0.0 => self.source = value as u32,
             1 if [0.0, 22.0, 23.0, 129.0, 137.0].contains(&value) => self.target = value as u32,
             2 if (-1.0..=1.0).contains(&value) => self.amount = value,
             3 if (-1.0..=1.0).contains(&value) => self.bias = value,
@@ -92,7 +98,7 @@ impl MainModulationRoute {
         true
     }
 
-    fn effective(self, base: f32, outputs: LfoOutputs) -> f32 {
+    fn effective(self, base: f32, outputs: LfoOutputs, atv_output: f32) -> f32 {
         if !self.enabled || self.target == 0 {
             return base;
         }
@@ -100,7 +106,8 @@ impl MainModulationRoute {
             0 => ((outputs.out + 1.0) * 0.5, 0.5),
             1 => ((outputs.inv + 1.0) * 0.5, 0.5),
             2 => (outputs.uni, 0.0),
-            _ => (outputs.eoc, 0.0),
+            3 => (outputs.eoc, 0.0),
+            _ => ((atv_output + 1.0) * 0.5, 0.5),
         };
         let (min, max): (f32, f32) = match self.target {
             22 => (80.0, 16_000.0),
@@ -130,6 +137,11 @@ impl MainInstrument {
             lfos: std::array::from_fn(|_| MainLfo::new(sample_rate)),
             lfo_active: [true, false, false, false],
             modulation: [MainModulationRoute::default(); MAIN_LFO_SLOTS],
+            atv: AttenuverterBias::new(1.0, 0.0),
+            atv_source_slot: 0,
+            atv_source_port: 0,
+            atv_input: 0.0,
+            atv_output: 0.0,
             filter_cutoff_base: 3200.0,
             filter_resonance_base: 0.75,
             filter_cutoff_effective: 3200.0,
@@ -256,6 +268,34 @@ impl MainInstrument {
         self.modulation[slot].set(id, value)
     }
 
+    /// One prepared Control IN -> OUT utility. Its input is one active LFO
+    /// output port; any active route can select the resulting OUT value.
+    pub fn set_atv_parameter(&mut self, id: u32, value: f32) -> bool {
+        if !value.is_finite() {
+            return false;
+        }
+        match id {
+            0 | 1 => self.atv.set_parameter(id, value),
+            2 if value.fract() == 0.0 && (0.0..MAIN_LFO_SLOTS as f32).contains(&value) => {
+                self.atv_source_slot = value as usize;
+                true
+            }
+            3 if value.fract() == 0.0 && (0.0..=3.0).contains(&value) => {
+                self.atv_source_port = value as u32;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn atv_status(&self, id: u32) -> f32 {
+        match id {
+            0 => self.atv_input,
+            1 => self.atv_output,
+            _ => 0.0,
+        }
+    }
+
     pub fn lfo_slot_status(&self, slot: usize, id: u32) -> f32 {
         if !self.lfo_active.get(slot).copied().unwrap_or(false) {
             return 0.0;
@@ -368,25 +408,50 @@ impl MainInstrument {
         self.filter_resonance_effective = self.filter_resonance_base;
         self.fx1_mix_effective = self.fx1_mix_base;
         self.fx2_mix_effective = self.fx2_mix_base;
+        let mut outputs = [LfoOutputs::default(); MAIN_LFO_SLOTS];
+        for slot in 0..MAIN_LFO_SLOTS {
+            if self.lfo_active[slot] {
+                outputs[slot] = self.lfos[slot].advance(frames);
+            }
+        }
+        let source = outputs[self.atv_source_slot];
+        self.atv_input = match self.atv_source_port {
+            0 => source.out,
+            1 => source.inv,
+            2 => source.uni,
+            _ => source.eoc,
+        };
+        self.atv_output = self.atv.process_sample(self.atv_input);
         // Stable slot order defines composition: Add applies to the current
         // value; a later Replace supersedes earlier routes to that target.
         for slot in 0..MAIN_LFO_SLOTS {
             if !self.lfo_active[slot] {
                 continue;
             }
-            let outputs = self.lfos[slot].advance(frames);
             let route = self.modulation[slot];
             match route.target {
                 22 => {
-                    self.filter_cutoff_effective =
-                        route.effective(self.filter_cutoff_effective, outputs)
+                    self.filter_cutoff_effective = route.effective(
+                        self.filter_cutoff_effective,
+                        outputs[slot],
+                        self.atv_output,
+                    )
                 }
                 23 => {
-                    self.filter_resonance_effective =
-                        route.effective(self.filter_resonance_effective, outputs)
+                    self.filter_resonance_effective = route.effective(
+                        self.filter_resonance_effective,
+                        outputs[slot],
+                        self.atv_output,
+                    )
                 }
-                129 => self.fx1_mix_effective = route.effective(self.fx1_mix_effective, outputs),
-                137 => self.fx2_mix_effective = route.effective(self.fx2_mix_effective, outputs),
+                129 => {
+                    self.fx1_mix_effective =
+                        route.effective(self.fx1_mix_effective, outputs[slot], self.atv_output)
+                }
+                137 => {
+                    self.fx2_mix_effective =
+                        route.effective(self.fx2_mix_effective, outputs[slot], self.atv_output)
+                }
                 _ => {}
             }
         }
@@ -851,5 +916,32 @@ mod tests {
         assert!(main.set_modulation_slot_route(1, 2, 0.5));
         main.process([&silence, &silence], [&mut left, &mut right]);
         assert!((main.lfo_status(5) - 1_131.37).abs() < 1.0);
+    }
+
+    #[test]
+    fn atv_uses_a_typed_lfo_input_and_routes_its_clamped_output() {
+        let mut main = MainInstrument::new(8_000.0, 128);
+        assert!(main.set_lfo_parameter(0, 3.0)); // square OUT = +1
+        assert!(main.set_atv_parameter(0, -0.5));
+        assert!(main.set_atv_parameter(1, 0.25));
+        assert!(main.set_modulation_route(0, 4.0)); // ATV OUT
+        assert!(main.set_modulation_route(1, 129.0)); // FX1 mix
+        assert!(main.set_modulation_route(2, 1.0));
+        assert!(main.set_modulation_route(4, 1.0)); // Replace
+        assert!(main.set_modulation_route(5, 1.0));
+        let silence = [0.0; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        main.process([&silence, &silence], [&mut left, &mut right]);
+        assert_eq!(main.atv_status(0), 1.0);
+        assert_eq!(main.atv_status(1), -0.25);
+        assert_eq!(main.lfo_status(7), 0.375);
+        assert!(main.set_atv_parameter(3, 1.0)); // INV = -1
+        main.process([&silence, &silence], [&mut left, &mut right]);
+        assert_eq!(main.atv_status(0), -1.0);
+        assert_eq!(main.atv_status(1), 0.75);
+        assert_eq!(main.lfo_status(7), 0.875);
+        assert!(!main.set_atv_parameter(2, 4.0));
+        assert!(!main.set_atv_parameter(3, 4.0));
     }
 }

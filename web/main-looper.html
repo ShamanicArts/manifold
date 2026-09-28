@@ -79,7 +79,7 @@
           <section class="rack-route" aria-label="Main modulation connection">
             <div class="rack-shell-head route-head">PATCH / SCALAR CONTROL</div>
             <div class="route-content"><h2>LFO → target</h2><p>A typed control route. Audio stays in the Rust engine; these controls set the route.</p>
-              <label>Output<select id="mod-source"><option value="0">OUT · bipolar</option><option value="1">INV · bipolar</option><option value="2">UNI · unipolar</option><option value="3">EOC · trigger</option></select></label>
+              <label>Output<select id="mod-source"><option value="0">OUT · bipolar</option><option value="1">INV · bipolar</option><option value="2">UNI · unipolar</option><option value="3">EOC · trigger</option><option value="4">ATV / Bias OUT</option></select></label>
               <label>Target<select id="mod-target"><option value="0">Disconnected</option><option value="22">Filter cutoff</option><option value="23">Filter resonance</option><option value="129">FX1 mix</option><option value="137">FX2 mix</option></select></label>
               <label>Apply<select id="mod-mode"><option value="0">Add to base</option><option value="1">Replace base</option></select></label>
               <div id="mod-amount" class="route-slider"></div><div id="mod-bias" class="route-slider"></div>
@@ -88,6 +88,18 @@
               <output id="mod-effective">Filter cutoff 3200 Hz · Reso 0.75</output>
             </div>
           </section>
+          <section class="rack-atv" aria-label="Main ATV Bias module">
+            <div class="atv-title">ATV / BIAS</div><div id="atv-status" class="atv-status">In +0.00  •  Out +0.00</div>
+            <canvas id="atv-preview" width="424" height="108" aria-label="ATV Bias input output transfer graph"></canvas>
+            <div id="atv-amount" class="atv-slider"></div><div id="atv-bias" class="atv-slider"></div>
+            <div id="atv-values" class="atv-values">Amt +1.00  •  Bias +0.00</div>
+          </section>
+          <section class="rack-atv-patch" aria-label="ATV Bias input connection">
+            <strong>CONTROL IN → OUT</strong>
+            <p>The selected LFO port feeds the original ATV / Bias module. Choose ATV / Bias OUT in a route to hear its result.</p>
+            <label>LFO module<select id="atv-slot"><option value="0">LFO 1</option><option value="1">LFO 2</option><option value="2">LFO 3</option><option value="3">LFO 4</option></select></label>
+            <label>Input port<select id="atv-port"><option value="0">OUT</option><option value="1">INV</option><option value="2">UNI</option><option value="3">EOC</option></select></label>
+          </section>
           <button id="add-lfo" type="button">+ LFO</button>
           </div></div>
           <button id="patch-jump" type="button" aria-label="Show Main modulation rack row">PATCH ↓</button>
@@ -95,7 +107,7 @@
         </div>
       </section>
     </div>
-    <div class="session"><span>Session</span><button id="save-session">Download Main session</button><label>Open session<input id="open-session" type="file" accept="application/json,.json"></label><small>Four loops, Sample PCM, rack and LFO modules · reopen at the same audio sample rate</small></div>
+    <div class="session"><span>Session</span><button id="save-session">Download Main session</button><label>Open session<input id="open-session" type="file" accept="application/json,.json"></label><small>Four loops, Sample PCM, rack, LFO and ATV modules · reopen at the same audio sample rate</small></div>
     <div class="help"><div><strong>First Loop</strong><span>Press REC, play into the input, press REC again. The first span sets tempo against Target and commits to the selected layer.</span></div><div><strong>Retrospective</strong><span>Let audio run, then click a bar segment to take recent audio without recording first. Traditional mode arms a segment; press Commit armed to fire it.</span></div><div><strong>Layers</strong><span>Select a strip or donut, drag its waveform to scrub, and drag the original style Vol and Speed knobs vertically. Input keeps feeding each layer’s capture ring.</span></div></div>
     <button id="fire" class="fire" hidden>Commit armed segment</button>
   </main>
