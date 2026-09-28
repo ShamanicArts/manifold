@@ -18,6 +18,7 @@ pub mod main_host_parameters;
 pub mod main_host_state;
 pub mod main_instrument;
 pub mod main_presentation;
+pub mod main_rack_document;
 pub mod main_sample_handoff;
 pub mod main_session;
 pub mod main_session_export;

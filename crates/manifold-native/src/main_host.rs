@@ -471,7 +471,7 @@ mod tests {
         }
         let saved = saved.expect("empty native session completes promptly");
         let state: Value = serde_json::from_slice(&saved).unwrap();
-        assert_eq!(state["version"], 15);
+        assert_eq!(state["version"], 16);
         assert_eq!(state["sampleRate"], 8_000.0);
         assert!(
             state["layers"]
@@ -514,6 +514,39 @@ mod tests {
                 "fresh={fresh} restored={restored}"
             );
         }
+    }
+
+    #[test]
+    fn edited_audio_cable_survives_native_session_export() {
+        let (mut audio, mut control) = MainAudioRuntime::prepare(8_000.0, 128).unwrap();
+        let mut state = default_main_session(8_000.0).unwrap();
+        let edge = state["rackDocument"]["connections"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|edge| edge["id"] == "filter_to_fx1")
+            .unwrap();
+        edge["from"]["moduleId"] = json!("oscillator");
+        control
+            .submit_session(&serde_json::to_vec(&state).unwrap())
+            .unwrap();
+        render(&mut audio);
+        control.reclaim();
+        control.request_session_snapshot().unwrap();
+        let saved = loop {
+            render(&mut audio);
+            if let Some(bytes) = control.poll_session_snapshot().unwrap() {
+                break bytes;
+            }
+        };
+        let exported: Value = serde_json::from_slice(&saved).unwrap();
+        assert_eq!(exported["version"], 16);
+        assert_eq!(
+            exported["rackDocument"]["connections"],
+            state["rackDocument"]["connections"]
+        );
+        let reopened = prepare_main_session(&saved, 8_000.0, 128).unwrap();
+        assert!(reopened.instrument().has_rack_insert());
     }
 
     #[test]
@@ -562,7 +595,7 @@ mod tests {
             }
             let saved = saved.expect("legacy save completes promptly");
             let state: Value = serde_json::from_slice(&saved).unwrap();
-            assert_eq!(state["version"], 15);
+            assert_eq!(state["version"], 16);
             assert_eq!(state["rack"]["lfos"].as_array().unwrap().len(), 1);
             assert!(state["rack"]["arpeggiator"].is_object());
             if version == 3 {
@@ -867,7 +900,7 @@ mod tests {
             }
         };
         let saved: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(saved["version"], 15);
+        assert_eq!(saved["version"], 16);
         assert_eq!(saved["layers"][0]["frames"], 9_000);
         assert_eq!(saved["sample"]["frames"], 9_000);
         assert!((saved["rack"]["source"]["output"].as_f64().unwrap() - 0.37).abs() < 1e-6);

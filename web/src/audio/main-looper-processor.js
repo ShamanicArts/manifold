@@ -62,6 +62,8 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           this.port.postMessage({ type: 'ready' });
         } else if (data.type === 'rack-route' && this.transferJob) {
           this.port.postMessage({ type: 'rack-route-applied', requestId: data.requestId, accepted: false });
+        } else if (data.type === 'rack-routes' && this.transferJob) {
+          this.port.postMessage({ type: 'rack-route-applied', requestId: data.requestId, accepted: false });
         } else if (this.transferJob && ['control', 'layer-control', 'command', 'synth-note', 'synth-parameter',
           'lfo-slot-active', 'lfo-parameter', 'lfo-gate', 'modulation-route', 'atv-parameter', 'slew-parameter', 'sample-hold-parameter', 'compare-parameter', 'cv-mix-parameter', 'range-parameter', 'scale-quantizer-parameter', 'transpose-parameter', 'note-filter-parameter', 'velocity-mapper-parameter'].includes(data.type)) {
           this.port.postMessage({ type: 'rejected', action: data });
@@ -253,6 +255,18 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           if (!accepted) this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'rack-route' && this.engine) {
           const accepted = this.engine.manifold_looper_set_rack_route(data.to, data.port, data.from ?? 0) === 1;
+          this.port.postMessage({ type: 'rack-route-applied', requestId: data.requestId, accepted });
+        } else if (data.type === 'rack-routes' && this.engine) {
+          let applied = 0;
+          for (const route of data.routes) {
+            if (this.engine.manifold_looper_set_rack_route(route.to, route.port, route.from) !== 1) break;
+            applied++;
+          }
+          const accepted = applied === data.routes.length;
+          if (!accepted) for (let index = applied - 1; index >= 0; index--) {
+            const route = data.routes[index];
+            this.engine.manifold_looper_set_rack_route(route.to, route.port, route.previous);
+          }
           this.port.postMessage({ type: 'rack-route-applied', requestId: data.requestId, accepted });
         } else if (data.type === 'lfo-slot-active' && this.engine) {
           if (this.engine.manifold_looper_lfo_slot_active(data.slot, Number(data.active)) !== 1)

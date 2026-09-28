@@ -778,6 +778,9 @@ impl MainInstrument {
         self.fx1.reset_processing();
         self.fx2.reset_processing();
         self.eq.reset();
+        if let Some(insert) = &mut self.rack_insert {
+            insert.reset_processing();
+        }
     }
 
     pub fn request_sample_source(&mut self, source: usize, bars: f32) -> usize {

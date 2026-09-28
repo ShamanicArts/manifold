@@ -72,9 +72,9 @@ pub fn compact_main_presentation(bytes: &[u8]) -> Result<Value, MainPresentation
     }
     let version = source["version"]
         .as_u64()
-        .filter(|version| (1..=15).contains(version))
+        .filter(|version| (1..=16).contains(version))
         .ok_or(MainPresentationError::Invalid("Main version"))?;
-    let mut state = if version == 15 {
+    let mut state = if version == 16 {
         source
     } else {
         let mut upgraded = save_template(bytes).map_err(MainPresentationError::Upgrade)?;
@@ -154,7 +154,7 @@ mod tests {
         rack.insert("lfo".into(), lfo);
         rack.remove("arpeggiator");
         let document = compact_main_presentation(old.to_string().as_bytes()).unwrap();
-        assert_eq!(document["version"], 15);
+        assert_eq!(document["version"], 16);
         assert_eq!(document["layers"][0]["frames"], 6000);
         assert_eq!(document["rack"]["lfos"][0]["slot"], 0);
         assert!(document["rack"]["arpeggiator"].is_object());

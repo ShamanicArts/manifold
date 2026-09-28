@@ -5,7 +5,20 @@ import fixture from '../../../projects/main-looper/default-rack-graph.json' with
 import insertFixture from '../../../projects/main-looper/default-rack-insert.json' with { type: 'json' };
 import { initialRackDocument, addRackModule, connectRackPorts, disconnectRackInput,
   replaceRackInput } from './rack-document.js';
-import { compileMainRackAudio, compileMainRackInsert } from './main-rack-graph.js';
+import { compileMainRackAudio, compileMainRackInsert,
+  validateMainRackInsertDocument } from './main-rack-graph.js';
+
+test('Main v16 audio document accepts saved bypass but rejects backward prepared routes', () => {
+  const original = initialRackDocument(catalog);
+  assert.deepEqual(validateMainRackInsertDocument(original, catalog), original);
+  const bypass = replaceRackInput(original, { moduleId: 'oscillator', portId: 'out' },
+    { moduleId: 'fx1', portId: 'in' }, catalog);
+  assert.ok(validateMainRackInsertDocument(bypass, catalog));
+  const openFx1 = disconnectRackInput(original, { moduleId: 'fx1', portId: 'in' }, catalog);
+  const backward = replaceRackInput(openFx1, { moduleId: 'eq', portId: 'out' },
+    { moduleId: 'filter', portId: 'in' }, catalog);
+  assert.throws(() => validateMainRackInsertDocument(backward, catalog), /prepared signal order/);
+});
 
 test('authored Main default compiles to the portable Graph host fixture', () => {
   const signal = compileMainRackAudio(initialRackDocument(catalog), catalog);

@@ -1,4 +1,4 @@
-//! Browser-compatible Main v15 session assembly on the host control thread.
+//! Browser-compatible Main v16 session assembly on the host control thread.
 //! A snapshot supplies audio-thread truth; the stripped browser session
 //! template retains UI-only choices that have no DSP parameter.
 
@@ -270,16 +270,16 @@ fn apply_rack(rack: &mut Value, snapshot: &MainPcmSnapshot) -> Result<(), MainEx
     Ok(())
 }
 
-/// Build a v15 save template from a previously validated browser session.
+/// Build a v16 save template from a previously validated browser session.
 /// Old versions inherit only modules they did not define from the authored
 /// default, while their UI-only choices and existing module values survive.
 pub fn save_template(bytes: &[u8]) -> Result<Value, MainExportError> {
     let mut state: Value = serde_json::from_slice(bytes).map_err(MainExportError::Json)?;
     let version = state["version"]
         .as_i64()
-        .filter(|version| (1..=15).contains(version))
+        .filter(|version| (1..=16).contains(version))
         .ok_or(MainExportError::InvalidTemplate("version"))?;
-    if version < 15 {
+    if version < 16 {
         let sample_rate = state["sampleRate"]
             .as_f64()
             .ok_or(MainExportError::InvalidTemplate("sampleRate"))?
@@ -340,8 +340,9 @@ pub fn export_main_session(
 ) -> Result<Vec<u8>, MainExportError> {
     if template["format"] != "manifold.project"
         || template["id"] != "manifold.main-looper"
-        || template["version"] != 15
+        || template["version"] != 16
         || !template["rack"].is_object()
+        || !template["rackDocument"].is_object()
     {
         return Err(MainExportError::InvalidTemplate("identity"));
     }

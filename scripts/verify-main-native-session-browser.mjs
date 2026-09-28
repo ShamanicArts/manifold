@@ -90,7 +90,7 @@ try {
   await page.locator('#save-session').click();
   const download = await downloadPromise;
   const browserSession = JSON.parse(await readFile(await download.path(), 'utf8'));
-  assert.equal(browserSession.version, nativeSession.version);
+  assert.equal(browserSession.version, 16);
   assert.equal(browserSession.layers[0].frames, nativeSession.layers[0].frames);
   assert.equal(browserSession.sample.frames, nativeSession.sample.frames);
   assert.equal(browserSession.layers[0].pcmF32Base64, nativeSession.layers[0].pcmF32Base64);
@@ -116,7 +116,7 @@ try {
   assert.equal(lfo2.route.target, 22);
   assert.equal(lfo2.route.enabled, true);
   assert.deepEqual(errors, []);
-  console.log('Native Main v15 save opened and re-saved by the actual browser looper with identical loop/sample PCM and rack controls.');
+  console.log('Native Main v15 save upgraded to v16 and re-saved by the actual browser looper with identical loop/sample PCM and rack controls.');
 } finally {
   await browser.close();
 }

@@ -150,7 +150,7 @@ def render(plugin_ptr, plugin, events=None, input_value=None):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--module", type=Path, default=ROOT / "target/debug/libmanifold_clap.so")
+    parser.add_argument("--module", type=Path, default=ROOT / "target/clap/ManifoldFX.clap")
     args = parser.parse_args()
     module = args.module.resolve()
     library = c.CDLL(str(module))
@@ -277,7 +277,7 @@ def main():
         assert fn(state.save, c.c_bool, c.c_void_p, c.POINTER(Stream))(plugin_ptr, c.byref(sink))
         exported = json.loads(saved)
         assert exported["id"] == "manifold.main-looper"
-        assert exported["version"] == 15
+        assert exported["version"] == 16
         assert exported["layers"][0]["pcmF32Base64"] == original["layers"][0]["pcmF32Base64"]
         assert exported["sample"]["pcmF32Base64"] == original["sample"]["pcmF32Base64"]
         assert exported["rack"]["lfos"][1]["shape"] == 3
@@ -468,7 +468,37 @@ def main():
             fn(capture.deactivate, None, c.c_void_p)(capture_ptr)
         finally:
             fn(capture.destroy, None, c.c_void_p)(capture_ptr)
-        print("Main CLAP: packaged GUI contract, v15 audio/state, parameters, frame-64 automation, inactive flush/save, First Loop record/stop, clear-layer, and sample-identical reopen passed.")
+        patch_ptr = create(factory_ptr, c.byref(host), descriptor.id)
+        assert patch_ptr
+        patch = c.cast(patch_ptr, c.POINTER(Plugin)).contents
+        try:
+            assert fn(patch.init, c.c_bool, c.c_void_p)(patch_ptr)
+            patch_state = c.cast(fn(patch.get_extension, c.c_void_p, c.c_void_p, c.c_char_p)(
+                patch_ptr, b"clap.state"), c.POINTER(State)).contents
+            browser_patch = json.loads((ROOT / "web/public/main-audio-patch-saved-session.json").read_bytes())
+            patch_stream, keep_patch_read = read_stream(json.dumps(browser_patch).encode())
+            assert fn(patch_state.load, c.c_bool, c.c_void_p, c.POINTER(Stream))(
+                patch_ptr, c.byref(patch_stream))
+            assert fn(patch.activate, c.c_bool, c.c_void_p, c.c_double, c.c_uint32, c.c_uint32)(
+                patch_ptr, 48000., 1, 128)
+            assert fn(patch.start, c.c_bool, c.c_void_p)(patch_ptr)
+            render(patch_ptr, patch)
+            fn(patch.stop, None, c.c_void_p)(patch_ptr)
+            patched_save = bytearray()
+
+            @c.CFUNCTYPE(c.c_int64, c.c_void_p, c.c_void_p, c.c_uint64)
+            def patched_write(_stream, data, size):
+                patched_save.extend(c.string_at(data, size))
+                return size
+
+            patched_sink = Stream(None, c.cast(patched_write, c.c_void_p))
+            assert fn(patch_state.save, c.c_bool, c.c_void_p, c.POINTER(Stream))(
+                patch_ptr, c.byref(patched_sink))
+            assert json.loads(patched_save)["rackDocument"]["connections"] == browser_patch["rackDocument"]["connections"]
+            fn(patch.deactivate, None, c.c_void_p)(patch_ptr)
+        finally:
+            fn(patch.destroy, None, c.c_void_p)(patch_ptr)
+        print("Main CLAP: packaged v16 state, browser Patch cable import/export, parameters, timed automation, First Loop, and sample-identical reopen passed.")
     finally:
         fn(plugin.destroy, None, c.c_void_p)(plugin_ptr)
 

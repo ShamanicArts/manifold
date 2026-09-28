@@ -2,7 +2,7 @@ import './main-looper.css';
 import project from '../../projects/main-looper/project.json';
 import rackCatalog from '../../projects/main-looper/rack.json';
 import { NODE_TYPES } from './graph/topology.js';
-import { compileMainRackInsert } from './state/main-rack-graph.js';
+import { compileMainRackInsert, validateMainRackInsertDocument } from './state/main-rack-graph.js';
 import { mountMainAudioPatch } from './widgets/main-audio-patch.js';
 import { encodePcm, decodePcm } from './state/stereo-source.js';
 import { validateMainRackState } from './state/main-rack-state.js';
@@ -26,6 +26,8 @@ import { mountMainArpeggiator } from './widgets/main-arpeggiator.js';
 import { mountMainCapturePlane } from './widgets/main-capture-plane.js';
 import { drawMainLayerKnob } from './widgets/main-layer-knob.js';
 import { mainEditorAction } from './audio/main-editor-control-map.js';
+import { BrowserMidiInput, midiAvailability } from './audio/midi-input.js';
+import { MidiHoldState } from './audio/midi-hold.js';
 
 const $ = (id) => document.getElementById(id);
 const editorMode = new URLSearchParams(location.search).has('editor');
@@ -40,10 +42,9 @@ let sampleJob = null, freeSource = null, sampleMode = 0;
 let applyingEditorState = false;
 const status = (message) => { $('status').textContent = message; };
 const pendingRackRoutes = new Map();
-if (editorMode) $('rack-view-switch').hidden = true;
 const rackPatch = mountMainAudioPatch({
   content: document.querySelector('.rack-scroll-content'), catalog: rackCatalog,
-  toggle: $('rack-view-switch'), onError: status,
+  toggle: $('rack-view-switch'), onError: status, readOnly: editorMode,
   onRoute: ({ to, port, from }) => {
     if (editorMode) return Promise.resolve(false);
     if (!processor) return Promise.resolve(true);
@@ -52,6 +53,16 @@ const rackPatch = mountMainAudioPatch({
       const timer = setTimeout(() => { pendingRackRoutes.delete(requestId); resolve(false); }, 5000);
       pendingRackRoutes.set(requestId, { resolve, timer });
       processor.port.postMessage({ type: 'rack-route', requestId, to, port, from });
+    });
+  },
+  onRoutes: routes => {
+    if (editorMode) return Promise.resolve(false);
+    if (!processor) return Promise.resolve(true);
+    const requestId = nextRequest++;
+    return new Promise(resolve => {
+      const timer = setTimeout(() => { pendingRackRoutes.delete(requestId); resolve(false); }, 5000);
+      pendingRackRoutes.set(requestId, { resolve, timer });
+      processor.port.postMessage({ type: 'rack-routes', requestId, routes });
     });
   },
 });
@@ -75,6 +86,82 @@ const control = (id, value) => post({ type: 'control', id, value });
 const layerControl = (layer, id, value) => post({ type: 'layer-control', layer, id, value });
 const command = (id, value = 0) => post({ type: 'command', id, value });
 const synthNote = (kind, note = 0, velocity = 0) => post({ type: 'synth-note', kind, note, velocity });
+const midiHold = new MidiHoldState();
+const soundingMidiNotes = new Set();
+let selectedMidiId = null;
+function emitMidiEvents(events) {
+  for (const event of events) {
+    if (event.kind === 'on') {
+      if (!soundingMidiNotes.has(event.note)) {
+        synthNote(0, event.note, event.velocity);
+        soundingMidiNotes.add(event.note);
+      }
+    } else if (soundingMidiNotes.has(event.note)
+      && !Array.from({ length: 16 }, (_, channel) => channel)
+        .some(channel => midiHold.isHeld(channel * 128 + event.note))) {
+      synthNote(1, event.note);
+      soundingMidiNotes.delete(event.note);
+    }
+  }
+}
+function releaseMidiDevice(id) { emitMidiEvents(midiHold.disconnect(id)); }
+function syncMidiDevices() {
+  const select = $('main-midi-input');
+  const previous = selectedMidiId;
+  const devices = [...midiInput.bound.values()];
+  select.replaceChildren(...devices.map(input => {
+    const option = document.createElement('option');
+    option.value = input.id; option.textContent = input.name || `MIDI input ${input.id}`;
+    return option;
+  }));
+  selectedMidiId = devices.some(input => input.id === previous) ? previous : devices[0]?.id ?? null;
+  if (selectedMidiId) select.value = selectedMidiId;
+  else select.append(new Option('No MIDI inputs', ''));
+  select.disabled = !selectedMidiId;
+  if (previous && previous !== selectedMidiId) releaseMidiDevice(previous);
+  $('main-midi-connect').textContent = midiInput.pending ? 'Cancel request'
+    : midiInput.listening ? 'Disconnect MIDI' : 'Connect MIDI';
+}
+const midiInput = new BrowserMidiInput((id, kind, channel, note, velocity) => {
+  if (id !== selectedMidiId || !processor) return;
+  emitMidiEvents(midiHold.note(id, kind, channel, note, velocity).events);
+  $('main-midi-status').textContent = `${$('main-midi-input').selectedOptions[0]?.textContent ?? 'MIDI'} · ${kind === 'on' ? 'Note on' : 'Note off'} ${note} · channel ${channel + 1}`;
+}, releaseMidiDevice, message => {
+  $('main-midi-status').textContent = message;
+  if (/no MIDI permission prompt|permission was denied or blocked/i.test(message)) {
+    $('main-midi-browser-link').hidden = false;
+    $('main-midi-copy').hidden = false;
+  }
+  syncMidiDevices();
+}, (id, channel, down) => {
+  if (id === selectedMidiId && processor) emitMidiEvents(midiHold.sustain(id, channel, down));
+}, () => {}, syncMidiDevices);
+$('main-midi-connect').addEventListener('click', () => {
+  if (midiInput.listening || midiInput.pending) midiInput.stop();
+  else void midiInput.connect();
+});
+$('main-midi-input').addEventListener('change', () => {
+  const previous = selectedMidiId;
+  selectedMidiId = $('main-midi-input').value;
+  if (previous && previous !== selectedMidiId) releaseMidiDevice(previous);
+  $('main-midi-status').textContent = `Listening to ${$('main-midi-input').selectedOptions[0]?.textContent ?? 'MIDI input'}.`;
+});
+const midiUnavailable = midiAvailability();
+if (midiUnavailable) {
+  $('main-midi-connect').disabled = true;
+  $('main-midi-status').textContent = `${midiUnavailable} On-screen keys still work.`;
+  $('main-midi-browser-link').hidden = false;
+  $('main-midi-copy').hidden = false;
+}
+$('main-midi-copy').addEventListener('click', async () => {
+  const address = new URL('/main-looper.html', location.href).href;
+  try {
+    await navigator.clipboard.writeText(address);
+    $('main-midi-status').textContent = 'Main link copied. Open it in a browser that allows Web MIDI.';
+  } catch {
+    $('main-midi-status').textContent = `Open this address in a browser that allows Web MIDI: ${address}`;
+  }
+});
 const synthParameter = (id, value) => post({ type: 'synth-parameter', id, value });
 const synthIds = project.synthParameters;
 const adsr = mountMainAdsr($, synthParameter, synthIds);
@@ -626,6 +713,7 @@ function handleTransfer(data) {
   if (data.type === 'save-started' && job.kind === 'save') {
     job.state = data.state;
     job.state.rack = job.rack;
+    job.state.rackDocument = job.rackDocument;
     Object.assign(job.state.rack.sampleHold, data.sampleHold);
     Object.assign(job.state.rack.compare, data.compare);
     job.audio = data.state.layers.map(layer => new Float32Array(layer.frames * 2));
@@ -650,19 +738,21 @@ function handleTransfer(data) {
   } else if (data.type === 'import-complete' && job.kind === 'import') {
     $('target').value = Math.round(job.state.targetBpm);
     transferJob = null;
-    if (job.state.version >= 2) {
-      restoreRack(job.state.rack);
-      $('sample-length').textContent = `${Math.round(job.state.sample.frames / context.sampleRate * 1000)}ms`;
-    }
-    status('Opened the four-layer Main session.');
-    post({ type: 'snapshot' });
+    void rackPatch.restore(job.state.version >= 16 ? job.state.rackDocument : null).then(() => {
+      if (job.state.version >= 2) {
+        restoreRack(job.state.rack);
+        $('sample-length').textContent = `${Math.round(job.state.sample.frames / context.sampleRate * 1000)}ms`;
+      }
+      status('Opened the four-layer Main session.');
+      post({ type: 'snapshot' });
+    }).catch(error => status(`Session audio cables could not be restored: ${error.message}`));
   }
 }
 
 $('save-session').onclick = () => {
   if (!processor) { status('Start audio before downloading a looper session.'); return; }
+  if (rackPatch.pending()) { status('Wait for the cable change before downloading.'); return; }
   if (transferJob || sampleJob || freeSource !== null) return;
-  if (rackPatch.isEdited()) { status('Audio cable edits are not yet in the Main session format. Reconnect the default route before downloading.'); return; }
   if (editorMode) {
     $('save-session').disabled = true;
     status('Collecting native Main session…');
@@ -674,14 +764,14 @@ $('save-session').onclick = () => {
   try { rack = validateMainRackState(rackSnapshot(), true, project.modulation, true, true, true, true, true, true, true, true, true, true, true); }
   catch (error) { status(error.message); return; }
   transferJob = { kind: 'save', id, state: null, audio: null, layer: 0, offset: 0,
-    sampleOffset: 0, sampleAudio: null, rack };
+    sampleOffset: 0, sampleAudio: null, rack, rackDocument: rackPatch.document() };
   $('save-session').disabled = true; status('Collecting loop audio for download…');
   post({ type: 'save-start', requestId: id });
 };
 $('open-session').onchange = async () => {
   if (!processor) { status('Start audio before opening a looper session.'); return; }
+  if (rackPatch.pending()) { status('Wait for the cable change before opening.'); $('open-session').value = ''; return; }
   if (transferJob || sampleJob || freeSource !== null) return;
-  if (rackPatch.isEdited()) { status('Reconnect the default audio cables before opening a Main session.'); $('open-session').value = ''; return; }
   const file = $('open-session').files[0];
   if (!file) return;
   if (editorMode) {
@@ -712,7 +802,8 @@ $('open-session').onchange = async () => {
   }
   try {
     const state = JSON.parse(await file.text());
-    if (state.format !== project.format || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, project.sessionVersion].includes(state.version) || state.id !== project.id
+    if (state.format !== project.format || !Number.isInteger(state.version) || state.version < 1
+      || state.version > project.sessionVersion || state.id !== project.id
       || state.sampleRate !== context.sampleRate || !Array.isArray(state.layers) || state.layers.length !== project.layers
       || !Number.isFinite(state.tempo) || !Number.isFinite(state.targetBpm)
       || !Number.isInteger(state.activeLayer) || state.activeLayer < 0 || state.activeLayer >= project.layers
@@ -728,6 +819,9 @@ $('open-session').onchange = async () => {
       return layer.frames ? decodePcm(layer.pcmF32Base64, layer.frames) : null;
     });
     let sampleAudio = null;
+    if (state.version >= 16) {
+      state.rackDocument = validateMainRackInsertDocument(state.rackDocument, rackCatalog);
+    }
     if (state.version >= 2) {
       validateMainRackState(state.rack, state.version >= 3, project.modulation, state.version >= 4, state.version >= 5, state.version >= 6, state.version >= 7, state.version >= 8, state.version >= 9, state.version >= 10, state.version >= 11, state.version >= 12, state.version >= 13, state.version >= 14, state.version >= 15);
       if (!state.sample || !Number.isInteger(state.sample.frames)
@@ -749,6 +843,7 @@ $('open-session').onchange = async () => {
 
 async function start() {
   if (context) return;
+  if (rackPatch.pending()) { status('Wait for the cable change before starting audio.'); return; }
   const sourceKind = $('source').value;
   if (sourceKind === 'file' && !$('file').files[0]) { status('Choose an audio file first.'); return; }
   const button = $('audio-button'); button.disabled = true; $('rack-view-switch').disabled = true; status('Preparing Main looper…');
@@ -852,6 +947,7 @@ async function stop() {
   for (const pending of pendingRackRoutes.values()) { clearTimeout(pending.timer); pending.resolve(false); }
   pendingRackRoutes.clear();
   synthNote(2);
+  midiHold.clear(); soundingMidiNotes.clear();
   document.querySelectorAll('.synth-key.held').forEach(key => key.classList.remove('held'));
   if (transferJob?.kind === 'import') post({ type: 'import-cancel' });
   if (sampleJob) post({ type: 'sample-cancel' });
@@ -1000,6 +1096,7 @@ if (editorMode) {
       context = { sampleRate: session.sampleRate };
       processor = { port: { postMessage: () => {} } };
       restoreRack(session.rack);
+      void rackPatch.restore(session.rackDocument, true).catch(error => status(error.message));
       $('target').value = Math.round(session.targetBpm);
       $('sample-length').textContent = `${Math.round((session.sample?.frames ?? 0) / session.sampleRate * 1000)}ms`;
       render(editorSnapshot(session));

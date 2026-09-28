@@ -15,7 +15,7 @@ pub(crate) const FX_CONTROL_COUNTS: [i64; 21] = [
 
 pub fn default_main_session(sample_rate: f32) -> Result<Value, MainSessionError> {
     let mut session: Value = serde_json::from_str(include_str!(
-        "../../../projects/main-looper/default-session-v15.json"
+        "../../../projects/main-looper/default-session-v16.json"
     ))
     .map_err(MainSessionError::Json)?;
     session["sampleRate"] = serde_json::json!(sample_rate);
@@ -505,7 +505,7 @@ fn apply_rack(
     Ok(())
 }
 
-/// Decode and prepare browser Main session versions 1 through 15. The returned
+/// Decode and prepare browser Main session versions 1 through 16. The returned
 /// processor is detached from the host callback until the host publishes it.
 pub fn prepare_main_session(
     bytes: &[u8],
@@ -516,7 +516,7 @@ pub fn prepare_main_session(
         return Err(MainSessionError::Invalid("session size"));
     }
     let state: Value = serde_json::from_slice(bytes).map_err(MainSessionError::Json)?;
-    let version = integer(&state, "version", 1, 15)?;
+    let version = integer(&state, "version", 1, 16)?;
     if member(&state, "format")?.as_str() != Some("manifold.project")
         || member(&state, "id")?.as_str() != Some("manifold.main-looper")
         || number(&state, "sampleRate", 8000.0, 192000.0)? != sample_rate
@@ -593,6 +593,14 @@ pub fn prepare_main_session(
             instrument.load_validated_sample(validated);
         }
         apply_rack(instrument, member(&state, "rack")?, version)?;
+    }
+    if version >= 16 {
+        crate::main_rack_document::prepare_audio_insert(
+            instrument,
+            member(&state, "rackDocument")?,
+            sample_rate,
+            max_frames,
+        )?;
     }
     Ok(processor)
 }

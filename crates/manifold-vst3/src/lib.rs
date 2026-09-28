@@ -564,6 +564,34 @@ mod tests {
     }
 
     #[test]
+    fn main_vst3_state_roundtrips_the_browser_audio_patch_cable() {
+        let fixture = include_bytes!("../../../web/public/main-audio-patch-saved-session.json");
+        let component = main_processor::MainProcessor::new();
+        let (incoming, _) = stream(fixture.to_vec());
+        assert_eq!(unsafe { component.setState(incoming.as_ptr()) }, kResultOk);
+        let mut setup = ProcessSetup {
+            processMode: 0,
+            symbolicSampleSize: SymbolicSampleSizes_::kSample32 as i32,
+            maxSamplesPerBlock: 128,
+            sampleRate: 48_000.0,
+        };
+        assert_eq!(unsafe { component.setupProcessing(&mut setup) }, kResultOk);
+        assert_eq!(unsafe { component.setActive(1) }, kResultOk);
+        assert_eq!(unsafe { component.setProcessing(1) }, kResultOk);
+        let (outgoing, data) = stream(Vec::new());
+        assert_eq!(unsafe { component.getState(outgoing.as_ptr()) }, kResultOk);
+        let saved: serde_json::Value = serde_json::from_slice(&data.lock().unwrap().bytes).unwrap();
+        let original: serde_json::Value = serde_json::from_slice(fixture).unwrap();
+        assert_eq!(saved["version"], 16);
+        assert_eq!(
+            saved["rackDocument"]["connections"],
+            original["rackDocument"]["connections"]
+        );
+        assert_eq!(unsafe { component.setProcessing(0) }, kResultOk);
+        assert_eq!(unsafe { component.setActive(0) }, kResultOk);
+    }
+
+    #[test]
     fn main_controller_state_preserves_host_edit_after_component_state() {
         use manifold_native::main_host_parameters::SYNTH_BASE;
         let source_output = SYNTH_BASE + 15;

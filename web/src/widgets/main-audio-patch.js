@@ -1,4 +1,4 @@
-import { compileMainRackInsert } from '../state/main-rack-graph.js';
+import { compileMainRackInsert, validateMainRackInsertDocument } from '../state/main-rack-graph.js';
 import { initialRackDocument, replaceRackInput, disconnectRackInput,
   setRackViewMode } from '../state/rack-document.js';
 
@@ -11,7 +11,7 @@ const AUDIO_OUTPUTS = new Set(['oscillator:out', 'filter:out', 'fx1:out', 'fx2:o
 const NS = 'http://www.w3.org/2000/svg';
 const endpointKey = endpoint => `${endpoint.moduleId}:${endpoint.portId}`;
 
-export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onError }) {
+export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoutes, onError, readOnly = false }) {
   let rack = initialRackDocument(catalog);
   let pending = false;
   let source = null;
@@ -33,8 +33,9 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onError
     button.dataset.module = moduleId;
     button.dataset.port = port.id;
     button.dataset.direction = direction;
-    button.disabled = !active;
-    button.title = active ? `${moduleId} ${port.id} ${direction}${direction === 'input' ? ' · right-click or double-click to unplug' : ''}`
+    button.disabled = !active || readOnly;
+    button.title = readOnly && active ? `${moduleId} ${port.id}: native cable editing pending`
+      : active ? `${moduleId} ${port.id} ${direction}${direction === 'input' ? ' · right-click or double-click to unplug' : ''}`
       : `${moduleId} ${port.id}: routing pending`;
     button.setAttribute('aria-label', button.title);
     const label = document.createElement('span');
@@ -45,7 +46,7 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onError
     else button.append(label, socket);
     host.append(button);
     portButtons.set(`${direction}:${endpointKey(endpoint)}`, button);
-    if (active && direction === 'output') {
+    if (active && !readOnly && direction === 'output') {
       button.addEventListener('pointerdown', event => {
         event.preventDefault();
         source = endpoint;
@@ -67,7 +68,7 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onError
         });
         paintWires();
       });
-    } else if (active) {
+    } else if (active && !readOnly) {
       button.addEventListener('click', () => {
         if (source) void connect(source, endpoint);
       });
@@ -167,19 +168,49 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onError
     try { await apply(disconnectRackInput(rack, to, catalog), to, null); }
     catch (error) { onError(error.message); }
   }
-  toggle.addEventListener('click', () => {
-    if (pending) return;
-    rack = setRackViewMode(rack, rack.viewMode === 'rack' ? 'patch' : 'rack', catalog);
+  function showMode() {
     content.classList.toggle('main-rack-patch-active', rack.viewMode === 'patch');
     toggle.textContent = rack.viewMode === 'patch' ? 'RACK' : 'AUDIO PATCH';
     toggle.setAttribute('aria-pressed', String(rack.viewMode === 'patch'));
     source = null; drag = null;
     requestAnimationFrame(paintWires);
+  }
+  const audioTargets = ['filter', 'fx1', 'fx2', 'eq', '__rackOutput'];
+  function routeFor(document, moduleId) {
+    const portId = moduleId === '__rackOutput' ? 'main' : 'in';
+    const edge = document.connections.find(item => item.to.moduleId === moduleId && item.to.portId === portId);
+    const from = !edge ? 0 : edge.from.moduleId === 'oscillator' ? 1
+      : document.modules.find(module => module.id === edge.from.moduleId).nodeId;
+    const to = moduleId === '__rackOutput' ? catalog.endpoints.__rackOutput.nodeId
+      : document.modules.find(module => module.id === moduleId).nodeId;
+    return { to, port: 0, from };
+  }
+  async function restore(document, alreadyApplied = false) {
+    if (pending) throw new Error('A cable edit is still pending.');
+    const next = validateMainRackInsertDocument(document ?? initialRackDocument(catalog), catalog);
+    const routes = audioTargets.map(moduleId => ({ ...routeFor(next, moduleId),
+      previous: routeFor(rack, moduleId).from }))
+      .filter(route => route.from !== route.previous);
+    pending = true;
+    try {
+      if (!alreadyApplied && routes.length && !await onRoutes(routes)) {
+        throw new Error('The Rust rack rejected the saved cables.');
+      }
+      rack = next;
+      showMode();
+    } finally { pending = false; }
+  }
+  toggle.addEventListener('click', () => {
+    if (pending) return;
+    rack = setRackViewMode(rack, rack.viewMode === 'rack' ? 'patch' : 'rack', catalog);
+    showMode();
   });
   content.closest('.rack-scroll')?.addEventListener('scroll', () => requestAnimationFrame(paintWires));
   window.addEventListener('resize', () => requestAnimationFrame(paintWires));
   return {
     document: () => rack,
+    restore,
+    pending: () => pending,
     isEdited: () => rack.connections.some(edge => !catalog.initial.connections.some(initial =>
       endpointKey(initial.from) === endpointKey(edge.from) && endpointKey(initial.to) === endpointKey(edge.to)))
       || rack.connections.length !== catalog.initial.connections.length,
