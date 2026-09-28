@@ -113,9 +113,27 @@ try {
   assert.match(await page.locator('#status').textContent(), /Opened the four-layer Main session/);
   await page.locator('#rack-view-switch').click();
   await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 12);
+
+  // Insertion follows the shell's position even when the grab point is near
+  // either edge of a wide header. The cursor itself is not the drop center.
+  for (const offset of [36, 436]) {
+    await page.reload();
+    await page.locator('[data-main-tab="midisynth"]').click();
+    const source = await page.locator('.rack-source .rack-shell-head').boundingBox();
+    const content = await page.locator('.rack-scroll-content').boundingBox();
+    const y = source.y + source.height / 2;
+    await page.mouse.move(source.x + offset, y);
+    await page.mouse.down();
+    await page.mouse.move(content.x + 712 + offset, y, { steps: 10 });
+    assert.equal(await page.locator('.rack-filter').evaluate(element => element.style.left), '236px',
+      `Filter should reflow while Source is dragged from offset ${offset}`);
+    await page.mouse.up();
+    await page.waitForFunction(() => document.querySelector('.rack-source')?.style.left === '708px');
+    assert.equal(await page.locator('.rack-filter').evaluate(element => element.style.left), '236px');
+  }
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ midpointDrops: 2, reflowedShells: 3, savedPlacement: true, reopenedPlacement: true,
-    patchWiresRemain: 12, pageErrors: 0 }));
+    patchWiresRemain: 12, offCenterGrabs: 2, pageErrors: 0 }));
 } finally {
   await browser.close();
 }

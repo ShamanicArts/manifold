@@ -156,7 +156,8 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
         const top = (event.clientY - bounds.top) / scale - current.offsetY;
         const nextRow = Math.max(0, Math.round((top - 25) / catalog.grid.cellHeight));
         const nextCol = Math.max(0, Math.round(left / catalog.grid.cellWidth));
-        const dropX = (event.clientX - bounds.left) / scale;
+        const moving = rack.modules.find(item => item.id === current.moduleId);
+        const dropX = left + moving.w * catalog.grid.cellWidth / 2;
         return validateMainRackInsertDocument(moveRackModule(rack, module.id,
           nextRow, nextCol, catalog, dropX), catalog);
       }
