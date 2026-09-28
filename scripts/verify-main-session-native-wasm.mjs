@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 
-const session = JSON.parse(await readFile(new URL('../crates/manifold-native/tests/fixtures/main-browser-v15-empty.json', import.meta.url)));
+const session = JSON.parse(await readFile(new URL('../projects/main-looper/default-session-v15.json', import.meta.url)));
 session.rack.fx1.selected = 5;
 session.rack.fx1.mix = .35;
 session.rack.fx1.parameters[5] = [.32, .7, .5, .5, .5];

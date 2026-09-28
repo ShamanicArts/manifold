@@ -32,6 +32,7 @@ const MAX_AUTOMATION_POINTS: usize = 4096;
 pub enum NativeError {
     Graph(GraphError),
     InvalidSampleRate,
+    InvalidDefaultSession,
     BlockTooLarge,
     ChannelLengthMismatch,
     Event(EventError),

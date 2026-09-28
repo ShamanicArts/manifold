@@ -41,7 +41,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .nth(1)
         .ok_or("pass an output JSON path")?;
     let mut session: Value = serde_json::from_str(include_str!(
-        "../tests/fixtures/main-browser-v15-empty.json"
+        "../../../projects/main-looper/default-session-v15.json"
     ))?;
     let frames = 6_000;
     let mut pcm = Vec::with_capacity(frames * 2);

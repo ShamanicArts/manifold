@@ -60,7 +60,7 @@
   <section>
     <h2>Proof and next boundary</h2>
     <p>The native reimport test checks PCM, changed controls, inactive FX memories, EQ, and Arpeggiator state. The browser probe checks the real page, the loaded loop and sample, and byte-identical PCM after a second save. Reproduce with <code>cargo run -p manifold-native --example export_main_browser_session -- web/public/main-native-saved-session.json</code> and <code>node scripts/verify-main-native-session-browser.mjs</code>.</p>
-    <p>Native saving currently requires a version-15 session to have been imported first, because UI-only choices come from that session. Fresh native instances and Main CLAP/VST3 state callbacks are next.</p>
+    <p>A fresh native Main instance now starts from the browser-authored default version-15 session and can save immediately. The native test reopens that save and compares note audio sample by sample. Older version 1–14 imports still need promotion before saving; Main CLAP/VST3 state callbacks are next.</p>
   </section>
 </main></body>
 </html>

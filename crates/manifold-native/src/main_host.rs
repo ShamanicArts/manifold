@@ -72,7 +72,27 @@ impl MainAudioRuntime {
         sample_rate: f32,
         max_frames: usize,
     ) -> Result<(Self, MainControl), NativeError> {
-        let processor = MainNativeProcessor::prepare(sample_rate, max_frames)?;
+        if !sample_rate.is_finite() || !(8_000.0..=192_000.0).contains(&sample_rate) {
+            return Err(NativeError::InvalidSampleRate);
+        }
+        if max_frames == 0 || max_frames > 65_536 {
+            return Err(NativeError::BlockTooLarge);
+        }
+        // The browser-authored empty session is the product default on every
+        // host. Preparing through the loader gives fresh native instances the
+        // same audible state that their first save will later describe.
+        let mut template: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../projects/main-looper/default-session-v15.json"
+        ))
+        .map_err(|_| NativeError::InvalidDefaultSession)?;
+        template["sampleRate"] = serde_json::json!(sample_rate);
+        let bytes =
+            serde_json::to_vec(&template).map_err(|_| NativeError::InvalidDefaultSession)?;
+        let processor =
+            prepare_main_session(&bytes, sample_rate, max_frames).map_err(|error| match error {
+                MainSessionError::Native(error) => error,
+                _ => NativeError::InvalidDefaultSession,
+            })?;
         let exchange = Arc::new(Exchange {
             pending: AtomicPtr::new(null_mut()),
             retired: ArrayQueue::new(4),
@@ -93,7 +113,7 @@ impl MainAudioRuntime {
             sample_rate,
             max_frames,
             snapshot: snapshot_control,
-            templates: BTreeMap::new(),
+            templates: BTreeMap::from([(0, template)]),
         };
         Ok((audio, control))
     }
@@ -278,12 +298,13 @@ mod tests {
     use crate::main_host_parameters::{ARPEGGIATOR_BASE, SYNTH_BASE};
     use crate::main_instrument::{MainHostEvent, MainHostEventKind};
     use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use manifold_core::events::EventKind;
     use serde_json::{Value, json};
     use std::sync::Barrier;
     use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
     use std::time::{Duration, Instant};
 
-    const EMPTY: &str = include_str!("../tests/fixtures/main-browser-v15-empty.json");
+    const EMPTY: &str = include_str!("../../../projects/main-looper/default-session-v15.json");
 
     fn layer_session(value: f32) -> Vec<u8> {
         let mut state: Value = serde_json::from_str(EMPTY).unwrap();
@@ -336,6 +357,65 @@ mod tests {
             })
             .unwrap();
         left[0]
+    }
+
+    #[test]
+    fn fresh_native_main_saves_browser_v15_and_reopens_with_matching_audio() {
+        let (mut audio, mut control) = MainAudioRuntime::prepare(8_000.0, 128).unwrap();
+        control.request_session_snapshot().unwrap();
+        let mut saved = None;
+        for _ in 0..8 {
+            render(&mut audio);
+            if let Some(bytes) = control.poll_session_snapshot().unwrap() {
+                saved = Some(bytes);
+                break;
+            }
+        }
+        let saved = saved.expect("empty native session completes promptly");
+        let state: Value = serde_json::from_slice(&saved).unwrap();
+        assert_eq!(state["version"], 15);
+        assert_eq!(state["sampleRate"], 8_000.0);
+        assert!(
+            state["layers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|layer| layer["frames"] == 0)
+        );
+        let mut reopened = prepare_main_session(&saved, 8_000.0, 128).unwrap();
+        let note = [MainHostEvent {
+            offset: 0,
+            kind: MainHostEventKind::Midi(EventKind::NoteOn {
+                channel: 0,
+                note: 60,
+                velocity: 100,
+            }),
+        }];
+        let mut fresh_left = [0.0; 128];
+        let mut fresh_right = [0.0; 128];
+        audio
+            .process_host(MainHostAudioBlock {
+                input: None,
+                output: [&mut fresh_left, &mut fresh_right],
+                actions: &note,
+            })
+            .unwrap();
+        let mut reopened_left = [0.0; 128];
+        let mut reopened_right = [0.0; 128];
+        reopened
+            .process_host(MainHostAudioBlock {
+                input: None,
+                output: [&mut reopened_left, &mut reopened_right],
+                actions: &note,
+            })
+            .unwrap();
+        assert!(fresh_left.iter().any(|sample| sample.abs() > 1e-6));
+        for (fresh, restored) in fresh_left.iter().zip(reopened_left.iter()) {
+            assert!(
+                (fresh - restored).abs() < 1e-5,
+                "fresh={fresh} restored={restored}"
+            );
+        }
     }
 
     #[test]

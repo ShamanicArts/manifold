@@ -586,7 +586,8 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    const BROWSER_EMPTY: &str = include_str!("../tests/fixtures/main-browser-v15-empty.json");
+    const BROWSER_EMPTY: &str =
+        include_str!("../../../projects/main-looper/default-session-v15.json");
 
     fn encode(samples: &[f32]) -> String {
         let bytes: Vec<u8> = samples
