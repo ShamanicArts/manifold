@@ -4,10 +4,15 @@ import { readFile } from 'node:fs/promises';
 const requireFromWeb = createRequire(new URL('../web/package.json', import.meta.url));
 const { chromium } = requireFromWeb('playwright-core');
 const browser = await chromium.launch({ executablePath: process.env.MANIFOLD_CHROMIUM ?? '/usr/bin/chromium',
-  headless: true, args: ['--no-sandbox', '--mute-audio', '--autoplay-policy=no-user-gesture-required'] });
+  headless: true, args: ['--no-sandbox', '--mute-audio', '--autoplay-policy=no-user-gesture-required'],
+  env: { ...process.env, PULSE_SERVER: 'unix:/tmp/manifold-main-browser-no-audio' } });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1100 }, acceptDownloads: true });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
+  async function openSession(file) {
+    await page.locator('#status').evaluate(element => { element.textContent = 'Opening test session…'; });
+    await page.locator('#open-session').setInputFiles(file);
+  }
   await page.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html`);
   assert.ok(page.url().endsWith('/main-looper.html'));
   assert.equal(await page.locator('.layer').count(), 4);
@@ -187,7 +192,7 @@ try {
   await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = element.scrollHeight; });
   await page.screenshot({ path: new URL('../web/public/main-sample-hold-rack.png', import.meta.url).pathname, fullPage: true });
   const comparePanel = await page.locator('.rack-compare').boundingBox();
-  assert.equal(Math.round(comparePanel.x - lfoPanel.x), 708);
+  assert.equal(Math.round(comparePanel.x - lfoPanel.x), 944);
   assert.equal(Math.round(comparePanel.width), 236);
   await page.locator('#compare-direction').click();
   assert.equal(await page.locator('.rack-compare .project-dropdown-overlay').isVisible(), true);
@@ -500,7 +505,7 @@ try {
   await page.locator('[data-source-tab="wave"]').click();
   await page.locator('#synth-wave').selectOption('0');
   await page.locator('#filter-mode').selectOption('2');
-  await page.locator('#open-session').setInputFiles({ name: 'main-looper.json',
+  await openSession({ name: 'main-looper.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(bundle)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
   await page.waitForFunction(() => document.querySelector('.layer[data-layer="0"] .bars').textContent.includes('bar')
@@ -560,34 +565,34 @@ try {
   assert.equal(await page.locator('.rack-lfo').count(), 1);
   const duplicateSlot = { ...bundle, rack: { ...bundle.rack,
     lfos: [bundle.rack.lfos[0], { ...bundle.rack.lfos[1], slot: 0 }] } };
-  await page.locator('#open-session').setInputFiles({ name: 'main-looper-invalid-slots.json',
+  await openSession({ name: 'main-looper-invalid-slots.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(duplicateSlot)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Invalid Main LFO module'));
   assert.equal(await page.locator('.rack-lfo').count(), 1);
   const v14 = { ...bundle, version: 14, rack: { ...bundle.rack } };
   delete v14.rack.arpeggiator;
-  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v14.json',
+  await openSession({ name: 'main-looper-v14.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v14)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
   assert.equal(await page.locator('#arp-connected').isChecked(), false);
   assert.equal(await page.locator('#arp-octaves').getAttribute('aria-valuenow'), '1');
   const v13 = { ...v14, version: 13, rack: { ...v14.rack } };
   delete v13.rack.velocityMapper;
-  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v13.json',
+  await openSession({ name: 'main-looper-v13.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v13)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
   assert.equal(await page.locator('#velocity-mapper-connected').isChecked(), false);
   assert.equal(await page.locator('#velocity-mapper-curve').getAttribute('data-value'), '0');
   const v12 = { ...v13, version: 12, rack: { ...v13.rack } };
   delete v12.rack.noteFilter;
-  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v12.json',
+  await openSession({ name: 'main-looper-v12.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v12)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
   assert.equal(await page.locator('#note-filter-connected').isChecked(), false);
   assert.equal(await page.locator('#note-filter-low').getAttribute('aria-valuenow'), '36');
   const v11 = { ...v12, version: 11, rack: { ...v12.rack } };
   delete v11.rack.transpose;
-  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v11.json',
+  await openSession({ name: 'main-looper-v11.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v11)) });
   await page.waitForFunction(() => !document.querySelector('#transpose-connected').checked, null, { timeout: 15_000 });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
@@ -595,7 +600,7 @@ try {
   assert.equal(await page.locator('#transpose-semitones').getAttribute('aria-valuenow'), '0');
   const v10 = { ...v11, version: 10, rack: { ...v11.rack } };
   delete v10.rack.scaleQuantizer;
-  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v10.json',
+  await openSession({ name: 'main-looper-v10.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v10)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
   assert.equal(await page.locator('#scale-quantizer-connected').isChecked(), false);
@@ -604,7 +609,7 @@ try {
     lfos: bundle.rack.lfos.map((lfo, index) => index ? lfo : { ...lfo, route: { ...lfo.route, source: 10 } }) } };
   delete v9.rack.range;
   await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 9 import'; });
-  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v9.json',
+  await openSession({ name: 'main-looper-v9.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v9)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
   assert.equal(await page.locator('#range-min').getAttribute('aria-valuenow'), '0');
@@ -614,7 +619,7 @@ try {
     lfos: bundle.rack.lfos.map((lfo, index) => index ? lfo : { ...lfo, route: { ...lfo.route, source: 8 } }) } };
   delete v8.rack.cvMix;
   await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 8 import'; });
-  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v8.json',
+  await openSession({ name: 'main-looper-v8.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v8)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
   assert.equal(await page.locator('#cv-mix-level1').getAttribute('aria-valuenow'), '1');
@@ -623,7 +628,7 @@ try {
     lfos: bundle.rack.lfos.map((lfo, index) => index ? lfo : { ...lfo, route: { ...lfo.route, source: 6 } }) } };
   delete v7.rack.compare;
   await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 7 import'; });
-  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v7.json',
+  await openSession({ name: 'main-looper-v7.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v7)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
   assert.equal(await page.locator('#compare-direction').getAttribute('data-value'), '0');
@@ -633,7 +638,7 @@ try {
     lfos: bundle.rack.lfos.map((lfo, index) => index ? lfo : { ...lfo, route: { ...lfo.route, source: 5 } }) } };
   delete v6.rack.sampleHold;
   await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 6 import'; });
-  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v6.json',
+  await openSession({ name: 'main-looper-v6.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v6)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
   assert.equal(await page.locator('#sample-hold-source').inputValue(), '0');
@@ -643,7 +648,7 @@ try {
     lfos: v6.rack.lfos.map((lfo, index) => index ? lfo : { ...lfo, route: { ...lfo.route, source: 4 } }) } };
   delete v5.rack.slew;
   await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 5 import'; });
-  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v5.json',
+  await openSession({ name: 'main-looper-v5.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v5)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
   assert.equal(await page.locator('#slew-rise').getAttribute('aria-valuenow'), '0');
@@ -652,7 +657,7 @@ try {
     lfos: bundle.rack.lfos.map(lfo => ({ ...lfo, route: { ...lfo.route, source: 0 } })) } };
   delete v4.rack.atv;
   await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 4 import'; });
-  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v4.json',
+  await openSession({ name: 'main-looper-v4.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v4)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
   assert.equal(await page.locator('#atv-amount').getAttribute('aria-valuenow'), '1');
@@ -662,7 +667,7 @@ try {
   delete v3.rack.lfos;
   delete v3.rack.lfo.slot;
   await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 3 import'; });
-  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v3.json',
+  await openSession({ name: 'main-looper-v3.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v3)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
   assert.equal(await page.locator('.rack-lfo').count(), 1);
@@ -670,7 +675,7 @@ try {
   const v2 = { ...v3, version: 2, rack: { ...v3.rack } };
   delete v2.rack.lfo;
   await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 2 import'; });
-  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v2.json',
+  await openSession({ name: 'main-looper-v2.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v2)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
   assert.equal(await page.locator('#lfo-shape').inputValue(), '0');
@@ -679,7 +684,7 @@ try {
   delete legacy.rack;
   delete legacy.sample;
   await page.locator('#status').evaluate(element => { element.textContent = 'Testing legacy import'; });
-  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v1.json',
+  await openSession({ name: 'main-looper-v1.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(legacy)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
   await page.locator('[data-main-tab="looper"]').click();
@@ -746,7 +751,7 @@ try {
   const directCompare = await browser.newPage({ viewport: { width: 1440, height: 950 } });
   await directCompare.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html#compare`);
   await directCompare.waitForFunction(() => !document.querySelector('#midisynth-panel').hidden
-    && document.querySelector('#rack-scroll').scrollTop >= 900);
+    && document.querySelector('#rack-scroll').scrollTop >= 440);
   assert.equal(await directCompare.locator('.rack-compare').isVisible(), true);
   const directCvMix = await browser.newPage({ viewport: { width: 1440, height: 950 } });
   await directCvMix.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html#cv-mix`);

@@ -6,7 +6,7 @@ const DEFAULT = { direction: 0, threshold: 0, hysteresis: .05, source: 0, gate: 
 const signed = value => `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
 
 // Face: Main/ui/components/compare.ui.lua. Graph: Main/lib/ui/dynamic_module_graphs.lua.
-export function mountMainCompare(get, post, ids) {
+export function mountMainCompare(get, post, ids, onInputState = () => {}) {
   const state = { ...DEFAULT };
   let input = 0, trigger = 0;
   const panel = get('compare');
@@ -28,7 +28,10 @@ export function mountMainCompare(get, post, ids) {
   direction.onChange(value => { state.direction = value; send(ids.direction, value); paint(); });
   threshold.onChange(value => { state.threshold = value; send(ids.threshold, value); paint(); });
   hysteresis.onChange(value => { state.hysteresis = value; send(ids.hysteresis, value); paint(); });
-  source.addEventListener('change', () => { state.source = Number(source.value); send(ids.source, state.source); });
+  source.addEventListener('change', () => {
+    state.source = Number(source.value); send(ids.source, state.source);
+    onInputState({ ...state });
+  });
 
   function paint() {
     const canvas = get('compare-preview'), ctx = canvas.getContext('2d');

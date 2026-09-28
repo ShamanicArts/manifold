@@ -8,13 +8,13 @@ import { initialRackDocument, validateRackDocument, setRackViewMode, placeRackMo
 
 test('legacy Main default chain is a validated typed rack document', () => {
   const rack = initialRackDocument(catalog);
-  assert.equal(rack.modules.length, 10);
+  assert.equal(rack.modules.length, 11);
   assert.equal(rack.modules.find(module => module.id === 'lfo1').row, 2);
   assert.equal(rack.modules.find(module => module.id === 'atv1').col, 1);
   assert.equal(rack.modules.find(module => module.id === 'slew1').col, 2);
   assert.deepEqual(rack.connections.map(({ id }) => id), [
     'midi_in_to_adsr', 'adsr_to_oscillator', 'oscillator_to_filter', 'filter_to_fx1',
-    'fx1_to_fx2', 'fx2_to_eq', 'eq_to_output', 'lfo1_to_atv1', 'lfo1_to_slew1', 'lfo1_to_sample_hold1', 'lfo1_eoc_to_sample_hold1',
+    'fx1_to_fx2', 'fx2_to_eq', 'eq_to_output', 'lfo1_to_atv1', 'lfo1_to_slew1', 'lfo1_to_sample_hold1', 'lfo1_eoc_to_sample_hold1', 'lfo1_to_compare1',
   ]);
   assert.ok(catalog.catalog.adsr.ports.outputs.some(port => port.id === 'env' && port.kind === 'cv'));
   assert.ok(catalog.catalog.source.ports.outputs.some(port => port.id === 'sub' && port.kind === 'audio'));
@@ -33,8 +33,8 @@ test('legacy Main default chain is a validated typed rack document', () => {
 
 test('module edits retain identity and reject collisions', () => {
   const rack = initialRackDocument(catalog);
-  const moved = placeRackModule(rack, 'eq', 2, 4, catalog);
-  assert.equal(moved.modules.find(({ id }) => id === 'eq').row, 2);
+  const moved = placeRackModule(rack, 'eq', 3, 0, catalog);
+  assert.equal(moved.modules.find(({ id }) => id === 'eq').row, 3);
   assert.equal(rack.modules.find(({ id }) => id === 'eq').row, 1);
   assert.throws(() => placeRackModule(rack, 'eq', 0, 1, catalog), /overlapping/);
   assert.throws(() => resizeRackModule(rack, 'adsr', 2, 1, catalog), /overlapping/);
@@ -43,7 +43,7 @@ test('module edits retain identity and reject collisions', () => {
 
 test('occupied drops insert into legacy row flow; free drops keep sparse slots', () => {
   const rack = initialRackDocument(catalog);
-  const positions = document => Object.fromEntries(document.modules.filter(module => !['lfo1', 'atv1', 'slew1', 'sample_hold1'].includes(module.id)).map(({ id, row, col }) =>
+  const positions = document => Object.fromEntries(document.modules.filter(module => !['lfo1', 'atv1', 'slew1', 'sample_hold1', 'compare1'].includes(module.id)).map(({ id, row, col }) =>
     [id, `${row},${col}`]));
   assert.deepEqual(positions(moveRackModule(rack, 'fx1', 0, 1, catalog, 400)), {
     adsr: '0,0', oscillator: '0,3', filter: '1,0', fx1: '0,1', fx2: '1,2', eq: '1,4',
@@ -51,14 +51,14 @@ test('occupied drops insert into legacy row flow; free drops keep sparse slots',
   assert.deepEqual(positions(moveRackModule(rack, 'oscillator', 0, 3, catalog, 1050)), {
     adsr: '0,0', oscillator: '0,3', filter: '0,1', fx1: '1,0', fx2: '1,2', eq: '1,4',
   });
-  assert.deepEqual(positions(moveRackModule(rack, 'eq', 2, 4, catalog)), {
-    adsr: '0,0', oscillator: '0,1', filter: '0,3', fx1: '1,0', fx2: '1,2', eq: '2,4',
+  assert.deepEqual(positions(moveRackModule(rack, 'eq', 3, 0, catalog)), {
+    adsr: '0,0', oscillator: '0,1', filter: '0,3', fx1: '1,0', fx2: '1,2', eq: '3,0',
   });
 });
 
 test('dropping an earlier shell on the next shell midpoint visibly reflows the row', () => {
   const rack = initialRackDocument(catalog);
-  const positions = document => Object.fromEntries(document.modules.filter(module => !['lfo1', 'atv1', 'slew1', 'sample_hold1'].includes(module.id)).map(({ id, row, col }) =>
+  const positions = document => Object.fromEntries(document.modules.filter(module => !['lfo1', 'atv1', 'slew1', 'sample_hold1', 'compare1'].includes(module.id)).map(({ id, row, col }) =>
     [id, `${row},${col}`]));
   assert.deepEqual(positions(moveRackModule(rack, 'adsr', 0, 1, catalog, 472)), {
     adsr: '0,2', oscillator: '0,0', filter: '0,3',
@@ -106,6 +106,17 @@ test('typed CV connection can be added and unpatched without altering audio chai
   const unplugged = disconnectRackInput(connected, { moduleId: 'filter', portId: 'cutoff' }, catalog);
   assert.deepEqual(unplugged.connections, rack.connections);
   assert.ok(removeRackModule(connected, 'lfo1', catalog).connections.every(edge => edge.from.moduleId !== 'lfo1'));
+});
+
+test('a gate can control a parameter socket but cannot replace a CV signal input', () => {
+  const rack = initialRackDocument(catalog);
+  const routed = connectRackPorts(rack,
+    { moduleId: 'compare1', portId: 'gate' }, { moduleId: 'filter', portId: 'cutoff' }, catalog);
+  assert.ok(routed.connections.some(edge => edge.from.moduleId === 'compare1'
+    && edge.to.moduleId === 'filter' && edge.to.portId === 'cutoff'));
+  assert.throws(() => replaceRackInput(rack,
+    { moduleId: 'lfo1', portId: 'eoc' }, { moduleId: 'compare1', portId: 'in' }, catalog),
+  /port type/);
 });
 
 test('connections reject cycles, reversed ports, and absent endpoints', () => {

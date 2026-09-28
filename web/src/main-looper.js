@@ -219,7 +219,9 @@ const slew = mountMainSlew($, post, project.modulation.slewParameters, state => 
 const sampleHold = mountMainSampleHold($, post, project.modulation.sampleHoldParameters, state => {
   if (!editorMode) rackPatch.reflectControlInputRoute('sample_hold1', { sampleHold: state });
 });
-const compare = mountMainCompare($, post, project.modulation.compareParameters);
+const compare = mountMainCompare($, post, project.modulation.compareParameters, state => {
+  if (!editorMode) rackPatch.reflectControlInputRoute('compare1', { compare: state });
+});
 const cvMix = mountMainCvMix($, post, project.modulation.cvMixParameters);
 const range = mountMainRange($, post, project.modulation.rangeParameters);
 const scaleQuantizer = mountMainScaleQuantizer($, post, project.modulation.scaleQuantizerParameters);
@@ -379,6 +381,7 @@ function restoreRack(state) {
   compare.restore(state.compare ?? {
     direction: 0, threshold: 0, hysteresis: .05, source: 0, gate: false, pulseRemaining: 0,
   });
+  if (!editorMode) rackPatch.reflectControlInputRoute('compare1', { compare: compare.snapshot() });
   cvMix.restore(state.cvMix ?? {
     level1: 1, level2: 0, level3: 0, level4: 0, offset: 0,
     source1: 0, source2: 0, source3: 0, source4: 0,
@@ -485,7 +488,7 @@ if (location.hash === '#sample-hold') {
 }
 if (location.hash === '#compare') {
   document.querySelector('[data-main-tab="midisynth"]').click();
-  requestAnimationFrame(() => { $('rack-scroll').scrollTop = rackUtilityTop('.rack-compare', 217); compare.paint(); });
+  requestAnimationFrame(() => { $('rack-scroll').scrollTop = rackUtilityTop('.rack-compare', 13); compare.paint(); });
 }
 if (location.hash === '#cv-mix') {
   document.querySelector('[data-main-tab="midisynth"]').click();

@@ -1,5 +1,5 @@
 //! The saved Main rack is validated and compiled on the host control thread.
-//! Six prepared audio/voice shells and four control shells share a grid.
+//! Six prepared audio/voice shells and five control shells share a grid.
 
 use std::collections::BTreeSet;
 
@@ -658,6 +658,79 @@ mod tests {
         assert!(validate_control_route(&connected["rackDocument"], &disconnected["rack"]).is_err());
         let mut wrong_input = connected.clone();
         wrong_input["rack"]["sampleHold"]["source"] = json!(0);
+        assert!(
+            validate_control_route(&wrong_input["rackDocument"], &wrong_input["rack"]).is_err()
+        );
+    }
+
+    #[test]
+    fn browser_compare_cable_reopens_and_drives_the_native_filter() {
+        let browser: Value = serde_json::from_slice(include_bytes!(
+            "../../../web/public/main-compare-rack-saved-session.json"
+        ))
+        .unwrap();
+        validate_control_route(&browser["rackDocument"], &browser["rack"]).unwrap();
+        assert_eq!(
+            audio_connections(&browser["rackDocument"]).unwrap().len(),
+            5
+        );
+        let exported =
+            crate::main_session_export::save_template(&serde_json::to_vec(&browser).unwrap())
+                .unwrap();
+        assert_eq!(exported["rackDocument"], browser["rackDocument"]);
+
+        fn energy(state: &Value) -> f32 {
+            let bytes = serde_json::to_vec(state).unwrap();
+            let mut processor =
+                crate::main_session::prepare_main_session(&bytes, 48_000.0, 128).unwrap();
+            let instrument = processor.instrument_control_mut();
+            instrument.synth_event(EventKind::NoteOn {
+                channel: 0,
+                note: 96,
+                velocity: 120,
+            });
+            let dry = [0.0; 128];
+            let mut left = [0.0; 128];
+            let mut right = [0.0; 128];
+            let mut energy = 0.0;
+            for block in 0..120 {
+                instrument.process([&dry, &dry], [&mut left, &mut right]);
+                if block >= 40 {
+                    energy += left.iter().map(|sample| sample.abs()).sum::<f32>();
+                }
+            }
+            energy
+        }
+
+        let mut connected = browser.clone();
+        connected["rack"]["filter"]["cutoff"] = json!(800.0);
+        connected["rack"]["sampleHold"]["held"] = json!(1.0);
+        connected["rack"]["compare"]["gate"] = json!(true);
+        connected["rack"]["lfos"][0]["route"]["source"] = json!(8);
+        connected["rack"]["lfos"][0]["route"]["amount"] = json!(0.5);
+        let edge = connected["rackDocument"]["connections"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|edge| edge["to"]["portId"] == "cutoff")
+            .unwrap();
+        edge["from"]["portId"] = json!("gate");
+        validate_control_route(&connected["rackDocument"], &connected["rack"]).unwrap();
+        let live = energy(&connected);
+        let mut disconnected = connected.clone();
+        disconnected["rack"]["lfos"][0]["route"]["enabled"] = json!(false);
+        disconnected["rackDocument"]["connections"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|edge| edge["to"]["portId"] != "cutoff");
+        let plain = energy(&disconnected);
+        assert!(
+            (live - plain).abs() > plain * 0.1,
+            "Compare GATE cable {live}, disconnected {plain}"
+        );
+        assert!(validate_control_route(&connected["rackDocument"], &disconnected["rack"]).is_err());
+        let mut wrong_input = connected.clone();
+        wrong_input["rack"]["compare"]["source"] = json!(19);
         assert!(
             validate_control_route(&wrong_input["rackDocument"], &wrong_input["rack"]).is_err()
         );

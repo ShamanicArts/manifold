@@ -23,32 +23,32 @@ try {
   await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = 370; });
   await page.screenshot({ path: new URL('../web/public/main-sample-hold-rack-face.png', import.meta.url).pathname });
   await page.locator('#rack-view-switch').click();
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 11);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 12);
   const cutoff = page.locator('.rack-filter .main-patch-port[data-port="cutoff"][data-direction="input"]');
   const output = page.locator('.rack-sample-hold-primary .main-patch-port[data-port="out"][data-direction="output"]');
   const inverse = page.locator('.rack-sample-hold-primary .main-patch-port[data-port="inv"][data-direction="output"]');
   assert.equal(await output.isEnabled(), true);
   assert.equal(await inverse.isEnabled(), true);
   await output.click(); await cutoff.click();
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 12);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 13);
   assert.deepEqual([await page.locator('#mod-source').inputValue(), await page.locator('#mod-target').inputValue()], ['6', '22']);
   await inverse.click(); await cutoff.click();
   await page.waitForFunction(() => document.querySelector('#mod-source')?.value === '7');
-  assert.equal(await page.locator('.main-rack-wire').count(), 12);
+  assert.equal(await page.locator('.main-rack-wire').count(), 13);
   await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = 330; });
   await page.screenshot({ path: new URL('../web/public/main-sample-hold-rack-patch.png', import.meta.url).pathname });
   const firstDownload = page.waitForEvent('download', { timeout: 10000 });
   await page.locator('#save-session').click();
   const first = await readFile(await (await firstDownload).path());
   const routed = JSON.parse(first);
-  assert.equal(routed.rackDocument.modules.length, 10);
+  assert.equal(routed.rackDocument.modules.length, 11);
   assert.ok(routed.rackDocument.connections.some(edge => edge.from.moduleId === 'sample_hold1'
     && edge.from.portId === 'inv' && edge.to.moduleId === 'filter' && edge.to.portId === 'cutoff'));
   assert.ok(routed.rackDocument.connections.some(edge => edge.from.moduleId === 'lfo1'
     && edge.from.portId === 'eoc' && edge.to.moduleId === 'sample_hold1' && edge.to.portId === 'trig'));
   await page.locator('#sample-hold-source').selectOption('17');
   await page.locator('#sample-hold-trigger-source').selectOption('4');
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 11);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 12);
   const secondDownload = page.waitForEvent('download', { timeout: 10000 });
   await page.locator('#save-session').click();
   const second = await readFile(await (await secondDownload).path());
@@ -72,7 +72,7 @@ try {
   await page.mouse.up();
   await page.waitForFunction(() => document.querySelector('.rack-sample-hold-primary')?.style.left === '0px');
   await page.locator('#rack-view-switch').click();
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 11);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 12);
   await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = 430; });
   await page.screenshot({ path: new URL('../web/public/main-sample-hold-rack-reflow.png', import.meta.url).pathname });
   const movedDownload = page.waitForEvent('download', { timeout: 10000 });

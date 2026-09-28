@@ -10,9 +10,9 @@ import { compileMainRackAudio, compileMainRackInsert,
   validateMainRackControlRoute, validateMainRackInsertDocument,
   withMainControlShells } from './main-rack-graph.js';
 
-test('native default session and browser start with the same ten-shell rack', () => {
+test('native default session and browser start with the same eleven-shell rack', () => {
   assert.deepEqual(defaultSession.rackDocument, initialRackDocument(catalog));
-  assert.equal(defaultSession.rackDocument.modules.length, 10);
+  assert.equal(defaultSession.rackDocument.modules.length, 11);
 });
 
 test('Main v16 audio document accepts saved bypass but rejects backward prepared routes', () => {
@@ -101,17 +101,17 @@ test('LFO OUT to Filter Cutoff uses the portable graph CV edge and Main existing
   assert.ok(insert.connections.some(edge => edge.from === 1 && edge.to === 6 && edge.inputPort === 0));
   assert.equal(signal.initialParameters.find(parameter => parameter.nodeId === 11 && parameter.id === 1).value, 1);
   assert.deepEqual(validateMainRackInsertDocument(rack, catalog), rack);
-  assert.equal(validateMainRackControlRoute(rack, { atv: { slot: 0, port: 0 }, slew: { source: 0 }, sampleHold: { source: 0, triggerSource: 0 }, lfos: [{ slot: 0,
+  assert.equal(validateMainRackControlRoute(rack, { atv: { slot: 0, port: 0 }, slew: { source: 0 }, sampleHold: { source: 0, triggerSource: 0 }, compare: { source: 0 }, lfos: [{ slot: 0,
     route: { source: 0, target: 22, enabled: true } }] }, catalog), rack);
-  assert.throws(() => validateMainRackControlRoute(rack, { atv: { slot: 0, port: 0 }, slew: { source: 0 }, sampleHold: { source: 0, triggerSource: 0 }, lfos: [{ slot: 0,
+  assert.throws(() => validateMainRackControlRoute(rack, { atv: { slot: 0, port: 0 }, slew: { source: 0 }, sampleHold: { source: 0, triggerSource: 0 }, compare: { source: 0 }, lfos: [{ slot: 0,
     route: { source: 0, target: 22, enabled: false } }] }, catalog), /disagree/);
 });
 
-test('older six-shell Main documents gain LFO, ATV, Slew, and Sample Hold without changing their audio cables', () => {
+test('older six-shell Main documents gain LFO, ATV, Slew, Sample Hold, and Compare without changing their audio cables', () => {
   const current = initialRackDocument(catalog);
-  const old = ['sample_hold1', 'slew1', 'atv1', 'lfo1'].reduce((rack, id) => removeRackModule(rack, id, catalog), current);
+  const old = ['compare1', 'sample_hold1', 'slew1', 'atv1', 'lfo1'].reduce((rack, id) => removeRackModule(rack, id, catalog), current);
   const migrated = withMainControlShells(old, catalog);
-  assert.equal(migrated.modules.length, 10);
+  assert.equal(migrated.modules.length, 11);
   assert.deepEqual(migrated.connections, old.connections);
   assert.deepEqual(compileMainRackInsert(migrated, catalog), compileMainRackInsert(old, catalog));
 });
@@ -121,9 +121,9 @@ test('ATV OUT to Filter Cutoff names the prepared Rust source without adding a g
   const routed = connectRackPorts(original, { moduleId: 'atv1', portId: 'out' },
     { moduleId: 'filter', portId: 'cutoff' }, catalog);
   assert.deepEqual(compileMainRackInsert(routed, catalog), compileMainRackInsert(original, catalog));
-  assert.equal(validateMainRackControlRoute(routed, { atv: { slot: 0, port: 0 }, slew: { source: 0 }, sampleHold: { source: 0, triggerSource: 0 },
+  assert.equal(validateMainRackControlRoute(routed, { atv: { slot: 0, port: 0 }, slew: { source: 0 }, sampleHold: { source: 0, triggerSource: 0 }, compare: { source: 0 },
     lfos: [{ slot: 0, route: { source: 4, target: 22, enabled: true } }] }, catalog), routed);
-  assert.throws(() => validateMainRackControlRoute(routed, { atv: { slot: 1, port: 0 }, slew: { source: 0 }, sampleHold: { source: 0, triggerSource: 0 },
+  assert.throws(() => validateMainRackControlRoute(routed, { atv: { slot: 1, port: 0 }, slew: { source: 0 }, sampleHold: { source: 0, triggerSource: 0 }, compare: { source: 0 },
     lfos: [{ slot: 0, route: { source: 4, target: 22, enabled: true } }] }, catalog), /disagree/);
   assert.throws(() => compileMainRackAudio(routed, catalog), /no DSP mapping/);
 });
@@ -134,7 +134,7 @@ test('Slew output and selected ATV input follow authored control bindings', () =
     { moduleId: 'slew1', portId: 'in' }, catalog);
   const routed = connectRackPorts(withInput, { moduleId: 'slew1', portId: 'out' },
     { moduleId: 'filter', portId: 'cutoff' }, catalog);
-  const state = { atv: { slot: 0, port: 0 }, slew: { source: 16 }, sampleHold: { source: 0, triggerSource: 0 },
+  const state = { atv: { slot: 0, port: 0 }, slew: { source: 16 }, sampleHold: { source: 0, triggerSource: 0 }, compare: { source: 0 },
     lfos: [{ slot: 0, route: { source: 5, target: 22, enabled: true } }] };
   assert.deepEqual(compileMainRackInsert(routed, catalog), compileMainRackInsert(original, catalog));
   assert.equal(validateMainRackControlRoute(routed, state, catalog), routed);
@@ -153,7 +153,7 @@ test('Sample Hold has separate signal and trigger bindings and two prepared outp
   const routed = connectRackPorts(manual, { moduleId: 'sample_hold1', portId: 'inv' },
     { moduleId: 'filter', portId: 'cutoff' }, catalog);
   const state = { atv: { slot: 0, port: 0 }, slew: { source: 0 },
-    sampleHold: { source: 17, triggerSource: 4 },
+    sampleHold: { source: 17, triggerSource: 4 }, compare: { source: 0 },
     lfos: [{ slot: 0, route: { source: 7, target: 22, enabled: true } }] };
   assert.deepEqual(compileMainRackInsert(routed, catalog), compileMainRackInsert(original, catalog));
   assert.equal(validateMainRackControlRoute(routed, state, catalog), routed);
@@ -167,6 +167,27 @@ test('Sample Hold has separate signal and trigger bindings and two prepared outp
   assert.throws(() => validateMainRackControlRoute(triggered, state, catalog), /disagree/);
 });
 
+test('Compare GATE and TRIG map to distinct Rust sources after selecting Sample Hold input', () => {
+  const original = initialRackDocument(catalog);
+  const selected = replaceRackInput(original, { moduleId: 'sample_hold1', portId: 'out' },
+    { moduleId: 'compare1', portId: 'in' }, catalog);
+  const gate = connectRackPorts(selected, { moduleId: 'compare1', portId: 'gate' },
+    { moduleId: 'filter', portId: 'cutoff' }, catalog);
+  const state = { atv: { slot: 0, port: 0 }, slew: { source: 0 },
+    sampleHold: { source: 0, triggerSource: 0 }, compare: { source: 18 },
+    lfos: [{ slot: 0, route: { source: 8, target: 22, enabled: true } }] };
+  assert.deepEqual(compileMainRackInsert(gate, catalog), compileMainRackInsert(original, catalog));
+  assert.equal(validateMainRackControlRoute(gate, state, catalog), gate);
+  const trig = replaceRackInput(gate, { moduleId: 'compare1', portId: 'trig' },
+    { moduleId: 'filter', portId: 'cutoff' }, catalog);
+  assert.equal(validateMainRackControlRoute(trig,
+    { ...state, lfos: [{ slot: 0, route: { source: 9, target: 22, enabled: true } }] },
+    catalog), trig);
+  assert.throws(() => validateMainRackControlRoute(trig, state, catalog), /disagree/);
+  assert.throws(() => validateMainRackControlRoute(gate,
+    { ...state, compare: { source: 19 } }, catalog), /disagree/);
+});
+
 test('unsupported voice and control ports fail before publication', () => {
   const original = initialRackDocument(catalog);
   const noVoice = disconnectRackInput(original, { moduleId: 'oscillator', portId: 'voice' }, catalog);
@@ -176,6 +197,9 @@ test('unsupported voice and control ports fail before publication', () => {
     { moduleId: 'filter', portId: 'cutoff' }, catalog);
   assert.throws(() => compileMainRackAudio(inverse, catalog), /no DSP mapping/);
   assert.throws(() => compileMainRackInsert(inverse, catalog), /no prepared route/);
+  const unpreparedGate = connectRackPorts(withLfo, { moduleId: 'lfo1', portId: 'eoc' },
+    { moduleId: 'filter', portId: 'cutoff' }, catalog);
+  assert.throws(() => compileMainRackInsert(unpreparedGate, catalog), /no prepared route/);
   const resonance = connectRackPorts(withLfo, { moduleId: 'lfo1', portId: 'out' },
     { moduleId: 'filter', portId: 'resonance' }, catalog);
   assert.throws(() => compileMainRackAudio(resonance, catalog), /no DSP mapping/);

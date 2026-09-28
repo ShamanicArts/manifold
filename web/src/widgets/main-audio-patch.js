@@ -9,6 +9,7 @@ const SHELLS = {
   fx1: '.rack-fx1', fx2: '.rack-fx2', eq: '.rack-eq', lfo1: '.rack-lfo-primary',
   atv1: '.rack-atv-primary', slew1: '.rack-slew-primary',
   sample_hold1: '.rack-sample-hold-primary',
+  compare1: '.rack-compare-primary',
 };
 const AUDIO_INPUTS = new Set(['filter:in', 'fx1:in', 'fx2:in', 'eq:in', '__rackOutput:main']);
 const AUDIO_OUTPUTS = new Set(['oscillator:out', 'filter:out', 'fx1:out', 'fx2:out', 'eq:out']);
@@ -41,7 +42,9 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
     const active = port.kind === 'audio' && (direction === 'input'
       ? AUDIO_INPUTS.has(endpointKey(endpoint)) : AUDIO_OUTPUTS.has(endpointKey(endpoint)))
       || port.kind === 'cv' && (direction === 'input'
-        ? controlInputs.has(endpointKey(endpoint)) : controlOutputs.has(endpointKey(endpoint)));
+        ? controlInputs.has(endpointKey(endpoint)) : controlOutputs.has(endpointKey(endpoint)))
+      || port.kind === 'gate' && direction === 'output'
+        && catalog.preparedControlOutputs.some(binding => endpointKey(binding.from) === endpointKey(endpoint));
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `main-patch-port main-patch-${port.kind} ${active ? ''

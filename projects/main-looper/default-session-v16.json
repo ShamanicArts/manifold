@@ -650,6 +650,15 @@
         "col": 3,
         "w": 1,
         "h": 1
+      },
+      {
+        "id": "compare1",
+        "nodeId": 15,
+        "type": "compare",
+        "row": 2,
+        "col": 4,
+        "w": 1,
+        "h": 1
       }
     ],
     "connections": [
@@ -772,6 +781,17 @@
         "to": {
           "moduleId": "sample_hold1",
           "portId": "trig"
+        }
+      },
+      {
+        "id": "lfo1_to_compare1",
+        "from": {
+          "moduleId": "lfo1",
+          "portId": "out"
+        },
+        "to": {
+          "moduleId": "compare1",
+          "portId": "in"
         }
       }
     ]

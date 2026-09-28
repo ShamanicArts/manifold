@@ -523,6 +523,7 @@ body {
 .main-rack-patch-active .rack-atv-primary > :not(.rack-shell-head):not(.main-patch-face) { visibility: hidden; }
 .main-rack-patch-active .rack-slew-primary > :not(.rack-shell-head):not(.main-patch-face) { visibility: hidden; }
 .main-rack-patch-active .rack-sample-hold-primary > :not(.rack-shell-head):not(.main-patch-face) { visibility: hidden; }
+.main-rack-patch-active .rack-compare-primary > :not(.rack-shell-head):not(.main-patch-face) { visibility: hidden; }
 .main-patch-column { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .main-patch-column > strong { height: 15px; color: #64748b; font: 9px/15px system-ui, sans-serif; letter-spacing: .11em; }
 .main-patch-outputs > strong { text-align: right; }
@@ -540,6 +541,7 @@ body {
 .main-rack-patch-active .main-rack-wires { display: block; }
 .main-rack-wire { fill: none; stroke: #fb7185; stroke-width: 2.4; stroke-linecap: round; filter: drop-shadow(0 1px 2px #000); opacity: .85; }
 .main-rack-wire-voice { stroke: #c084fc; }
+.main-rack-wire-gate { stroke: #f97316; }
 .main-rack-wire-cv { stroke: #38bdf8; }
 .main-rack-wire.preview { stroke: #e8a87c; stroke-dasharray: 5 4; }
 .main-patch-output-rail { display: none; position: absolute; left: 1188px; top: 253px; width: 86px; min-height: 58px; z-index: 4; background: #121a2f; border: 1px solid #d4af37; padding: 4px; }
@@ -692,6 +694,9 @@ body {
 .rack-sample-hold-patch .sample-hold-gate { display: flex; align-items: center; gap: 6px; color: #fde68a; }
 #sample-hold-trigger-meter { display: block; margin-top: 8px; color: #fbbf24; font-size: 9px; }
 .rack-compare { position: absolute; left: 708px; top: 1161px; width: 236px; height: 220px; background: #221513; border: 1px solid #5f261d; border-radius: 10px; }
+.rack-compare-primary .rack-shell-head { background: #f97316; color: #221513; }
+.rack-compare-primary .compare-title { top: 15px; }
+.rack-compare-primary .compare-status { top: 31px; }
 .compare-title, .compare-status, .compare-values { position: absolute; left: 12px; width: 212px; }
 .compare-title { top: 10px; color: #f97316; font-size: 11px; }
 .compare-status { top: 28px; color: #94a3b8; font-size: 8px; }

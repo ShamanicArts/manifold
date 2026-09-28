@@ -12,15 +12,18 @@
     "lfo": { "name": "LFO", "sizes": [[1, 1], [1, 2], [2, 1]], "ports": { "inputs": [{ "id": "reset", "kind": "gate" }, { "id": "sync", "kind": "gate" }], "outputs": [{ "id": "out", "kind": "cv" }, { "id": "inv", "kind": "cv" }, { "id": "uni", "kind": "cv" }, { "id": "eoc", "kind": "gate" }] } },
     "atv": { "name": "ATV / Bias", "sizes": [[1, 1]], "ports": { "inputs": [{ "id": "in", "kind": "cv" }], "outputs": [{ "id": "out", "kind": "cv" }] } },
     "slew": { "name": "Slew", "sizes": [[1, 1]], "ports": { "inputs": [{ "id": "in", "kind": "cv" }], "outputs": [{ "id": "out", "kind": "cv" }] } },
-    "sample_hold": { "name": "Sample Hold", "sizes": [[1, 1]], "ports": { "inputs": [{ "id": "in", "kind": "cv" }, { "id": "trig", "kind": "gate" }], "outputs": [{ "id": "out", "kind": "cv" }, { "id": "inv", "kind": "cv" }] } }
+    "sample_hold": { "name": "Sample Hold", "sizes": [[1, 1]], "ports": { "inputs": [{ "id": "in", "kind": "cv" }, { "id": "trig", "kind": "gate" }], "outputs": [{ "id": "out", "kind": "cv" }, { "id": "inv", "kind": "cv" }] } },
+    "compare": { "name": "Compare", "sizes": [[1, 1]], "ports": { "inputs": [{ "id": "in", "kind": "cv" }], "outputs": [{ "id": "gate", "kind": "gate" }, { "id": "trig", "kind": "gate" }] } }
   },
-  "preparedControlModules": ["lfo1", "atv1", "slew1", "sample_hold1"],
+  "preparedControlModules": ["lfo1", "atv1", "slew1", "sample_hold1", "compare1"],
   "preparedControlOutputs": [
     { "from": { "moduleId": "lfo1", "portId": "out" }, "to": { "moduleId": "filter", "portId": "cutoff" }, "slot": 0, "source": 0, "target": 22 },
     { "from": { "moduleId": "atv1", "portId": "out" }, "to": { "moduleId": "filter", "portId": "cutoff" }, "slot": 0, "source": 4, "target": 22 },
     { "from": { "moduleId": "slew1", "portId": "out" }, "to": { "moduleId": "filter", "portId": "cutoff" }, "slot": 0, "source": 5, "target": 22 },
     { "from": { "moduleId": "sample_hold1", "portId": "out" }, "to": { "moduleId": "filter", "portId": "cutoff" }, "slot": 0, "source": 6, "target": 22 },
-    { "from": { "moduleId": "sample_hold1", "portId": "inv" }, "to": { "moduleId": "filter", "portId": "cutoff" }, "slot": 0, "source": 7, "target": 22 }
+    { "from": { "moduleId": "sample_hold1", "portId": "inv" }, "to": { "moduleId": "filter", "portId": "cutoff" }, "slot": 0, "source": 7, "target": 22 },
+    { "from": { "moduleId": "compare1", "portId": "gate" }, "to": { "moduleId": "filter", "portId": "cutoff" }, "slot": 0, "source": 8, "target": 22 },
+    { "from": { "moduleId": "compare1", "portId": "trig" }, "to": { "moduleId": "filter", "portId": "cutoff" }, "slot": 0, "source": 9, "target": 22 }
   ],
   "preparedControlInputs": [
     { "from": { "moduleId": "lfo1", "portId": "out" }, "to": { "moduleId": "atv1", "portId": "in" }, "when": [{ "pointer": "/atv/slot", "value": 0 }, { "pointer": "/atv/port", "value": 0 }] },
@@ -29,7 +32,12 @@
     { "from": { "moduleId": "lfo1", "portId": "out" }, "to": { "moduleId": "sample_hold1", "portId": "in" }, "when": [{ "pointer": "/sampleHold/source", "value": 0 }] },
     { "from": { "moduleId": "atv1", "portId": "out" }, "to": { "moduleId": "sample_hold1", "portId": "in" }, "when": [{ "pointer": "/sampleHold/source", "value": 16 }] },
     { "from": { "moduleId": "slew1", "portId": "out" }, "to": { "moduleId": "sample_hold1", "portId": "in" }, "when": [{ "pointer": "/sampleHold/source", "value": 17 }] },
-    { "from": { "moduleId": "lfo1", "portId": "eoc" }, "to": { "moduleId": "sample_hold1", "portId": "trig" }, "when": [{ "pointer": "/sampleHold/triggerSource", "value": 0 }] }
+    { "from": { "moduleId": "lfo1", "portId": "eoc" }, "to": { "moduleId": "sample_hold1", "portId": "trig" }, "when": [{ "pointer": "/sampleHold/triggerSource", "value": 0 }] },
+    { "from": { "moduleId": "lfo1", "portId": "out" }, "to": { "moduleId": "compare1", "portId": "in" }, "when": [{ "pointer": "/compare/source", "value": 0 }] },
+    { "from": { "moduleId": "atv1", "portId": "out" }, "to": { "moduleId": "compare1", "portId": "in" }, "when": [{ "pointer": "/compare/source", "value": 16 }] },
+    { "from": { "moduleId": "slew1", "portId": "out" }, "to": { "moduleId": "compare1", "portId": "in" }, "when": [{ "pointer": "/compare/source", "value": 17 }] },
+    { "from": { "moduleId": "sample_hold1", "portId": "out" }, "to": { "moduleId": "compare1", "portId": "in" }, "when": [{ "pointer": "/compare/source", "value": 18 }] },
+    { "from": { "moduleId": "sample_hold1", "portId": "inv" }, "to": { "moduleId": "compare1", "portId": "in" }, "when": [{ "pointer": "/compare/source", "value": 19 }] }
   ],
   "endpoints": {
     "__midiInput": { "nodeId": 4, "ports": { "inputs": [], "outputs": [{ "id": "voice", "kind": "voice" }] } },
@@ -47,7 +55,8 @@
       { "id": "lfo1", "nodeId": 11, "type": "lfo", "row": 2, "col": 0, "w": 1, "h": 1 },
       { "id": "atv1", "nodeId": 12, "type": "atv", "row": 2, "col": 1, "w": 1, "h": 1 },
       { "id": "slew1", "nodeId": 13, "type": "slew", "row": 2, "col": 2, "w": 1, "h": 1 },
-      { "id": "sample_hold1", "nodeId": 14, "type": "sample_hold", "row": 2, "col": 3, "w": 1, "h": 1 }
+      { "id": "sample_hold1", "nodeId": 14, "type": "sample_hold", "row": 2, "col": 3, "w": 1, "h": 1 },
+      { "id": "compare1", "nodeId": 15, "type": "compare", "row": 2, "col": 4, "w": 1, "h": 1 }
     ],
     "connections": [
       { "id": "midi_in_to_adsr", "from": { "moduleId": "__midiInput", "portId": "voice" }, "to": { "moduleId": "adsr", "portId": "midi" } },
@@ -60,7 +69,8 @@
       { "id": "lfo1_to_atv1", "from": { "moduleId": "lfo1", "portId": "out" }, "to": { "moduleId": "atv1", "portId": "in" } },
       { "id": "lfo1_to_slew1", "from": { "moduleId": "lfo1", "portId": "out" }, "to": { "moduleId": "slew1", "portId": "in" } },
       { "id": "lfo1_to_sample_hold1", "from": { "moduleId": "lfo1", "portId": "out" }, "to": { "moduleId": "sample_hold1", "portId": "in" } },
-      { "id": "lfo1_eoc_to_sample_hold1", "from": { "moduleId": "lfo1", "portId": "eoc" }, "to": { "moduleId": "sample_hold1", "portId": "trig" } }
+      { "id": "lfo1_eoc_to_sample_hold1", "from": { "moduleId": "lfo1", "portId": "eoc" }, "to": { "moduleId": "sample_hold1", "portId": "trig" } },
+      { "id": "lfo1_to_compare1", "from": { "moduleId": "lfo1", "portId": "out" }, "to": { "moduleId": "compare1", "portId": "in" } }
     ]
   }
 }

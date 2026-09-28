@@ -625,4 +625,49 @@ mod tests {
         crate::main_rack_document::validate_control_route(&state["rackDocument"], &state["rack"])
             .unwrap();
     }
+
+    #[test]
+    fn native_compare_selector_reconciles_input_and_gate_output() {
+        let mut state: Value = serde_json::from_slice(include_bytes!(
+            "../../../web/public/main-compare-rack-saved-session.json"
+        ))
+        .unwrap();
+        state["rack"]["compare"]["source"] = json!(0);
+        state["rack"]["lfos"][0]["route"]["source"] = json!(8);
+        reconcile_control_cables(&mut state).unwrap();
+        let cables = state["rackDocument"]["connections"].as_array().unwrap();
+        assert!(
+            cables
+                .iter()
+                .any(|edge| edge["from"]["moduleId"] == "lfo1"
+                    && edge["to"]["moduleId"] == "compare1")
+        );
+        assert!(
+            cables
+                .iter()
+                .any(|edge| edge["from"]["moduleId"] == "compare1"
+                    && edge["from"]["portId"] == "gate"
+                    && edge["to"]["portId"] == "cutoff")
+        );
+        state["rack"]["compare"]["source"] = json!(19);
+        state["rack"]["lfos"][0]["route"]["source"] = json!(9);
+        reconcile_control_cables(&mut state).unwrap();
+        let cables = state["rackDocument"]["connections"].as_array().unwrap();
+        assert!(
+            cables
+                .iter()
+                .any(|edge| edge["from"]["moduleId"] == "sample_hold1"
+                    && edge["from"]["portId"] == "inv"
+                    && edge["to"]["moduleId"] == "compare1")
+        );
+        assert!(
+            cables
+                .iter()
+                .any(|edge| edge["from"]["moduleId"] == "compare1"
+                    && edge["from"]["portId"] == "trig"
+                    && edge["to"]["portId"] == "cutoff")
+        );
+        crate::main_rack_document::validate_control_route(&state["rackDocument"], &state["rack"])
+            .unwrap();
+    }
 }

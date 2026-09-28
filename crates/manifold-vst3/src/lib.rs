@@ -574,6 +574,7 @@ mod tests {
             include_bytes!("../../../web/public/main-slew-rack-saved-session.json").as_slice(),
             include_bytes!("../../../web/public/main-sample-hold-rack-saved-session.json")
                 .as_slice(),
+            include_bytes!("../../../web/public/main-compare-rack-saved-session.json").as_slice(),
         ] {
             let component = main_processor::MainProcessor::new();
             let (incoming, _) = stream(fixture.to_vec());

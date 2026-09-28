@@ -24,13 +24,13 @@ try {
   await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = 360; });
   await page.screenshot({ path: new URL('../web/public/main-slew-rack-face.png', import.meta.url).pathname });
   await page.locator('#rack-view-switch').click();
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 11);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 12);
   const output = page.locator('.rack-slew-primary .main-patch-port[data-port="out"][data-direction="output"]');
   const cutoff = page.locator('.rack-filter .main-patch-port[data-port="cutoff"][data-direction="input"]');
   assert.equal(await output.isEnabled(), true);
   await output.click();
   await cutoff.click();
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 12);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 13);
   assert.equal(await page.locator('#mod-source').inputValue(), '5');
   assert.equal(await page.locator('#mod-target').inputValue(), '22');
   assert.equal(await page.locator('#mod-enabled').isChecked(), true);
@@ -41,7 +41,7 @@ try {
   await page.locator('#save-session').click();
   const first = await readFile(await (await firstDownload).path());
   const routed = JSON.parse(first);
-  assert.equal(routed.rackDocument.modules.length, 10);
+  assert.equal(routed.rackDocument.modules.length, 11);
   assert.ok(routed.rackDocument.connections.some(edge => edge.from.moduleId === 'slew1'
     && edge.to.moduleId === 'filter' && edge.to.portId === 'cutoff'));
   assert.ok(routed.rackDocument.connections.some(edge => edge.from.moduleId === 'lfo1'
@@ -49,15 +49,15 @@ try {
   assert.deepEqual([routed.rack.lfos[0].route.source, routed.rack.lfos[0].route.target,
     routed.rack.lfos[0].route.enabled], [5, 22, true]);
   await cutoff.click({ button: 'right' });
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 11);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 12);
   await page.locator('#open-session').setInputFiles({ name: 'routed-slew.json',
     mimeType: 'application/json', buffer: first });
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 12);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 13);
 
   await page.locator('#slew-source').selectOption('16');
   await page.waitForFunction(() => {
     const wires = [...document.querySelectorAll('.main-rack-wire')];
-    return wires.length === 12 && document.querySelector('#slew-source')?.value === '16';
+    return wires.length === 13 && document.querySelector('#slew-source')?.value === '16';
   });
   const secondDownload = page.waitForEvent('download', { timeout: 10000 });
   await page.locator('#save-session').click();
@@ -80,7 +80,7 @@ try {
   await page.mouse.up();
   await page.waitForFunction(() => document.querySelector('.rack-slew-primary')?.style.left === '0px');
   await page.locator('#rack-view-switch').click();
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 12);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 13);
   await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = 430; });
   await page.screenshot({ path: new URL('../web/public/main-slew-rack-reflow.png', import.meta.url).pathname });
   const movedDownload = page.waitForEvent('download', { timeout: 10000 });

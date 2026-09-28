@@ -49,7 +49,8 @@ function checkConnections(catalog, modules, connections) {
       || from.moduleId === to.moduleId) fail(`connection ${connection?.id ?? '?'}`);
     const source = port(catalog, byId, from, 'outputs');
     const target = port(catalog, byId, to, 'inputs');
-    if (!source || !target || source.kind !== target.kind) {
+    if (!source || !target || (source.kind !== target.kind
+      && !(source.kind === 'gate' && target.kind === 'cv' && target.parameter))) {
       fail(`port type or direction ${key(from)} → ${key(to)}`);
     }
     if (occupied.has(key(to))) fail(`occupied input ${key(to)}`);
