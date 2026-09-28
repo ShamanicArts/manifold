@@ -100,6 +100,25 @@ try {
     })),
   }));
   assert.notEqual(await page.locator('#source-graph').evaluate(canvas => canvas.toDataURL()), sampleBefore);
+  assert.equal(await page.locator('#open-session').isDisabled(), false);
+  const imported = await readFile(new URL('../projects/main-looper/default-session-v15.json', import.meta.url));
+  await page.locator('#open-session').setInputFiles({
+    name: 'main-session.json', mimeType: 'application/json', buffer: imported,
+  });
+  await page.waitForFunction(() => window.__nativeActions.some(action => action.kind === 'session-import-end'));
+  const importActions = (await page.evaluate(() => window.__nativeActions))
+    .filter(action => action.kind.startsWith('session-import-'));
+  assert.equal(importActions[0].size, imported.length);
+  assert.deepEqual(Buffer.concat(importActions.filter(action => action.kind === 'session-import-chunk')
+    .map(action => Buffer.from(action.data, 'base64'))), imported);
+  await page.evaluate(() => window.manifoldEditorImportResult({ ok: true, message: 'Main session opened in the native host.' }));
+  assert.equal(await page.locator('#open-session').isDisabled(), false);
+  assert.equal(await page.locator('#save-session').isDisabled(), false);
+  await page.locator('#save-session').click();
+  assert.ok((await page.evaluate(() => window.__nativeActions)).some(action => action.kind === 'session-export'));
+  assert.equal(await page.locator('#save-session').isDisabled(), true);
+  await page.evaluate(() => window.manifoldEditorExportResult({ ok: true, message: 'Main session saved as JSON.' }));
+  assert.equal(await page.locator('#save-session').isDisabled(), false);
   assert.deepEqual(errors, []);
   console.log('Original Main surface restored Rust presentation, repainted live layer/capture peaks, and routed controls without WebAudio.');
 } finally {

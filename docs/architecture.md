@@ -106,6 +106,9 @@ class, checked a live save and block-boundary import, and reopened matching
 audio. The Main CLAP class now packages the original Main editor surface in
 the X11 child webview and carries compact Rust-derived session presentation,
 bounded widget IPC, and a lock-free scalar status bank back to that page.
+The original session file controls stream bounded JSON chunks between the
+child editor and the native CLAP state boundary; preparation and file writing
+run outside the audio callback.
 Main VST3 remains separate.
 Main now exposes a private, bounded CLAP extension for its authored looper
 commands. It queues editor gestures at the next audio block start without

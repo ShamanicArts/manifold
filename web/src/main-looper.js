@@ -640,6 +640,12 @@ function handleTransfer(data) {
 $('save-session').onclick = () => {
   if (!processor) { status('Start audio before downloading a looper session.'); return; }
   if (transferJob || sampleJob || freeSource !== null) return;
+  if (editorMode) {
+    $('save-session').disabled = true;
+    status('Collecting native Main session…');
+    window.ipc.postMessage(JSON.stringify({ version: 1, kind: 'session-export' }));
+    return;
+  }
   const id = nextRequest++;
   let rack;
   try { rack = validateMainRackState(rackSnapshot(), true, project.modulation, true, true, true, true, true, true, true, true, true, true, true); }
@@ -654,6 +660,32 @@ $('open-session').onchange = async () => {
   if (transferJob || sampleJob || freeSource !== null) return;
   const file = $('open-session').files[0];
   if (!file) return;
+  if (editorMode) {
+    try {
+      if (!file.size || file.size > 300 * 1024 * 1024) throw new Error('Session exceeds native limits.');
+      $('open-session').disabled = true;
+      status(`Opening ${file.name} in the native host…`);
+      window.ipc.postMessage(JSON.stringify({ version: 1, kind: 'session-import-start', size: file.size }));
+      const reader = file.stream().getReader();
+      let chunks = 0;
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        for (let offset = 0; offset < value.length; offset += 2048) {
+          const part = value.subarray(offset, offset + 2048);
+          window.ipc.postMessage(JSON.stringify({ version: 1, kind: 'session-import-chunk',
+            data: btoa(String.fromCharCode(...part)) }));
+          if (++chunks % 32 === 0) await new Promise(requestAnimationFrame);
+        }
+      }
+      window.ipc.postMessage(JSON.stringify({ version: 1, kind: 'session-import-end' }));
+    } catch (error) {
+      status(error.message);
+      $('open-session').disabled = false;
+    }
+    $('open-session').value = '';
+    return;
+  }
   try {
     const state = JSON.parse(await file.text());
     if (state.format !== project.format || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, project.sessionVersion].includes(state.version) || state.id !== project.id
@@ -861,13 +893,21 @@ function editorSnapshot(session) {
 }
 
 if (editorMode) {
-  for (const id of ['audio-button', 'save-session', 'open-session']) {
+  for (const id of ['audio-button']) {
     $(id).disabled = true;
   }
   document.querySelectorAll('[id^="lfo-reset"], [id^="lfo-sync"]').forEach(control => {
     control.disabled = true;
   });
   window.manifoldEditorStatus = status;
+  window.manifoldEditorImportResult = (result) => {
+    $('open-session').disabled = false;
+    status(result?.message || 'Main session import ended.');
+  };
+  window.manifoldEditorExportResult = (result) => {
+    $('save-session').disabled = false;
+    status(result?.message || 'Main session export ended.');
+  };
   window.manifoldEditorLiveStatus = (data) => {
     if (!latest || !Array.isArray(data?.layers) || data.layers.length !== project.layers) return;
     const layers = data.layers.map((layer, index) => ({

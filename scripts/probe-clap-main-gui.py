@@ -61,8 +61,13 @@ def main():
     parser.add_argument("--exercise-live", action="store_true", help="Record First Loop through in-memory host blocks")
     parser.add_argument("--exercise-sample", action="store_true", help="Click the original Source Cap and capture native Retro Live audio")
     parser.add_argument("--exercise-free-sample", action="store_true", help="Use the original Free/STOP Source controls on native host input")
+    parser.add_argument("--import-session", type=Path, help="Choose this Main JSON through the original embedded Open session input")
+    parser.add_argument("--import-while-processing", action="store_true", help="Keep native host blocks running during the file import")
+    parser.add_argument("--exercise-export", action="store_true", help="Click the original Download control and save native Main JSON")
     args = parser.parse_args()
     assert not (args.exercise_sample and args.exercise_free_sample)
+    assert not args.import_while_processing or args.import_session
+    assert not (args.import_while_processing and (args.exercise_sample or args.exercise_free_sample))
     sample_exercise = args.exercise_sample or args.exercise_free_sample
     module = args.module.resolve()
     with tempfile.TemporaryDirectory(prefix="manifold-headless-") as directory:
@@ -77,6 +82,13 @@ def main():
             sample_probe = Path(directory) / "main-sample-request"
             if sample_exercise:
                 os.environ["MANIFOLD_MAIN_SAMPLE_PROBE"] = str(sample_probe)
+            if args.import_session:
+                import_probe = Path(directory) / "main-import.json"
+                import_probe.write_bytes(args.import_session.read_bytes())
+                os.environ["MANIFOLD_MAIN_IMPORT_PROBE"] = str(import_probe)
+            if args.exercise_export:
+                export_probe = Path(directory) / "main-export.json"
+                os.environ["MANIFOLD_MAIN_EXPORT_PROBE"] = str(export_probe)
             os.environ["XDG_RUNTIME_DIR"] = directory
             os.environ["WAYLAND_DISPLAY"] = "manifold-headless"
             os.environ["DISPLAY"] = display_name
@@ -121,6 +133,8 @@ def main():
                 plugin_ptr, 48000., 1, 128)
             if sample_exercise:
                 assert probe.fn(plugin.start, c.c_bool, c.c_void_p)(plugin_ptr)
+            if args.import_while_processing:
+                assert probe.fn(plugin.start, c.c_bool, c.c_void_p)(plugin_ptr)
             if args.exercise_sample:
                 for _ in range(800):
                     probe.render(plugin_ptr, plugin, input_value=0.4)
@@ -143,6 +157,67 @@ def main():
                     break
                 time.sleep(0.05)
             assert callbacks[0] >= 2, "Main webview did not acknowledge the Rust presentation"
+            if args.exercise_export:
+                deadline = time.monotonic() + 15
+                exported = None
+                while time.monotonic() < deadline:
+                    if callbacks[0] > handled:
+                        handled = callbacks[0]
+                        probe.fn(plugin.main, None, c.c_void_p)(plugin_ptr)
+                    if export_probe.exists():
+                        try:
+                            exported = json.loads(export_probe.read_bytes())
+                            break
+                        except json.JSONDecodeError:
+                            pass
+                    time.sleep(0.02)
+                assert exported, "Original Download Main session did not write complete JSON"
+                expected = json.loads(args.session.read_bytes())
+                assert [layer["pcmF32Base64"] for layer in exported["layers"]] == [
+                    layer["pcmF32Base64"] for layer in expected["layers"]]
+                assert exported["sample"]["pcmF32Base64"] == expected["sample"]["pcmF32Base64"]
+                print(f"Original Download Main session wrote {export_probe.stat().st_size} native JSON bytes.")
+            if args.import_session:
+                result_path = Path(f"{import_probe}.result")
+                result = None
+                deadline = time.monotonic() + 15
+                while time.monotonic() < deadline:
+                    if args.import_while_processing:
+                        probe.render(plugin_ptr, plugin, input_value=0.0)
+                    if callbacks[0] > handled:
+                        handled = callbacks[0]
+                        probe.fn(plugin.main, None, c.c_void_p)(plugin_ptr)
+                    if result_path.exists():
+                        try:
+                            result = json.loads(result_path.read_text())
+                            break
+                        except json.JSONDecodeError:
+                            pass
+                    time.sleep(0.02)
+                assert result and result["ok"], f"Original Open session input failed: {result}"
+                if args.import_while_processing:
+                    for _ in range(4):
+                        probe.render(plugin_ptr, plugin, input_value=0.0)
+                    probe.fn(plugin.stop, None, c.c_void_p)(plugin_ptr)
+                saved_import = bytearray()
+
+                @c.CFUNCTYPE(c.c_int64, c.c_void_p, c.c_void_p, c.c_uint64)
+                def write_import_state(_stream, data, size):
+                    saved_import.extend(c.string_at(data, size))
+                    return size
+
+                sink = probe.Stream(None, c.cast(write_import_state, c.c_void_p))
+                assert probe.fn(state.save, c.c_bool, c.c_void_p, c.POINTER(probe.Stream))(
+                    plugin_ptr, c.byref(sink))
+                expected = json.loads(args.import_session.read_bytes())
+                actual = json.loads(saved_import)
+                assert [layer["frames"] for layer in actual["layers"]] == [
+                    layer["frames"] for layer in expected["layers"]]
+                assert actual["sample"]["frames"] == expected["sample"]["frames"]
+                assert [layer["pcmF32Base64"] for layer in actual["layers"]] == [
+                    layer["pcmF32Base64"] for layer in expected["layers"]]
+                assert actual["sample"]["pcmF32Base64"] == expected["sample"]["pcmF32Base64"]
+                print("Original Open session input imported Main JSON into native CLAP state.")
             if sample_exercise:
                 status_path = Path(f"{sample_probe}.status")
                 def wait_sample_phase(target, input_value):

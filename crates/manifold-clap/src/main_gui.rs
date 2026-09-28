@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+use base64::Engine;
 use clap_sys::ext::gui::{CLAP_WINDOW_API_X11, clap_plugin_gui, clap_window};
 use clap_sys::host::clap_host;
 use clap_sys::plugin::clap_plugin;
@@ -19,10 +20,15 @@ use manifold_native::main_instrument::{MainHostEventKind, valid_main_command};
 use manifold_native::main_sample_handoff::SampleUpdate;
 
 use crate::instance::PLUGIN_PATH;
-use crate::main_product::{Instance, get};
+use crate::main_product::{Instance, MAX_STATE, get};
 
 const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 780;
+
+struct ImportAssembly {
+    expected: usize,
+    bytes: Vec<u8>,
+}
 
 struct Session {
     child: Child,
@@ -151,6 +157,7 @@ fn sample_message(update: SampleUpdate) -> String {
 }
 
 fn receive(instance: &Instance, reader: impl BufRead) {
+    let mut import = None::<ImportAssembly>;
     for line in reader.lines() {
         let Ok(line) = line else { break };
         if line.len() > 4096 {
@@ -235,6 +242,73 @@ fn receive(instance: &Instance, reader: impl BufRead) {
                     let _ = instance
                         .gui
                         .command(&sample_message(SampleUpdate::Rejected));
+                }
+            }
+            Some("session-import-start") => {
+                import = message["size"]
+                    .as_u64()
+                    .and_then(|size| usize::try_from(size).ok())
+                    .filter(|size| *size > 0 && *size <= MAX_STATE)
+                    .map(|expected| ImportAssembly {
+                        expected,
+                        bytes: Vec::with_capacity(expected),
+                    });
+                if import.is_none() {
+                    let _ = instance.gui.command("{\"kind\":\"session-import-result\",\"ok\":false,\"message\":\"Session exceeds native limits.\"}");
+                }
+            }
+            Some("session-import-chunk") => {
+                let Some(current) = import.as_mut() else {
+                    continue;
+                };
+                let Some(encoded) = message["data"].as_str().filter(|data| data.len() <= 3000)
+                else {
+                    import = None;
+                    continue;
+                };
+                let Ok(chunk) = base64::engine::general_purpose::STANDARD.decode(encoded) else {
+                    import = None;
+                    continue;
+                };
+                if current.bytes.len() + chunk.len() > current.expected {
+                    import = None;
+                    continue;
+                }
+                current.bytes.extend_from_slice(&chunk);
+            }
+            Some("session-import-end") => {
+                let accepted = import.take().is_some_and(|current| {
+                    current.bytes.len() == current.expected && instance.load_bytes(current.bytes)
+                });
+                let message = if accepted {
+                    "{\"kind\":\"session-import-result\",\"ok\":true,\"message\":\"Main session opened in the native host.\"}"
+                } else {
+                    "{\"kind\":\"session-import-result\",\"ok\":false,\"message\":\"Main session rejected; previous state retained.\"}"
+                };
+                let _ = instance.gui.command(message);
+            }
+            Some("session-export") => {
+                if let Some(bytes) = instance.save_bytes() {
+                    let start =
+                        serde_json::json!({ "kind": "session-export-start", "size": bytes.len() });
+                    if !instance.gui.command(&start.to_string()) {
+                        continue;
+                    }
+                    let mut sent = true;
+                    for chunk in bytes.chunks(16 * 1024) {
+                        let encoded = base64::engine::general_purpose::STANDARD.encode(chunk);
+                        let packet =
+                            serde_json::json!({ "kind": "session-export-chunk", "data": encoded });
+                        if !instance.gui.command(&packet.to_string()) {
+                            sent = false;
+                            break;
+                        }
+                    }
+                    if sent {
+                        let _ = instance.gui.command("{\"kind\":\"session-export-end\"}");
+                    }
+                } else {
+                    let _ = instance.gui.command("{\"kind\":\"session-export-result\",\"ok\":false,\"message\":\"Native Main session could not be saved.\"}");
                 }
             }
             _ => {}
@@ -408,9 +482,26 @@ unsafe extern "C" fn hide(plugin: *const clap_plugin) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::Engine;
     use clap_sys::ext::params::{CLAP_EXT_PARAMS, clap_plugin_params};
     use std::io::Cursor;
     use std::ptr::null;
+
+    #[test]
+    fn truncated_editor_file_import_preserves_main_state() {
+        let instance = Instance::new(null(), null());
+        let before = instance.save_bytes().unwrap();
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&before[..32]);
+        let messages = format!(
+            "{{\"version\":1,\"kind\":\"session-import-start\",\"size\":{}}}\n\
+             {{\"version\":1,\"kind\":\"session-import-chunk\",\"data\":\"{}\"}}\n\
+             {{\"version\":1,\"kind\":\"session-import-end\"}}\n",
+            before.len() + 1,
+            encoded,
+        );
+        receive(&instance, Cursor::new(messages));
+        assert_eq!(instance.save_bytes().unwrap(), before);
+    }
 
     #[test]
     fn editor_ipc_controls_the_actual_main_audio_runtime() {

@@ -47,7 +47,8 @@
       <tr><td>Audio separation</td><td>The editor probe replaces <code>AudioContext</code> with a throwing stub. Session display, live-status repaint, and gestures pass without creating browser audio. The Rust callback publishes 80 scalar status values; the webview polls at 10 Hz.</td></tr>
       <tr><td>Live visual data</td><td>The audio owner computes one 128-bin layer, capture-strip, or Sample job per block into a double-buffered atomic bank. The editor reads only completed 14-job frames. A signal test checks old-to-new capture orientation and a new First Loop waveform; the isolated host capture shows both in the actual webview.</td></tr>
       <tr><td>Main Sample capture</td><td>The original Source Retro/Free controls now reach native capture and prepared Sample publication. A packaged release-host probe clicks Source Cap in the actual child webview and saves a new 96,000-frame Sample. Native tests also prove PCM playback and state reopen. <a href="/main-clap-sample-capture-review.html">See the Sample checkpoint and screenshot.</a></td></tr>
-      <tr><td>Current boundary</td><td>The embedded window still needs a direct DAW test. Session file actions need editor paths; the live visual bank's callback cost needs real-device measurement. DAW gesture begin/end messages remain open.</td></tr>
+      <tr><td>Session files</td><td>The original Open input and Download button now use the native Main state boundary. Packaged host probes reimported populated loop and Sample PCM and exported matching JSON. <a href="/main-clap-session-files-review.html">See the session files checkpoint.</a></td></tr>
+      <tr><td>Current boundary</td><td>The embedded window still needs a direct DAW test. The GTK save chooser and live host callback cost need direct measurement. DAW gesture begin/end messages remain open.</td></tr>
     </tbody></table>
   </section>
 </main></body>

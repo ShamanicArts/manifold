@@ -1,10 +1,14 @@
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::Duration;
 
+use base64::Engine;
+use gtk::prelude::*;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle, WindowHandle, XlibWindowHandle};
 use wry::WebViewBuilder;
 
@@ -15,6 +19,35 @@ enum Surface {
     Fx,
     Graph,
     Main,
+}
+
+struct ExportAssembly {
+    expected: usize,
+    bytes: Vec<u8>,
+}
+
+fn export_result(sender: &mpsc::SyncSender<String>, ok: bool, message: &str) {
+    let _ = sender.send(
+        serde_json::json!({
+            "kind": "session-export-result", "ok": ok, "message": message,
+        })
+        .to_string(),
+    );
+}
+
+fn write_export(path: PathBuf, bytes: Vec<u8>, sender: mpsc::SyncSender<String>) {
+    std::thread::spawn(move || {
+        let saved = fs::write(path, bytes).is_ok();
+        export_result(
+            &sender,
+            saved,
+            if saved {
+                "Main session saved as JSON."
+            } else {
+                "Main session could not be written."
+            },
+        );
+    });
 }
 
 impl HasWindowHandle for Parent {
@@ -71,7 +104,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     gtk::init()?;
     let parent = Parent(parent);
-    let (sender, receiver) = mpsc::channel::<String>();
+    let (sender, receiver) = mpsc::sync_channel::<String>(32);
+    let async_sender = sender.clone();
     std::thread::spawn(move || {
         for line in io::stdin().lock().lines() {
             match line {
@@ -125,6 +159,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    let mut probe_main_import = if surface == Surface::Main {
+        std::env::var("MANIFOLD_MAIN_IMPORT_PROBE").ok()
+    } else {
+        None
+    };
     let probe_capture = if surface == Surface::Graph {
         std::env::var("MANIFOLD_GRAPH_CAPTURE_PROBE").ok()
     } else {
@@ -135,6 +174,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    let probe_export = if surface == Surface::Main {
+        std::env::var("MANIFOLD_MAIN_EXPORT_PROBE").ok()
+    } else {
+        None
+    };
+    let mut export = None::<ExportAssembly>;
+    let mut probe_export_triggered = false;
     gtk::glib::timeout_add_local(Duration::from_millis(16), move || {
         if let Some(path) = probe_sample.as_deref() {
             if Path::new(path).exists() {
@@ -180,7 +226,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        while let Ok(line) = receiver.try_recv() {
+        for _ in 0..16 {
+            let Ok(line) = receiver.try_recv() else { break };
             let Ok(command) = serde_json::from_str::<serde_json::Value>(&line) else {
                 continue;
             };
@@ -193,6 +240,23 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         "window.manifoldEditorReceive ? window.manifoldEditorReceive({document}) : (window.__manifoldPendingState = {document});"
                     );
                     let _ = webview.evaluate_script(&script);
+                    if probe_export.is_some() && !probe_export_triggered {
+                        probe_export_triggered = true;
+                        let _ = webview
+                            .evaluate_script("document.getElementById('save-session')?.click();");
+                    }
+                    if let Some(path) = probe_main_import.take() {
+                        if let Ok(contents) = fs::read_to_string(&path) {
+                            let text = serde_json::to_string(&contents).unwrap_or_default();
+                            let _ = webview.evaluate_script(&format!(
+                                "{{ const input = document.getElementById('open-session'); \
+                                  const transfer = new DataTransfer(); \
+                                  transfer.items.add(new File([{text}], 'main-session.json', {{type:'application/json'}})); \
+                                  input.files = transfer.files; \
+                                  input.dispatchEvent(new Event('change', {{bubbles:true}})); }}"
+                            ));
+                        }
+                    }
                     if let Some(path) = probe_import.take() {
                         if let Ok(contents) = fs::read_to_string(&path) {
                             let text = serde_json::to_string(&contents).unwrap_or_default();
@@ -227,6 +291,104 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                             "window.manifoldEditorSampleUpdate?.({data});"
                         ));
                     }
+                }
+                Some("session-import-result") => {
+                    let result = serde_json::json!({
+                        "ok": command["ok"].as_bool().unwrap_or(false),
+                        "message": command["message"].as_str().unwrap_or("Main session import ended."),
+                    });
+                    if let Ok(path) = std::env::var("MANIFOLD_MAIN_IMPORT_PROBE") {
+                        let _ = fs::write(format!("{path}.result"), result.to_string());
+                    }
+                    let _ = webview.evaluate_script(&format!(
+                        "window.manifoldEditorImportResult?.({result});"
+                    ));
+                }
+                Some("session-export-start") => {
+                    export = command["size"]
+                        .as_u64()
+                        .and_then(|size| usize::try_from(size).ok())
+                        .filter(|size| *size > 0 && *size <= 300 * 1024 * 1024)
+                        .map(|expected| ExportAssembly {
+                            expected,
+                            bytes: Vec::with_capacity(expected),
+                        });
+                }
+                Some("session-export-chunk") => {
+                    let Some(current) = export.as_mut() else {
+                        continue;
+                    };
+                    let Some(encoded) =
+                        command["data"].as_str().filter(|data| data.len() <= 24_000)
+                    else {
+                        export = None;
+                        continue;
+                    };
+                    let Ok(chunk) = base64::engine::general_purpose::STANDARD.decode(encoded)
+                    else {
+                        export = None;
+                        continue;
+                    };
+                    if current.bytes.len() + chunk.len() > current.expected {
+                        export = None;
+                        continue;
+                    }
+                    current.bytes.extend_from_slice(&chunk);
+                }
+                Some("session-export-end") => {
+                    let Some(bytes) = export.take().and_then(|assembly| {
+                        (assembly.bytes.len() == assembly.expected).then_some(assembly.bytes)
+                    }) else {
+                        export_result(
+                            &async_sender,
+                            false,
+                            "Native Main session transfer was incomplete.",
+                        );
+                        continue;
+                    };
+                    if let Some(path) = probe_export.as_deref() {
+                        write_export(PathBuf::from(path), bytes, async_sender.clone());
+                        continue;
+                    }
+                    let chooser = gtk::FileChooserNative::new(
+                        Some("Save Main session"),
+                        None::<&gtk::Window>,
+                        gtk::FileChooserAction::Save,
+                        Some("Save"),
+                        Some("Cancel"),
+                    );
+                    chooser.set_current_name("manifold-main-looper.json");
+                    chooser.set_do_overwrite_confirmation(true);
+                    let payload = Rc::new(RefCell::new(Some(bytes)));
+                    let sender = async_sender.clone();
+                    chooser.connect_response(move |dialog, response| {
+                        if response == gtk::ResponseType::Accept {
+                            if let (Some(path), Some(bytes)) =
+                                (dialog.filename(), payload.borrow_mut().take())
+                            {
+                                write_export(path, bytes, sender.clone());
+                            } else {
+                                export_result(
+                                    &sender,
+                                    false,
+                                    "No Main session destination was selected.",
+                                );
+                            }
+                        } else {
+                            export_result(&sender, false, "Main session save cancelled.");
+                        }
+                        dialog.destroy();
+                    });
+                    chooser.show();
+                }
+                Some("session-export-result") => {
+                    let result = serde_json::json!({
+                        "ok": command["ok"].as_bool().unwrap_or(false),
+                        "message": command["message"].as_str().unwrap_or("Main session export ended."),
+                    });
+                    let _ = webview.evaluate_script(&format!(
+                        "window.manifoldEditorExportResult?.({result});"
+                    ));
                 }
                 Some("status") => {
                     if let Some(message) = command["message"].as_str() {

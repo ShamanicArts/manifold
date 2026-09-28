@@ -52,7 +52,7 @@ use crate::main_visual::MainVisualBank;
 
 const MAX_EVENTS: usize = 4096;
 const MAX_UI_COMMANDS: usize = 128;
-const MAX_STATE: usize = 300 * 1024 * 1024;
+pub(crate) const MAX_STATE: usize = 300 * 1024 * 1024;
 const STATUS_FIELDS: usize = 20;
 const STATUS_COUNT: usize = STATUS_FIELDS * 4;
 const COMMAND_EXTENSION_ID: &[u8] = b"shamanic.manifold.main.commands/1";
@@ -510,7 +510,7 @@ impl Instance {
         }
     }
 
-    fn save_bytes(&self) -> Option<Vec<u8>> {
+    pub(crate) fn save_bytes(&self) -> Option<Vec<u8>> {
         let runtime = self.runtime.load(Ordering::Acquire);
         if runtime.is_null() {
             let mut state = self.state.lock().ok()?;
@@ -573,7 +573,7 @@ impl Instance {
         Some(bytes)
     }
 
-    fn load_bytes(&self, bytes: Vec<u8>) -> bool {
+    pub(crate) fn load_bytes(&self, bytes: Vec<u8>) -> bool {
         if bytes.len() > MAX_STATE {
             return false;
         }

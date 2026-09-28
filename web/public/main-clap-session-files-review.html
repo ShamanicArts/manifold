@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Main session files in CLAP · Manifold v2</title>
+  <style>
+    :root { font:15px/1.55 system-ui,sans-serif; color:#1d3028; background:#f4f5f0; --line:#c9d6cd; --green:#28624c; }
+    * { box-sizing:border-box; } body { margin:0; } main { max-width:1120px; margin:auto; padding:36px 22px 90px; }
+    header { border-top:3px solid var(--green); padding-top:12px; }
+    .eyebrow { font:11px ui-monospace,monospace; letter-spacing:.13em; text-transform:uppercase; color:#995d3c; }
+    h1,h2 { font-family:Georgia,serif; font-weight:400; line-height:1.12; }
+    h1 { font-size:clamp(38px,6vw,62px); margin:12px 0 18px; } h2 { font-size:27px; margin:0 0 10px; }
+    p { max-width:78ch; color:#395346; } a { color:var(--green); }
+    .actions { display:flex; flex-wrap:wrap; gap:10px; margin:22px 0 0; }
+    .actions a { display:inline-block; padding:10px 14px; border:1px solid var(--green); text-decoration:none; font-weight:600; }
+    .actions a:first-child { background:var(--green); color:white; }
+    section { border-top:1px solid var(--line); margin-top:30px; padding-top:20px; }
+    figure { margin:16px 0 0; padding:10px; border:1px solid var(--line); background:white; }
+    figure img { display:block; width:100%; height:auto; } figcaption { margin-top:7px; font-size:13px; color:#526458; }
+    table { border-collapse:collapse; width:100%; background:white; }
+    th,td { padding:10px 12px; border:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { background:#eaf0e9; font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
+    code { font:12px ui-monospace,monospace; }
+  </style>
+</head>
+<body><main>
+  <header>
+    <div class="eyebrow">Manifold v2 / original Main / portable session</div>
+    <h1>Open and Download now use<br>the native Main state.</h1>
+    <p>The existing session controls at the bottom of the Main page are active in the packaged CLAP editor. Open validates and prepares the versioned instrument JSON, then publishes the complete runtime at an audio block boundary. Download asks the same Rust state exporter used by the host for its portable file.</p>
+    <div class="actions"><a href="/main-looper.html">Open the playable Main looper →</a><a href="/main-clap-sample-capture-review.html">Review native Sample capture</a></div>
+  </header>
+  <section>
+    <h2>Imported in the actual child editor</h2>
+    <figure><img src="/main-clap-native-import.png" alt="Original Main looper inside the packaged CLAP child webview after opening a populated JSON session"><figcaption>A packaged CLAP host selected a populated JSON file through the original Open session input. The imported Layer 0 waveform and playback state appear in the real Main page. A subsequent CLAP state save retained identical loop and Sample PCM.</figcaption></figure>
+  </section>
+  <section>
+    <h2>What is proven</h2>
+    <table><thead><tr><th>Path</th><th>Observed result</th></tr></thead><tbody>
+      <tr><td>Open session</td><td>The original file input sends 2,048-byte chunks to the CLAP control thread. A packaged isolated host opened a populated version-15 session, saved the resulting instance, and matched every loop and Sample PCM field to the selected file.</td></tr>
+      <tr><td>Download session</td><td>The original button asks the native state exporter for JSON. The isolated packaged host clicked it and wrote a 133,448-byte portable session to a private test destination; loop and Sample PCM matched the source fixture.</td></tr>
+      <tr><td>Bounded UI transfer</td><td>The child receives 16 KiB export chunks through a 32-message queue and handles at most 16 messages per UI tick. A normal user click opens a GTK save dialog; file writing runs on a worker thread. The test destination bypasses the dialog only in the isolated host probe.</td></tr>
+      <tr><td>Remaining host check</td><td>Actual GTK chooser interaction and a save while a DAW drives the Main audio callback still need direct validation. Main VST3 has not yet been added.</td></tr>
+    </tbody></table>
+  </section>
+</main></body>
+</html>
