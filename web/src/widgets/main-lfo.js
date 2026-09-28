@@ -6,7 +6,7 @@ export const DEFAULT_LFO_STATE = Object.freeze({
   route: { source: 0, target: 0, amount: .05, bias: 0, mode: 0, enabled: false },
 });
 
-export function mountMainLfo(get, post, contract) {
+export function mountMainLfo(get, post, contract, slot = 0) {
   const ids = contract.lfoParameters, routeIds = contract.routeParameters;
   const state = { ...DEFAULT_LFO_STATE, route: { ...DEFAULT_LFO_STATE.route } };
   const canvas = get('lfo-preview'), ctx = canvas.getContext('2d');
@@ -35,8 +35,8 @@ export function mountMainLfo(get, post, contract) {
     bias: mountCompactSlider(get('mod-bias'), { label: 'Bias', min: -1, max: 1, step: .01, value: 0, style: { colour: '#22d3ee', bg: '#111827' } }),
   };
 
-  const lfoParam = (id, value) => post({ type: 'lfo-parameter', id, value });
-  const routeParam = (id, value) => post({ type: 'modulation-route', id, value });
+  const lfoParam = (id, value) => post({ type: 'lfo-parameter', slot, id, value });
+  const routeParam = (id, value) => post({ type: 'modulation-route', slot, id, value });
   function paint() {
     const w = 212, h = 54;
     ctx.setTransform(2, 0, 0, 2, 0, 0);
@@ -86,10 +86,10 @@ export function mountMainLfo(get, post, contract) {
     routeParam(routeIds.enabled, Number(state.route.enabled));
   });
   get('lfo-reset').addEventListener('click', () => {
-    post({ type: 'lfo-gate', id: 0, high: 1 });
-    post({ type: 'lfo-gate', id: 0, high: 0 });
+    post({ type: 'lfo-gate', slot, id: 0, high: 1 });
+    post({ type: 'lfo-gate', slot, id: 0, high: 0 });
   });
-  get('lfo-sync').addEventListener('change', event => post({ type: 'lfo-gate', id: 1, high: Number(event.target.checked) }));
+  get('lfo-sync').addEventListener('change', event => post({ type: 'lfo-gate', slot, id: 1, high: Number(event.target.checked) }));
   paint();
   return {
     paint() { paint(); Object.values(sliders).forEach(slider => slider.paint()); },
@@ -115,7 +115,7 @@ export function mountMainLfo(get, post, contract) {
     setStatus(data) {
       phaseNow = data.phase; outputNow = data.out;
       get('lfo-output').textContent = `Out ${data.out >= 0 ? '+' : ''}${data.out.toFixed(2)}  •  Uni ${data.uni.toFixed(2)}  •  Φ ${data.phase.toFixed(2)}`;
-      get('mod-effective').textContent = `Filter cutoff ${Math.round(data.cutoff)} Hz · Reso ${data.resonance.toFixed(2)}`;
+      get('mod-effective').textContent = `Cutoff ${Math.round(data.cutoff)} Hz · Reso ${data.resonance.toFixed(2)} · FX1 ${data.fx1Mix.toFixed(2)} · FX2 ${data.fx2Mix.toFixed(2)}`;
       if (!get('midisynth-panel').hidden) paint();
     },
   };

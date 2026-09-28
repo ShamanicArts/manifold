@@ -111,10 +111,25 @@ try {
   assert.equal(await page.locator('#mod-enabled').isChecked(), true);
   await page.locator('#lfo-reset').click();
   await page.waitForFunction(() => {
-    const match = document.querySelector('#mod-effective').textContent.match(/cutoff (\d+)/);
+    const match = document.querySelector('#mod-effective').textContent.match(/cutoff (\d+)/i);
     return match && Number(match[1]) < 16000;
   });
   await page.screenshot({ path: new URL('../web/public/main-lfo-route.png', import.meta.url).pathname, fullPage: true });
+  await page.locator('#add-lfo').click();
+  assert.equal(await page.locator('.rack-lfo').count(), 2);
+  await page.locator('#lfo-shape-slot-1').selectOption('3');
+  await page.locator('#mod-target-slot-1').selectOption('129');
+  assert.equal(await page.locator('#mod-enabled-slot-1').isChecked(), true);
+  await page.waitForFunction(() => ['lfo-rate-slot-1', 'mod-amount-slot-1'].every(id => {
+    const canvas = document.querySelector(`#${id} canvas`);
+    return canvas && canvas.width !== 300 && canvas.getContext('2d').getImageData(4, 4, 1, 1).data[3] > 0;
+  }));
+  await page.waitForFunction(() => /FX1 (?!0\.00)\d+\.\d+/.test(document.querySelector('#mod-effective-slot-1').textContent));
+  await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = element.scrollHeight; });
+  await page.waitForFunction(() => document.querySelector('#rack-scroll').scrollTop > 400);
+  await page.screenshot({ path: new URL('../web/public/main-multi-lfo-rack.png', import.meta.url).pathname, fullPage: true });
+  await page.locator('.rack-lfo').nth(1).screenshot({ path: new URL('../web/public/main-lfo-2-module.png', import.meta.url).pathname });
+  await page.locator('.rack-route').nth(1).screenshot({ path: new URL('../web/public/main-lfo-2-route.png', import.meta.url).pathname });
   await page.locator('#patch-jump').click();
   await page.waitForFunction(() => document.querySelector('#rack-scroll').scrollTop < 5);
   await page.locator('#sample-bars').focus();
@@ -183,14 +198,16 @@ try {
   const download = await downloadPromise;
   const bundle = JSON.parse(await readFile(await download.path(), 'utf8'));
   assert.equal(bundle.id, 'manifold.main-looper');
-  assert.equal(bundle.version, 3);
+  assert.equal(bundle.version, 4);
   assert.ok(bundle.sample.frames > 0 && bundle.sample.pcmF32Base64.length > 0);
   assert.equal(bundle.rack.source.waveform, 1);
   assert.equal(bundle.rack.fx2.selected, 5);
   assert.equal(bundle.rack.filter.mode, 0);
-  assert.equal(bundle.rack.lfo.shape, 3);
-  assert.equal(bundle.rack.lfo.route.target, 22);
-  assert.equal(bundle.rack.lfo.route.enabled, true);
+  assert.deepEqual(bundle.rack.lfos.map(lfo => lfo.slot), [0, 1]);
+  assert.equal(bundle.rack.lfos[0].shape, 3);
+  assert.equal(bundle.rack.lfos[0].route.target, 22);
+  assert.equal(bundle.rack.lfos[1].route.target, 129);
+  assert.equal(bundle.rack.lfos[1].route.enabled, true);
   assert.ok(bundle.layers[0].frames > 0 && bundle.layers[1].frames > 0);
   await page.locator('#audio-button').click();
   await page.locator('#audio-button').click();
@@ -216,12 +233,40 @@ try {
   assert.equal(await page.locator('#fx2-module-type').getAttribute('data-value'), '5');
   assert.equal(await page.locator('#lfo-shape').inputValue(), '3');
   assert.equal(await page.locator('#mod-enabled').isChecked(), true);
+  assert.equal(await page.locator('.rack-lfo').count(), 2);
+  assert.equal(await page.locator('#mod-target-slot-1').inputValue(), '129');
   await page.waitForFunction(() => {
-    const match = document.querySelector('#mod-effective').textContent.match(/cutoff (\d+)/);
+    const match = document.querySelector('#mod-effective').textContent.match(/cutoff (\d+)/i);
     return match && Number(match[1]) < 16000;
   }, { timeout: 2500 });
   assert.notEqual(await page.locator('#sample-length').textContent(), '0ms');
-  const v2 = { ...bundle, version: 2, rack: { ...bundle.rack } };
+  await page.locator('[aria-label="Remove LFO 2"]').click();
+  assert.equal(await page.locator('.rack-lfo').count(), 1);
+  for (let index = 0; index < 3; index++) await page.locator('#add-lfo').click();
+  assert.equal(await page.locator('.rack-lfo').count(), 4);
+  assert.equal(await page.locator('#add-lfo').isDisabled(), true);
+  await page.locator('[aria-label="Remove LFO 3"]').click();
+  assert.equal(await page.locator('.rack-lfo').count(), 3);
+  await page.locator('#add-lfo').click();
+  assert.equal(await page.locator('.rack-lfo').count(), 4);
+  for (let slot = 2; slot <= 4; slot++) await page.locator(`[aria-label="Remove LFO ${slot}"]`).click();
+  assert.equal(await page.locator('.rack-lfo').count(), 1);
+  const duplicateSlot = { ...bundle, rack: { ...bundle.rack,
+    lfos: [bundle.rack.lfos[0], { ...bundle.rack.lfos[1], slot: 0 }] } };
+  await page.locator('#open-session').setInputFiles({ name: 'main-looper-invalid-slots.json',
+    mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(duplicateSlot)) });
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Invalid Main LFO module'));
+  assert.equal(await page.locator('.rack-lfo').count(), 1);
+  const v3 = { ...bundle, version: 3, rack: { ...bundle.rack, lfo: { ...bundle.rack.lfos[0] } } };
+  delete v3.rack.lfos;
+  delete v3.rack.lfo.slot;
+  await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 3 import'; });
+  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v3.json',
+    mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v3)) });
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
+  assert.equal(await page.locator('.rack-lfo').count(), 1);
+  assert.equal(await page.locator('#lfo-shape').inputValue(), '3');
+  const v2 = { ...v3, version: 2, rack: { ...v3.rack } };
   delete v2.rack.lfo;
   await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 2 import'; });
   await page.locator('#open-session').setInputFiles({ name: 'main-looper-v2.json',
@@ -286,5 +331,5 @@ try {
   assert.ok(lastSegment.x + lastSegment.width <= frame.x + frame.width + 1);
   assert.ok(await narrow.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await narrow.screenshot({ path: new URL('../web/public/main-looper-narrow.png', import.meta.url).pathname, fullPage: true });
-  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth ADSR/Source/Filter/FX1/FX2/EQ/LFO, live modulation route, Live/L1 Retro Cap, L1 Free Cap/STOP, traditional arm/fire, reverse scrub, v1/v2/v3 session reopen, decoded file and Rust synth capture passed`);
+  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth rack, two live LFO routes, four-slot add/remove limit, duplicate-slot rejection, Live/L1 Retro and Free Sample, traditional arm/fire, reverse scrub, v1/v2/v3/v4 session reopen, decoded file and Rust synth capture passed`);
 } finally { await browser.close(); }

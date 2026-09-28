@@ -206,6 +206,77 @@ pub extern "C" fn manifold_looper_lfo_status(id: u32) -> f32 {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_lfo_slot_active(slot_index: u32, active: u32) -> u32 {
+    if active > 1 {
+        return 0;
+    }
+    LOOPER.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(
+                engine
+                    .instrument
+                    .set_lfo_slot_active(slot_index as usize, active == 1),
+            )
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_lfo_slot_parameter(slot_index: u32, id: u32, value: f32) -> u32 {
+    LOOPER.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(
+                engine
+                    .instrument
+                    .set_lfo_slot_parameter(slot_index as usize, id, value),
+            )
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_lfo_slot_gate(slot_index: u32, id: u32, high: u32) -> u32 {
+    if high > 1 {
+        return 0;
+    }
+    LOOPER.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(
+                engine
+                    .instrument
+                    .set_lfo_slot_gate(slot_index as usize, id, high == 1),
+            )
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_modulation_slot_route(
+    slot_index: u32,
+    id: u32,
+    value: f32,
+) -> u32 {
+    LOOPER.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(
+                engine
+                    .instrument
+                    .set_modulation_slot_route(slot_index as usize, id, value),
+            )
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_lfo_slot_status(slot_index: u32, id: u32) -> f32 {
+    LOOPER.with(|slot| {
+        slot.borrow().as_ref().map_or(0.0, |engine| {
+            engine.instrument.lfo_slot_status(slot_index as usize, id)
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn manifold_looper_eq_response(frequency: f32) -> f32 {
     LOOPER.with(|slot| {
         slot.borrow()

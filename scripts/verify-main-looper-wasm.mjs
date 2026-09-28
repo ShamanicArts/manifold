@@ -197,4 +197,47 @@ assert.equal(e.manifold_looper_lfo_status(5), 3_200);
 assert.equal(e.manifold_looper_synth_sample_clear(), 1);
 assert.equal(e.manifold_looper_synth_sample_frames(), 0);
 console.log(`Main LFO route: Filter cutoff ${cutEffective.toFixed(0)} → ${openEffective.toFixed(0)} Hz, sounding energy ${cutEnergy.toFixed(2)} → ${openEnergy.toFixed(2)}.`);
-console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, and Retro/Free Sample voices passed');
+assert.equal(e.manifold_looper_synth_note(2, 0, 0), 1);
+assert.equal(e.manifold_looper_synth_parameter(ids.blend, -1), 1);
+assert.equal(e.manifold_looper_synth_parameter(ids.waveform, 2), 1);
+assert.equal(e.manifold_looper_synth_parameter(ids.filterCutoff, 16_000), 1);
+assert.equal(e.manifold_looper_synth_parameter(fx.fx1Base + fx.mixOffset, .5), 1);
+assert.equal(e.manifold_looper_lfo_slot_active(1, 1), 1);
+assert.equal(e.manifold_looper_lfo_slot_parameter(1, contract.modulation.lfoParameters.shape, 3), 1);
+assert.equal(e.manifold_looper_lfo_slot_parameter(1, contract.modulation.lfoParameters.rate, 1), 1);
+assert.equal(e.manifold_looper_lfo_slot_gate(1, 0, 1), 1);
+assert.equal(e.manifold_looper_lfo_slot_gate(1, 0, 0), 1);
+assert.equal(e.manifold_looper_modulation_slot_route(1, contract.modulation.routeParameters.target, 129), 1);
+assert.equal(e.manifold_looper_modulation_slot_route(1, contract.modulation.routeParameters.amount, 1), 1);
+assert.equal(e.manifold_looper_modulation_slot_route(1, contract.modulation.routeParameters.enabled, 1), 1);
+assert.equal(e.manifold_looper_synth_note(0, 96, 100), 1);
+let wetEnergy = 0, dryEnergy = 0;
+for (let index = 0; index < 31; index++) {
+  block(0);
+  if (index > 25) wetEnergy += output.subarray(0, 128).reduce((sum, sample) => sum + Math.abs(sample), 0);
+}
+const wetMix = e.manifold_looper_lfo_slot_status(1, 7);
+for (let index = 0; index < 31; index++) {
+  block(0);
+  if (index > 25) dryEnergy += output.subarray(0, 128).reduce((sum, sample) => sum + Math.abs(sample), 0);
+}
+const dryMix = e.manifold_looper_lfo_slot_status(1, 7);
+assert.ok(wetMix > .99 && dryMix < .01, `FX1 mix route ${wetMix} → ${dryMix}`);
+assert.ok(dryEnergy > wetEnergy * 2, `FX1 audio route ${wetEnergy} → ${dryEnergy}`);
+assert.equal(e.manifold_looper_lfo_slot_active(1, 0), 1);
+block(0);
+assert.ok(Math.abs(e.manifold_looper_lfo_slot_status(0, 7) - .5) < .001);
+assert.equal(e.manifold_looper_synth_parameter(fx.fx2Base + fx.mixOffset, .5), 1);
+assert.equal(e.manifold_looper_lfo_slot_active(2, 1), 1);
+assert.equal(e.manifold_looper_lfo_slot_parameter(2, contract.modulation.lfoParameters.shape, 3), 1);
+assert.equal(e.manifold_looper_modulation_slot_route(2, contract.modulation.routeParameters.target, 137), 1);
+assert.equal(e.manifold_looper_modulation_slot_route(2, contract.modulation.routeParameters.amount, 1), 1);
+assert.equal(e.manifold_looper_modulation_slot_route(2, contract.modulation.routeParameters.enabled, 1), 1);
+block(0);
+assert.equal(e.manifold_looper_lfo_slot_status(2, 8), 1);
+assert.equal(e.manifold_looper_lfo_slot_active(2, 0), 1);
+block(0);
+assert.ok(Math.abs(e.manifold_looper_lfo_slot_status(0, 8) - .5) < .001);
+assert.equal(e.manifold_looper_lfo_slot_active(contract.modulation.maxLfos, 1), 0);
+console.log(`Main second LFO route: FX1 mix ${wetMix.toFixed(2)} → ${dryMix.toFixed(2)}, sounding energy ${wetEnergy.toFixed(2)} → ${dryEnergy.toFixed(2)}.`);
+console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, and two independent LFO routes passed');

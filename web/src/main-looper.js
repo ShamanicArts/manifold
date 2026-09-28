@@ -7,7 +7,7 @@ import { mountMainAdsr } from './widgets/main-adsr.js';
 import { mountMainFilter } from './widgets/main-filter.js';
 import { mountMainEq } from './widgets/main-eq.js';
 import { mountMainFxSlot } from './widgets/main-fx-slot.js';
-import { mountMainLfo, DEFAULT_LFO_STATE } from './widgets/main-lfo.js';
+import { mountMainLfoRack } from './widgets/main-lfo-rack.js';
 import { mountMainCapturePlane } from './widgets/main-capture-plane.js';
 import { drawMainLayerKnob } from './widgets/main-layer-knob.js';
 
@@ -40,7 +40,7 @@ const filter = mountMainFilter($, synthParameter, synthIds);
 const eq = mountMainEq($, synthParameter, project.eqParameters);
 const fx1 = mountMainFxSlot($('fx1-module'), synthParameter, project.fxParameters.fx1Base);
 const fx2 = mountMainFxSlot($('fx2-module'), synthParameter, project.fxParameters.fx2Base);
-const lfo = mountMainLfo($, post, project.modulation);
+const lfo = mountMainLfoRack($, post, project.modulation);
 const selectedSegment = id => Number($(id).querySelector('[aria-pressed="true"]').dataset.value);
 function wireSegments(id, change) {
   const group = $(id);
@@ -170,13 +170,13 @@ function restoreSource(state) {
 }
 function rackSnapshot() {
   return { source: sourceSnapshot(), adsr: adsr.snapshot(), filter: filter.snapshot(),
-    fx1: fx1.snapshot(), fx2: fx2.snapshot(), eq: eq.snapshot(), lfo: lfo.snapshot() };
+    fx1: fx1.snapshot(), fx2: fx2.snapshot(), eq: eq.snapshot(), lfos: lfo.snapshot() };
 }
 function restoreRack(state) {
   restoreSource(state.source);
   adsr.restore(state.adsr); filter.restore(state.filter);
   fx1.restore(state.fx1); fx2.restore(state.fx2); eq.restore(state.eq);
-  lfo.restore(state.lfo ?? DEFAULT_LFO_STATE);
+  lfo.restore(state.lfos ?? state.lfo);
 }
 drawSourceGraph();
 function resetSampleCaptureUI() {
@@ -411,7 +411,7 @@ const stateNames = ['Empty', 'Playing', 'Recording', 'Stopped', 'Paused'];
 const stateColors = ['#64748b', '#34d399', '#ef4444', '#fde047', '#a78bfa'];
 function render(data) {
   latest = data;
-  if (data.lfo) lfo.setStatus(data.lfo);
+  if (data.lfos) lfo.setStatus(data.lfos);
   latestSamplePeaks = data.samplePeaks ?? [];
   eq.setResponse(data.eqResponse);
   drawSourceGraph();
@@ -534,7 +534,7 @@ $('save-session').onclick = () => {
   if (transferJob || sampleJob || freeSource !== null) return;
   const id = nextRequest++;
   let rack;
-  try { rack = validateMainRackState(rackSnapshot(), true, project.modulation); }
+  try { rack = validateMainRackState(rackSnapshot(), true, project.modulation, true); }
   catch (error) { status(error.message); return; }
   transferJob = { kind: 'save', id, state: null, audio: null, layer: 0, offset: 0,
     sampleOffset: 0, sampleAudio: null, rack };
@@ -548,7 +548,7 @@ $('open-session').onchange = async () => {
   if (!file) return;
   try {
     const state = JSON.parse(await file.text());
-    if (state.format !== project.format || ![1, 2, project.sessionVersion].includes(state.version) || state.id !== project.id
+    if (state.format !== project.format || ![1, 2, 3, project.sessionVersion].includes(state.version) || state.id !== project.id
       || state.sampleRate !== context.sampleRate || !Array.isArray(state.layers) || state.layers.length !== project.layers
       || !Number.isFinite(state.tempo) || !Number.isFinite(state.targetBpm)
       || !Number.isInteger(state.activeLayer) || state.activeLayer < 0 || state.activeLayer >= project.layers
@@ -565,7 +565,7 @@ $('open-session').onchange = async () => {
     });
     let sampleAudio = null;
     if (state.version >= 2) {
-      validateMainRackState(state.rack, state.version >= 3, project.modulation);
+      validateMainRackState(state.rack, state.version >= 3, project.modulation, state.version >= 4);
       if (!state.sample || !Number.isInteger(state.sample.frames)
         || state.sample.frames < 0 || state.sample.frames > Math.min(1_440_000, context.sampleRate * project.captureSeconds)
         || (state.sample.frames === 0 && state.sample.pcmF32Base64 !== '')) {

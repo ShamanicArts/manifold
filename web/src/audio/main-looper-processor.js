@@ -33,6 +33,7 @@ class MainLooperProcessor extends AudioWorkletProcessor {
     this.transferJob = null;
     this.sampleJob = null;
     this.freeSource = null;
+    this.lfoActive = [true, false, false, false];
     this.port.onmessage = async ({ data }) => {
       try {
         if (data.type === 'init') {
@@ -45,7 +46,7 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_looper_output_ptr(), this.capacity * 2);
           this.port.postMessage({ type: 'ready' });
         } else if (this.transferJob && ['control', 'layer-control', 'command', 'synth-note', 'synth-parameter',
-          'lfo-parameter', 'lfo-gate', 'modulation-route'].includes(data.type)) {
+          'lfo-slot-active', 'lfo-parameter', 'lfo-gate', 'modulation-route'].includes(data.type)) {
           this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'sample-capture' && this.engine && !this.sampleJob && !this.transferJob && this.freeSource === null) {
           const frames = this.engine.manifold_looper_sample_capture(data.source, data.bars);
@@ -229,14 +230,18 @@ class MainLooperProcessor extends AudioWorkletProcessor {
         } else if (data.type === 'synth-parameter' && this.engine) {
           const accepted = this.engine.manifold_looper_synth_parameter(data.id, data.value) === 1;
           if (!accepted) this.port.postMessage({ type: 'rejected', action: data });
+        } else if (data.type === 'lfo-slot-active' && this.engine) {
+          if (this.engine.manifold_looper_lfo_slot_active(data.slot, Number(data.active)) !== 1)
+            this.port.postMessage({ type: 'rejected', action: data });
+          else this.lfoActive[data.slot] = Boolean(data.active);
         } else if (data.type === 'lfo-parameter' && this.engine) {
-          if (this.engine.manifold_looper_lfo_parameter(data.id, data.value) !== 1)
+          if (this.engine.manifold_looper_lfo_slot_parameter(data.slot ?? 0, data.id, data.value) !== 1)
             this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'lfo-gate' && this.engine) {
-          if (this.engine.manifold_looper_lfo_gate(data.id, data.high) !== 1)
+          if (this.engine.manifold_looper_lfo_slot_gate(data.slot ?? 0, data.id, data.high) !== 1)
             this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'modulation-route' && this.engine) {
-          if (this.engine.manifold_looper_modulation_route(data.id, data.value) !== 1)
+          if (this.engine.manifold_looper_modulation_slot_route(data.slot ?? 0, data.id, data.value) !== 1)
             this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'snapshot' && this.engine) {
           const e = this.engine;
@@ -279,15 +284,22 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           const segments = bars.map((_, index) => captureStripBins(
             bars, index, spb, project.captureSeconds * sampleRate, captured,
           ).map(bin => bin ? e.manifold_looper_peak(active, 1, bin[0], bin[1]) : 0));
-          const lfo = { phase: e.manifold_looper_lfo_status(0), out: e.manifold_looper_lfo_status(1),
-            inv: e.manifold_looper_lfo_status(2), uni: e.manifold_looper_lfo_status(3),
-            eoc: e.manifold_looper_lfo_status(4), cutoff: e.manifold_looper_lfo_status(5),
-            resonance: e.manifold_looper_lfo_status(6) };
+          const lfos = this.lfoActive.map((active, slot) => active ? {
+            slot, phase: e.manifold_looper_lfo_slot_status(slot, 0),
+            out: e.manifold_looper_lfo_slot_status(slot, 1),
+            inv: e.manifold_looper_lfo_slot_status(slot, 2),
+            uni: e.manifold_looper_lfo_slot_status(slot, 3),
+            eoc: e.manifold_looper_lfo_slot_status(slot, 4),
+            cutoff: e.manifold_looper_lfo_slot_status(slot, 5),
+            resonance: e.manifold_looper_lfo_slot_status(slot, 6),
+            fx1Mix: e.manifold_looper_lfo_slot_status(slot, 7),
+            fx2Mix: e.manifold_looper_lfo_slot_status(slot, 8),
+          } : null);
           this.port.postMessage({ type: 'snapshot', tempo: s(project.status.tempo), active,
             mode: s(project.status.mode), recording: s(project.status.recording) === 1,
             overdub: s(project.status.overdub) === 1, forwardBars: s(project.status.forwardBars),
             captured, sampleRate: s(project.status.sampleRate),
-            layers, segments, sampleFrames, samplePeaks, eqResponse, lfo });
+            layers, segments, sampleFrames, samplePeaks, eqResponse, lfos });
         }
       } catch (error) {
         if (this.sampleJob && this.engine) this.engine.manifold_looper_sample_cancel();

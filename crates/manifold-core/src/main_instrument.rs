@@ -11,16 +11,23 @@ use crate::main_sample_capture::MainSampleCapture;
 use crate::main_voice_bank::MainVoiceBank;
 use crate::sample_region::ValidatedStereo;
 
+pub const MAIN_LFO_SLOTS: usize = 4;
+
 pub struct MainInstrument {
     looper: MainLooper,
     synth: MainVoiceBank,
     filter: Filter,
-    lfo: MainLfo,
-    modulation: MainModulationRoute,
+    lfos: [MainLfo; MAIN_LFO_SLOTS],
+    lfo_active: [bool; MAIN_LFO_SLOTS],
+    modulation: [MainModulationRoute; MAIN_LFO_SLOTS],
     filter_cutoff_base: f32,
     filter_resonance_base: f32,
     filter_cutoff_effective: f32,
     filter_resonance_effective: f32,
+    fx1_mix_base: f32,
+    fx2_mix_base: f32,
+    fx1_mix_effective: f32,
+    fx2_mix_effective: f32,
     fx1: EffectSlot,
     fx2: EffectSlot,
     eq: Eq8,
@@ -43,8 +50,8 @@ pub struct MainInstrument {
     monitor_right: Vec<f32>,
 }
 
-/// One typed scalar connection from Main's LFO outputs to a continuous
-/// Filter parameter. IDs 22/23 are the stable Main parameter contract.
+/// One typed scalar connection from a Main LFO output to a continuous
+/// Filter or FX mix parameter, addressed by the stable Main parameter IDs.
 #[derive(Clone, Copy)]
 struct MainModulationRoute {
     source: u32,
@@ -75,7 +82,7 @@ impl MainModulationRoute {
         }
         match id {
             0 if (0.0..=3.0).contains(&value) && value.fract() == 0.0 => self.source = value as u32,
-            1 if (value == 0.0 || value == 22.0 || value == 23.0) => self.target = value as u32,
+            1 if [0.0, 22.0, 23.0, 129.0, 137.0].contains(&value) => self.target = value as u32,
             2 if (-1.0..=1.0).contains(&value) => self.amount = value,
             3 if (-1.0..=1.0).contains(&value) => self.bias = value,
             4 if value == 0.0 || value == 1.0 => self.mode = value as u32,
@@ -95,10 +102,10 @@ impl MainModulationRoute {
             2 => (outputs.uni, 0.0),
             _ => (outputs.eoc, 0.0),
         };
-        let (min, max): (f32, f32) = if self.target == 22 {
-            (80.0, 16_000.0)
-        } else {
-            (0.1, 2.0)
+        let (min, max): (f32, f32) = match self.target {
+            22 => (80.0, 16_000.0),
+            23 => (0.1, 2.0),
+            _ => (0.0, 1.0),
         };
         let mapped = if self.mode == 1 {
             let t = (source * self.amount + self.bias).clamp(0.0, 1.0);
@@ -120,12 +127,17 @@ impl MainInstrument {
             looper: MainLooper::new(sample_rate),
             synth: MainVoiceBank::new(sample_rate, max_frames, 9),
             filter: Filter::new(sample_rate),
-            lfo: MainLfo::new(sample_rate),
-            modulation: MainModulationRoute::default(),
+            lfos: std::array::from_fn(|_| MainLfo::new(sample_rate)),
+            lfo_active: [true, false, false, false],
+            modulation: [MainModulationRoute::default(); MAIN_LFO_SLOTS],
             filter_cutoff_base: 3200.0,
             filter_resonance_base: 0.75,
             filter_cutoff_effective: 3200.0,
             filter_resonance_effective: 0.75,
+            fx1_mix_base: 0.0,
+            fx2_mix_base: 0.0,
+            fx1_mix_effective: 0.0,
+            fx2_mix_effective: 0.0,
             fx1: EffectSlot::new_legacy(
                 sample_rate,
                 max_frames,
@@ -180,6 +192,14 @@ impl MainInstrument {
                 self.filter_resonance_base = value.clamp(0.1, 2.0);
                 self.filter.set_parameter(2, self.filter_resonance_base)
             }
+            129 if value.is_finite() => {
+                self.fx1_mix_base = value.clamp(0.0, 1.0);
+                self.fx1.set_parameter(1, self.fx1_mix_base)
+            }
+            137 if value.is_finite() => {
+                self.fx2_mix_base = value.clamp(0.0, 1.0);
+                self.fx2.set_parameter(1, self.fx2_mix_base)
+            }
             64..=105 => self.eq.set_parameter(id - 64, value),
             128..=134 => self.fx1.set_parameter(id - 128, value),
             136..=142 => self.fx2.set_parameter(id - 136, value),
@@ -188,19 +208,59 @@ impl MainInstrument {
     }
 
     pub fn set_lfo_parameter(&mut self, id: u32, value: f32) -> bool {
-        self.lfo.set_parameter(id, value)
+        self.set_lfo_slot_parameter(0, id, value)
     }
 
     pub fn set_lfo_gate(&mut self, id: u32, high: bool) -> bool {
-        self.lfo.set_gate(id, high)
+        self.set_lfo_slot_gate(0, id, high)
     }
 
     pub fn set_modulation_route(&mut self, id: u32, value: f32) -> bool {
-        self.modulation.set(id, value)
+        self.set_modulation_slot_route(0, id, value)
     }
 
     pub fn lfo_status(&self, id: u32) -> f32 {
-        let outputs = self.lfo.outputs();
+        self.lfo_slot_status(0, id)
+    }
+
+    pub fn set_lfo_slot_active(&mut self, slot: usize, active: bool) -> bool {
+        let Some(enabled) = self.lfo_active.get_mut(slot) else {
+            return false;
+        };
+        if *enabled != active {
+            self.lfos[slot] = MainLfo::new(self.sample_rate);
+            self.modulation[slot] = MainModulationRoute::default();
+            *enabled = active;
+        }
+        true
+    }
+
+    pub fn set_lfo_slot_parameter(&mut self, slot: usize, id: u32, value: f32) -> bool {
+        if !self.lfo_active.get(slot).copied().unwrap_or(false) {
+            return false;
+        }
+        self.lfos[slot].set_parameter(id, value)
+    }
+
+    pub fn set_lfo_slot_gate(&mut self, slot: usize, id: u32, high: bool) -> bool {
+        if !self.lfo_active.get(slot).copied().unwrap_or(false) {
+            return false;
+        }
+        self.lfos[slot].set_gate(id, high)
+    }
+
+    pub fn set_modulation_slot_route(&mut self, slot: usize, id: u32, value: f32) -> bool {
+        if !self.lfo_active.get(slot).copied().unwrap_or(false) {
+            return false;
+        }
+        self.modulation[slot].set(id, value)
+    }
+
+    pub fn lfo_slot_status(&self, slot: usize, id: u32) -> f32 {
+        if !self.lfo_active.get(slot).copied().unwrap_or(false) {
+            return 0.0;
+        }
+        let outputs = self.lfos[slot].outputs();
         match id {
             0 => outputs.phase,
             1 => outputs.out,
@@ -209,6 +269,8 @@ impl MainInstrument {
             4 => outputs.eoc,
             5 => self.filter_cutoff_effective,
             6 => self.filter_resonance_effective,
+            7 => self.fx1_mix_effective,
+            8 => self.fx2_mix_effective,
             _ => 0.0,
         }
     }
@@ -302,20 +364,37 @@ impl MainInstrument {
         let frames = dry[0].len();
         assert_eq!(dry[1].len(), frames);
         assert!(frames <= self.synth_left.len());
-        let lfo = self.lfo.advance(frames);
-        self.filter_cutoff_effective = if self.modulation.target == 22 {
-            self.modulation.effective(self.filter_cutoff_base, lfo)
-        } else {
-            self.filter_cutoff_base
-        };
-        self.filter_resonance_effective = if self.modulation.target == 23 {
-            self.modulation.effective(self.filter_resonance_base, lfo)
-        } else {
-            self.filter_resonance_base
-        };
+        self.filter_cutoff_effective = self.filter_cutoff_base;
+        self.filter_resonance_effective = self.filter_resonance_base;
+        self.fx1_mix_effective = self.fx1_mix_base;
+        self.fx2_mix_effective = self.fx2_mix_base;
+        // Stable slot order defines composition: Add applies to the current
+        // value; a later Replace supersedes earlier routes to that target.
+        for slot in 0..MAIN_LFO_SLOTS {
+            if !self.lfo_active[slot] {
+                continue;
+            }
+            let outputs = self.lfos[slot].advance(frames);
+            let route = self.modulation[slot];
+            match route.target {
+                22 => {
+                    self.filter_cutoff_effective =
+                        route.effective(self.filter_cutoff_effective, outputs)
+                }
+                23 => {
+                    self.filter_resonance_effective =
+                        route.effective(self.filter_resonance_effective, outputs)
+                }
+                129 => self.fx1_mix_effective = route.effective(self.fx1_mix_effective, outputs),
+                137 => self.fx2_mix_effective = route.effective(self.fx2_mix_effective, outputs),
+                _ => {}
+            }
+        }
         self.filter.set_parameter(1, self.filter_cutoff_effective);
         self.filter
             .set_parameter(2, self.filter_resonance_effective);
+        self.fx1.set_parameter(1, self.fx1_mix_effective);
+        self.fx2.set_parameter(1, self.fx2_mix_effective);
         // The shared SVF clamps its public 0.1–2 resonance control to 1.
         // Report the target the audio processor actually received.
         self.filter_resonance_effective = self.filter.resonance();
@@ -721,5 +800,56 @@ mod tests {
         assert!(main.set_lfo_gate(0, false));
         main.process([&silence, &silence], [&mut left, &mut right]);
         assert_eq!(main.lfo_status(6), 1.0); // public range reaches 2; SVF receives at most 1
+    }
+
+    #[test]
+    fn separate_lfo_modules_route_to_filter_and_fx_mix_then_restore_base() {
+        let mut main = MainInstrument::new(8_000.0, 128);
+        assert!(main.set_synth_parameter(22, 3_200.0));
+        assert!(main.set_synth_parameter(129, 0.25));
+        assert!(main.set_lfo_parameter(0, 3.0));
+        assert!(main.set_modulation_route(1, 22.0));
+        assert!(main.set_modulation_route(2, 0.1));
+        assert!(main.set_modulation_route(5, 1.0));
+        assert!(main.set_lfo_slot_active(1, true));
+        assert!(main.set_lfo_slot_parameter(1, 0, 3.0));
+        assert!(main.set_modulation_slot_route(1, 1, 129.0));
+        assert!(main.set_modulation_slot_route(1, 2, 1.0));
+        assert!(main.set_modulation_slot_route(1, 5, 1.0));
+        let silence = [0.0; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        main.process([&silence, &silence], [&mut left, &mut right]);
+        assert!((main.lfo_status(5) - 3_996.0).abs() < 1.0);
+        assert_eq!(main.lfo_slot_status(1, 7), 0.75);
+        assert!(main.set_lfo_slot_active(1, false));
+        main.process([&silence, &silence], [&mut left, &mut right]);
+        assert_eq!(main.lfo_slot_status(0, 7), 0.25);
+        assert_eq!(main.lfo_slot_status(1, 7), 0.0);
+        assert!(!main.set_lfo_slot_parameter(1, 0, 3.0));
+        assert!(!main.set_lfo_slot_active(MAIN_LFO_SLOTS, true));
+    }
+
+    #[test]
+    fn shared_target_routes_compose_in_stable_slot_order() {
+        let mut main = MainInstrument::new(8_000.0, 128);
+        for slot in 0..2 {
+            if slot > 0 {
+                assert!(main.set_lfo_slot_active(slot, true));
+            }
+            assert!(main.set_lfo_slot_parameter(slot, 0, 3.0));
+            assert!(main.set_modulation_slot_route(slot, 1, 22.0));
+            assert!(main.set_modulation_slot_route(slot, 2, 0.1));
+            assert!(main.set_modulation_slot_route(slot, 5, 1.0));
+        }
+        let silence = [0.0; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        main.process([&silence, &silence], [&mut left, &mut right]);
+        assert!((main.lfo_status(5) - 4_792.0).abs() < 1.0);
+        assert!(main.set_modulation_slot_route(1, 4, 1.0)); // Replace
+        assert!(main.set_modulation_slot_route(1, 2, 0.5));
+        main.process([&silence, &silence], [&mut left, &mut right]);
+        assert!((main.lfo_status(5) - 1_131.37).abs() < 1.0);
     }
 }
