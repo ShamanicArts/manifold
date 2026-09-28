@@ -12,6 +12,7 @@ pub mod capture_mailbox;
 pub mod host_buffers;
 pub mod host_transport;
 pub mod host_values;
+pub mod main_host;
 pub mod main_instrument;
 pub mod main_session;
 pub mod parameters;
