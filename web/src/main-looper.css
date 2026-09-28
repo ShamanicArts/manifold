@@ -554,6 +554,9 @@ body {
 .filter-head::before { background: #a78bfa; }
 .rack-shell-head { isolation: isolate; }
 .rack-shell-head::before { z-index: -1; }
+.rack-shell-head[title^="Drag"] { cursor: grab; touch-action: none; user-select: none; }
+.rack-shell-moving { z-index: 7; box-shadow: 0 8px 24px #000a; }
+.rack-shell-moving .rack-shell-head { cursor: grabbing; }
 .adsr-module { position: relative; width: 236px; height: 208px; }
 #adsr-graph { position: absolute; left: 16px; top: 16px; width: 204px; height: 122px; background: #0a0a1a; border: 1px solid #1f2b4d; border-radius: 4px; cursor: crosshair; }
 .adsr-slider { position: absolute; width: 99px; height: 20px; cursor: ew-resize; }

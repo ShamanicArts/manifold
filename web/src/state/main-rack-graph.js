@@ -91,17 +91,16 @@ export function compileMainRackInsert(rackDocument, catalog) {
   });
 }
 
-// v16 Main sessions can save the prepared six-module audio topology. Dynamic
-// modules and layout become a later session contract once their host behavior
-// and browser shell are both available.
+// Main sessions save the prepared six-module audio topology and its grid layout.
+// Module insertion and resizing still need matching host and browser behavior.
 export function validateMainRackInsertDocument(document, catalog) {
   const rack = validateRackDocument(document, catalog);
   if (rack.modules.length !== catalog.initial.modules.length ||
     rack.modules.some(module => {
       const original = catalog.initial.modules.find(item => item.id === module.id);
-      return !original || ['nodeId', 'type', 'row', 'col', 'w', 'h']
+      return !original || ['nodeId', 'type', 'w', 'h']
         .some(key => module[key] !== original[key]);
-    })) throw new Error('This Main session uses modules or layout that the current rack cannot display.');
+    })) throw new Error('This Main session uses modules or sizes that the current rack cannot display.');
   const stage = { oscillator: 0, filter: 1, fx1: 2, fx2: 3, eq: 4, __rackOutput: 5 };
   if (rack.connections.some(edge => edge.from.moduleId in stage && edge.to.moduleId in stage
     && stage[edge.from.moduleId] >= stage[edge.to.moduleId])) {

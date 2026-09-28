@@ -1,5 +1,5 @@
 import { compileMainRackInsert, validateMainRackInsertDocument } from '../state/main-rack-graph.js';
-import { initialRackDocument, replaceRackInput, disconnectRackInput,
+import { initialRackDocument, moveRackModule, replaceRackInput, disconnectRackInput,
   setRackViewMode } from '../state/rack-document.js';
 
 const SHELLS = {
@@ -16,7 +16,9 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
   let pending = false;
   let source = null;
   let drag = null;
+  let shellDrag = null;
   const portButtons = new Map();
+  const shells = new Map();
   const svg = document.createElementNS(NS, 'svg');
   svg.classList.add('main-rack-wires');
   svg.setAttribute('viewBox', '0 0 1280 460');
@@ -83,6 +85,52 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
   for (const module of rack.modules) {
     const shell = content.querySelector(SHELLS[module.id]);
     if (!shell) continue;
+    shells.set(module.id, shell);
+    const header = shell.querySelector('.rack-shell-head');
+    if (header && !readOnly) {
+      header.title = `Drag ${catalog.catalog[module.type].name} to another rack cell`;
+      header.addEventListener('pointerdown', event => {
+        if (event.button !== 0 || pending) return;
+        event.preventDefault();
+        const bounds = shell.getBoundingClientRect();
+        const scale = content.getBoundingClientRect().width / content.offsetWidth;
+        shellDrag = { id: event.pointerId, moduleId: module.id,
+          startX: event.clientX, startY: event.clientY,
+          offsetX: (event.clientX - bounds.left) / scale,
+          offsetY: (event.clientY - bounds.top) / scale };
+        header.setPointerCapture(event.pointerId);
+        shell.classList.add('rack-shell-moving');
+      });
+      header.addEventListener('pointermove', event => {
+        if (shellDrag?.id !== event.pointerId || shellDrag.moduleId !== module.id) return;
+        const scale = content.getBoundingClientRect().width / content.offsetWidth;
+        shell.style.transform = `translate(${(event.clientX - shellDrag.startX) / scale}px, ${(event.clientY - shellDrag.startY) / scale}px)`;
+        paintWires();
+      });
+      const finishDrag = (event, commit) => {
+        if (shellDrag?.id !== event.pointerId || shellDrag.moduleId !== module.id) return;
+        const current = shellDrag;
+        shellDrag = null;
+        shell.style.transform = '';
+        shell.classList.remove('rack-shell-moving');
+        if (commit && Math.hypot(event.clientX - current.startX, event.clientY - current.startY) > 4) {
+          const bounds = content.getBoundingClientRect();
+          const scale = bounds.width / content.offsetWidth;
+          const left = (event.clientX - bounds.left) / scale - current.offsetX;
+          const top = (event.clientY - bounds.top) / scale - current.offsetY;
+          const nextRow = Math.max(0, Math.round((top - 12) / catalog.grid.cellHeight));
+          const nextCol = Math.max(0, Math.round(left / catalog.grid.cellWidth));
+          try {
+            rack = validateMainRackInsertDocument(moveRackModule(rack, module.id,
+              nextRow, nextCol, catalog), catalog);
+            placeShells();
+          } catch (error) { onError(error.message); }
+        }
+        requestAnimationFrame(paintWires);
+      };
+      header.addEventListener('pointerup', event => finishDrag(event, true));
+      header.addEventListener('pointercancel', event => finishDrag(event, false));
+    }
     const face = document.createElement('div');
     face.className = 'main-patch-face';
     face.setAttribute('aria-label', `${catalog.catalog[module.type].name} patch ports`);
@@ -108,6 +156,23 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
   midiRail.className = 'main-patch-midi-rail';
   makePort('__midiInput', { id: 'voice', kind: 'voice' }, 'output', midiRail);
   content.append(midiRail);
+
+  function placeShells() {
+    const height = Math.max(460, ...rack.modules.map(module =>
+      12 + (module.row + module.h) * catalog.grid.cellHeight));
+    content.style.height = `${Math.max(2553, height)}px`;
+    svg.style.height = `${height}px`;
+    svg.setAttribute('viewBox', `0 0 1280 ${height}`);
+    for (const module of rack.modules) {
+      const shell = shells.get(module.id);
+      if (!shell) continue;
+      shell.style.position = 'absolute';
+      shell.style.left = `${module.col * catalog.grid.cellWidth}px`;
+      shell.style.top = `${module.row === 0 ? 25 : 12 + module.row * catalog.grid.cellHeight}px`;
+    }
+    requestAnimationFrame(paintWires);
+  }
+  placeShells();
 
   function anchor(button) {
     const bounds = button.getBoundingClientRect();
@@ -197,6 +262,7 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
         throw new Error('The Rust rack rejected the saved cables.');
       }
       rack = next;
+      placeShells();
       showMode();
     } finally { pending = false; }
   }

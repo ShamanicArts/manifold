@@ -110,6 +110,48 @@ export function placeRackModule(document, id, row, col, catalog) {
     module.id === id ? { ...module, row, col } : module) }, catalog);
 }
 
+// A drop swaps equal-sized neighbours or moves displaced modules to the next
+// free grid cells. The validated result is published as one layout transaction.
+export function moveRackModule(document, id, row, col, catalog) {
+  const moving = document.modules.find(module => module.id === id);
+  if (!moving) fail(`missing module ${id}`);
+  if (!isGridInt(row, 0) || !isGridInt(col, 0)
+    || row + moving.h > catalog.grid.maxRows
+    || col + moving.w > catalog.grid.columns) fail(`position for ${id}`);
+  const overlaps = (a, b) => a.row < b.row + b.h && b.row < a.row + a.h
+    && a.col < b.col + b.w && b.col < a.col + a.w;
+  const target = { ...moving, row, col };
+  const other = document.modules.filter(module => module.id !== id);
+  const touched = other.filter(module => overlaps(module, target));
+  if (touched.length === 1 && touched[0].w === moving.w && touched[0].h === moving.h
+    && !overlaps(target, { ...touched[0], row: moving.row, col: moving.col })) {
+    return validateRackDocument({ ...document, modules: document.modules.map(module =>
+      module.id === id ? target : module.id === touched[0].id
+        ? { ...module, row: moving.row, col: moving.col } : module) }, catalog);
+  }
+  const placed = [target];
+  const next = [target];
+  for (const module of other) {
+    let candidate = module;
+    if (placed.some(item => overlaps(item, candidate))) {
+      const start = module.row * catalog.grid.columns + module.col;
+      let found = false;
+      for (let cell = start; cell < catalog.grid.maxRows * catalog.grid.columns; cell++) {
+        candidate = { ...module, row: Math.floor(cell / catalog.grid.columns),
+          col: cell % catalog.grid.columns };
+        if (candidate.col + candidate.w <= catalog.grid.columns
+          && candidate.row + candidate.h <= catalog.grid.maxRows
+          && !placed.some(item => overlaps(item, candidate))) { found = true; break; }
+      }
+      if (!found) fail('rack has no free placement');
+    }
+    placed.push(candidate);
+    next.push(candidate);
+  }
+  return validateRackDocument({ ...document, modules: document.modules.map(module =>
+    next.find(item => item.id === module.id)) }, catalog);
+}
+
 export function resizeRackModule(document, id, w, h, catalog) {
   if (!document.modules.some((module) => module.id === id)) fail(`missing module ${id}`);
   return validateRackDocument({ ...document, modules: document.modules.map((module) =>

@@ -4,7 +4,7 @@ import catalog from '../../../projects/main-looper/rack.json' with { type: 'json
 import fixture from '../../../projects/main-looper/default-rack-graph.json' with { type: 'json' };
 import insertFixture from '../../../projects/main-looper/default-rack-insert.json' with { type: 'json' };
 import { initialRackDocument, addRackModule, connectRackPorts, disconnectRackInput,
-  replaceRackInput } from './rack-document.js';
+  moveRackModule, replaceRackInput } from './rack-document.js';
 import { compileMainRackAudio, compileMainRackInsert,
   validateMainRackInsertDocument } from './main-rack-graph.js';
 
@@ -18,6 +18,21 @@ test('Main v16 audio document accepts saved bypass but rejects backward prepared
   const backward = replaceRackInput(openFx1, { moduleId: 'eq', portId: 'out' },
     { moduleId: 'filter', portId: 'in' }, catalog);
   assert.throws(() => validateMainRackInsertDocument(backward, catalog), /prepared signal order/);
+});
+
+test('Main rack moves swap equal shells and reflow occupied cells without changing DSP edges', () => {
+  const original = initialRackDocument(catalog);
+  const swapped = moveRackModule(original, 'oscillator', 0, 3, catalog);
+  assert.deepEqual(swapped.modules.find(module => module.id === 'oscillator'),
+    { ...original.modules.find(module => module.id === 'oscillator'), col: 3 });
+  assert.equal(swapped.modules.find(module => module.id === 'filter').col, 1);
+  assert.deepEqual(compileMainRackInsert(swapped, catalog), compileMainRackInsert(original, catalog));
+  assert.deepEqual(validateMainRackInsertDocument(swapped, catalog), swapped);
+  const reflowed = moveRackModule(original, 'eq', 0, 1, catalog);
+  assert.ok(reflowed.modules.some(module => module.row > 1));
+  assert.deepEqual(validateMainRackInsertDocument(reflowed, catalog), reflowed);
+  assert.throws(() => moveRackModule(original, 'oscillator', 0, 4, catalog), /position/);
+  assert.deepEqual(original, initialRackDocument(catalog));
 });
 
 test('authored Main default compiles to the portable Graph host fixture', () => {

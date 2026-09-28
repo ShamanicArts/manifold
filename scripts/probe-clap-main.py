@@ -496,9 +496,23 @@ def main():
                 patch_ptr, c.byref(patched_sink))
             assert json.loads(patched_save)["rackDocument"]["connections"] == browser_patch["rackDocument"]["connections"]
             fn(patch.deactivate, None, c.c_void_p)(patch_ptr)
+            browser_layout = json.loads((ROOT / "web/public/main-rack-layout-saved-session.json").read_bytes())
+            layout_stream, keep_layout_read = read_stream(json.dumps(browser_layout).encode())
+            assert fn(patch_state.load, c.c_bool, c.c_void_p, c.POINTER(Stream))(
+                patch_ptr, c.byref(layout_stream))
+            assert fn(patch.activate, c.c_bool, c.c_void_p, c.c_double, c.c_uint32, c.c_uint32)(
+                patch_ptr, 48000., 1, 128)
+            assert fn(patch.start, c.c_bool, c.c_void_p)(patch_ptr)
+            render(patch_ptr, patch)
+            fn(patch.stop, None, c.c_void_p)(patch_ptr)
+            patched_save.clear()
+            assert fn(patch_state.save, c.c_bool, c.c_void_p, c.POINTER(Stream))(
+                patch_ptr, c.byref(patched_sink))
+            assert json.loads(patched_save)["rackDocument"]["modules"] == browser_layout["rackDocument"]["modules"]
+            fn(patch.deactivate, None, c.c_void_p)(patch_ptr)
         finally:
             fn(patch.destroy, None, c.c_void_p)(patch_ptr)
-        print("Main CLAP: packaged v16 state, browser Patch cable import/export, parameters, timed automation, First Loop, and sample-identical reopen passed.")
+        print("Main CLAP: packaged v16 state, browser Patch cable and shell layout import/export, parameters, timed automation, First Loop, and sample-identical reopen passed.")
     finally:
         fn(plugin.destroy, None, c.c_void_p)(plugin_ptr)
 
