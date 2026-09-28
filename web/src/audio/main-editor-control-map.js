@@ -47,5 +47,12 @@ export function mainEditorAction(message, project) {
     : null;
   if (type === 'lfo-gate') return integer(slot) && integer(id) && Number.isFinite(message.high)
     ? { kind: 'lfo-gate', slot, id, high: message.high } : null;
+  if (type === 'sample-capture') return integer(message.source) && message.source <= 4
+    && Number.isFinite(message.bars) && message.bars >= 0.0625 && message.bars <= 16
+    ? { kind: 'sample', action: 'retro', source: message.source, bars: message.bars } : null;
+  if (type === 'sample-free-start') return integer(message.source) && message.source <= 4
+    ? { kind: 'sample', action: 'free-start', source: message.source } : null;
+  if (type === 'sample-free-stop') return { kind: 'sample', action: 'free-stop' };
+  if (type === 'sample-free-cancel') return { kind: 'sample', action: 'free-cancel' };
   return null;
 }

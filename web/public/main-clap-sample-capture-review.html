@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Main native Sample capture · Manifold v2</title>
+  <style>
+    :root { font:15px/1.55 system-ui,sans-serif; color:#1d3028; background:#f4f5f0; --line:#c9d6cd; --green:#28624c; }
+    * { box-sizing:border-box; } body { margin:0; } main { max-width:1120px; margin:auto; padding:36px 22px 90px; }
+    header { border-top:3px solid var(--green); padding-top:12px; }
+    .eyebrow { font:11px ui-monospace,monospace; letter-spacing:.13em; text-transform:uppercase; color:#995d3c; }
+    h1,h2 { font-family:Georgia,serif; font-weight:400; line-height:1.12; }
+    h1 { font-size:clamp(38px,6vw,62px); margin:12px 0 18px; } h2 { font-size:27px; margin:0 0 10px; }
+    p { max-width:78ch; color:#395346; } a { color:var(--green); }
+    .actions { display:flex; flex-wrap:wrap; gap:10px; margin:22px 0 0; }
+    .actions a { display:inline-block; padding:10px 14px; border:1px solid var(--green); text-decoration:none; font-weight:600; }
+    .actions a:first-child { background:var(--green); color:white; }
+    section { border-top:1px solid var(--line); margin-top:30px; padding-top:20px; }
+    figure { margin:16px 0 0; padding:10px; border:1px solid var(--line); background:white; }
+    figure img { display:block; width:100%; height:auto; } figcaption { margin-top:7px; font-size:13px; color:#526458; }
+    table { border-collapse:collapse; width:100%; background:white; }
+    th,td { padding:10px 12px; border:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { background:#eaf0e9; font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
+    code { font:12px ui-monospace,monospace; }
+  </style>
+</head>
+<body><main>
+  <header>
+    <div class="eyebrow">Manifold v2 / original Main Source / native Sample</div>
+    <h1>The Main Sample controls<br>now reach native audio.</h1>
+    <p>The existing Source widget keeps its Live and L1–L4 sources, Retro and Free modes, Bars control, and Cap/STOP action. The packaged CLAP editor sends those gestures to the Rust Main engine. The audio callback freezes source PCM in prepared storage; a bounded mailbox moves it to the control thread for validation before the sample bank changes.</p>
+    <div class="actions"><a href="/main-looper.html">Open the playable Main looper →</a><a href="/main-clap-editor-surface-review.html">See the embedded Main editor</a></div>
+  </header>
+  <section>
+    <h2>The original Source face</h2>
+    <figure><img src="/main-clap-native-sample.png" alt="Original Main MidiSynth rack after the Source Cap widget captured and published live host input"><figcaption>Packaged CLAP editor in isolated Xwayland after a click on the original Source Cap. The cyan waveform is a newly captured 96,000-frame Live Sample from in-memory host input; the saved CLAP state contains its PCM. No desktop window or audio output was opened.</figcaption></figure>
+  </section>
+  <section>
+    <h2>What is proven</h2>
+    <table><thead><tr><th>Boundary</th><th>Observed result</th></tr></thead><tbody>
+      <tr><td>Original widget → CLAP</td><td>An isolated packaged-host probe clicks the original Source Cap in the child webview, drives in-memory audio blocks, observes native publication, and saves a 96,000-frame Sample. A CLAP IPC test independently checks a 6,000-frame Retro Live request; the muted browser probe checks Retro and Free actions and progress repaint.</td></tr>
+      <tr><td>Prepared audio transfer</td><td>Five preallocated capture rings retain dry Live and gated L1–L4 playback. The core freezes at most 4,096 stereo frames per host block, including blocks split by timed automation. Two prepared transfer chunks provide backpressure while the control thread assembles and validates PCM. The audio callback swaps a prepared shared source and retires the displaced PCM to the control thread.</td></tr>
+      <tr><td>Retro and Free behavior</td><td>A native signal test captures 1,000 recent Retro Live frames at 0.4 amplitude, then a separate 640-frame Free Live take at 0.7. A new MIDI note plays the Free sample while Main's looper runtime stays in place.</td></tr>
+      <tr><td>Portable state and cancellation</td><td>The same test saves the running Main session and reopens the 640-frame Sample with its peak unchanged. An accepted replacement session or editor close cancels a waiting capture; the audio owner releases it and accepts the next gesture.</td></tr>
+      <tr><td>Release build correction</td><td>The packaged probe exposed queue writes inside debug assertions. Those writes disappeared in the optimized CLAP build. They now execute unconditionally; the release-host click-through publishes and saves the Sample.</td></tr>
+      <tr><td>Remaining host gate</td><td>A real DAW click-through and real-device callback timing remain open. Session file actions are still disabled in the embedded editor, and Main VST3 has not yet been added.</td></tr>
+    </tbody></table>
+  </section>
+</main></body>
+</html>

@@ -130,7 +130,30 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    let probe_sample = if surface == Surface::Main {
+        std::env::var("MANIFOLD_MAIN_SAMPLE_PROBE").ok()
+    } else {
+        None
+    };
     gtk::glib::timeout_add_local(Duration::from_millis(16), move || {
+        if let Some(path) = probe_sample.as_deref() {
+            if Path::new(path).exists() {
+                let request = fs::read_to_string(path).unwrap_or_default();
+                let _ = fs::remove_file(path);
+                if request.trim() == "retro" {
+                    let _ = webview.evaluate_script(
+                        "document.querySelector('[data-main-tab=\"midisynth\"]')?.click(); document.getElementById('sample-cap')?.click();"
+                    );
+                } else if request.trim() == "free:start" {
+                    let _ = webview.evaluate_script(
+                        "document.querySelector('[data-main-tab=\"midisynth\"]')?.click(); document.getElementById('sample-mode')?.click(); document.getElementById('sample-cap')?.click();"
+                    );
+                } else if request.trim() == "free:stop" {
+                    let _ =
+                        webview.evaluate_script("document.getElementById('sample-cap')?.click();");
+                }
+            }
+        }
         if let Some(path) = probe_capture.as_deref() {
             if Path::new(path).exists() {
                 let request = fs::read_to_string(path).unwrap_or_default();
@@ -192,6 +215,16 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(data) = command.get("data") {
                         let _ = webview.evaluate_script(&format!(
                             "window.manifoldEditorLiveStatus?.({data});"
+                        ));
+                    }
+                }
+                Some("sample-update") => {
+                    if let Some(data) = command.get("data") {
+                        if let Some(path) = probe_sample.as_deref() {
+                            let _ = fs::write(format!("{path}.status"), data.to_string());
+                        }
+                        let _ = webview.evaluate_script(&format!(
+                            "window.manifoldEditorSampleUpdate?.({data});"
                         ));
                     }
                 }

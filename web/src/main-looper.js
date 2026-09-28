@@ -261,7 +261,7 @@ $('sample-cap').onclick = () => {
     return;
   }
   const source = Number($('sample-source-select').value);
-  if (source === 0 && $('source').value === 'none') { status('Choose a dry input before capturing a Live sample.'); return; }
+  if (!editorMode && source === 0 && $('source').value === 'none') { status('Choose a dry input before capturing a Live sample.'); return; }
   if (source > 0 && !latest?.layers[source - 1]?.length) { status(`Record or commit a loop into L${source} before sampling it.`); return; }
   if (sampleJob || transferJob) return;
   if (sampleMode === 1) {
@@ -861,7 +861,7 @@ function editorSnapshot(session) {
 }
 
 if (editorMode) {
-  for (const id of ['audio-button', 'save-session', 'open-session', 'sample-cap']) {
+  for (const id of ['audio-button', 'save-session', 'open-session']) {
     $(id).disabled = true;
   }
   document.querySelectorAll('[id^="lfo-reset"], [id^="lfo-sync"]').forEach(control => {
@@ -876,8 +876,39 @@ if (editorMode) {
         ? latest.layers[index].peaks : []),
     }));
     render({ ...latest, ...data, layers });
+    if (Number.isFinite(data.sampleFrames)) {
+      $('sample-length').textContent = `${Math.round(data.sampleFrames / data.sampleRate * 1000)}ms`;
+    }
     if (Number.isFinite(data.targetBpm) && document.activeElement !== $('target')) {
       $('target').value = Math.round(data.targetBpm);
+    }
+  };
+  window.manifoldEditorSampleUpdate = (data) => {
+    switch (data?.phase) {
+      case 'free-started':
+        status('Recording Free sample from the selected host source. Press STOP to capture.');
+        break;
+      case 'started':
+        status(`Freezing ${data.frames} frames for the Main Sample voice…`);
+        break;
+      case 'progress':
+        status(`Preparing Main Sample ${data.copied} / ${data.total} frames…`);
+        break;
+      case 'published':
+        sampleJob = null; freeSource = null; resetSampleCaptureUI();
+        $('sample-length').textContent = `${Math.round(data.frames / context.sampleRate * 1000)}ms`;
+        status('Main Sample captured. Play the keyboard to hear the new source.');
+        break;
+      case 'free-cancelled':
+        sampleJob = null; freeSource = null; resetSampleCaptureUI();
+        status('Free Sample recording cancelled.');
+        break;
+      case 'rejected':
+        sampleJob = null; freeSource = null; resetSampleCaptureUI();
+        status('Main Sample capture was rejected by the native host.');
+        break;
+      default:
+        break;
     }
   };
   window.manifoldEditorReceive = (session) => {
@@ -889,6 +920,7 @@ if (editorMode) {
     }
     applyingEditorState = true;
     try {
+      sampleJob = null; freeSource = null; resetSampleCaptureUI();
       context = { sampleRate: session.sampleRate };
       processor = { port: { postMessage: () => {} } };
       restoreRack(session.rack);

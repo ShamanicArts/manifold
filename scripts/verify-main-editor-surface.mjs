@@ -79,7 +79,27 @@ try {
   assert.equal(await page.locator('.layer[data-layer="2"] .state').textContent(), 'Recording');
   assert.equal(await page.locator('#tempo').inputValue(), '127');
   assert.equal(await page.locator('#audio-button').isDisabled(), true);
-  assert.equal(await page.locator('#sample-cap').isDisabled(), true);
+  assert.equal(await page.locator('#sample-cap').isDisabled(), false);
+  await page.evaluate(() => document.getElementById('sample-cap').click());
+  assert.ok((await page.evaluate(() => window.__nativeActions)).some(action =>
+    action.kind === 'sample' && action.action === 'retro' && action.source === 0));
+  await page.evaluate(() => window.manifoldEditorSampleUpdate({ phase: 'published', frames: 24000 }));
+  assert.equal(await page.locator('#sample-length').textContent(), '500ms');
+  assert.equal(await page.locator('#sample-cap').isDisabled(), false);
+  await page.locator('[data-main-tab="midisynth"]').click();
+  await page.locator('[data-source-tab="sample"]').click();
+  const sampleBefore = await page.locator('#source-graph').evaluate(canvas => canvas.toDataURL());
+  await page.evaluate(() => window.manifoldEditorLiveStatus({
+    tempo: 127, targetBpm: 120, active: 2, mode: 0,
+    recording: false, overdub: false, forwardBars: 0,
+    captured: 128, sampleRate: 48000, sampleFrames: 24000,
+    samplePeaks: Array.from({ length: 128 }, (_, bin) => bin < 64 ? 0.7 : 0.2),
+    layers: Array.from({ length: 4 }, () => ({
+      state: 0, length: 0, position: 0, bars: 0,
+      pending: 0, volume: 1, speed: 1, muted: false, playing: false,
+    })),
+  }));
+  assert.notEqual(await page.locator('#source-graph').evaluate(canvas => canvas.toDataURL()), sampleBefore);
   assert.deepEqual(errors, []);
   console.log('Original Main surface restored Rust presentation, repainted live layer/capture peaks, and routed controls without WebAudio.');
 } finally {

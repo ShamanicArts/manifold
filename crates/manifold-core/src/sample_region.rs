@@ -13,6 +13,18 @@ pub struct ValidatedStereo {
     source_rate: f32,
 }
 
+/// Allocation and finite-value validation completed on a control thread.
+/// The audio thread may clone this Arc without allocating or scanning PCM.
+pub struct PreparedStereo {
+    stereo: Arc<Vec<f32>>,
+    source_rate: f32,
+}
+
+/// Keep the displaced source alive until a control thread can drop it.
+pub struct RetiredStereo {
+    stereo: Arc<Vec<f32>>,
+}
+
 impl ValidatedStereo {
     pub fn from_stereo(stereo: Vec<f32>, source_rate: f32) -> Option<Self> {
         if !valid_shape(stereo.len(), source_rate)
@@ -24,6 +36,19 @@ impl ValidatedStereo {
             stereo,
             source_rate,
         })
+    }
+
+    pub fn prepare(self) -> PreparedStereo {
+        PreparedStereo {
+            stereo: Arc::new(self.stereo),
+            source_rate: self.source_rate,
+        }
+    }
+}
+
+impl RetiredStereo {
+    pub fn frames(&self) -> usize {
+        self.stereo.len() / 2
     }
 }
 
@@ -174,6 +199,14 @@ impl SampleRegion {
         self.source_rate = source.source_rate;
         self.playing = false;
         self.position = 0.0;
+    }
+
+    pub(crate) fn replace_prepared(&mut self, source: &PreparedStereo) -> RetiredStereo {
+        let old = std::mem::replace(&mut self.stereo, Arc::clone(&source.stereo));
+        self.source_rate = source.source_rate;
+        self.playing = false;
+        self.position = 0.0;
+        RetiredStereo { stereo: old }
     }
 
     pub fn set_parameter(&mut self, id: u32, value: f32) -> bool {

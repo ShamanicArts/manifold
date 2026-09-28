@@ -44,6 +44,7 @@ use manifold_native::main_instrument::{
     MainHostAudioBlock, MainHostEvent, MainHostEventKind, valid_main_command,
 };
 use manifold_native::main_presentation::compact_main_presentation;
+use manifold_native::main_sample_handoff::SampleUpdate;
 use manifold_native::main_session::{default_main_session, prepare_main_session};
 use manifold_native::main_session_export::save_template;
 
@@ -86,6 +87,7 @@ pub(crate) struct Instance {
     status_values: [AtomicU32; STATUS_COUNT],
     status_epoch: AtomicU64,
     status_runtime_generation: AtomicU64,
+    sample_frames: AtomicU32,
     visual: MainVisualBank,
     active: AtomicBool,
     processing: AtomicBool,
@@ -99,6 +101,58 @@ pub(crate) struct Instance {
 unsafe impl Sync for Instance {}
 
 impl Instance {
+    pub(crate) fn cancel_sample_capture(&self) {
+        if let Ok(mut slot) = self.control.lock() {
+            if let Some(control) = slot.as_mut() {
+                control.cancel_sample_capture();
+            }
+        }
+    }
+
+    pub(crate) fn sample_action(&self, action: &str, source: usize, bars: f32) -> bool {
+        if !self.active.load(Ordering::Acquire) || !self.processing.load(Ordering::Acquire) {
+            return false;
+        }
+        let Ok(mut slot) = self.control.lock() else {
+            return false;
+        };
+        let Some(control) = slot.as_mut() else {
+            return false;
+        };
+        let accepted = match action {
+            "retro" => control.request_retro_sample(source, bars),
+            "free-start" => control.start_free_sample(source),
+            "free-stop" => control.finish_free_sample(),
+            "free-cancel" => control.cancel_free_sample(),
+            _ => false,
+        };
+        if accepted && !self.host.is_null() {
+            if let Some(request) = unsafe { (*self.host).request_process } {
+                unsafe { request(self.host) };
+            }
+        }
+        accepted
+    }
+
+    pub(crate) fn poll_sample_updates(&self) -> Vec<SampleUpdate> {
+        let Ok(mut slot) = self.control.try_lock() else {
+            return Vec::new();
+        };
+        let Some(control) = slot.as_mut() else {
+            return Vec::new();
+        };
+        let updates = control.poll_sample();
+        if updates.iter().any(
+            |update| matches!(update, SampleUpdate::Progress { copied, total } if copied == total),
+        ) && !self.host.is_null()
+        {
+            if let Some(request) = unsafe { (*self.host).request_process } {
+                unsafe { request(self.host) };
+            }
+        }
+        updates
+    }
+
     pub(crate) fn enqueue_ui_action(&self, kind: MainHostEventKind) -> bool {
         if !self.active.load(Ordering::Acquire)
             || self
@@ -130,6 +184,8 @@ impl Instance {
         }
         self.status_runtime_generation
             .store(audio.generation(), Ordering::SeqCst);
+        self.sample_frames
+            .store(audio.synth_sample_frames() as u32, Ordering::SeqCst);
         self.status_epoch.fetch_add(1, Ordering::SeqCst);
         self.visual.publish_job(audio);
     }
@@ -145,6 +201,7 @@ impl Instance {
                 *destination = f32::from_bits(self.status_values[index].load(Ordering::SeqCst));
             }
             let runtime_generation = self.status_runtime_generation.load(Ordering::SeqCst);
+            let sample_frames = self.sample_frames.load(Ordering::SeqCst) as usize;
             if self.status_epoch.load(Ordering::SeqCst) == before {
                 let field = |id: usize, layer: usize| values[layer * STATUS_FIELDS + id];
                 let mut layers: Vec<_> = (0..4)
@@ -164,6 +221,7 @@ impl Instance {
                     "recording": field(3, 0) >= 0.5, "overdub": field(4, 0) >= 0.5,
                     "forwardBars": field(5, 0), "captured": field(12, active.min(3)),
                     "sampleRate": field(19, 0), "targetBpm": field(17, 0),
+                    "sampleFrames": sample_frames,
                 });
                 if let Some(visual) = self
                     .visual
@@ -177,6 +235,9 @@ impl Instance {
                     }
                     if visual.active == active {
                         result["segments"] = serde_json::json!(visual.segments);
+                    }
+                    if visual.sample_frames == sample_frames {
+                        result["samplePeaks"] = serde_json::json!(visual.sample_peaks);
                     }
                 }
                 result["layers"] = serde_json::json!(layers);
@@ -278,6 +339,7 @@ impl Instance {
             status_values: std::array::from_fn(|_| AtomicU32::new(0)),
             status_epoch: AtomicU64::new(0),
             status_runtime_generation: AtomicU64::new(0),
+            sample_frames: AtomicU32::new(0),
             visual: MainVisualBank::new(),
             active: AtomicBool::new(false),
             processing: AtomicBool::new(false),
@@ -624,7 +686,10 @@ unsafe extern "C" fn init(plugin: *const clap_plugin) -> bool {
 unsafe extern "C" fn destroy(plugin: *const clap_plugin) {
     if let Some(instance) = unsafe { get(plugin) } {
         #[cfg(target_os = "linux")]
-        instance.gui.stop();
+        {
+            instance.cancel_sample_capture();
+            instance.gui.stop();
+        }
         instance.deactivate();
         unsafe { drop(Box::from_raw(instance as *const Instance as *mut Instance)) };
     }

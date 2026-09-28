@@ -13,7 +13,7 @@ use crate::main_looper::MainLooper;
 use crate::main_range_mapper::MainRangeMapper;
 use crate::main_sample_capture::MainSampleCapture;
 use crate::main_voice_bank::MainVoiceBank;
-use crate::sample_region::ValidatedStereo;
+use crate::sample_region::{PreparedStereo, RetiredStereo, ValidatedStereo};
 
 pub const MAIN_LFO_SLOTS: usize = 4;
 
@@ -743,6 +743,12 @@ impl MainInstrument {
         self.synth.load_validated(sample);
     }
 
+    /// Native hosts publish a fully prepared replacement on the audio owner.
+    /// The returned source must be retired on the control thread.
+    pub fn publish_prepared_sample(&mut self, sample: &PreparedStereo) -> RetiredStereo {
+        self.synth.publish_prepared(sample)
+    }
+
     pub fn clear_sample_source(&mut self) {
         self.synth.clear_sample();
     }
@@ -768,6 +774,17 @@ impl MainInstrument {
     }
 
     pub fn process(&mut self, dry: [&[f32]; 2], output: [&mut [f32]; 2]) {
+        self.process_with_sample_copy(dry, output, true);
+    }
+
+    /// Native hosts split a block at timed actions. Copy the frozen Sample
+    /// window on only one segment so 4,096 frames remains the block bound.
+    pub fn process_with_sample_copy(
+        &mut self,
+        dry: [&[f32]; 2],
+        output: [&mut [f32]; 2],
+        copy_snapshot: bool,
+    ) {
         let frames = dry[0].len();
         assert_eq!(dry[1].len(), frames);
         assert!(frames <= self.synth_left.len());
@@ -891,7 +908,8 @@ impl MainInstrument {
             output,
             Some(&mut self.layer_taps),
         );
-        self.sample_capture.process(dry, &self.layer_taps);
+        self.sample_capture
+            .process_with_copy(dry, &self.layer_taps, copy_snapshot);
     }
 }
 
@@ -1188,6 +1206,20 @@ mod tests {
         });
         main.process([&silence, &silence], [&mut left, &mut right]);
         assert!(left.iter().any(|sample| sample.abs() > 0.001));
+    }
+
+    #[test]
+    fn prepared_sample_swap_keeps_displaced_pcm_alive_for_control_retirement() {
+        let mut main = MainInstrument::new(8_000.0, 128);
+        main.load_validated_sample(ValidatedStereo::from_stereo(vec![0.25; 256], 8_000.0).unwrap());
+        let next = ValidatedStereo::from_stereo(vec![0.7; 512], 8_000.0)
+            .unwrap()
+            .prepare();
+        let retired = main.publish_prepared_sample(&next);
+        assert_eq!(retired.frames(), 128);
+        assert_eq!(main.synth_sample_frames(), 256);
+        assert!((main.synth_sample_peak(0, 256) - 0.7).abs() < 1e-6);
+        drop(retired);
     }
 
     #[test]

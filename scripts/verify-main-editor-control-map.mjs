@@ -26,6 +26,13 @@ for (const [type, base] of Object.entries({
 }
 assert.deepEqual(map({ type: 'command', id: project.commands.record, value: 0 }),
   { kind: 'command', id: 0, value: 0 });
+assert.deepEqual(map({ type: 'sample-capture', source: 0, bars: 0.5 }),
+  { kind: 'sample', action: 'retro', source: 0, bars: 0.5 });
+assert.deepEqual(map({ type: 'sample-free-start', source: 4 }),
+  { kind: 'sample', action: 'free-start', source: 4 });
+assert.deepEqual(map({ type: 'sample-free-stop' }),
+  { kind: 'sample', action: 'free-stop' });
+assert.equal(map({ type: 'sample-capture', source: 5, bars: 1 }), null);
 assert.equal(map({ type: 'layer-control', layer: 4, id: 0, value: 1 }), null);
 assert.equal(map({ type: 'synth-parameter', id: 15, value: Number.NaN }), null);
 console.log('Original Main widget messages map to authored native host IDs.');

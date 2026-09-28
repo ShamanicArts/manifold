@@ -8,6 +8,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use clap_sys::ext::gui::{CLAP_WINDOW_API_X11, clap_plugin_gui, clap_window};
 use clap_sys::host::clap_host;
@@ -15,6 +16,7 @@ use clap_sys::plugin::clap_plugin;
 use manifold_core::events::EventKind;
 use manifold_native::main_host_parameters::MainParameter;
 use manifold_native::main_instrument::{MainHostEventKind, valid_main_command};
+use manifold_native::main_sample_handoff::SampleUpdate;
 
 use crate::instance::PLUGIN_PATH;
 use crate::main_product::{Instance, get};
@@ -25,6 +27,7 @@ const HEIGHT: u32 = 780;
 struct Session {
     child: Child,
     reader: Option<JoinHandle<()>>,
+    monitor: Option<JoinHandle<()>>,
 }
 
 impl Session {
@@ -41,6 +44,9 @@ impl Session {
         let _ = self.child.wait();
         if let Some(reader) = self.reader.take() {
             let _ = reader.join();
+        }
+        if let Some(monitor) = self.monitor.take() {
+            let _ = monitor.join();
         }
     }
 }
@@ -103,10 +109,9 @@ impl GuiState {
         self.ready.store(false, Ordering::Release);
         self.loaded.store(false, Ordering::Release);
         self.refresh.store(false, Ordering::Release);
-        if let Ok(mut session) = self.session.lock() {
-            if let Some(session) = session.take() {
-                session.stop();
-            }
+        let session = self.session.lock().ok().and_then(|mut slot| slot.take());
+        if let Some(session) = session {
+            session.stop();
         }
     }
 }
@@ -125,6 +130,24 @@ fn bundle() -> Option<(PathBuf, PathBuf)> {
     let binary = directory.join("ManifoldFX-editor");
     let assets = directory.join("assets");
     (binary.is_file() && assets.join("main-looper.html").is_file()).then_some((binary, assets))
+}
+
+fn sample_message(update: SampleUpdate) -> String {
+    let data = match update {
+        SampleUpdate::Started { frames } => {
+            serde_json::json!({ "phase": "started", "frames": frames })
+        }
+        SampleUpdate::FreeStarted => serde_json::json!({ "phase": "free-started" }),
+        SampleUpdate::FreeCancelled => serde_json::json!({ "phase": "free-cancelled" }),
+        SampleUpdate::Progress { copied, total } => {
+            serde_json::json!({ "phase": "progress", "copied": copied, "total": total })
+        }
+        SampleUpdate::Published { frames } => {
+            serde_json::json!({ "phase": "published", "frames": frames })
+        }
+        SampleUpdate::Rejected => serde_json::json!({ "phase": "rejected" }),
+    };
+    serde_json::json!({ "kind": "sample-update", "data": data }).to_string()
 }
 
 fn receive(instance: &Instance, reader: impl BufRead) {
@@ -201,6 +224,19 @@ fn receive(instance: &Instance, reader: impl BufRead) {
                     let _ = instance.gui.command(&message.to_string());
                 }
             }
+            Some("sample") => {
+                let action = message["action"].as_str().unwrap_or("");
+                let source = message["source"].as_u64().unwrap_or(0);
+                let bars = message["bars"].as_f64().unwrap_or(0.0) as f32;
+                let accepted = usize::try_from(source)
+                    .ok()
+                    .is_some_and(|source| instance.sample_action(action, source, bars));
+                if !accepted {
+                    let _ = instance
+                        .gui
+                        .command(&sample_message(SampleUpdate::Rejected));
+                }
+            }
             _ => {}
         }
     }
@@ -267,6 +303,7 @@ unsafe extern "C" fn create(
 
 unsafe extern "C" fn destroy(plugin: *const clap_plugin) {
     if let Some(instance) = unsafe { get(plugin) } {
+        instance.cancel_sample_capture();
         instance.gui.stop();
     }
 }
@@ -343,9 +380,19 @@ unsafe extern "C" fn parent(plugin: *const clap_plugin, window: *const clap_wind
         let instance = unsafe { &*(address as *const Instance) };
         receive(instance, BufReader::new(stdout));
     });
+    let monitor = std::thread::spawn(move || {
+        let instance = unsafe { &*(address as *const Instance) };
+        while instance.gui.created.load(Ordering::Acquire) {
+            for update in instance.poll_sample_updates() {
+                let _ = instance.gui.command(&sample_message(update));
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    });
     *session = Some(Session {
         child,
         reader: Some(reader),
+        monitor: Some(monitor),
     });
     true
 }
@@ -385,6 +432,31 @@ mod tests {
         assert_eq!(status["active"], 2);
         assert_eq!(status["recording"], true);
         assert_eq!(status["layers"][2]["state"], 2.0);
+        unsafe { (instance.plugin.deactivate.unwrap())(plugin) };
+    }
+
+    #[test]
+    fn original_sample_widget_ipc_requests_native_capture() {
+        let instance = Instance::new(null(), null());
+        let plugin = &instance.plugin as *const clap_plugin;
+        assert!(unsafe { (instance.plugin.activate.unwrap())(plugin, 48_000.0, 1, 128) });
+        assert!(unsafe { (instance.plugin.start_processing.unwrap())(plugin) });
+        receive(
+            &instance,
+            Cursor::new(
+                "{\"version\":1,\"kind\":\"sample\",\"action\":\"retro\",\"source\":0,\"bars\":0.0625}\n",
+            ),
+        );
+        let params = unsafe {
+            &*((instance.plugin.get_extension.unwrap())(plugin, CLAP_EXT_PARAMS.as_ptr())
+                as *const clap_plugin_params)
+        };
+        unsafe { (params.flush.unwrap())(plugin, null(), null()) };
+        assert_eq!(
+            instance.poll_sample_updates(),
+            vec![SampleUpdate::Started { frames: 6000 }]
+        );
+        unsafe { (instance.plugin.stop_processing.unwrap())(plugin) };
         unsafe { (instance.plugin.deactivate.unwrap())(plugin) };
     }
 }

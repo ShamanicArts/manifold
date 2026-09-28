@@ -29,7 +29,7 @@
     <div class="eyebrow">Manifold v2 / original Main surface / native editor bridge</div>
     <h1>The Main widgets can now<br>face the native host.</h1>
     <p>This is the existing four-layer Main looper page and its real widget modules, opened in the packaged CLAP child editor. Rust derives compact session presentation with complete rack controls and 128 ordered peak bins per audio asset, while PCM stays outside the webview. Widget gestures reach the native Main runtime; bounded live status and visual banks update the transport, layers, waveforms, and retrospective capture strips.</p>
-    <div class="actions"><a href="/main-looper.html">Open the playable Main looper →</a><a href="/main-clap-host-review.html">Review the loadable CLAP processor</a></div>
+    <div class="actions"><a href="/main-looper.html">Open the playable Main looper →</a><a href="/main-clap-sample-capture-review.html">Review native Sample capture</a><a href="/main-clap-host-review.html">Review the loadable CLAP processor</a></div>
   </header>
   <section>
     <h2>The rendered surface</h2>
@@ -45,8 +45,9 @@
       <tr><td>Widgets → stable IDs</td><td>Mode sends host ID 1, Active Layer sends ID 0, and Record sends separate command ID 0. The mapper covers the synth, four LFO slots, both effects, EQ, utilities, and voice stages.</td></tr>
       <tr><td>CLAP GUI contract</td><td>The packaged Main class advertises an X11 child editor at 1280 × 780. A separate host process creates, mounts, shows, captures, and destroys the webview in isolated Xwayland. It observes editor-ready and state-applied callbacks. A Rust IPC test routes widget messages into the actual Main audio queue.</td></tr>
       <tr><td>Audio separation</td><td>The editor probe replaces <code>AudioContext</code> with a throwing stub. Session display, live-status repaint, and gestures pass without creating browser audio. The Rust callback publishes 80 scalar status values; the webview polls at 10 Hz.</td></tr>
-      <tr><td>Live visual data</td><td>The audio owner computes one 128-bin layer or capture-strip job per block into a double-buffered atomic bank. The editor reads only completed 13-job frames. A signal test checks old-to-new capture orientation and a new First Loop waveform; the isolated host capture shows both in the actual webview.</td></tr>
-      <tr><td>Current boundary</td><td>The embedded window still needs a direct DAW test. Native Sample capture and session file actions need editor paths; the live visual bank's callback cost needs real-device measurement. DAW gesture begin/end messages remain open.</td></tr>
+      <tr><td>Live visual data</td><td>The audio owner computes one 128-bin layer, capture-strip, or Sample job per block into a double-buffered atomic bank. The editor reads only completed 14-job frames. A signal test checks old-to-new capture orientation and a new First Loop waveform; the isolated host capture shows both in the actual webview.</td></tr>
+      <tr><td>Main Sample capture</td><td>The original Source Retro/Free controls now reach native capture and prepared Sample publication. A packaged release-host probe clicks Source Cap in the actual child webview and saves a new 96,000-frame Sample. Native tests also prove PCM playback and state reopen. <a href="/main-clap-sample-capture-review.html">See the Sample checkpoint and screenshot.</a></td></tr>
+      <tr><td>Current boundary</td><td>The embedded window still needs a direct DAW test. Session file actions need editor paths; the live visual bank's callback cost needs real-device measurement. DAW gesture begin/end messages remain open.</td></tr>
     </tbody></table>
   </section>
 </main></body>

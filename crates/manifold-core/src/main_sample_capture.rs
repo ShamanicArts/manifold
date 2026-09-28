@@ -140,10 +140,19 @@ impl MainSampleCapture {
     }
 
     pub fn process(&mut self, input: [&[f32]; 2], layer_taps: &[Vec<f32>; LAYERS]) {
+        self.process_with_copy(input, layer_taps, true);
+    }
+
+    pub fn process_with_copy(
+        &mut self,
+        input: [&[f32]; 2],
+        layer_taps: &[Vec<f32>; LAYERS],
+        copy_snapshot: bool,
+    ) {
         let [left, right] = input;
         assert_eq!(left.len(), right.len());
         let capacity = self.capacity();
-        if let Some(job) = self.snapshot.as_mut() {
+        if let Some(job) = self.snapshot.as_mut().filter(|_| copy_snapshot) {
             let count = (job.frames - job.copied).min(COPY_PER_BLOCK);
             let ring = &self.rings[job.source];
             for frame in 0..count {

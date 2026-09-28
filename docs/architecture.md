@@ -112,9 +112,14 @@ commands. It queues editor gestures at the next audio block start without
 turning momentary record/stop/clear actions into persistent parameter values.
 The packaged host probe has recorded a First Loop take from stereo input,
 heard its committed playback, and saved it. The original browser Main surface
-now calls this command bridge through the child editor. Its embedded DAW-window
-appearance and live capture waveform still need direct host verification;
-standard DAW transport/command mapping remains open.
+now calls this command bridge through the child editor. An isolated Xwayland
+host has mounted and captured the actual child editor with live layer and
+retrospective waveforms. The original Source Sample controls also reach a
+native capture mailbox: prepared chunks transfer frozen Retro or Free PCM to
+the control thread, which validates a replacement before the audio owner swaps
+its shared source pointer. The displaced PCM is retired off the callback.
+Direct DAW interaction, callback timing on a real device, and standard DAW
+transport/command mapping remain open.
 The [native editor boundary](native-editor-plan.md) records the exact widget
 reuse, CLAP GUI lifecycle, and proposed browser process bridge.
 

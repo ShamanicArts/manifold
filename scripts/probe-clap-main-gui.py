@@ -57,6 +57,7 @@ def main():
     parser.add_argument("--session", type=Path, default=ROOT / "web/public/main-native-saved-session.json")
     parser.add_argument("--screenshot", type=Path, help="Capture the mounted editor from isolated Xwayland")
     parser.add_argument("--exercise-live", action="store_true", help="Record First Loop through in-memory host blocks")
+    parser.add_argument("--exercise-sample", action="store_true", help="Click the original Source Cap and capture native Retro Live audio")
     args = parser.parse_args()
     module = args.module.resolve()
     with tempfile.TemporaryDirectory(prefix="manifold-headless-") as directory:
@@ -68,6 +69,9 @@ def main():
         x11 = None
         try:
             weston, display_name = headless_display(directory, args.weston)
+            sample_probe = Path(directory) / "main-sample-request"
+            if args.exercise_sample:
+                os.environ["MANIFOLD_MAIN_SAMPLE_PROBE"] = str(sample_probe)
             os.environ["XDG_RUNTIME_DIR"] = directory
             os.environ["WAYLAND_DISPLAY"] = "manifold-headless"
             os.environ["DISPLAY"] = display_name
@@ -110,6 +114,10 @@ def main():
                 plugin_ptr, c.byref(source))
             assert probe.fn(plugin.activate, c.c_bool, c.c_void_p, c.c_double, c.c_uint32, c.c_uint32)(
                 plugin_ptr, 48000., 1, 128)
+            if args.exercise_sample:
+                assert probe.fn(plugin.start, c.c_bool, c.c_void_p)(plugin_ptr)
+                for _ in range(800):
+                    probe.render(plugin_ptr, plugin, input_value=0.4)
             gui_ptr = probe.fn(plugin.get_extension, c.c_void_p, c.c_void_p, c.c_char_p)(plugin_ptr, b"clap.gui")
             assert gui_ptr
             gui = c.cast(gui_ptr, c.POINTER(probe.Gui)).contents
@@ -129,6 +137,48 @@ def main():
                     break
                 time.sleep(0.05)
             assert callbacks[0] >= 2, "Main webview did not acknowledge the Rust presentation"
+            if args.exercise_sample:
+                sample_probe.write_text("retro")
+                status_path = Path(f"{sample_probe}.status")
+                sample_status = None
+                deadline = time.monotonic() + 15
+                while time.monotonic() < deadline:
+                    probe.render(plugin_ptr, plugin, input_value=0.4)
+                    if callbacks[0] > handled:
+                        handled = callbacks[0]
+                        probe.fn(plugin.main, None, c.c_void_p)(plugin_ptr)
+                    if status_path.exists():
+                        try:
+                            sample_status = json.loads(status_path.read_text())
+                        except json.JSONDecodeError:
+                            pass  # the editor may be writing the next status
+                        if sample_status and sample_status.get("phase") in ("published", "rejected"):
+                            break
+                    time.sleep(0.002)
+                assert sample_status and sample_status.get("phase") == "published", (
+                    f"Source Cap did not publish a native Sample: {sample_status}")
+                probe.fn(plugin.stop, None, c.c_void_p)(plugin_ptr)
+                saved = bytearray()
+
+                @c.CFUNCTYPE(c.c_int64, c.c_void_p, c.c_void_p, c.c_uint64)
+                def write_sample_state(_stream, data, size):
+                    saved.extend(c.string_at(data, size))
+                    return size
+
+                sink = probe.Stream(None, c.cast(write_sample_state, c.c_void_p))
+                assert probe.fn(state.save, c.c_bool, c.c_void_p, c.POINTER(probe.Stream))(
+                    plugin_ptr, c.byref(sink))
+                document = json.loads(saved)
+                assert document["sample"]["frames"] == 96000, (
+                    f"Source Cap saved {document['sample']['frames']} frames, expected one bar")
+                assert document["sample"]["pcmF32Base64"], "Source Cap saved no PCM"
+                settle = time.monotonic() + 0.7
+                while time.monotonic() < settle:
+                    if callbacks[0] > handled:
+                        handled = callbacks[0]
+                        probe.fn(plugin.main, None, c.c_void_p)(plugin_ptr)
+                    time.sleep(0.02)
+                print(f"Original Source Cap published and saved {document['sample']['frames']} native frames.")
             if args.exercise_live:
                 assert probe.fn(plugin.start, c.c_bool, c.c_void_p)(plugin_ptr)
                 command_ptr = probe.fn(plugin.get_extension, c.c_void_p, c.c_void_p, c.c_char_p)(

@@ -222,9 +222,10 @@ impl MainNativeProcessor {
         let [input_left, input_right] =
             input.unwrap_or([&self.silence[..frames], &self.silence[..frames]]);
         let mut cursor = 0;
+        let mut copy_sample = true;
         for action in actions {
             if cursor < action.offset {
-                self.instrument.process(
+                self.instrument.process_with_sample_copy(
                     [
                         &input_left[cursor..action.offset],
                         &input_right[cursor..action.offset],
@@ -233,7 +234,9 @@ impl MainNativeProcessor {
                         &mut left[cursor..action.offset],
                         &mut right[cursor..action.offset],
                     ],
+                    copy_sample,
                 );
+                copy_sample = false;
             }
             match action.kind {
                 MainHostEventKind::Midi(event) => self.instrument.synth_event(event),
@@ -307,9 +310,10 @@ impl MainNativeProcessor {
             cursor = action.offset;
         }
         if cursor < frames {
-            self.instrument.process(
+            self.instrument.process_with_sample_copy(
                 [&input_left[cursor..frames], &input_right[cursor..frames]],
                 [&mut left[cursor..frames], &mut right[cursor..frames]],
+                copy_sample,
             );
         }
         Ok(())

@@ -18,7 +18,7 @@ use crate::oscillator::Oscillator;
 use crate::phase_vocoder::PhaseVocoder;
 use crate::phrase_gain::PhraseGain;
 use crate::ring_modulator::RingModulator;
-use crate::sample_region::{SampleRegion, ValidatedStereo};
+use crate::sample_region::{PreparedStereo, RetiredStereo, SampleRegion, ValidatedStereo};
 use crate::sine_bank::{DEFAULTS as SINE_DEFAULTS, PartialSet, SineBank};
 use crate::spectral_targets::{
     AddFlavor, MorphRecipe, SpectralShape, prepare_add_target, prepare_morph_target,
@@ -215,6 +215,21 @@ impl MainVoiceBank {
         self.temporal_source_frames.clear();
         self.temporal_recipe = None;
         self.panic();
+    }
+
+    /// Swap a control-prepared source at a block boundary and return the old
+    /// shared PCM for destruction by the host control thread.
+    pub fn publish_prepared(&mut self, source: &PreparedStereo) -> RetiredStereo {
+        let old = self.voices[0].player.replace_prepared(source);
+        let (first, remaining) = self.voices.split_at_mut(1);
+        for voice in remaining {
+            voice.player.share_sample_from(&first[0].player);
+        }
+        self.temporal_source_targets.clear();
+        self.temporal_source_frames.clear();
+        self.temporal_recipe = None;
+        self.panic();
+        old
     }
 
     pub fn clear_sample(&mut self) {

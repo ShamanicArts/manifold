@@ -15,6 +15,7 @@ use crate::NativeError;
 use crate::main_instrument::{
     MainAudioBlock, MainHostAudioBlock, MainHostEventKind, MainNativeProcessor,
 };
+use crate::main_sample_handoff::{self, SampleAudio, SampleControl, SampleUpdate};
 use crate::main_session::{MainSessionError, default_main_session, prepare_main_session};
 use crate::main_session_export::{MainExportError, export_main_session, save_template};
 use crate::main_snapshot::{
@@ -54,6 +55,7 @@ pub struct MainAudioRuntime {
     current: Box<Prepared>,
     exchange: Arc<Exchange>,
     snapshot: SnapshotAudio,
+    sample: SampleAudio,
 }
 
 pub struct MainControl {
@@ -62,6 +64,7 @@ pub struct MainControl {
     sample_rate: f32,
     max_frames: usize,
     snapshot: SnapshotControl,
+    sample: SampleControl,
     templates: BTreeMap<u64, serde_json::Value>,
 }
 
@@ -92,6 +95,21 @@ impl MainAudioRuntime {
             .instrument()
             .looper()
             .recorded_frames(layer)
+    }
+
+    pub fn synth_sample_frames(&self) -> usize {
+        self.current.processor.instrument().synth_sample_frames()
+    }
+
+    pub fn synth_sample_peak(&self, start: usize, end: usize) -> f32 {
+        self.current
+            .processor
+            .instrument()
+            .synth_sample_peak(start, end)
+    }
+
+    pub fn sample_capture_progress(&self) -> (usize, usize) {
+        self.current.processor.instrument().sample_progress()
     }
 
     /// Host reset while processing is suspended; prepared PCM and controls stay.
@@ -132,6 +150,7 @@ impl MainAudioRuntime {
             published: AtomicU64::new(0),
         });
         let (snapshot_audio, snapshot_control) = main_snapshot::prepare();
+        let (sample_audio, sample_control) = main_sample_handoff::prepare(sample_rate);
         let audio = Self {
             current: Box::new(Prepared {
                 processor,
@@ -139,6 +158,7 @@ impl MainAudioRuntime {
             }),
             exchange: Arc::clone(&exchange),
             snapshot: snapshot_audio,
+            sample: sample_audio,
         };
         let control = MainControl {
             exchange,
@@ -146,6 +166,7 @@ impl MainAudioRuntime {
             sample_rate,
             max_frames,
             snapshot: snapshot_control,
+            sample: sample_control,
             templates: BTreeMap::from([(0, template)]),
         };
         Ok((audio, control))
@@ -160,12 +181,19 @@ impl MainAudioRuntime {
     pub fn process(&mut self, block: MainAudioBlock<'_>) -> Result<(), NativeError> {
         self.current.processor.process(block)?;
         let published = self.publish_pending();
+        if published {
+            self.sample
+                .session_replaced(self.current.processor.instrument_control_mut());
+        }
+        let sample_changed = self
+            .sample
+            .after_block(self.current.processor.instrument_control_mut());
         let interrupted = published || !self.exchange.pending.load(Ordering::Acquire).is_null();
         self.snapshot.after_block(
             self.current.processor.instrument(),
             self.current.processor.host_values(),
             self.current.generation,
-            interrupted,
+            interrupted || sample_changed,
         );
         Ok(())
     }
@@ -177,8 +205,17 @@ impl MainAudioRuntime {
             .any(|action| matches!(action.kind, MainHostEventKind::Command { .. }));
         self.current.processor.process_host(block)?;
         let published = self.publish_pending();
-        let interrupted =
-            mutating || published || !self.exchange.pending.load(Ordering::Acquire).is_null();
+        if published {
+            self.sample
+                .session_replaced(self.current.processor.instrument_control_mut());
+        }
+        let sample_changed = self
+            .sample
+            .after_block(self.current.processor.instrument_control_mut());
+        let interrupted = mutating
+            || published
+            || sample_changed
+            || !self.exchange.pending.load(Ordering::Acquire).is_null();
         self.snapshot.after_block(
             self.current.processor.instrument(),
             self.current.processor.host_values(),
@@ -209,6 +246,31 @@ impl MainAudioRuntime {
 }
 
 impl MainControl {
+    pub fn request_retro_sample(&mut self, source: usize, bars: f32) -> bool {
+        self.exchange.pending.load(Ordering::Acquire).is_null()
+            && self.sample.request_retro(source, bars)
+    }
+
+    pub fn start_free_sample(&mut self, source: usize) -> bool {
+        self.exchange.pending.load(Ordering::Acquire).is_null() && self.sample.start_free(source)
+    }
+
+    pub fn finish_free_sample(&mut self) -> bool {
+        self.sample.finish_free()
+    }
+
+    pub fn cancel_free_sample(&mut self) -> bool {
+        self.sample.cancel_free()
+    }
+
+    pub fn poll_sample(&mut self) -> Vec<SampleUpdate> {
+        self.sample.poll()
+    }
+
+    pub fn cancel_sample_capture(&mut self) {
+        self.sample.cancel_for_session();
+    }
+
     fn prune_templates(&mut self) {
         if self.snapshot.is_active() {
             return;
@@ -270,6 +332,7 @@ impl MainControl {
             MainExportError::Json(error) => MainSessionError::Json(error),
             _ => MainSessionError::Invalid("save template"),
         })?;
+        self.sample.cancel_for_session();
         let generation = self.next_generation;
         self.next_generation += 1;
         let pointer = Box::into_raw(Box::new(Prepared {

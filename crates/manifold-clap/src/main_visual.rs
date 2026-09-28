@@ -1,5 +1,5 @@
 //! Fixed-size audio-to-editor visual bank for Main. One 128-bin job runs per
-//! processed block; the GUI only reads a completed 13-job frame.
+//! processed block; the GUI only reads a completed 14-job frame.
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
@@ -8,7 +8,7 @@ use manifold_native::main_host::MainAudioRuntime;
 const BINS: usize = 128;
 const LAYERS: usize = 4;
 const STRIPS: usize = 9;
-const JOBS: u32 = (LAYERS + STRIPS) as u32;
+const JOBS: u32 = (LAYERS + STRIPS + 1) as u32;
 const BARS: [f32; STRIPS] = [16.0, 8.0, 4.0, 2.0, 1.0, 0.5, 0.25, 0.125, 0.0625];
 
 struct Frame {
@@ -17,6 +17,8 @@ struct Frame {
     active: AtomicU32,
     source_generation: AtomicU64,
     segments: [[AtomicU32; BINS]; STRIPS],
+    sample_peaks: [AtomicU32; BINS],
+    sample_frames: AtomicU32,
 }
 
 impl Frame {
@@ -27,6 +29,8 @@ impl Frame {
             active: AtomicU32::new(0),
             source_generation: AtomicU64::new(0),
             segments: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU32::new(0))),
+            sample_peaks: std::array::from_fn(|_| AtomicU32::new(0)),
+            sample_frames: AtomicU32::new(0),
         }
     }
 }
@@ -37,6 +41,8 @@ pub(crate) struct VisualSnapshot {
     pub active: usize,
     pub source_generation: u64,
     pub segments: [Vec<f32>; STRIPS],
+    pub sample_peaks: Vec<f32>,
+    pub sample_frames: usize,
 }
 
 pub(crate) struct MainVisualBank {
@@ -99,7 +105,7 @@ impl MainVisualBank {
                 };
                 frame.layer_peaks[layer][bin].store(peak.to_bits(), Ordering::Relaxed);
             }
-        } else {
+        } else if job < (LAYERS + STRIPS) as u32 {
             let strip = job as usize - LAYERS;
             let active = frame.active.load(Ordering::Relaxed) as usize;
             let sample_rate = audio.status(19, 0);
@@ -119,6 +125,19 @@ impl MainVisualBank {
                     0.0
                 };
                 frame.segments[strip][bin].store(peak.to_bits(), Ordering::Relaxed);
+            }
+        } else {
+            let frames = audio.synth_sample_frames();
+            frame.sample_frames.store(frames as u32, Ordering::Relaxed);
+            for bin in 0..BINS {
+                let start = frames * bin / BINS;
+                let end = frames * (bin + 1) / BINS;
+                let peak = if end > start {
+                    audio.synth_sample_peak(start, end)
+                } else {
+                    0.0
+                };
+                frame.sample_peaks[bin].store(peak.to_bits(), Ordering::Relaxed);
             }
         }
         if job + 1 == JOBS {
@@ -153,6 +172,12 @@ impl MainVisualBank {
                         .map(|peak| f32::from_bits(peak.load(Ordering::Relaxed)))
                         .collect()
                 }),
+                sample_peaks: frame
+                    .sample_peaks
+                    .iter()
+                    .map(|peak| f32::from_bits(peak.load(Ordering::Relaxed)))
+                    .collect(),
+                sample_frames: frame.sample_frames.load(Ordering::Relaxed) as usize,
             };
             if self.generation.load(Ordering::Acquire) == generation {
                 return Some(result);
@@ -171,17 +196,17 @@ mod tests {
     fn host_capture_and_new_first_loop_reach_ordered_editor_bins() {
         let (mut audio, _control) = MainAudioRuntime::prepare(8_000.0, 64).unwrap();
         let visual = MainVisualBank::new();
-        for block in 0..39 {
-            let amplitude = if block == 0 || block == 13 { 0.8 } else { 0.2 };
+        for block in 0..42 {
+            let amplitude = if block == 0 || block == 14 { 0.8 } else { 0.2 };
             let input = [amplitude; 64];
             let mut left = [0.0; 64];
             let mut right = [0.0; 64];
             let actions = match block {
-                13 => vec![MainHostEvent {
+                14 => vec![MainHostEvent {
                     offset: 0,
                     kind: MainHostEventKind::Command { id: 0, value: 0.0 },
                 }],
-                21 => vec![MainHostEvent {
+                22 => vec![MainHostEvent {
                     offset: 0,
                     kind: MainHostEventKind::Command { id: 1, value: 0.0 },
                 }],
@@ -195,7 +220,7 @@ mod tests {
                 })
                 .unwrap();
             visual.publish_job(&audio);
-            if block == 12 {
+            if block == 13 {
                 let first = visual.snapshot().unwrap();
                 let old_peak = first.segments[8]
                     .iter()
