@@ -28,21 +28,23 @@
   <header>
     <div class="eyebrow">Manifold v2 / original Main surface / native editor bridge</div>
     <h1>The Main widgets can now<br>face the native host.</h1>
-    <p>This is the existing four-layer Main looper page and its real widget modules, opened in an editor mode. It restores a session produced by the Rust host and sends the widgets' own control messages as the stable Main host IDs. This checkpoint is a browser proof of the surface and mapping; the packaged CLAP window is the next connection.</p>
+    <p>This is the existing four-layer Main looper page and its real widget modules, opened in the packaged CLAP child editor. Rust derives compact session presentation with complete rack controls and 128 ordered peak bins per audio asset, while PCM stays outside the webview. Widget gestures reach the native Main runtime; a bounded live status return updates the transport and layers.</p>
     <div class="actions"><a href="/main-looper.html">Open the playable Main looper →</a><a href="/main-clap-host-review.html">Review the loadable CLAP processor</a></div>
   </header>
   <section>
     <h2>The rendered surface</h2>
-    <figure><img src="/main-clap-editor-surface.png" alt="Actual Main looper instrument in native editor mode, showing the saved layer waveform and four layer controls"><figcaption>Muted Chromium proof at 1320 × 900. The host mode opens the original Main HTML and widgets; it restores the native-produced version-15 session and draws its saved Layer 1 waveform. No Web Audio engine was created.</figcaption></figure>
+    <figure><img src="/main-clap-embedded-editor.png" alt="Packaged Main CLAP child editor mounted in isolated Xwayland, showing a loaded playing loop waveform"><figcaption>Actual packaged CLAP child editor at 1280 × 780, mounted in an isolated headless Xwayland host. The host loaded the browser-authored Main session before opening the editor; the original Main page acknowledged the Rust presentation and painted the playing loop. No audio device or desktop window was opened.</figcaption></figure>
+    <figure><img src="/main-clap-editor-surface.png" alt="Actual Main looper instrument in native editor mode, showing the saved layer waveform and four layer controls"><figcaption>Muted Chromium proof at 1320 × 900. The host mode opens the original Main HTML and widgets; it draws the Layer 1 waveform from Rust's bounded peak summary. No Web Audio engine was created.</figcaption></figure>
     <figure><img src="/main-clap-editor-rack.png" alt="Actual Main MidiSynth rack in native editor mode, including the authored compact Source, ADSR, Filter, effects, and EQ widgets"><figcaption>The same editor page retains the authored MidiSynth rack and compact widgets. The headless probe checks restored Source Output and LFO 2 values.</figcaption></figure>
   </section>
   <section>
     <h2>Verified boundary</h2>
     <table><thead><tr><th>Path</th><th>Observed result</th></tr></thead><tbody>
-      <tr><td>Session → original UI</td><td>Native session restores the four looper rows, populated waveform, Sample length, Source Output, and LFO 2 face in the same page used by the browser Main product.</td></tr>
+      <tr><td>Session → original UI</td><td>Native presentation restores the four looper rows, populated waveform, Sample length, Source Output, and LFO 2 face in the same page used by the browser Main product. The review fixture is 17.9 KB versus 133.5 KB for its source session.</td></tr>
       <tr><td>Widgets → stable IDs</td><td>Mode sends host ID 1, Active Layer sends ID 0, and Record sends separate command ID 0. The mapper covers the synth, four LFO slots, both effects, EQ, utilities, and voice stages.</td></tr>
-      <tr><td>Audio separation</td><td>The editor probe replaces <code>AudioContext</code> with a throwing stub. Session display and gestures pass without creating browser audio.</td></tr>
-      <tr><td>Current boundary</td><td>Native GUI lifecycle and IPC reception are not wired into the CLAP class yet. Live transport/capture status, sample capture, and session file actions still need native editor paths.</td></tr>
+      <tr><td>CLAP GUI contract</td><td>The packaged Main class advertises an X11 child editor at 1280 × 780. A separate host process creates, mounts, shows, captures, and destroys the webview in isolated Xwayland. It observes editor-ready and state-applied callbacks. A Rust IPC test routes widget messages into the actual Main audio queue.</td></tr>
+      <tr><td>Audio separation</td><td>The editor probe replaces <code>AudioContext</code> with a throwing stub. Session display, live-status repaint, and gestures pass without creating browser audio. The Rust callback publishes 80 scalar status values; the webview polls at 10 Hz.</td></tr>
+      <tr><td>Current boundary</td><td>The embedded window still needs a direct DAW test. Newly recorded waveform bins, retrospective capture strips, native Sample capture, and session file actions need editor paths. DAW gesture begin/end messages remain open.</td></tr>
     </tbody></table>
   </section>
 </main></body>

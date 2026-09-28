@@ -800,30 +800,9 @@ pub extern "C" fn manifold_looper_command(id: u32, value: f32) -> u32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_looper_status(id: u32, layer: u32) -> f32 {
     LOOPER.with(|slot| {
-        slot.borrow().as_ref().map_or(0.0, |e| {
-            let l = e.instrument.looper();
-            let index = layer as usize;
-            match id {
-                0 => l.tempo(),
-                1 => l.active() as f32,
-                2 => l.mode() as u32 as f32,
-                3 => l.recording() as u8 as f32,
-                4 => l.overdub() as u8 as f32,
-                5 => l.forward_bars().unwrap_or(0.0),
-                6 => l.samples_per_bar(),
-                7 => l.layer_state(index) as u32 as f32,
-                8 => l.layer_length(index) as f32,
-                9 => l.layer_position(index),
-                10 => l.layer_bars(index),
-                11 => l.layer_pending(index),
-                12 => l.capture_frames(index) as f32,
-                13..=16 => l.layer_control(index, id - 13),
-                17 => l.target_bpm(),
-                18 => l.overdub_length_wins() as u8 as f32,
-                19 => l.sample_rate(),
-                _ => 0.0,
-            }
-        })
+        slot.borrow()
+            .as_ref()
+            .map_or(0.0, |e| e.instrument.looper().status(id, layer as usize))
     })
 }
 #[unsafe(no_mangle)]

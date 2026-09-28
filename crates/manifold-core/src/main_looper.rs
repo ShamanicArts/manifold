@@ -359,6 +359,29 @@ impl MainLooper {
     pub fn samples_per_bar(&self) -> f32 {
         self.sample_rate * 240.0 / self.tempo
     }
+    /// Shared scalar presentation contract for browser and native hosts.
+    pub fn status(&self, id: u32, layer: usize) -> f32 {
+        match id {
+            0 => self.tempo(),
+            1 => self.active() as f32,
+            2 => self.mode() as u32 as f32,
+            3 => self.recording() as u8 as f32,
+            4 => self.overdub() as u8 as f32,
+            5 => self.forward_bars().unwrap_or(0.0),
+            6 => self.samples_per_bar(),
+            7 => self.layer_state(layer) as u32 as f32,
+            8 => self.layer_length(layer) as f32,
+            9 => self.layer_position(layer),
+            10 => self.layer_bars(layer),
+            11 => self.layer_pending(layer),
+            12 => self.capture_frames(layer) as f32,
+            13..=16 => self.layer_control(layer, id - 13),
+            17 => self.target_bpm(),
+            18 => self.overdub_length_wins() as u8 as f32,
+            19 => self.sample_rate(),
+            _ => 0.0,
+        }
+    }
     pub fn layer_state(&self, index: usize) -> LayerState {
         let Some(layer) = self.layers.get(index) else {
             return LayerState::Empty;

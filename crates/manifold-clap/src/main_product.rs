@@ -1,10 +1,11 @@
 //! Dedicated Main CLAP class. Audio callbacks use the assembled Main runtime;
 //! state parsing, preparation, and JSON serialization stay on the host thread.
 
+use std::cell::UnsafeCell;
 use std::ffi::{CStr, c_char, c_void};
 use std::ptr::{null, null_mut};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use clap_sys::audio_buffer::clap_audio_buffer;
@@ -42,12 +43,15 @@ use manifold_native::main_host_state::values_from_session;
 use manifold_native::main_instrument::{
     MainHostAudioBlock, MainHostEvent, MainHostEventKind, valid_main_command,
 };
+use manifold_native::main_presentation::compact_main_presentation;
 use manifold_native::main_session::{default_main_session, prepare_main_session};
 use manifold_native::main_session_export::save_template;
 
 const MAX_EVENTS: usize = 4096;
 const MAX_UI_COMMANDS: usize = 128;
 const MAX_STATE: usize = 300 * 1024 * 1024;
+const STATUS_FIELDS: usize = 20;
+const STATUS_COUNT: usize = STATUS_FIELDS * 4;
 const COMMAND_EXTENSION_ID: &[u8] = b"shamanic.manifold.main.commands/1";
 
 /// Private editor-to-audio command ingress. IDs and values are the authored
@@ -66,32 +70,141 @@ struct Runtime {
 
 pub(crate) struct Instance {
     pub plugin: clap_plugin,
-    host: *const clap_host,
+    pub(crate) host: *const clap_host,
     runtime: AtomicPtr<Runtime>,
     control: Mutex<Option<MainControl>>,
     state: Mutex<Option<Vec<u8>>>,
+    presentation: Mutex<Option<serde_json::Value>>,
     pending_values: Mutex<Vec<MainHostEvent>>,
     commands: ArrayQueue<MainHostEvent>,
+    gui_retry: UnsafeCell<Option<MainHostEvent>>,
     parameter_ids: Vec<u32>,
     defaults: [f32; MAIN_HOST_ID_CAPACITY],
     values: [AtomicU32; MAIN_HOST_ID_CAPACITY],
+    status_values: [AtomicU32; STATUS_COUNT],
+    status_epoch: AtomicU64,
     active: AtomicBool,
     processing: AtomicBool,
+    #[cfg(target_os = "linux")]
+    pub(crate) gui: crate::main_gui::GuiState,
 }
 
 // CLAP serializes process calls and stops them before deactivate. The audio
-// thread owns Runtime while processing; MainControl communicates only through
-// bounded lock-free queues and is accessed on the host's state thread.
+// thread owns Runtime and gui_retry while processing; MainControl communicates
+// through bounded lock-free queues and is accessed on the host's state thread.
 unsafe impl Sync for Instance {}
 
 impl Instance {
-    fn drain_commands(&self, actions: &mut Vec<MainHostEvent>) {
+    pub(crate) fn enqueue_ui_action(&self, kind: MainHostEventKind) -> bool {
+        if !self.active.load(Ordering::Acquire)
+            || self
+                .commands
+                .push(MainHostEvent { offset: 0, kind })
+                .is_err()
+        {
+            return false;
+        }
+        if !self.host.is_null() {
+            if let Some(request) = unsafe { (*self.host).request_process } {
+                unsafe { request(self.host) };
+            }
+        }
+        true
+    }
+
+    pub(crate) fn editor_document(&self) -> Option<serde_json::Value> {
+        self.presentation.lock().ok()?.clone()
+    }
+
+    fn publish_status(&self, audio: &MainAudioRuntime) {
+        self.status_epoch.fetch_add(1, Ordering::SeqCst);
+        for layer in 0..4 {
+            for id in 0..STATUS_FIELDS {
+                self.status_values[layer * STATUS_FIELDS + id]
+                    .store(audio.status(id as u32, layer).to_bits(), Ordering::SeqCst);
+            }
+        }
+        self.status_epoch.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub(crate) fn editor_status(&self) -> Option<serde_json::Value> {
+        let mut values = [0.0_f32; STATUS_COUNT];
+        for _ in 0..5 {
+            let before = self.status_epoch.load(Ordering::SeqCst);
+            if before == 0 || before % 2 != 0 {
+                continue;
+            }
+            for (index, destination) in values.iter_mut().enumerate() {
+                *destination = f32::from_bits(self.status_values[index].load(Ordering::SeqCst));
+            }
+            if self.status_epoch.load(Ordering::SeqCst) == before {
+                let field = |id: usize, layer: usize| values[layer * STATUS_FIELDS + id];
+                let layers: Vec<_> = (0..4)
+                    .map(|layer| {
+                        serde_json::json!({
+                            "state": field(7, layer), "length": field(8, layer),
+                            "position": field(9, layer), "bars": field(10, layer),
+                            "pending": field(11, layer), "volume": field(13, layer),
+                            "speed": field(14, layer), "muted": field(15, layer) >= 0.5,
+                            "playing": field(16, layer) >= 0.5,
+                        })
+                    })
+                    .collect();
+                let active = field(1, 0) as usize;
+                return Some(serde_json::json!({
+                    "tempo": field(0, 0), "active": active, "mode": field(2, 0),
+                    "recording": field(3, 0) >= 0.5, "overdub": field(4, 0) >= 0.5,
+                    "forwardBars": field(5, 0), "captured": field(12, active.min(3)),
+                    "sampleRate": field(19, 0), "targetBpm": field(17, 0), "layers": layers,
+                }));
+            }
+        }
+        None
+    }
+
+    fn drain_commands(
+        &self,
+        actions: &mut Vec<MainHostEvent>,
+        output: *const clap_output_events,
+        allow_midi: bool,
+    ) {
         let insert_at = actions.partition_point(|action| action.offset == 0);
         let existing = actions.len();
         while actions.len() < MAX_EVENTS {
-            let Some(command) = self.commands.pop() else {
+            let retry = unsafe { &mut *self.gui_retry.get() };
+            let Some(command) = retry.take().or_else(|| self.commands.pop()) else {
                 break;
             };
+            if matches!(command.kind, MainHostEventKind::Midi(_)) && !allow_midi {
+                *retry = Some(command);
+                break;
+            }
+            if let MainHostEventKind::Parameter { id, value } = command.kind {
+                if !output.is_null() {
+                    if let Some(push) = unsafe { (*output).try_push } {
+                        let event = clap_event_param_value {
+                            header: clap_event_header {
+                                size: std::mem::size_of::<clap_event_param_value>() as u32,
+                                time: 0,
+                                space_id: CLAP_CORE_EVENT_SPACE_ID,
+                                type_: CLAP_EVENT_PARAM_VALUE,
+                                flags: 0,
+                            },
+                            param_id: id,
+                            cookie: null_mut(),
+                            note_id: -1,
+                            port_index: -1,
+                            channel: -1,
+                            key: -1,
+                            value: value as f64,
+                        };
+                        if !unsafe { push(output, &event.header) } {
+                            *retry = Some(command);
+                            break;
+                        }
+                    }
+                }
+            }
             actions.push(command);
         }
         // Host changes at offset zero establish the control state used by a
@@ -107,6 +220,8 @@ impl Instance {
     ) -> Box<Self> {
         let default = default_main_session(48_000.0).expect("authored Main default session");
         let defaults = values_from_session(&default).expect("authored Main host controls");
+        let default_bytes = serde_json::to_vec(&default).expect("authored Main JSON");
+        let presentation = compact_main_presentation(&default_bytes).expect("authored Main editor");
         let parameter_ids = (0..MAIN_HOST_ID_CAPACITY as u32)
             .filter(|&id| MainParameter::spec(id).is_ok())
             .collect();
@@ -129,13 +244,19 @@ impl Instance {
             runtime: AtomicPtr::new(null_mut()),
             control: Mutex::new(None),
             state: Mutex::new(None),
+            presentation: Mutex::new(Some(presentation)),
             pending_values: Mutex::new(Vec::new()),
             commands: ArrayQueue::new(MAX_UI_COMMANDS),
+            gui_retry: UnsafeCell::new(None),
             parameter_ids,
             defaults,
             values: std::array::from_fn(|id| AtomicU32::new(defaults[id].to_bits())),
+            status_values: std::array::from_fn(|_| AtomicU32::new(0)),
+            status_epoch: AtomicU64::new(0),
             active: AtomicBool::new(false),
             processing: AtomicBool::new(false),
+            #[cfg(target_os = "linux")]
+            gui: crate::main_gui::GuiState::new(),
         });
         instance.plugin.plugin_data = &mut *instance as *mut Self as *mut c_void;
         instance
@@ -215,6 +336,7 @@ impl Instance {
             }
             control.reclaim();
         }
+        self.publish_status(&audio);
         let runtime = Box::new(Runtime {
             audio,
             buffers: MainHostBuffers::prepare(max_frames as usize),
@@ -222,6 +344,9 @@ impl Instance {
             max_frames: max_frames as usize,
         });
         *state = Some(bytes);
+        if let Ok(mut presentation) = self.presentation.lock() {
+            *presentation = compact_main_presentation(state.as_ref().unwrap()).ok();
+        }
         for (id, value) in initial_values.into_iter().enumerate() {
             self.values[id].store(value.to_bits(), Ordering::Release);
         }
@@ -234,6 +359,8 @@ impl Instance {
         self.runtime
             .store(Box::into_raw(runtime), Ordering::Release);
         self.active.store(true, Ordering::Release);
+        #[cfg(target_os = "linux")]
+        self.gui.request_refresh(self.host);
         true
     }
 
@@ -249,7 +376,7 @@ impl Instance {
             // Publish a state load accepted just before processing stopped.
             let runtime = unsafe { &mut *runtime };
             runtime.actions.clear();
-            self.drain_commands(&mut runtime.actions);
+            self.drain_commands(&mut runtime.actions, null(), false);
             runtime
                 .audio
                 .process_host(MainHostAudioBlock {
@@ -258,6 +385,7 @@ impl Instance {
                     actions: &runtime.actions,
                 })
                 .ok()?;
+            self.publish_status(&runtime.audio);
             control.reclaim();
         }
         control.request_session_snapshot().ok()?;
@@ -339,6 +467,9 @@ impl Instance {
             };
             let saved = self.snapshot(&mut temporary, &mut control, true)?;
             *state = Some(saved.clone());
+            if let Ok(mut presentation) = self.presentation.lock() {
+                *presentation = compact_main_presentation(&saved).ok();
+            }
             pending.clear();
             return Some(saved);
         }
@@ -347,6 +478,9 @@ impl Instance {
         let offline = !self.processing.load(Ordering::Acquire);
         let bytes = self.snapshot(runtime, control, offline)?;
         *self.state.lock().ok()? = Some(bytes.clone());
+        *self.presentation.lock().ok()? = compact_main_presentation(&bytes).ok();
+        #[cfg(target_os = "linux")]
+        self.gui.request_refresh(self.host);
         Some(bytes)
     }
 
@@ -396,6 +530,7 @@ impl Instance {
                 {
                     return false;
                 }
+                self.publish_status(&unsafe { &*runtime }.audio);
                 control.reclaim();
             }
         }
@@ -403,6 +538,9 @@ impl Instance {
             return false;
         };
         *state = Some(bytes);
+        if let Ok(mut presentation) = self.presentation.lock() {
+            *presentation = compact_main_presentation(state.as_ref().unwrap()).ok();
+        }
         if let Ok(mut pending) = self.pending_values.lock() {
             pending.clear();
         }
@@ -410,6 +548,8 @@ impl Instance {
         for (id, value) in initial_values.into_iter().enumerate() {
             self.values[id].store(value.to_bits(), Ordering::Release);
         }
+        #[cfg(target_os = "linux")]
+        self.gui.request_refresh(self.host);
         true
     }
 
@@ -424,7 +564,10 @@ impl Instance {
             if let Some(mut control) = slot.take() {
                 if let Some(bytes) = self.snapshot(runtime, &mut control, true) {
                     if let Ok(mut state) = self.state.lock() {
-                        *state = Some(bytes);
+                        *state = Some(bytes.clone());
+                    }
+                    if let Ok(mut presentation) = self.presentation.lock() {
+                        *presentation = compact_main_presentation(&bytes).ok();
                     }
                 }
                 control.reclaim();
@@ -435,7 +578,7 @@ impl Instance {
     }
 }
 
-unsafe fn get<'a>(plugin: *const clap_plugin) -> Option<&'a Instance> {
+pub(crate) unsafe fn get<'a>(plugin: *const clap_plugin) -> Option<&'a Instance> {
     if plugin.is_null() {
         return None;
     }
@@ -452,6 +595,8 @@ unsafe extern "C" fn init(plugin: *const clap_plugin) -> bool {
 }
 unsafe extern "C" fn destroy(plugin: *const clap_plugin) {
     if let Some(instance) = unsafe { get(plugin) } {
+        #[cfg(target_os = "linux")]
+        instance.gui.stop();
         instance.deactivate();
         unsafe { drop(Box::from_raw(instance as *const Instance as *mut Instance)) };
     }
@@ -489,7 +634,14 @@ unsafe extern "C" fn reset(plugin: *const clap_plugin) {
         unsafe { &mut *runtime }.audio.reset_processing();
     }
 }
-unsafe extern "C" fn main_thread(_plugin: *const clap_plugin) {}
+unsafe extern "C" fn main_thread(plugin: *const clap_plugin) {
+    #[cfg(target_os = "linux")]
+    if let Some(instance) = unsafe { get(plugin) } {
+        instance.gui.main_thread(instance);
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = plugin;
+}
 
 unsafe fn input_channels(buffers: *const clap_audio_buffer, count: u32) -> [*const f32; 2] {
     if buffers.is_null() || count == 0 {
@@ -663,7 +815,7 @@ unsafe extern "C" fn process(
         return CLAP_PROCESS_ERROR;
     };
     let input = unsafe { input_channels(block.audio_inputs, block.audio_inputs_count) };
-    instance.drain_commands(&mut runtime.actions);
+    instance.drain_commands(&mut runtime.actions, block.out_events, true);
     if unsafe {
         runtime.buffers.render(
             &mut runtime.audio,
@@ -679,6 +831,7 @@ unsafe extern "C" fn process(
     {
         return CLAP_PROCESS_ERROR;
     }
+    instance.publish_status(&runtime.audio);
     for action in &runtime.actions {
         if let MainHostEventKind::Parameter { id, value } = action.kind {
             instance.values[id as usize].store(value.to_bits(), Ordering::Release);
@@ -691,25 +844,8 @@ unsafe extern "C" fn enqueue_command(plugin: *const clap_plugin, id: u32, value:
     let Some(instance) = (unsafe { get(plugin) }) else {
         return false;
     };
-    if !instance.active.load(Ordering::Acquire) || !valid_main_command(id, value) {
-        return false;
-    }
-    if instance
-        .commands
-        .push(MainHostEvent {
-            offset: 0,
-            kind: MainHostEventKind::Command { id, value },
-        })
-        .is_err()
-    {
-        return false;
-    }
-    if !instance.host.is_null() {
-        if let Some(request) = unsafe { (*instance.host).request_process } {
-            unsafe { request(instance.host) };
-        }
-    }
-    true
+    valid_main_command(id, value)
+        && instance.enqueue_ui_action(MainHostEventKind::Command { id, value })
 }
 
 static COMMANDS: MainCommands = MainCommands {
@@ -729,6 +865,15 @@ unsafe extern "C" fn extension(_plugin: *const clap_plugin, id: *const c_char) -
         &PARAMS as *const _ as *const c_void
     } else if id == CLAP_EXT_STATE {
         &STATE as *const _ as *const c_void
+    } else if cfg!(target_os = "linux") && id.to_bytes() == b"clap.gui" {
+        #[cfg(target_os = "linux")]
+        {
+            &crate::main_gui::GUI as *const _ as *const c_void
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            null()
+        }
     } else if id.to_bytes() == COMMAND_EXTENSION_ID {
         &COMMANDS as *const _ as *const c_void
     } else {
@@ -1054,7 +1199,7 @@ static PARAMS: clap_plugin_params = clap_plugin_params {
 unsafe extern "C" fn param_flush(
     plugin: *const clap_plugin,
     events: *const clap_input_events,
-    _out: *const clap_output_events,
+    out: *const clap_output_events,
 ) {
     let Some(instance) = (unsafe { get(plugin) }) else {
         return;
@@ -1093,7 +1238,7 @@ unsafe extern "C" fn param_flush(
     runtime
         .actions
         .retain(|action| matches!(action.kind, MainHostEventKind::Parameter { .. }));
-    instance.drain_commands(&mut runtime.actions);
+    instance.drain_commands(&mut runtime.actions, out, false);
     let mut left = [];
     let mut right = [];
     if runtime
@@ -1105,6 +1250,7 @@ unsafe extern "C" fn param_flush(
         })
         .is_ok()
     {
+        instance.publish_status(&runtime.audio);
         for action in &runtime.actions {
             if let MainHostEventKind::Parameter { id, value } = action.kind {
                 instance.values[id as usize].store(value.to_bits(), Ordering::Release);
@@ -1179,3 +1325,81 @@ static STATE: clap_plugin_state = clap_plugin_state {
     save: Some(save),
     load: Some(load),
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Output {
+        accepts: bool,
+        values: Vec<(u32, f64)>,
+    }
+
+    unsafe extern "C" fn push(
+        list: *const clap_output_events,
+        header: *const clap_event_header,
+    ) -> bool {
+        let output = unsafe { &mut *((*list).ctx as *mut Output) };
+        if !output.accepts {
+            return false;
+        }
+        if unsafe { (*header).type_ } == CLAP_EVENT_PARAM_VALUE {
+            let event = unsafe { &*(header as *const clap_event_param_value) };
+            output.values.push((event.param_id, event.value));
+        }
+        true
+    }
+
+    #[test]
+    fn editor_parameter_waits_for_host_output_capacity_then_reaches_audio_and_state() {
+        let instance = Instance::new(null(), null());
+        assert!(instance.activate(48_000.0, 128));
+        assert!(instance.enqueue_ui_action(MainHostEventKind::Parameter {
+            id: 271,
+            value: 0.5,
+        }));
+        let mut output = Output {
+            accepts: false,
+            values: Vec::new(),
+        };
+        let events = clap_output_events {
+            ctx: &mut output as *mut Output as *mut c_void,
+            try_push: Some(push),
+        };
+        let plugin = &instance.plugin as *const clap_plugin;
+        unsafe { param_flush(plugin, null(), &events) };
+        assert!(output.values.is_empty());
+        assert_eq!(
+            f32::from_bits(instance.values[271].load(Ordering::Acquire)),
+            1.0
+        );
+        output.accepts = true;
+        unsafe { param_flush(plugin, null(), &events) };
+        assert_eq!(output.values, vec![(271, 0.5)]);
+        assert_eq!(
+            f32::from_bits(instance.values[271].load(Ordering::Acquire)),
+            0.5
+        );
+        let saved = instance.save_bytes().unwrap();
+        let state: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+        assert_eq!(state["rack"]["source"]["output"], 0.5);
+        instance.deactivate();
+    }
+
+    #[test]
+    fn bounded_editor_status_reflects_audio_thread_record_commands() {
+        let instance = Instance::new(null(), null());
+        assert!(instance.activate(48_000.0, 128));
+        let plugin = &instance.plugin as *const clap_plugin;
+        assert_eq!(instance.editor_status().unwrap()["recording"], false);
+        assert!(instance.enqueue_ui_action(MainHostEventKind::Command { id: 0, value: 0.0 }));
+        unsafe { param_flush(plugin, null(), null()) };
+        let recording = instance.editor_status().unwrap();
+        assert_eq!(recording["recording"], true);
+        assert_eq!(recording["layers"][0]["state"], 2.0);
+        assert!(instance.enqueue_ui_action(MainHostEventKind::Command { id: 1, value: 0.0 }));
+        unsafe { param_flush(plugin, null(), null()) };
+        assert_eq!(instance.editor_status().unwrap()["recording"], false);
+        instance.deactivate();
+    }
+}

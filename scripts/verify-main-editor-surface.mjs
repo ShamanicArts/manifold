@@ -4,7 +4,9 @@ import { createRequire } from 'node:module';
 
 const requireFromWeb = createRequire(new URL('../web/package.json', import.meta.url));
 const { chromium } = requireFromWeb('playwright-core');
-const session = JSON.parse(await readFile(new URL('../web/public/main-native-saved-session.json', import.meta.url)));
+const session = JSON.parse(await readFile(new URL('../web/public/main-editor-presentation.json', import.meta.url)));
+assert.equal(session.layers[0].pcmF32Base64, undefined);
+assert.equal(session.layers[0].peaks.length, 128);
 const browser = await chromium.launch({
   executablePath: process.env.MANIFOLD_CHROMIUM ?? '/usr/bin/chromium',
   headless: true,
@@ -25,6 +27,7 @@ try {
   await page.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html?editor=1`);
   await page.waitForFunction(() => window.__nativeActions?.some(action => action.kind === 'editor-ready'));
   await page.evaluate(document => window.manifoldEditorReceive(document), session);
+  assert.ok((await page.evaluate(() => window.__nativeActions)).some(action => action.kind === 'state-applied'));
   assert.match(await page.locator('#status').textContent(), /Main CLAP session/);
   assert.equal(await page.locator('.layer[data-layer="0"] .state').textContent(), 'Playing');
   assert.equal(await page.locator('#sample-length').textContent(), '125ms');
@@ -49,10 +52,24 @@ try {
   assert.ok(actions.some(action => action.kind === 'parameter' && action.id === 1 && action.value === 1));
   assert.ok(actions.some(action => action.kind === 'parameter' && action.id === 0 && action.value === 2));
   assert.ok(actions.some(action => action.kind === 'command' && action.id === 0));
+  await page.evaluate(() => {
+    const layers = Array.from(document.querySelectorAll('.layer'), (_, index) => ({
+      state: index === 2 ? 2 : 0, length: 0, position: 0, bars: 0,
+      pending: 0, volume: 1, speed: 1, muted: false, playing: false,
+    }));
+    window.manifoldEditorLiveStatus({
+      tempo: 127, targetBpm: 120, active: 2, mode: 0,
+      recording: true, overdub: false, forwardBars: 0,
+      captured: 128, sampleRate: 48000, layers,
+    });
+  });
+  assert.match(await page.locator('#rec').textContent(), /REC\*/);
+  assert.equal(await page.locator('.layer[data-layer="2"] .state').textContent(), 'Recording');
+  assert.equal(await page.locator('#tempo').inputValue(), '127');
   assert.equal(await page.locator('#audio-button').isDisabled(), true);
   assert.equal(await page.locator('#sample-cap').isDisabled(), true);
   assert.deepEqual(errors, []);
-  console.log('Original Main surface restored the native session and routed mode, layer, and Record gestures to host IDs without WebAudio.');
+  console.log('Original Main surface restored bounded Rust editor presentation and routed mode, layer, and Record gestures to host IDs without WebAudio.');
 } finally {
   await browser.close();
 }

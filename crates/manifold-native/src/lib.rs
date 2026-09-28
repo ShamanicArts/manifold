@@ -17,6 +17,7 @@ pub mod main_host_buffers;
 pub mod main_host_parameters;
 pub mod main_host_state;
 pub mod main_instrument;
+pub mod main_presentation;
 pub mod main_session;
 pub mod main_session_export;
 pub mod main_snapshot;

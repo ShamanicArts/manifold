@@ -10,6 +10,13 @@ use wry::WebViewBuilder;
 
 struct Parent(u64);
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Surface {
+    Fx,
+    Graph,
+    Main,
+}
+
 impl HasWindowHandle for Parent {
     fn window_handle(&self) -> Result<WindowHandle<'_>, raw_window_handle::HandleError> {
         let handle = RawWindowHandle::Xlib(XlibWindowHandle::new(self.0 as _));
@@ -53,9 +60,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Err("invalid X11 parent".into());
     }
     let root = fs::canonicalize(PathBuf::from(args.next().ok_or("missing assets path")?))?;
-    let graph = match args.next().as_deref() {
-        None => false,
-        Some("graph") => true,
+    let surface = match args.next().as_deref() {
+        None => Surface::Fx,
+        Some("graph") => Surface::Graph,
+        Some("main") => Surface::Main,
         Some(_) => return Err("unsupported editor surface".into()),
     };
     if args.next().is_some() {
@@ -79,10 +87,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let webview = WebViewBuilder::new()
-        .with_url(if graph {
-            "manifold://editor/graph-module.html?editor=1"
-        } else {
-            "manifold://editor/fx-module.html?editor=1"
+        .with_url(match surface {
+            Surface::Fx => "manifold://editor/fx-module.html?editor=1",
+            Surface::Graph => "manifold://editor/graph-module.html?editor=1",
+            Surface::Main => "manifold://editor/main-looper.html?editor=1",
         })
         .with_custom_protocol("manifold".into(), move |_, request| {
             let (status, body, content_type) = match asset(&root, request.uri().path()) {
@@ -102,22 +110,22 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         })
         .with_bounds(wry::Rect {
             position: wry::dpi::PhysicalPosition::new(0, 0).into(),
-            size: if graph {
-                wry::dpi::PhysicalSize::new(800, 600).into()
-            } else {
-                wry::dpi::PhysicalSize::new(500, 246).into()
+            size: match surface {
+                Surface::Fx => wry::dpi::PhysicalSize::new(500, 246).into(),
+                Surface::Graph => wry::dpi::PhysicalSize::new(800, 600).into(),
+                Surface::Main => wry::dpi::PhysicalSize::new(1280, 780).into(),
             },
         })
         .build_as_child(&parent)?;
     write_message("{\"kind\":\"ready\"}");
     // Opt-in isolated host probe: exercise the actual file input/IPC path
     // without steering a desktop file chooser from a test process.
-    let mut probe_import = if graph {
+    let mut probe_import = if surface == Surface::Graph {
         std::env::var("MANIFOLD_GRAPH_IMPORT_PROBE").ok()
     } else {
         None
     };
-    let probe_capture = if graph {
+    let probe_capture = if surface == Surface::Graph {
         std::env::var("MANIFOLD_GRAPH_CAPTURE_PROBE").ok()
     } else {
         None
@@ -180,6 +188,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 }
+                Some("live-status") => {
+                    if let Some(data) = command.get("data") {
+                        let _ = webview.evaluate_script(&format!(
+                            "window.manifoldEditorLiveStatus?.({data});"
+                        ));
+                    }
+                }
                 Some("status") => {
                     if let Some(message) = command["message"].as_str() {
                         if let Some(path) = probe_capture.as_deref() {
@@ -229,6 +244,7 @@ mod tests {
     fn asset_path_stays_within_bundle() {
         let root = fs::canonicalize("../../web/dist").unwrap();
         assert!(asset(&root, "/fx-module.html").is_some());
+        assert!(asset(&root, "/main-looper.html").is_some());
         assert!(asset(&root, "/../../Cargo.toml").is_none());
     }
 }

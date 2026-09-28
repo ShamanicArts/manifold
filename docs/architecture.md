@@ -103,15 +103,18 @@ sample, and rack state through the native control/audio snapshot boundary.
 Input is copied into prepared scratch before rendering so host in-place audio
 buffers are safe. A separate headless host process has loaded the packaged
 class, checked a live save and block-boundary import, and reopened matching
-audio. The original Main editor surface is the next CLAP product boundary;
+audio. The Main CLAP class now packages the original Main editor surface in
+the X11 child webview and carries compact Rust-derived session presentation,
+bounded widget IPC, and a lock-free scalar status bank back to that page.
 Main VST3 remains separate.
 Main now exposes a private, bounded CLAP extension for its authored looper
 commands. It queues editor gestures at the next audio block start without
 turning momentary record/stop/clear actions into persistent parameter values.
 The packaged host probe has recorded a First Loop take from stereo input,
-heard its committed playback, and saved it. Wiring the original browser Main
-surface through this command bridge and adding standard host transport/command
-mapping remain open.
+heard its committed playback, and saved it. The original browser Main surface
+now calls this command bridge through the child editor. Its embedded DAW-window
+appearance and live capture waveform still need direct host verification;
+standard DAW transport/command mapping remains open.
 The [native editor boundary](native-editor-plan.md) records the exact widget
 reuse, CLAP GUI lifecycle, and proposed browser process bridge.
 

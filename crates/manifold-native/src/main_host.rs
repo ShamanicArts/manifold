@@ -66,6 +66,16 @@ pub struct MainControl {
 }
 
 impl MainAudioRuntime {
+    /// Scalar UI status; read only on the audio thread and publish through a
+    /// separate bounded host cache. No editor reads this runtime directly.
+    pub fn status(&self, id: u32, layer: usize) -> f32 {
+        self.current
+            .processor
+            .instrument()
+            .looper()
+            .status(id, layer)
+    }
+
     /// Host reset while processing is suspended; prepared PCM and controls stay.
     pub fn reset_processing(&mut self) {
         self.current

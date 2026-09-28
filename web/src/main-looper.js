@@ -46,10 +46,7 @@ function formatBars(value) {
 const post = (message) => {
   if (!editorMode) return processor?.port.postMessage(message);
   if (applyingEditorState) return;
-  if (message.type === 'snapshot') {
-    window.ipc?.postMessage(JSON.stringify({ version: 1, kind: 'snapshot' }));
-    return;
-  }
+  if (message.type === 'snapshot') return;
   const action = mainEditorAction(message, project);
   if (action) window.ipc?.postMessage(JSON.stringify({ version: 1, ...action }));
   else status('This Main action is awaiting its native editor bridge.');
@@ -867,7 +864,21 @@ if (editorMode) {
   for (const id of ['audio-button', 'save-session', 'open-session', 'sample-cap']) {
     $(id).disabled = true;
   }
+  document.querySelectorAll('[id^="lfo-reset"], [id^="lfo-sync"]').forEach(control => {
+    control.disabled = true;
+  });
   window.manifoldEditorStatus = status;
+  window.manifoldEditorLiveStatus = (data) => {
+    if (!latest || !Array.isArray(data?.layers) || data.layers.length !== project.layers) return;
+    const layers = data.layers.map((layer, index) => ({
+      ...latest.layers[index], ...layer,
+      peaks: layer.length === latest.layers[index].length ? latest.layers[index].peaks : [],
+    }));
+    render({ ...latest, ...data, layers });
+    if (Number.isFinite(data.targetBpm) && document.activeElement !== $('target')) {
+      $('target').value = Math.round(data.targetBpm);
+    }
+  };
   window.manifoldEditorReceive = (session) => {
     if (session?.id !== project.id || session.version !== project.sessionVersion
       || !Array.isArray(session.layers) || session.layers.length !== project.layers
@@ -884,6 +895,7 @@ if (editorMode) {
       $('sample-length').textContent = `${Math.round((session.sample?.frames ?? 0) / session.sampleRate * 1000)}ms`;
       render(editorSnapshot(session));
       status('Main CLAP session · native audio engine');
+      window.ipc?.postMessage(JSON.stringify({ version: 1, kind: 'state-applied', id: project.id }));
     } catch (error) {
       status(`Main editor state error: ${error.message}`);
     } finally {
@@ -895,4 +907,5 @@ if (editorMode) {
     delete window.__manifoldPendingState;
   }
   window.ipc?.postMessage(JSON.stringify({ version: 1, kind: 'editor-ready' }));
+  setInterval(() => window.ipc?.postMessage(JSON.stringify({ version: 1, kind: 'snapshot' })), 100);
 }

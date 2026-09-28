@@ -61,6 +61,13 @@ class Commands(c.Structure):
     _fields_ = [("enqueue", c.c_void_p)]
 
 
+class Gui(c.Structure):
+    _fields_ = [(name, c.c_void_p) for name in (
+        "supported", "preferred", "create", "destroy", "scale", "size",
+        "can_resize", "resize_hints", "adjust", "set_size", "parent",
+        "transient", "title", "show", "hide")]
+
+
 class ParamInfo(c.Structure):
     _fields_ = [("id", c.c_uint32), ("flags", c.c_uint32), ("cookie", c.c_void_p),
                 ("name", c.c_char * 256), ("module", c.c_char * 1024),
@@ -167,6 +174,18 @@ def main():
     plugin = c.cast(plugin_ptr, c.POINTER(Plugin)).contents
     try:
         assert fn(plugin.init, c.c_bool, c.c_void_p)(plugin_ptr)
+        gui_ptr = fn(plugin.get_extension, c.c_void_p, c.c_void_p, c.c_char_p)(plugin_ptr, b"clap.gui")
+        assert gui_ptr, "packaged Main CLAP GUI extension missing"
+        gui = c.cast(gui_ptr, c.POINTER(Gui)).contents
+        assert fn(gui.supported, c.c_bool, c.c_void_p, c.c_char_p, c.c_bool)(
+            plugin_ptr, b"x11", False)
+        width, height = c.c_uint32(), c.c_uint32()
+        assert fn(gui.size, c.c_bool, c.c_void_p, c.POINTER(c.c_uint32), c.POINTER(c.c_uint32))(
+            plugin_ptr, c.byref(width), c.byref(height))
+        assert (width.value, height.value) == (1280, 780)
+        assert fn(gui.create, c.c_bool, c.c_void_p, c.c_char_p, c.c_bool)(
+            plugin_ptr, b"x11", False)
+        fn(gui.destroy, None, c.c_void_p)(plugin_ptr)
         state_ptr = fn(plugin.get_extension, c.c_void_p, c.c_void_p, c.c_char_p)(plugin_ptr, b"clap.state")
         assert state_ptr
         state = c.cast(state_ptr, c.POINTER(State)).contents
@@ -449,7 +468,7 @@ def main():
             fn(capture.deactivate, None, c.c_void_p)(capture_ptr)
         finally:
             fn(capture.destroy, None, c.c_void_p)(capture_ptr)
-        print("Main CLAP: v15 audio/state, parameters, frame-64 automation, inactive flush/save, First Loop record/stop, clear-layer, and sample-identical reopen passed.")
+        print("Main CLAP: packaged GUI contract, v15 audio/state, parameters, frame-64 automation, inactive flush/save, First Loop record/stop, clear-layer, and sample-identical reopen passed.")
     finally:
         fn(plugin.destroy, None, c.c_void_p)(plugin_ptr)
 

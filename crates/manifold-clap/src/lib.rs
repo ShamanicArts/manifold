@@ -4,6 +4,8 @@ mod graph;
 #[cfg(target_os = "linux")]
 mod graph_gui;
 mod instance;
+#[cfg(target_os = "linux")]
+mod main_gui;
 mod main_product;
 
 use std::ffi::{CStr, c_char, c_void};
