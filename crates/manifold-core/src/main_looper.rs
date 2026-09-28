@@ -35,7 +35,7 @@ struct Loading {
     frames: usize,
     copied: usize,
     bars: f32,
-    position: f32,
+    position: f64,
     playing: bool,
 }
 
@@ -233,7 +233,7 @@ impl Layer {
         self.position = (self.position + increment as f64).rem_euclid(self.length as f64);
         (out, [out[0] * self.volume, out[1] * self.volume])
     }
-    fn begin_load(&mut self, frames: usize, bars: f32, position: f32, playing: bool) -> bool {
+    fn begin_load(&mut self, frames: usize, bars: f32, position: f64, playing: bool) -> bool {
         if frames == 0
             || frames > self.capacity()
             || self.commit.is_some()
@@ -379,11 +379,15 @@ impl MainLooper {
         self.layers.get(index).map_or(0, |l| l.length)
     }
     pub fn layer_position(&self, index: usize) -> f32 {
+        self.layer_position_precise(index) as f32
+    }
+    /// Preserve the native playhead precision in portable session saves.
+    pub fn layer_position_precise(&self, index: usize) -> f64 {
         self.layers.get(index).map_or(0.0, |l| {
             if l.length == 0 {
                 0.0
             } else {
-                (l.position / l.length as f64) as f32
+                l.position / l.length as f64
             }
         })
     }
@@ -583,6 +587,16 @@ impl MainLooper {
         frames: usize,
         bars: f32,
         position: f32,
+        playing: bool,
+    ) -> bool {
+        self.begin_layer_load_precise(index, frames, bars, position as f64, playing)
+    }
+    pub fn begin_layer_load_precise(
+        &mut self,
+        index: usize,
+        frames: usize,
+        bars: f32,
+        position: f64,
         playing: bool,
     ) -> bool {
         self.layers

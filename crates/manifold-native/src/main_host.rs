@@ -66,6 +66,14 @@ pub struct MainControl {
 }
 
 impl MainAudioRuntime {
+    /// Host reset while processing is suspended; prepared PCM and controls stay.
+    pub fn reset_processing(&mut self) {
+        self.current
+            .processor
+            .instrument_control_mut()
+            .reset_processing();
+    }
+
     /// Allocate the first processor and bounded retirement queue off the
     /// callback. The returned control endpoint may run on another thread.
     pub fn prepare(

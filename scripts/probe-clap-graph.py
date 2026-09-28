@@ -102,12 +102,13 @@ def main():
     assert fn(entry.init, c.c_bool, c.c_char_p)(str(args.module.resolve()).encode())
     factory_ptr = fn(entry.get_factory, c.c_void_p, c.c_char_p)(b"clap.plugin-factory")
     factory = c.cast(factory_ptr, c.POINTER(Factory)).contents
-    assert fn(factory.count, c.c_uint32, c.c_void_p)(factory_ptr) == 2
+    assert fn(factory.count, c.c_uint32, c.c_void_p)(factory_ptr) == 3
     ids = []
-    for index in range(2):
+    for index in range(3):
         descriptor = fn(factory.descriptor, c.c_void_p, c.c_void_p, c.c_uint32)(factory_ptr, index)
         ids.append(c.cast(descriptor, c.POINTER(Descriptor)).contents.id.decode())
-    assert ids == ["arts.shamanic.manifold.standalone-fx", "arts.shamanic.manifold.graph"]
+    assert ids == ["arts.shamanic.manifold.standalone-fx", "arts.shamanic.manifold.graph",
+                   "arts.shamanic.manifold.main"]
     host = Host(Version(1, 2, 0), None, b"Graph probe", b"Shamanic Arts", b"", b"1",
                 None, None, None, None)
     plugin_ptr = fn(factory.create, c.c_void_p, c.c_void_p, c.POINTER(Host), c.c_char_p)(

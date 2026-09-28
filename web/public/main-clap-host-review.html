@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Main CLAP host checkpoint · Manifold v2</title>
+  <style>
+    :root { font: 15px/1.55 system-ui, sans-serif; color: #1d3028; background: #f4f5f0; --line: #c9d6cd; --green: #28624c; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 1000px; margin: auto; padding: 36px 22px 90px; }
+    header { border-top: 3px solid var(--green); padding-top: 12px; }
+    .eyebrow { font: 11px ui-monospace, monospace; letter-spacing: .13em; text-transform: uppercase; color: #995d3c; }
+    h1, h2 { font-family: Georgia, serif; font-weight: 400; line-height: 1.12; }
+    h1 { font-size: clamp(38px, 6vw, 62px); margin: 12px 0 18px; }
+    h2 { font-size: 27px; margin: 0 0 10px; }
+    p { max-width: 72ch; color: #395346; }
+    a { color: var(--green); }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0 0; }
+    .actions a { display: inline-block; padding: 10px 14px; border: 1px solid var(--green); text-decoration: none; font-weight: 600; }
+    .actions a:first-child { background: var(--green); color: white; }
+    section { border-top: 1px solid var(--line); margin-top: 30px; padding-top: 20px; }
+    table { border-collapse: collapse; width: 100%; background: white; }
+    th, td { padding: 10px 12px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: #eaf0e9; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+    code { font: 12px ui-monospace, monospace; }
+    figure { margin: 16px 0 0; padding: 10px; border: 1px solid var(--line); background: white; }
+    figure img { display: block; width: 100%; height: auto; }
+    figcaption { margin-top: 7px; font-size: 13px; color: #526458; }
+  </style>
+</head>
+<body><main>
+  <header>
+    <div class="eyebrow">Manifold v2 / loadable Main product / CLAP</div>
+    <h1>The assembled Main now<br>loads as a CLAP product.</h1>
+    <p>The packaged library exposes <code>arts.shamanic.manifold.main</code> alongside Standalone FX and Graph. Its audio callback uses the prepared Rust Main runtime and accepts stereo input plus timed notes. CLAP state import/export uses the same browser-compatible version-15 session envelope.</p>
+    <div class="actions">
+      <a href="/main-looper.html">Open the actual browser Main looper →</a>
+      <a href="/main-native-saved-session.json" download>Download the test session</a>
+      <a href="/main-native-lfo-host-review.html">Review native LFO controls</a>
+    </div>
+  </header>
+  <section>
+    <h2>What the separate host probe exercised</h2>
+    <table><thead><tr><th>Boundary</th><th>Observed result</th></tr></thead><tbody>
+      <tr><td>Factory and packaging</td><td>Third CLAP descriptor found in <code>target/clap/ManifoldFX.clap</code>; existing Graph probe still passes.</td></tr>
+      <tr><td>Audio and notes</td><td>Loaded a 6,000-frame Main loop and rendered audible output. A CLAP note at frame 64 produces no earlier synth audio. Host reset clears active voices and filter/effect history.</td></tr>
+      <tr><td>State while processing</td><td>Saved on the host thread while another thread called the audio callback; loop PCM stayed identical.</td></tr>
+      <tr><td>Save and reopen</td><td>Exported version-15 state retained identical loop and sample PCM. A second CLAP instance reopened it and its next audio block matched sample by sample.</td></tr>
+      <tr><td>State replacement</td><td>Loading an empty Main session while active replaced the audible runtime at a block boundary. A load followed immediately by stop/save preserved the newly loaded session.</td></tr>
+    </tbody></table>
+    <p>The probe exposed a one-sample playhead drift from saving normalized position as <code>f32</code>. Native save/load now carries the playhead at <code>f64</code> precision, and the audio reopen comparison passes.</p>
+  </section>
+  <section>
+    <h2>The shared instrument surface</h2>
+    <figure><img src="/main-native-session-browser.png" alt="Actual browser Main looper showing the native-produced session"><figcaption>This is the real browser Main instrument opening the same native-produced session used by the CLAP probe. A Main CLAP editor has not been added yet.</figcaption></figure>
+  </section>
+  <section>
+    <h2>Next implementation gates</h2>
+    <p>Expose Main's stable parameter IDs and looper commands through CLAP, package the actual Main browser surface as its editor, then test capture and state save/reopen in a DAW. A distinct Main VST3 processor/controller will use the same native runtime and session envelope.</p>
+  </section>
+</main></body>
+</html>

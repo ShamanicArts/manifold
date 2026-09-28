@@ -680,6 +680,16 @@ impl MainInstrument {
         self.synth.event(event);
     }
 
+    /// Clear active voices while retaining the authored rack and loop assets.
+    /// Hosts call this only while their process callback is stopped.
+    pub fn reset_processing(&mut self) {
+        self.synth.reset_processing();
+        self.filter.reset();
+        self.fx1.reset_processing();
+        self.fx2.reset_processing();
+        self.eq.reset();
+    }
+
     pub fn request_sample_source(&mut self, source: usize, bars: f32) -> usize {
         if !bars.is_finite() || !(0.0625..=16.0).contains(&bars) {
             return 0;

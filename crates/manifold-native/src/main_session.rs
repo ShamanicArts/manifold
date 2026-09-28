@@ -552,7 +552,10 @@ pub fn prepare_main_session(
     for (index, layer) in layers.iter().enumerate() {
         let frames = integer(layer, "frames", 0, (sample_rate as i64) * 30)? as usize;
         let bars = number(layer, "bars", 0.0, 16.0)?;
-        let position = number(layer, "position", 0.0, 1.0)?;
+        let position = member(layer, "position")?
+            .as_f64()
+            .filter(|position| position.is_finite() && (0.0..=1.0).contains(position))
+            .ok_or(MainSessionError::Invalid("position"))?;
         let playing = boolean(layer, "playing")?;
         let volume = number(layer, "volume", 0.0, 2.0)?;
         let speed = number(layer, "speed", -4.0, 4.0)?;
@@ -560,7 +563,7 @@ pub fn prepare_main_session(
         let audio = pcm(layer, frames)?;
         if frames > 0 {
             checked_set(
-                looper.begin_layer_load(index, frames, bars, position, playing),
+                looper.begin_layer_load_precise(index, frames, bars, position, playing),
                 "layers",
             )?;
             for (chunk_index, chunk) in audio.chunks(4096 * 2).enumerate() {

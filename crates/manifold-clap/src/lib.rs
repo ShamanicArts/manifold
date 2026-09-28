@@ -4,6 +4,7 @@ mod graph;
 #[cfg(target_os = "linux")]
 mod graph_gui;
 mod instance;
+mod main_product;
 
 use std::ffi::{CStr, c_char, c_void};
 use std::ptr::null;
@@ -100,6 +101,19 @@ static GRAPH_DESCRIPTOR: clap_plugin_descriptor = clap_plugin_descriptor {
     support_url: c"https://github.com/ShamanicArts/manifold/issues".as_ptr(),
     version: c"0.1.0".as_ptr(),
     description: c"Portable authored graph with Rust audio engine".as_ptr(),
+    features: GRAPH_FEATURES.0.as_ptr(),
+};
+const MAIN_ID: &CStr = c"arts.shamanic.manifold.main";
+static MAIN_DESCRIPTOR: clap_plugin_descriptor = clap_plugin_descriptor {
+    clap_version: CLAP_VERSION,
+    id: MAIN_ID.as_ptr(),
+    name: c"Manifold Main".as_ptr(),
+    vendor: c"Shamanic Arts".as_ptr(),
+    url: c"https://github.com/ShamanicArts/manifold".as_ptr(),
+    manual_url: c"https://github.com/ShamanicArts/manifold".as_ptr(),
+    support_url: c"https://github.com/ShamanicArts/manifold/issues".as_ptr(),
+    version: c"0.1.0".as_ptr(),
+    description: c"Main looper and instrument with Rust audio engine".as_ptr(),
     features: GRAPH_FEATURES.0.as_ptr(),
 };
 
@@ -223,7 +237,7 @@ unsafe extern "C" fn plugin_extension(
 }
 
 unsafe extern "C" fn factory_count(_factory: *const clap_plugin_factory) -> u32 {
-    2
+    3
 }
 unsafe extern "C" fn factory_descriptor(
     _factory: *const clap_plugin_factory,
@@ -232,6 +246,7 @@ unsafe extern "C" fn factory_descriptor(
     match index {
         0 => &DESCRIPTOR,
         1 => &GRAPH_DESCRIPTOR,
+        2 => &MAIN_DESCRIPTOR,
         _ => null(),
     }
 }
@@ -252,6 +267,9 @@ unsafe extern "C" fn factory_create(
         unsafe { &(*instance).plugin }
     } else if requested == GRAPH_ID {
         let instance = Box::into_raw(graph::Instance::new(host, &GRAPH_DESCRIPTOR));
+        unsafe { &(*instance).plugin }
+    } else if requested == MAIN_ID {
+        let instance = Box::into_raw(main_product::Instance::new(host, &MAIN_DESCRIPTOR));
         unsafe { &(*instance).plugin }
     } else {
         null()

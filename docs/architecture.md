@@ -94,6 +94,15 @@ The native automation boundary reserves up to 4,096 ordered points per block,
 while its MIDI split limit remains 1,024 events. The CLAP adapter converts a
 wildcard note release to an all-notes-off core event until filtered releases
 and CLAP note IDs have a native event representation.
+The third CLAP class, Main, has its own product ID and wraps the assembled
+`MainInstrument` through `MainAudioRuntime`. It accepts version-15 browser Main
+sessions, stereo input, and timed CLAP notes; its state callback freezes loop,
+sample, and rack state through the native control/audio snapshot boundary.
+Input is copied into prepared scratch before rendering so host in-place audio
+buffers are safe. A separate headless host process has loaded the packaged
+class, checked a live save and block-boundary import, and reopened matching
+audio. Stable Main host parameters, commands, and the original Main editor
+surface are the next CLAP product boundaries; Main VST3 remains separate.
 The [native editor boundary](native-editor-plan.md) records the exact widget
 reuse, CLAP GUI lifecycle, and proposed browser process bridge.
 

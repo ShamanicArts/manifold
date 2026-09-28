@@ -18,7 +18,7 @@ const CHUNK_SAMPLES: usize = CHUNK_FRAMES * 2;
 pub struct MainLayerSnapshotHeader {
     pub frames: usize,
     pub bars: f32,
-    pub position: f32,
+    pub position: f64,
     pub playing: bool,
     pub volume: f32,
     pub speed: f32,
@@ -144,7 +144,7 @@ impl MainPcmSnapshotHeader {
             layers: std::array::from_fn(|index| MainLayerSnapshotHeader {
                 frames: looper.layer_length(index),
                 bars: looper.layer_bars(index),
-                position: looper.layer_position(index),
+                position: looper.layer_position_precise(index),
                 playing: looper.layer_control(index, 3) == 1.0,
                 volume: looper.layer_control(index, 0),
                 speed: looper.layer_control(index, 1),

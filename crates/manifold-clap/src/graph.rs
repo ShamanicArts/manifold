@@ -1751,7 +1751,7 @@ mod tests {
         let plugin =
             unsafe { crate::factory_create(&crate::FACTORY.0, &host, crate::GRAPH_ID.as_ptr()) };
         assert!(unsafe { (*plugin).init.unwrap()(plugin) });
-        assert_eq!(unsafe { crate::factory_count(&crate::FACTORY.0) }, 2);
+        assert_eq!(unsafe { crate::factory_count(&crate::FACTORY.0) }, 3);
         assert_eq!(unsafe { NOTE_PORTS.count.unwrap()(plugin, true) }, 1);
         assert_eq!(
             unsafe { PARAMS.count.unwrap()(plugin) },
