@@ -5,7 +5,7 @@ const DEFAULT = { mode: 0, source: 0, triggerSource: 0, manualGate: false, held:
 const signed = value => `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
 
 // Face: Main/ui/components/sample_hold.ui.lua. Graph: Main/lib/ui/dynamic_module_graphs.lua.
-export function mountMainSampleHold(get, post, ids) {
+export function mountMainSampleHold(get, post, ids, onInputState = () => {}) {
   const state = { ...DEFAULT };
   let input = 0, trigger = 0;
   const panel = get('sample-hold');
@@ -28,12 +28,16 @@ export function mountMainSampleHold(get, post, ids) {
   const send = (id, value) => post({ type: 'sample-hold-parameter', id, value: Number(value) });
   const updateGate = () => { gate.disabled = state.triggerSource !== 4; gate.checked = state.manualGate; };
   mode.onChange(value => { state.mode = value; send(ids.mode, value); paint(); });
-  source.addEventListener('change', () => { state.source = Number(source.value); send(ids.source, state.source); });
+  source.addEventListener('change', () => {
+    state.source = Number(source.value); send(ids.source, state.source);
+    onInputState({ ...state });
+  });
   triggerSource.addEventListener('change', () => {
     state.triggerSource = Number(triggerSource.value);
     state.manualGate = false;
     send(ids.triggerSource, state.triggerSource); send(ids.manualGate, 0);
     updateGate();
+    onInputState({ ...state });
   });
   gate.addEventListener('change', () => {
     state.manualGate = gate.checked;

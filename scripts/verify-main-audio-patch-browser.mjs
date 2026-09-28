@@ -19,9 +19,9 @@ try {
   await page.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html`);
   await page.locator('[data-main-tab="midisynth"]').click();
   await page.locator('#rack-view-switch').click();
-  assert.equal(await page.locator('.main-patch-face:visible').count(), 9);
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 9);
-  assert.equal(await page.locator('.main-rack-wire').count(), 9);
+  assert.equal(await page.locator('.main-patch-face:visible').count(), 10);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 11);
+  assert.equal(await page.locator('.main-rack-wire').count(), 11);
   await page.locator('#audio-button').click();
   await page.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Running'));
   const wires = () => page.locator('.main-rack-wire').evaluateAll(elements => elements.map(element => element.getAttribute('d')).sort());
@@ -49,10 +49,10 @@ try {
   await page.waitForFunction(previous => JSON.stringify([...document.querySelectorAll('.main-rack-wire')]
     .map(element => element.getAttribute('d')).sort()) === JSON.stringify(previous), initial);
   await page.locator('.main-patch-port[data-module="fx1"][data-port="in"]').click({ button: 'right' });
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 8);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 10);
   await page.locator('.main-patch-port[data-module="filter"][data-port="out"]').click();
   await page.locator('.main-patch-port[data-module="fx1"][data-port="in"]').click();
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 9);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 11);
   const download = page.waitForEvent('download', { timeout: 10000 });
   await page.locator('#save-session').click();
   const saved = await download;
@@ -67,7 +67,7 @@ try {
   await page.locator('#rack-view-switch').click();
   assert.equal(await page.locator('.main-patch-port[data-module="filter"][data-port="in"]').isDisabled(), true);
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ patchFaces: 9, wires: 9, wasmRouteAccepted: true, unpatchAccepted: true,
+  console.log(JSON.stringify({ patchFaces: 10, wires: 11, wasmRouteAccepted: true, unpatchAccepted: true,
     editedRouteSavesAndReopens: true, defaultRouteSaves: true, pageErrors: errors.length }));
 } finally {
   await browser.close();

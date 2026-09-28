@@ -8,6 +8,7 @@ const SHELLS = {
   adsr: '.rack-adsr', oscillator: '.rack-source', filter: '.rack-filter',
   fx1: '.rack-fx1', fx2: '.rack-fx2', eq: '.rack-eq', lfo1: '.rack-lfo-primary',
   atv1: '.rack-atv-primary', slew1: '.rack-slew-primary',
+  sample_hold1: '.rack-sample-hold-primary',
 };
 const AUDIO_INPUTS = new Set(['filter:in', 'fx1:in', 'fx2:in', 'eq:in', '__rackOutput:main']);
 const AUDIO_OUTPUTS = new Set(['oscillator:out', 'filter:out', 'fx1:out', 'fx2:out', 'eq:out']);
@@ -34,19 +35,24 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
 
   function makePort(moduleId, port, direction, host) {
     const endpoint = { moduleId, portId: port.id };
+    const represented = direction === 'input'
+      ? catalog.preparedControlInputs.some(binding => endpointKey(binding.to) === endpointKey(endpoint))
+      : controlOutputs.has(endpointKey(endpoint));
     const active = port.kind === 'audio' && (direction === 'input'
       ? AUDIO_INPUTS.has(endpointKey(endpoint)) : AUDIO_OUTPUTS.has(endpointKey(endpoint)))
       || port.kind === 'cv' && (direction === 'input'
         ? controlInputs.has(endpointKey(endpoint)) : controlOutputs.has(endpointKey(endpoint)));
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = `main-patch-port main-patch-${port.kind} ${active ? '' : 'main-patch-unavailable'}`;
+    button.className = `main-patch-port main-patch-${port.kind} ${active ? ''
+      : represented ? 'main-patch-selector-controlled' : 'main-patch-unavailable'}`;
     button.dataset.module = moduleId;
     button.dataset.port = port.id;
     button.dataset.direction = direction;
     button.disabled = !active || readOnly;
     button.title = readOnly && active ? `${moduleId} ${port.id}: native cable editing pending`
       : active ? `${moduleId} ${port.id} ${direction}${direction === 'input' ? ' · right-click or double-click to unplug' : ''}`
+      : represented ? `${moduleId} ${port.id}: saved cable follows its source selector`
       : `${moduleId} ${port.id}: routing pending`;
     button.setAttribute('aria-label', button.title);
     const label = document.createElement('span');
@@ -270,7 +276,7 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
         : next.modules.find(module => module.id === to.moduleId).nodeId;
       const sourceId = !from ? 0 : from.moduleId === 'oscillator' ? 1
         : next.modules.find(module => module.id === from.moduleId).nodeId;
-      const accepted = control ? await onControlRoute(from?.moduleId ?? null)
+      const accepted = control ? await onControlRoute(from ?? null)
         : await onRoute({ to: target, port: 0, from: sourceId });
       if (!accepted) throw new Error('The Rust rack rejected this cable.');
       rack = next;
@@ -325,8 +331,8 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
     pending = true;
     try {
       const controlCable = item => item.connections.find(edge => edge.to.moduleId === 'filter'
-        && edge.to.portId === 'cutoff')?.from.moduleId ?? null;
-      const controlChanged = controlCable(next) !== controlCable(rack);
+        && edge.to.portId === 'cutoff')?.from ?? null;
+      const controlChanged = endpointKey(controlCable(next) ?? {}) !== endpointKey(controlCable(rack) ?? {});
       if (!alreadyApplied && controlChanged && !await onControlRoute(controlCable(next))) {
         throw new Error('The Rust rack rejected the saved control cable.');
       }
@@ -362,15 +368,18 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
     },
     reflectControlInputRoute(moduleId, rackState) {
       if (pending || !rack.modules.some(module => module.id === moduleId)) return;
-      const to = catalog.preparedControlInputs.find(binding => binding.to.moduleId === moduleId)?.to;
-      if (!to) return;
-      const binding = inputBindingForState(catalog, moduleId, rackState);
-      const existing = rack.connections.find(edge => endpointKey(edge.to) === endpointKey(to));
-      if (binding && endpointKey(existing?.from ?? {}) === endpointKey(binding.from)
-        || !binding && !existing) return;
-      rack = validateMainRackInsertDocument(binding
-        ? replaceRackInput(rack, binding.from, to, catalog)
-        : disconnectRackInput(rack, to, catalog), catalog);
+      const targets = catalog.preparedControlInputs.filter(binding => binding.to.moduleId === moduleId)
+        .map(binding => binding.to).filter((to, index, all) =>
+          all.findIndex(candidate => endpointKey(candidate) === endpointKey(to)) === index);
+      for (const to of targets) {
+        const binding = inputBindingForState(catalog, to, rackState);
+        const existing = rack.connections.find(edge => endpointKey(edge.to) === endpointKey(to));
+        if (binding && endpointKey(existing?.from ?? {}) === endpointKey(binding.from)
+          || !binding && !existing) continue;
+        rack = validateMainRackInsertDocument(binding
+          ? replaceRackInput(rack, binding.from, to, catalog)
+          : disconnectRackInput(rack, to, catalog), catalog);
+      }
       paintWires();
     },
     pending: () => pending,

@@ -9,8 +9,8 @@ export function matchesControlState(binding, rackState) {
     .reduce((state, key) => state?.[key], rackState) === value);
 }
 
-export function inputBindingForState(catalog, moduleId, rackState) {
-  return catalog.preparedControlInputs.find(binding => binding.to.moduleId === moduleId
+export function inputBindingForState(catalog, endpoint, rackState) {
+  return catalog.preparedControlInputs.find(binding => sameEndpoint(binding.to, endpoint)
     && matchesControlState(binding, rackState)) ?? null;
 }
 

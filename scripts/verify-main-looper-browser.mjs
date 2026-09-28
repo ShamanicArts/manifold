@@ -135,7 +135,7 @@ try {
   await page.screenshot({ path: new URL('../web/public/main-lfo-route.png', import.meta.url).pathname, fullPage: true });
   const atvPanel = await page.locator('.rack-atv').boundingBox();
   const lfoPanel = await page.locator('.rack-lfo').first().boundingBox();
-  assert.equal(Math.round(atvPanel.x - lfoPanel.x), 708);
+  assert.equal(Math.round(atvPanel.x - lfoPanel.x), 236);
   assert.equal(Math.round(atvPanel.width), 236);
   await page.locator('#atv-amount').focus();
   await page.keyboard.press('Home');
@@ -143,7 +143,7 @@ try {
   await page.locator('#atv-port').selectOption('1');
   await page.locator('.rack-atv').screenshot({ path: new URL('../web/public/main-atv-bias-module.png', import.meta.url).pathname });
   const slewPanel = await page.locator('.rack-slew').boundingBox();
-  assert.equal(Math.round(slewPanel.x - lfoPanel.x), 708);
+  assert.equal(Math.round(slewPanel.x - lfoPanel.x), 472);
   assert.equal(Math.round(slewPanel.width), 236);
   await page.locator('#slew-source').selectOption('16');
   await page.locator('#slew-shape').click();
@@ -736,12 +736,12 @@ try {
   const directSlew = await browser.newPage({ viewport: { width: 1440, height: 950 } });
   await directSlew.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html#slew`);
   await directSlew.waitForFunction(() => !document.querySelector('#midisynth-panel').hidden
-    && document.querySelector('#rack-scroll').scrollTop >= 470);
+    && document.querySelector('#rack-scroll').scrollTop >= 440);
   assert.equal(await directSlew.locator('.rack-slew').isVisible(), true);
   const directHold = await browser.newPage({ viewport: { width: 1440, height: 950 } });
   await directHold.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html#sample-hold`);
   await directHold.waitForFunction(() => !document.querySelector('#midisynth-panel').hidden
-    && document.querySelector('#rack-scroll').scrollTop >= 690);
+    && document.querySelector('#rack-scroll').scrollTop >= 440);
   assert.equal(await directHold.locator('.rack-sample-hold').isVisible(), true);
   const directCompare = await browser.newPage({ viewport: { width: 1440, height: 950 } });
   await directCompare.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html#compare`);

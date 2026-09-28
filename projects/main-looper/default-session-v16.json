@@ -641,6 +641,15 @@
         "col": 2,
         "w": 1,
         "h": 1
+      },
+      {
+        "id": "sample_hold1",
+        "nodeId": 14,
+        "type": "sample_hold",
+        "row": 2,
+        "col": 3,
+        "w": 1,
+        "h": 1
       }
     ],
     "connections": [
@@ -741,6 +750,28 @@
         "to": {
           "moduleId": "slew1",
           "portId": "in"
+        }
+      },
+      {
+        "id": "lfo1_to_sample_hold1",
+        "from": {
+          "moduleId": "lfo1",
+          "portId": "out"
+        },
+        "to": {
+          "moduleId": "sample_hold1",
+          "portId": "in"
+        }
+      },
+      {
+        "id": "lfo1_eoc_to_sample_hold1",
+        "from": {
+          "moduleId": "lfo1",
+          "portId": "eoc"
+        },
+        "to": {
+          "moduleId": "sample_hold1",
+          "portId": "trig"
         }
       }
     ]

@@ -582,4 +582,47 @@ mod tests {
         crate::main_rack_document::validate_control_route(&state["rackDocument"], &state["rack"])
             .unwrap();
     }
+
+    #[test]
+    fn native_sample_hold_reconciles_signal_and_trigger_inputs() {
+        let mut state: Value = serde_json::from_slice(include_bytes!(
+            "../../../web/public/main-sample-hold-rack-saved-session.json"
+        ))
+        .unwrap();
+        state["rack"]["sampleHold"]["source"] = json!(0);
+        state["rack"]["sampleHold"]["triggerSource"] = json!(0);
+        reconcile_control_cables(&mut state).unwrap();
+        let cables = state["rackDocument"]["connections"].as_array().unwrap();
+        assert!(cables.iter().any(|edge| edge["from"]["moduleId"] == "lfo1"
+            && edge["from"]["portId"] == "out"
+            && edge["to"]["moduleId"] == "sample_hold1"
+            && edge["to"]["portId"] == "in"));
+        assert!(cables.iter().any(|edge| edge["from"]["moduleId"] == "lfo1"
+            && edge["from"]["portId"] == "eoc"
+            && edge["to"]["moduleId"] == "sample_hold1"
+            && edge["to"]["portId"] == "trig"));
+        state["rack"]["sampleHold"]["source"] = json!(17);
+        state["rack"]["sampleHold"]["triggerSource"] = json!(4);
+        state["rack"]["lfos"][0]["route"]["source"] = json!(6);
+        reconcile_control_cables(&mut state).unwrap();
+        let cables = state["rackDocument"]["connections"].as_array().unwrap();
+        assert!(cables.iter().any(|edge| edge["from"]["moduleId"] == "slew1"
+            && edge["to"]["moduleId"] == "sample_hold1"
+            && edge["to"]["portId"] == "in"));
+        assert!(
+            cables
+                .iter()
+                .all(|edge| edge["to"]["moduleId"] != "sample_hold1"
+                    || edge["to"]["portId"] != "trig")
+        );
+        assert!(
+            cables
+                .iter()
+                .any(|edge| edge["from"]["moduleId"] == "sample_hold1"
+                    && edge["from"]["portId"] == "out"
+                    && edge["to"]["portId"] == "cutoff")
+        );
+        crate::main_rack_document::validate_control_route(&state["rackDocument"], &state["rack"])
+            .unwrap();
+    }
 }

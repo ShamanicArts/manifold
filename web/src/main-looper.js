@@ -67,12 +67,13 @@ const rackPatch = mountMainAudioPatch({
       processor.port.postMessage({ type: 'rack-routes', requestId, routes });
     });
   },
-  onControlRoute: async moduleId => {
+  onControlRoute: async endpoint => {
     if (editorMode) return false;
     const previous = lfo.snapshot().find(item => item.slot === 0)?.route;
     if (!previous) return false;
-    const binding = rackCatalog.preparedControlOutputs.find(item => item.from.moduleId === moduleId);
-    if (moduleId && !binding) return false;
+    const binding = rackCatalog.preparedControlOutputs.find(item =>
+      item.from.moduleId === endpoint?.moduleId && item.from.portId === endpoint?.portId);
+    if (endpoint && !binding) return false;
     const connected = Boolean(binding);
     const next = { source: binding?.source ?? 0, target: binding?.target ?? 0, enabled: connected };
     if (!processor) { lfo.applyCableRoute(connected, next.source); return true; }
@@ -215,7 +216,9 @@ const atv = mountMainAtvBias($, post, state => {
 const slew = mountMainSlew($, post, project.modulation.slewParameters, state => {
   if (!editorMode) rackPatch.reflectControlInputRoute('slew1', { slew: state });
 });
-const sampleHold = mountMainSampleHold($, post, project.modulation.sampleHoldParameters);
+const sampleHold = mountMainSampleHold($, post, project.modulation.sampleHoldParameters, state => {
+  if (!editorMode) rackPatch.reflectControlInputRoute('sample_hold1', { sampleHold: state });
+});
 const compare = mountMainCompare($, post, project.modulation.compareParameters);
 const cvMix = mountMainCvMix($, post, project.modulation.cvMixParameters);
 const range = mountMainRange($, post, project.modulation.rangeParameters);
@@ -372,6 +375,7 @@ function restoreRack(state) {
   sampleHold.restore(state.sampleHold ?? {
     mode: 0, source: 0, triggerSource: 0, manualGate: false, held: 0, triggerHigh: false,
   });
+  if (!editorMode) rackPatch.reflectControlInputRoute('sample_hold1', { sampleHold: sampleHold.snapshot() });
   compare.restore(state.compare ?? {
     direction: 0, threshold: 0, hysteresis: .05, source: 0, gate: false, pulseRemaining: 0,
   });
@@ -477,7 +481,7 @@ if (location.hash === '#slew') {
 }
 if (location.hash === '#sample-hold') {
   document.querySelector('[data-main-tab="midisynth"]').click();
-  requestAnimationFrame(() => { $('rack-scroll').scrollTop = rackUtilityTop('.rack-sample-hold', 217); sampleHold.paint(); });
+  requestAnimationFrame(() => { $('rack-scroll').scrollTop = rackUtilityTop('.rack-sample-hold', 13); sampleHold.paint(); });
 }
 if (location.hash === '#compare') {
   document.querySelector('[data-main-tab="midisynth"]').click();
