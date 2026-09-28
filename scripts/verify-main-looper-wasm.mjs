@@ -21,19 +21,19 @@ for (let i = 0; i < 4; i++) block(0);
 const captureBins = captureStripBins(contract.segments, 8, 16_000, 240_000,
   e.manifold_looper_status(contract.status.capturedFrames, 0));
 const capturePeaks = captureBins.map(bin => bin ? e.manifold_looper_peak(0, 1, ...bin) : 0);
-assert.ok(capturePeaks[0] > .79 && capturePeaks.at(-1) < .001,
-  `the newest strip must run from older audio on the left to newer silence on the right: ${capturePeaks}`);
+assert.ok(capturePeaks[0] < .001 && capturePeaks.at(-1) > .79,
+  `the newest strip must enter at its left edge and age toward the right: ${capturePeaks}`);
 const nextStripBins = captureStripBins(contract.segments, 7, 16_000, 240_000,
   e.manifold_looper_status(contract.status.capturedFrames, 0));
 const nextStripPeaks = nextStripBins.map(bin => bin ? e.manifold_looper_peak(0, 1, ...bin) : 0);
-assert.ok(nextStripPeaks[0] < .001 && nextStripPeaks.at(-1) > .79,
-  `audio crossing into an older strip must start at its right edge: ${nextStripPeaks}`);
+assert.ok(nextStripPeaks[0] > .79 && nextStripPeaks.at(-1) < .001,
+  `audio crossing into an older strip must start at its left edge: ${nextStripPeaks}`);
 for (let i = 0; i < 4; i++) block(0);
 const progressedBins = captureStripBins(contract.segments, 7, 16_000, 240_000,
   e.manifold_looper_status(contract.status.capturedFrames, 0));
 const progressedPeaks = progressedBins.map(bin => bin ? e.manifold_looper_peak(0, 1, ...bin) : 0);
-assert.ok(progressedPeaks.at(-1) < .001 && progressedPeaks.at(-3) > .79,
-  `the same audio must travel left within its strip as it ages: ${progressedPeaks}`);
+assert.ok(progressedPeaks[0] < .001 && progressedPeaks[2] > .79,
+  `the same audio must travel right within its strip as it ages: ${progressedPeaks}`);
 assert.equal(e.manifold_looper_command(0, 0), 1);
 for (let i = 0; i < 125; i++) block(.25);
 assert.equal(e.manifold_looper_command(1, 0), 1);
@@ -498,6 +498,38 @@ for (let i = 0; i < 30; i++) assert.equal(scaleEngine.manifold_looper_process(12
 assert.equal(scaleEngine.manifold_looper_transpose_status(0), 0);
 assert.equal(scaleEngine.manifold_looper_transpose_parameter(transposeIds.source, 2), 0);
 console.log(`Main Transpose: Scale C4 → C5 or raw C#4 → C#5, sounding crossings ${scaleToTransposeCrossings} → ${rawToTransposeCrossings}; source C#4 note-off releases it.`);
+const noteFilterIds = contract.modulation.noteFilterParameters;
+assert.equal(scaleEngine.manifold_looper_note_filter_parameter(noteFilterIds.low, 60), 1);
+assert.equal(scaleEngine.manifold_looper_note_filter_parameter(noteFilterIds.high, 60), 1);
+assert.equal(scaleEngine.manifold_looper_note_filter_parameter(noteFilterIds.source, 0), 1);
+assert.equal(scaleEngine.manifold_looper_note_filter_parameter(noteFilterIds.connected, 1), 1);
+assert.equal(scaleEngine.manifold_looper_synth_note(0, 61, 100), 1);
+const blockedCrossings = scaleCrossings();
+assert.equal(blockedCrossings, 0);
+assert.equal(scaleEngine.manifold_looper_note_filter_status(1), 61);
+assert.equal(scaleEngine.manifold_looper_note_filter_status(2), 0);
+assert.equal(scaleEngine.manifold_looper_note_filter_parameter(noteFilterIds.high, 61), 1);
+const passingCrossings = scaleCrossings();
+assert.ok(passingCrossings > 0, 'held blocked note must become audible after opening the range');
+assert.equal(scaleEngine.manifold_looper_note_filter_status(2), 1);
+assert.equal(scaleEngine.manifold_looper_note_filter_parameter(noteFilterIds.mode, 1), 1);
+assert.equal(scaleCrossings(), 0);
+assert.equal(scaleEngine.manifold_looper_note_filter_parameter(noteFilterIds.mode, 0), 1);
+assert.ok(scaleCrossings() > 0, 'held source note must reopen after leaving Outside mode');
+assert.equal(scaleEngine.manifold_looper_note_filter_parameter(noteFilterIds.source, 2), 1);
+assert.equal(scaleEngine.manifold_looper_note_filter_parameter(noteFilterIds.low, 73), 1);
+assert.equal(scaleEngine.manifold_looper_note_filter_parameter(noteFilterIds.high, 73), 1);
+scaleCrossings();
+assert.equal(scaleEngine.manifold_looper_note_filter_status(1), 73);
+assert.equal(scaleEngine.manifold_looper_note_filter_status(2), 1);
+assert.equal(scaleEngine.manifold_looper_note_filter_parameter(noteFilterIds.source, 1), 1);
+scaleCrossings();
+assert.equal(scaleEngine.manifold_looper_note_filter_status(1), 60);
+assert.equal(scaleEngine.manifold_looper_note_filter_status(2), 0);
+assert.equal(scaleEngine.manifold_looper_synth_note(1, 61, 0), 1);
+for (let i = 0; i < 30; i++) assert.equal(scaleEngine.manifold_looper_process(128), 1);
+assert.equal(scaleEngine.manifold_looper_note_filter_status(0), 0);
+console.log(`Main Note Filter: raw C#4 blocked then released by range and mode changes; typed Transpose C#5 and Scale C4 inputs select independently (${blockedCrossings} → ${passingCrossings} sounding crossings).`);
 const { instance: transientInstance } = await WebAssembly.instantiate(wasm, {});
 const transient = transientInstance.exports;
 assert.equal(transient.manifold_looper_prepare(8_000, 128), 1);
@@ -510,6 +542,6 @@ transientInput.fill(0);
 for (let index = 0; index < 63; index++) assert.equal(transient.manifold_looper_process(128), 1);
 const transientBins = captureStripBins(contract.segments, 4, 16_000, 240_000, 8192);
 const transientPeaks = transientBins.map(bin => bin ? transient.manifold_looper_peak(0, 1, ...bin) : 0);
-assert.ok(transientPeaks[63] > .89 && transientPeaks[62] === 0,
-  `one-frame transient should remain in the older 1-bar strip's right-side bin: ${transientPeaks}`);
-console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias, Slew, Sample Hold, Compare, CV Mix, Range, Scale Quantizer and Transpose voice routing passed');
+assert.ok(transientPeaks[0] > .89 && transientPeaks[1] === 0,
+  `one-frame transient should enter the older 1-bar strip's left-side bin: ${transientPeaks}`);
+console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias, Slew, Sample Hold, Compare, CV Mix, Range, Scale Quantizer, Transpose and Note Filter voice routing passed');

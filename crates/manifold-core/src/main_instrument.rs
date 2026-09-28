@@ -575,6 +575,14 @@ impl MainInstrument {
         self.synth.transpose_status(id)
     }
 
+    pub fn set_note_filter_parameter(&mut self, id: u32, value: f32) -> bool {
+        self.synth.set_note_filter_parameter(id, value)
+    }
+
+    pub fn note_filter_status(&self, id: u32) -> f32 {
+        self.synth.note_filter_status(id)
+    }
+
     pub fn lfo_slot_status(&self, slot: usize, id: u32) -> f32 {
         if !self.lfo_active.get(slot).copied().unwrap_or(false) {
             return 0.0;

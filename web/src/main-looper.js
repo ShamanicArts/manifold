@@ -16,6 +16,7 @@ import { mountMainCvMix } from './widgets/main-cv-mix.js';
 import { mountMainRange } from './widgets/main-range.js';
 import { mountMainScaleQuantizer } from './widgets/main-scale-quantizer.js';
 import { mountMainTranspose } from './widgets/main-transpose.js';
+import { mountMainNoteFilter } from './widgets/main-note-filter.js';
 import { mountMainCapturePlane } from './widgets/main-capture-plane.js';
 import { drawMainLayerKnob } from './widgets/main-layer-knob.js';
 
@@ -57,6 +58,7 @@ const cvMix = mountMainCvMix($, post, project.modulation.cvMixParameters);
 const range = mountMainRange($, post, project.modulation.rangeParameters);
 const scaleQuantizer = mountMainScaleQuantizer($, post, project.modulation.scaleQuantizerParameters);
 const transpose = mountMainTranspose($, post, project.modulation.transposeParameters);
+const noteFilter = mountMainNoteFilter($, post, project.modulation.noteFilterParameters);
 const selectedSegment = id => Number($(id).querySelector('[aria-pressed="true"]').dataset.value);
 function wireSegments(id, change) {
   const group = $(id);
@@ -189,7 +191,7 @@ function rackSnapshot() {
     fx1: fx1.snapshot(), fx2: fx2.snapshot(), eq: eq.snapshot(), lfos: lfo.snapshot(),
     atv: atv.snapshot(), slew: slew.snapshot(), sampleHold: sampleHold.snapshot(),
     compare: compare.snapshot(), cvMix: cvMix.snapshot(), range: range.snapshot(),
-    scaleQuantizer: scaleQuantizer.snapshot(), transpose: transpose.snapshot() };
+    scaleQuantizer: scaleQuantizer.snapshot(), transpose: transpose.snapshot(), noteFilter: noteFilter.snapshot() };
 }
 function restoreRack(state) {
   restoreSource(state.source);
@@ -211,6 +213,7 @@ function restoreRack(state) {
   range.restore(state.range ?? { min: 0, max: 1, mode: 0, source: 0 });
   scaleQuantizer.restore(state.scaleQuantizer ?? { root: 0, scale: 1, direction: 1, connected: false });
   transpose.restore(state.transpose ?? { semitones: 0, source: 1, connected: false });
+  noteFilter.restore(state.noteFilter ?? { low: 36, high: 96, mode: 0, source: 0, connected: false });
 }
 drawSourceGraph();
 function resetSampleCaptureUI() {
@@ -286,7 +289,7 @@ for (const tab of document.querySelectorAll('[data-main-tab]')) {
       button.classList.toggle('active', selected);
       button.setAttribute('aria-selected', String(selected));
     }
-    requestAnimationFrame(() => { sizeInstrument(); if (synth) { paintSampleSliders(); adsr.paint(); filter.paint(); fx1.paint(); fx2.paint(); eq.paint(); lfo.paint(); atv.paint(); slew.paint(); sampleHold.paint(); compare.paint(); cvMix.paint(); range.paint(); scaleQuantizer.paint(); transpose.paint(); } });
+    requestAnimationFrame(() => { sizeInstrument(); if (synth) { paintSampleSliders(); adsr.paint(); filter.paint(); fx1.paint(); fx2.paint(); eq.paint(); lfo.paint(); atv.paint(); slew.paint(); sampleHold.paint(); compare.paint(); cvMix.paint(); range.paint(); scaleQuantizer.paint(); transpose.paint(); noteFilter.paint(); } });
   });
 }
 if (location.hash === '#slew') {
@@ -316,6 +319,10 @@ if (location.hash === '#scale-quantizer') {
 if (location.hash === '#transpose') {
   document.querySelector('[data-main-tab="midisynth"]').click();
   requestAnimationFrame(() => { $('rack-scroll').scrollTop = 1640; transpose.paint(); });
+}
+if (location.hash === '#note-filter') {
+  document.querySelector('[data-main-tab="midisynth"]').click();
+  requestAnimationFrame(() => { $('rack-scroll').scrollTop = 1640; noteFilter.paint(); });
 }
 
 const noteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B', 'C'];
@@ -482,6 +489,7 @@ function render(data) {
   if (data.range) range.setStatus(data.range);
   if (data.scaleQuantizer) scaleQuantizer.setStatus(data.scaleQuantizer);
   if (data.transpose) transpose.setStatus(data.transpose);
+  if (data.noteFilter) noteFilter.setStatus(data.noteFilter);
   latestSamplePeaks = data.samplePeaks ?? [];
   eq.setResponse(data.eqResponse);
   drawSourceGraph();
@@ -606,7 +614,7 @@ $('save-session').onclick = () => {
   if (transferJob || sampleJob || freeSource !== null) return;
   const id = nextRequest++;
   let rack;
-  try { rack = validateMainRackState(rackSnapshot(), true, project.modulation, true, true, true, true, true, true, true, true, true); }
+  try { rack = validateMainRackState(rackSnapshot(), true, project.modulation, true, true, true, true, true, true, true, true, true, true); }
   catch (error) { status(error.message); return; }
   transferJob = { kind: 'save', id, state: null, audio: null, layer: 0, offset: 0,
     sampleOffset: 0, sampleAudio: null, rack };
@@ -620,7 +628,7 @@ $('open-session').onchange = async () => {
   if (!file) return;
   try {
     const state = JSON.parse(await file.text());
-    if (state.format !== project.format || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, project.sessionVersion].includes(state.version) || state.id !== project.id
+    if (state.format !== project.format || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, project.sessionVersion].includes(state.version) || state.id !== project.id
       || state.sampleRate !== context.sampleRate || !Array.isArray(state.layers) || state.layers.length !== project.layers
       || !Number.isFinite(state.tempo) || !Number.isFinite(state.targetBpm)
       || !Number.isInteger(state.activeLayer) || state.activeLayer < 0 || state.activeLayer >= project.layers
@@ -637,7 +645,7 @@ $('open-session').onchange = async () => {
     });
     let sampleAudio = null;
     if (state.version >= 2) {
-      validateMainRackState(state.rack, state.version >= 3, project.modulation, state.version >= 4, state.version >= 5, state.version >= 6, state.version >= 7, state.version >= 8, state.version >= 9, state.version >= 10, state.version >= 11, state.version >= 12);
+      validateMainRackState(state.rack, state.version >= 3, project.modulation, state.version >= 4, state.version >= 5, state.version >= 6, state.version >= 7, state.version >= 8, state.version >= 9, state.version >= 10, state.version >= 11, state.version >= 12, state.version >= 13);
       if (!state.sample || !Number.isInteger(state.sample.frames)
         || state.sample.frames < 0 || state.sample.frames > Math.min(1_440_000, context.sampleRate * project.captureSeconds)
         || (state.sample.frames === 0 && state.sample.pcmF32Base64 !== '')) {
@@ -721,6 +729,7 @@ async function start() {
     range.sendState();
     scaleQuantizer.sendState();
     transpose.sendState();
+    noteFilter.sendState();
     if (sourceKind === 'microphone') {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
       sourceNode = context.createMediaStreamSource(stream);

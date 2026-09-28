@@ -292,6 +292,26 @@ try {
   await page.keyboard.down('Space');
   await page.waitForFunction(() => document.querySelector('#transpose-values').textContent.includes('C#4 → G#4'));
   await page.keyboard.up('Space');
+  const noteFilterPanel = await page.locator('.rack-note-filter').boundingBox();
+  assert.equal(Math.round(noteFilterPanel.x - lfoPanel.x), 472);
+  assert.equal(Math.round(noteFilterPanel.width), 236);
+  await page.locator('#note-filter-low').click({ position: { x: 114, y: 9 } });
+  await page.locator('#note-filter-high').click({ position: { x: 114, y: 9 } });
+  assert.equal(await page.locator('#note-filter-low').getAttribute('aria-valuenow'), '68');
+  assert.equal(await page.locator('#note-filter-high').getAttribute('aria-valuenow'), '68');
+  await page.locator('#note-filter-source').selectOption('2');
+  await page.locator('#note-filter-connected').check();
+  await page.locator('[aria-label="Play C♯4"]').focus();
+  await page.keyboard.down('Space');
+  await page.waitForFunction(() => document.querySelector('#note-filter-values').textContent.includes('G#4 → PASS'));
+  await page.locator('#note-filter-mode').evaluate(element => element.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })));
+  await page.waitForFunction(() => document.querySelector('#note-filter-values').textContent.includes('G#4 → BLOCK'));
+  await page.locator('#note-filter-mode').evaluate(element => element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true })));
+  await page.waitForFunction(() => document.querySelector('#note-filter-values').textContent.includes('G#4 → PASS'));
+  await page.locator('.rack-note-filter').screenshot({ path: new URL('../web/public/main-note-filter-module.png', import.meta.url).pathname });
+  await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = element.scrollHeight; });
+  await page.screenshot({ path: new URL('../web/public/main-note-filter-rack.png', import.meta.url).pathname, fullPage: true });
+  await page.keyboard.up('Space');
   await page.locator('#add-lfo').click();
   assert.equal(await page.locator('.rack-lfo').count(), 2);
   await page.locator('#lfo-shape-slot-1').selectOption('3');
@@ -387,7 +407,7 @@ try {
   const download = await downloadPromise;
   const bundle = JSON.parse(await readFile(await download.path(), 'utf8'));
   assert.equal(bundle.id, 'manifold.main-looper');
-  assert.equal(bundle.version, 12);
+  assert.equal(bundle.version, 13);
   assert.ok(bundle.sample.frames > 0 && bundle.sample.pcmF32Base64.length > 0);
   assert.equal(bundle.rack.source.waveform, 1);
   assert.equal(bundle.rack.fx2.selected, 5);
@@ -417,6 +437,7 @@ try {
   assert.equal(bundle.rack.range.source, 22);
   assert.deepEqual(bundle.rack.scaleQuantizer, { root: 2, scale: 2, direction: 2, connected: true });
   assert.deepEqual(bundle.rack.transpose, { semitones: 7, source: 0, connected: true });
+  assert.deepEqual(bundle.rack.noteFilter, { low: 68, high: 68, mode: 0, source: 2, connected: true });
   assert.ok(bundle.layers[0].frames > 0 && bundle.layers[1].frames > 0);
   await page.locator('#audio-button').click();
   await page.locator('#audio-button').click();
@@ -466,6 +487,9 @@ try {
   assert.equal(await page.locator('#transpose-semitones').getAttribute('aria-valuenow'), '7');
   assert.equal(await page.locator('#transpose-source').inputValue(), '0');
   assert.equal(await page.locator('#transpose-connected').isChecked(), true);
+  assert.equal(await page.locator('#note-filter-low').getAttribute('aria-valuenow'), '68');
+  assert.equal(await page.locator('#note-filter-source').inputValue(), '2');
+  assert.equal(await page.locator('#note-filter-connected').isChecked(), true);
   assert.equal(await page.locator('#mod-source').inputValue(), '12');
   await page.waitForFunction(() => document.querySelector('#compare-meter').textContent.includes('Gate high'));
   assert.notEqual(await page.locator('#sample-length').textContent(), '0ms');
@@ -486,7 +510,14 @@ try {
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(duplicateSlot)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Invalid Main LFO module'));
   assert.equal(await page.locator('.rack-lfo').count(), 1);
-  const v11 = { ...bundle, version: 11, rack: { ...bundle.rack } };
+  const v12 = { ...bundle, version: 12, rack: { ...bundle.rack } };
+  delete v12.rack.noteFilter;
+  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v12.json',
+    mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v12)) });
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
+  assert.equal(await page.locator('#note-filter-connected').isChecked(), false);
+  assert.equal(await page.locator('#note-filter-low').getAttribute('aria-valuenow'), '36');
+  const v11 = { ...v12, version: 11, rack: { ...v12.rack } };
   delete v11.rack.transpose;
   await page.locator('#open-session').setInputFiles({ name: 'main-looper-v11.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v11)) });
@@ -621,6 +652,7 @@ try {
   await page.locator('.segment').nth(8).click();
   await page.waitForFunction(() => document.querySelector('.layer[data-layer="2"] .state').textContent === 'Playing', { timeout: 10000 });
   assert.match(await page.locator('.layer[data-layer="2"] .bars').textContent(), /1\/16 bar/);
+  await page.locator('#capture').screenshot({ path: new URL('../web/public/main-capture-direction.png', import.meta.url).pathname });
   await page.screenshot({ path: new URL('../web/public/main-looper-live.png', import.meta.url).pathname, fullPage: true });
   assert.deepEqual(errors, []);
   const narrow = await browser.newPage({ viewport: { width: 900, height: 1100 } });
@@ -667,5 +699,10 @@ try {
   await directTranspose.waitForFunction(() => !document.querySelector('#midisynth-panel').hidden
     && document.querySelector('#rack-scroll').scrollTop >= 1600);
   assert.equal(await directTranspose.locator('.rack-transpose').isVisible(), true);
-  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth rack, two live LFO routes, original ATV / Bias, Slew, Sample Hold, Compare, CV Mix, Range, Scale Quantizer and Transpose faces with typed routing, four-slot add/remove limit, duplicate-slot rejection, Live/L1 Retro and Free Sample, traditional arm/fire, reverse scrub, v1–v12 session reopen, decoded file and Rust synth capture passed`);
+  const directNoteFilter = await browser.newPage({ viewport: { width: 1440, height: 950 } });
+  await directNoteFilter.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html#note-filter`);
+  await directNoteFilter.waitForFunction(() => !document.querySelector('#midisynth-panel').hidden
+    && document.querySelector('#rack-scroll').scrollTop >= 1600);
+  assert.equal(await directNoteFilter.locator('.rack-note-filter').isVisible(), true);
+  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth rack, two live LFO routes, original ATV / Bias, Slew, Sample Hold, Compare, CV Mix, Range, Scale Quantizer, Transpose and Note Filter faces with typed routing, four-slot add/remove limit, duplicate-slot rejection, Live/L1 Retro and Free Sample, traditional arm/fire, reverse scrub, v1–v13 session reopen, decoded file and Rust synth capture passed`);
 } finally { await browser.close(); }

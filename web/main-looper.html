@@ -8,7 +8,7 @@
     <div id="instrument-frame" class="instrument-frame">
       <section class="instrument" aria-label="Main looper instrument">
         <div class="transport"><select id="mode" aria-label="Recording mode"><option value="0">First Loop</option><option value="1">Free Mode</option><option value="2">Traditional</option></select><button id="rec" class="red">● REC</button><button id="play" class="green">▶ PLAY</button><button id="stop">⏹ STOP</button><button id="overdub">Overdub</button><button id="clear-all" class="clear">Clear</button><div id="donuts" class="donuts"></div><span class="link">○ link</span><label class="number">BPM<input id="tempo" type="number" min="40" max="240" value="120"></label><label class="number target">Target<input id="target" type="number" min="40" max="240" value="120"></label></div>
-        <div id="capture" class="capture" aria-label="Retrospective capture plane: longest ranges at left, newest audio at the right edge of each strip"></div>
+        <div id="capture" class="capture" aria-label="Retrospective capture plane: shortest range at right; audio enters each strip from its left edge"></div>
         <div class="tabs" role="tablist" aria-label="Main instrument views"><button type="button" class="tab active" data-main-tab="looper" role="tab" aria-selected="true">Looper</button><button type="button" class="tab" data-main-tab="midisynth" role="tab" aria-selected="false">MidiSynth</button></div>
         <div id="layers" class="layers" role="tabpanel" aria-label="Looper"></div>
         <div id="midisynth-panel" class="midisynth-panel" role="tabpanel" aria-label="MidiSynth" hidden>
@@ -193,6 +193,20 @@
             <label>IN source<select id="transpose-source" aria-label="Transpose voice source"><option value="0">Raw MidiSynth voices</option><option value="1">Scale Quantizer voice</option></select></label>
             <label class="transpose-connect"><input id="transpose-connected" type="checkbox"> Route Transpose to synth</label>
             <output id="transpose-meter">No connected voices</output>
+          </section>
+          <section id="note-filter" class="rack-note-filter" aria-label="Main Note Filter module">
+            <div class="note-filter-title">NOTE FILTER</div><div id="note-filter-status" class="note-filter-status">Inside  •  C2 .. C7</div>
+            <canvas id="note-filter-preview" width="424" height="100" aria-label="Note Filter pitch window and active voice pass states"></canvas>
+            <div id="note-filter-mode" aria-label="Note Filter mode"></div>
+            <div id="note-filter-low"></div><div id="note-filter-high"></div>
+            <div id="note-filter-values" class="note-filter-values">Preview: —</div>
+          </section>
+          <section class="rack-note-filter-patch" aria-label="Note Filter voice connection">
+            <strong>VOICE IN → VOICE OUT</strong>
+            <p>Pass or block each selected voice note. The original note keeps release ownership, even while its output is muted.</p>
+            <label>IN source<select id="note-filter-source" aria-label="Note Filter voice source"><option value="0">Raw MidiSynth voices</option><option value="1">Scale Quantizer voice</option><option value="2">Transpose voice</option></select></label>
+            <label class="note-filter-connect"><input id="note-filter-connected" type="checkbox"> Route Note Filter to synth</label>
+            <output id="note-filter-meter">No connected voices</output>
           </section>
           <button id="add-lfo" type="button">+ LFO</button>
           </div></div>

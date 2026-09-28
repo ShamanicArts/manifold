@@ -27,6 +27,7 @@ pub mod main_directional;
 pub mod main_instrument;
 pub mod main_lfo;
 pub mod main_looper;
+pub mod main_note_filter;
 pub mod main_pitch;
 pub mod main_range_mapper;
 pub mod main_sample_capture;

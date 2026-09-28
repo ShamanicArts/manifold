@@ -5,6 +5,7 @@ use crate::envelope::AdsrEnvelope;
 use crate::envelope_follower::EnvelopeFollower;
 use crate::events::EventKind;
 use crate::main_directional::MainDirectionalMotion;
+use crate::main_note_filter::MainNoteFilter;
 use crate::main_pitch::route_main_pitch;
 use crate::main_scale_quantizer::MainScaleQuantizer;
 use crate::main_transpose::MainTranspose;
@@ -66,6 +67,7 @@ pub struct MainVoiceBank {
     allocator: MainVoiceAllocator,
     scale_quantizer: MainScaleQuantizer,
     transpose: MainTranspose,
+    note_filter: MainNoteFilter,
     voices: [MainVoice; MAIN_VOICE_COUNT],
     raw_left: Vec<f32>,
     raw_right: Vec<f32>,
@@ -137,6 +139,7 @@ impl MainVoiceBank {
             allocator: MainVoiceAllocator::default(),
             scale_quantizer: MainScaleQuantizer::new(),
             transpose: MainTranspose::new(),
+            note_filter: MainNoteFilter::new(),
             voices,
             raw_left: vec![0.0; max_frames],
             raw_right: vec![0.0; max_frames],
@@ -385,15 +388,30 @@ impl MainVoiceBank {
         self.transpose.status(id)
     }
 
+    pub fn set_note_filter_parameter(&mut self, id: u32, value: f32) -> bool {
+        self.note_filter.set_parameter(id, value)
+    }
+
+    pub fn note_filter_status(&self, id: u32) -> f32 {
+        self.note_filter.status(id)
+    }
+
     fn routed_note(&self, source_note: u8) -> u8 {
         let scale_note = self.scale_quantizer.note(source_note);
-        if self.transpose.connected() {
-            let input = if self.transpose.source() == 0 {
-                source_note
-            } else {
-                scale_note
-            };
-            self.transpose.note(input)
+        let transpose_input = if self.transpose.source() == 0 {
+            source_note
+        } else {
+            scale_note
+        };
+        let transpose_note = self.transpose.note(transpose_input);
+        if self.note_filter.connected() {
+            match self.note_filter.source() {
+                0 => source_note,
+                1 => scale_note,
+                _ => transpose_note,
+            }
+        } else if self.transpose.connected() {
+            transpose_note
         } else {
             scale_note
         }
@@ -543,6 +561,7 @@ impl MainVoiceBank {
         let sample_gain = (std::f32::consts::FRAC_PI_2 * t).sin();
         self.scale_quantizer.begin_block();
         self.transpose.begin_block();
+        self.note_filter.begin_block();
         for index in 0..MAIN_VOICE_COUNT {
             let source_voice = self.allocator.slots()[index];
             if !source_voice.active {
@@ -555,12 +574,27 @@ impl MainVoiceBank {
                 scale_voice
             };
             let transpose_voice = self.transpose.voice(index, transpose_input);
-            let slot = if self.transpose.connected() {
+            let default_voice = if self.transpose.connected() {
                 transpose_voice
             } else {
                 scale_voice
             };
+            let note_filter_input = match self.note_filter.source() {
+                0 => source_voice,
+                1 => scale_voice,
+                _ => transpose_voice,
+            };
+            let filtered_voice = self.note_filter.voice(index, note_filter_input);
+            let slot = if self.note_filter.connected() {
+                filtered_voice
+            } else {
+                default_voice
+            };
             let voice = &mut self.voices[index];
+            voice.envelope.set_gate(slot.gate);
+            voice
+                .motion
+                .set_parameter(8, if slot.gate { 1.0 } else { 0.0 });
             let note_frequency =
                 (440.0_f64 * 2.0_f64.powf((slot.note as f64 - 69.0) / 12.0)) as f32;
             voice.motion.set_parameter(1, note_frequency);
@@ -766,7 +800,7 @@ impl MainVoiceBank {
             }
             for frame in 0..frames {
                 let envelope = voice.envelope.process_sample();
-                let scaling = envelope * self.master * 0.5;
+                let scaling = envelope * self.master * 0.5 * if slot.active { 1.0 } else { 0.0 };
                 if self.direction_mode == 1 {
                     left[frame] += (self.raw_left[frame] * wave_gain
                         + self.ring_left[frame] * sample_gain)
@@ -821,6 +855,99 @@ impl MainVoiceBank {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn note_filter_mutes_held_voice_reopens_on_range_change_and_releases_source_note() {
+        let mut bank = MainVoiceBank::new(8_000.0, 128, 9);
+        assert!(bank.set_parameter(0, 0.0));
+        assert!(bank.set_parameter(1, -1.0));
+        assert!(bank.set_parameter(11, 0.005));
+        assert!(bank.set_parameter(14, 0.02));
+        for (id, value) in [(0, 60.0), (1, 60.0), (4, 1.0)] {
+            assert!(bank.set_note_filter_parameter(id, value));
+        }
+        bank.event(EventKind::NoteOn {
+            channel: 0,
+            note: 61,
+            velocity: 100,
+        });
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        for _ in 0..4 {
+            bank.process_planar([&mut left, &mut right]);
+        }
+        assert!(left.iter().all(|sample| *sample == 0.0));
+        assert_eq!(
+            (bank.note_filter_status(1), bank.note_filter_status(2)),
+            (61.0, 0.0)
+        );
+        assert!(bank.allocator.slots()[0].active && bank.allocator.slots()[0].gate);
+        assert!(bank.set_note_filter_parameter(1, 61.0));
+        for _ in 0..8 {
+            bank.process_planar([&mut left, &mut right]);
+        }
+        assert!(left.iter().any(|sample| sample.abs() > 0.001));
+        assert_eq!(bank.note_filter_status(2), 1.0);
+        assert!(bank.set_note_filter_parameter(2, 1.0));
+        bank.process_planar([&mut left, &mut right]);
+        assert!(left.iter().all(|sample| *sample == 0.0));
+        assert!(bank.allocator.slots()[0].active && bank.allocator.slots()[0].gate);
+        assert!(bank.set_note_filter_parameter(2, 0.0));
+        for _ in 0..8 {
+            bank.process_planar([&mut left, &mut right]);
+        }
+        assert!(left.iter().any(|sample| sample.abs() > 0.001));
+        bank.event(EventKind::NoteOff {
+            channel: 0,
+            note: 61,
+        });
+        assert!(!bank.allocator.slots()[0].gate);
+        for _ in 0..8 {
+            bank.process_planar([&mut left, &mut right]);
+        }
+        assert!(!bank.allocator.slots()[0].active);
+        assert_eq!(bank.note_filter_status(0), 0.0);
+    }
+
+    #[test]
+    fn note_filter_reads_raw_scale_or_transpose_voice_note() {
+        let mut bank = MainVoiceBank::new(8_000.0, 128, 9);
+        assert!(bank.set_scale_quantizer_parameter(3, 1.0));
+        assert!(bank.set_transpose_parameter(0, 7.0));
+        for (id, value) in [(0, 67.0), (1, 67.0), (4, 1.0)] {
+            assert!(bank.set_note_filter_parameter(id, value));
+        }
+        bank.event(EventKind::NoteOn {
+            channel: 0,
+            note: 61,
+            velocity: 100,
+        });
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        assert!(bank.set_note_filter_parameter(3, 2.0));
+        bank.process_planar([&mut left, &mut right]);
+        assert_eq!(
+            (bank.note_filter_status(1), bank.note_filter_status(2)),
+            (67.0, 1.0)
+        );
+        assert!(bank.set_note_filter_parameter(3, 1.0));
+        bank.process_planar([&mut left, &mut right]);
+        assert_eq!(
+            (bank.note_filter_status(1), bank.note_filter_status(2)),
+            (60.0, 0.0)
+        );
+        assert!(bank.set_note_filter_parameter(3, 0.0));
+        bank.process_planar([&mut left, &mut right]);
+        assert_eq!(
+            (bank.note_filter_status(1), bank.note_filter_status(2)),
+            (61.0, 0.0)
+        );
+        bank.event(EventKind::NoteOff {
+            channel: 0,
+            note: 61,
+        });
+        assert!(!bank.allocator.slots()[0].gate);
+    }
 
     #[test]
     fn transpose_selects_raw_or_scale_voice_and_retains_source_release() {

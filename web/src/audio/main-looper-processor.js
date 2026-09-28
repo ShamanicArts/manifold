@@ -1,16 +1,15 @@
 /** Main looper adapter: device buffers and messages only; Rust owns audio/state. */
 // Vite serves this AudioWorklet module as an asset, so it must be self-contained.
-// Match RetrospectiveCaptureNode::computePeaks: each strip reads age from
-// oldest at the left to newest at the right. A sound enters the right edge
-// of 1/16, travels left, then enters the right edge of the next older strip.
+// Strips progress from the rightmost short range toward older ranges on the left.
+// Within each strip, a sound enters at the left edge and travels to the right.
 export function captureStripBins(bars, index, samplesPerBar, captureFrames, capturedFrames, count = 64) {
   const older = Math.min(captureFrames, Math.floor(bars[index] * samplesPerBar));
   const newer = Math.min(captureFrames, Math.floor((bars[index + 1] ?? 0) * samplesPerBar));
   const span = Math.max(0, older - newer);
   if (!span || capturedFrames <= newer) return Array(count).fill(null);
   return Array.from({ length: count }, (_, bin) => {
-    const start = Math.floor(older - span * (bin + 1) / count);
-    const end = Math.floor(older - span * bin / count);
+    const start = Math.floor(newer + span * bin / count);
+    const end = Math.floor(newer + span * (bin + 1) / count);
     return start < capturedFrames && end > start ? [start, Math.min(end, capturedFrames)] : null;
   });
 }
@@ -38,7 +37,7 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_looper_output_ptr(), this.capacity * 2);
           this.port.postMessage({ type: 'ready' });
         } else if (this.transferJob && ['control', 'layer-control', 'command', 'synth-note', 'synth-parameter',
-          'lfo-slot-active', 'lfo-parameter', 'lfo-gate', 'modulation-route', 'atv-parameter', 'slew-parameter', 'sample-hold-parameter', 'compare-parameter', 'cv-mix-parameter', 'range-parameter', 'scale-quantizer-parameter', 'transpose-parameter'].includes(data.type)) {
+          'lfo-slot-active', 'lfo-parameter', 'lfo-gate', 'modulation-route', 'atv-parameter', 'slew-parameter', 'sample-hold-parameter', 'compare-parameter', 'cv-mix-parameter', 'range-parameter', 'scale-quantizer-parameter', 'transpose-parameter', 'note-filter-parameter'].includes(data.type)) {
           this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'sample-capture' && this.engine && !this.sampleJob && !this.transferJob && this.freeSource === null) {
           const frames = this.engine.manifold_looper_sample_capture(data.source, data.bars);
@@ -263,6 +262,9 @@ class MainLooperProcessor extends AudioWorkletProcessor {
         } else if (data.type === 'transpose-parameter' && this.engine) {
           if (this.engine.manifold_looper_transpose_parameter(data.id, data.value) !== 1)
             this.port.postMessage({ type: 'rejected', action: data });
+        } else if (data.type === 'note-filter-parameter' && this.engine) {
+          if (this.engine.manifold_looper_note_filter_parameter(data.id, data.value) !== 1)
+            this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'snapshot' && this.engine) {
           const e = this.engine;
           if (this.freeSource !== null) {
@@ -341,7 +343,11 @@ class MainLooperProcessor extends AudioWorkletProcessor {
             transpose: { voices: Array.from({ length: 8 }, (_, index) => ({ index,
               input: e.manifold_looper_transpose_status(1 + index * 2),
               output: e.manifold_looper_transpose_status(2 + index * 2) }))
-              .filter(voice => voice.input >= 0) } });
+              .filter(voice => voice.input >= 0) },
+            noteFilter: { voices: Array.from({ length: 8 }, (_, index) => ({ index,
+              note: e.manifold_looper_note_filter_status(1 + index * 2),
+              passes: e.manifold_looper_note_filter_status(2 + index * 2) === 1 }))
+              .filter(voice => voice.note >= 0) } });
         }
       } catch (error) {
         if (this.sampleJob && this.engine) this.engine.manifold_looper_sample_cancel();
