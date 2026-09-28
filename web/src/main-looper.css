@@ -501,6 +501,39 @@ body {
 .midisynth-panel[hidden], .layers[hidden] { display: none; }
 .rack-scroll { position: relative; height: 452px; overflow-y: auto; overflow-x: hidden; scrollbar-color: #334155 #0f1726; }
 .rack-scroll-content { position: relative; width: 1280px; height: 2553px; }
+#rack-view-switch { position: absolute; top: 2px; right: 123px; z-index: 8; height: 23px; min-width: 105px; padding: 0 8px; border: 1px solid #b87333; background: #261a14; color: #e8a87c; font-size: 10px; cursor: pointer; }
+#rack-view-switch:disabled { opacity: .5; cursor: wait; }
+.plugin-editor #rack-view-switch { display: none; }
+#rack-view-switch[aria-pressed="true"] { background: #3b2317; color: #fff; }
+.main-patch-face { display: none; position: absolute; inset: 12px 0 0; z-index: 3; padding: 11px 9px; background: #121a2f; grid-template-columns: 1fr 1fr; gap: 8px; overflow: hidden; }
+.main-rack-patch-active .main-patch-face { display: grid; }
+.main-rack-patch-active .rack-adsr > .adsr-module, .main-rack-patch-active .rack-source > .source-module,
+.main-rack-patch-active .rack-filter > .filter-module, .main-rack-patch-active .rack-fx > .fx-module,
+.main-rack-patch-active .rack-eq > .eq-module { visibility: hidden; }
+.main-patch-column { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.main-patch-column > strong { height: 15px; color: #64748b; font: 9px/15px system-ui, sans-serif; letter-spacing: .11em; }
+.main-patch-outputs > strong { text-align: right; }
+.main-patch-port { display: flex; align-items: center; gap: 6px; height: 21px; padding: 0 2px; border: 0; background: transparent; color: #fff; font: 9px system-ui, sans-serif; text-align: left; cursor: crosshair; min-width: 0; touch-action: none; }
+.main-patch-port span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.main-patch-port[data-direction="output"] { justify-content: flex-end; }
+.main-patch-port i { display: block; flex: none; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #8b4513; background: radial-gradient(circle at center, #1a0f0a 0 37%, #e8a87c 41%, #b87333 64%, #8b4513 100%); box-shadow: 0 1px 3px #000a; }
+.main-patch-port[data-direction="output"] i { border-width: 3px; }
+.main-patch-port:not(.main-patch-audio) i { border-color: #475569; background: radial-gradient(circle at center, #0a141a 0 37%, #94a3b8 41%, #64748b 64%, #475569 100%); }
+.main-patch-port.main-patch-voice i { border-color: #7c3aed; background: radial-gradient(circle at center, #140a1a 0 37%, #c084fc 41%, #9333ea 64%, #7c3aed 100%); }
+.main-patch-unavailable { opacity: .47; cursor: not-allowed; }
+.main-patch-port:not(:disabled):hover, .main-patch-port:not(:disabled):focus-visible { background: #b8733329; outline: 1px solid #e8a87c; }
+.main-rack-wires { display: none; position: absolute; left: 0; top: 0; width: 1280px; height: 460px; z-index: 5; overflow: visible; pointer-events: none; }
+.main-rack-patch-active .main-rack-wires { display: block; }
+.main-rack-wire { fill: none; stroke: #fb7185; stroke-width: 2.4; stroke-linecap: round; filter: drop-shadow(0 1px 2px #000); opacity: .85; }
+.main-rack-wire-voice { stroke: #c084fc; }
+.main-rack-wire.preview { stroke: #e8a87c; stroke-dasharray: 5 4; }
+.main-patch-output-rail { display: none; position: absolute; left: 1188px; top: 253px; width: 86px; min-height: 58px; z-index: 4; background: #121a2f; border: 1px solid #d4af37; padding: 4px; }
+.main-rack-patch-active .main-patch-output-rail { display: block; }
+.main-patch-output-rail > strong { color: #f0e68c; font: 9px system-ui, sans-serif; }
+.main-patch-output-rail .main-patch-port { width: 100%; }
+.main-patch-midi-rail { display: none; position: absolute; left: 3px; top: 2px; z-index: 4; height: 23px; width: 72px; background: #121a2f; }
+.main-rack-patch-active .main-patch-midi-rail { display: block; }
+.main-patch-midi-rail .main-patch-port { height: 22px; }
 #patch-jump { position: absolute; top: 2px; right: 36px; z-index: 4; height: 23px; padding: 0 9px; border: 1px solid #38bdf8; background: #1e293b; color: #bae6fd; font-size: 10px; cursor: pointer; }
 .rack-row { display: flex; height: 452px; padding-top: 25px; }
 .rack-adsr, .rack-source, .rack-filter { position: relative; flex: none; height: 220px; background: #121a2f; border: 1px solid #1f2b4d; }

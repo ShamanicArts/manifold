@@ -2,8 +2,8 @@ import './main-looper.css';
 import project from '../../projects/main-looper/project.json';
 import rackCatalog from '../../projects/main-looper/rack.json';
 import { NODE_TYPES } from './graph/topology.js';
-import { initialRackDocument } from './state/rack-document.js';
 import { compileMainRackInsert } from './state/main-rack-graph.js';
+import { mountMainAudioPatch } from './widgets/main-audio-patch.js';
 import { encodePcm, decodePcm } from './state/stereo-source.js';
 import { validateMainRackState } from './state/main-rack-state.js';
 import { mountCompactSlider } from './widgets/compact-slider.js';
@@ -39,6 +39,22 @@ let transferJob = null, nextRequest = 1;
 let sampleJob = null, freeSource = null, sampleMode = 0;
 let applyingEditorState = false;
 const status = (message) => { $('status').textContent = message; };
+const pendingRackRoutes = new Map();
+if (editorMode) $('rack-view-switch').hidden = true;
+const rackPatch = mountMainAudioPatch({
+  content: document.querySelector('.rack-scroll-content'), catalog: rackCatalog,
+  toggle: $('rack-view-switch'), onError: status,
+  onRoute: ({ to, port, from }) => {
+    if (editorMode) return Promise.resolve(false);
+    if (!processor) return Promise.resolve(true);
+    const requestId = nextRequest++;
+    return new Promise(resolve => {
+      const timer = setTimeout(() => { pendingRackRoutes.delete(requestId); resolve(false); }, 5000);
+      pendingRackRoutes.set(requestId, { resolve, timer });
+      processor.port.postMessage({ type: 'rack-route', requestId, to, port, from });
+    });
+  },
+});
 function formatBars(value) {
   if (!value) return '';
   if (value < 1) {
@@ -291,6 +307,7 @@ function sizeInstrument() {
   const scale = Math.min(1, frame.clientWidth / 1280);
   instrument.style.transform = `scale(${scale})`;
   frame.style.height = `${Math.ceil(instrument.offsetHeight * scale)}px`;
+  rackPatch.repaint();
 }
 new ResizeObserver(sizeInstrument).observe($('instrument-frame'));
 sizeInstrument();
@@ -645,6 +662,7 @@ function handleTransfer(data) {
 $('save-session').onclick = () => {
   if (!processor) { status('Start audio before downloading a looper session.'); return; }
   if (transferJob || sampleJob || freeSource !== null) return;
+  if (rackPatch.isEdited()) { status('Audio cable edits are not yet in the Main session format. Reconnect the default route before downloading.'); return; }
   if (editorMode) {
     $('save-session').disabled = true;
     status('Collecting native Main session…');
@@ -663,6 +681,7 @@ $('save-session').onclick = () => {
 $('open-session').onchange = async () => {
   if (!processor) { status('Start audio before opening a looper session.'); return; }
   if (transferJob || sampleJob || freeSource !== null) return;
+  if (rackPatch.isEdited()) { status('Reconnect the default audio cables before opening a Main session.'); $('open-session').value = ''; return; }
   const file = $('open-session').files[0];
   if (!file) return;
   if (editorMode) {
@@ -732,7 +751,7 @@ async function start() {
   if (context) return;
   const sourceKind = $('source').value;
   if (sourceKind === 'file' && !$('file').files[0]) { status('Choose an audio file first.'); return; }
-  const button = $('audio-button'); button.disabled = true; status('Preparing Main looper…');
+  const button = $('audio-button'); button.disabled = true; $('rack-view-switch').disabled = true; status('Preparing Main looper…');
   try {
     context = new AudioContext({ latencyHint: 'interactive' });
     await context.resume();
@@ -748,13 +767,17 @@ async function start() {
         if (data.type === 'ready') { clearTimeout(timeout); resolve(); }
         else if (data.type === 'error') { clearTimeout(timeout); reject(new Error(data.message)); }
       };
-      const insert = compileMainRackInsert(initialRackDocument(rackCatalog), rackCatalog);
+      const insert = compileMainRackInsert(rackPatch.document(), rackCatalog);
       const rackInsert = { ...insert, nodes: insert.nodes.map(node =>
         ({ id: node.id, kind: NODE_TYPES[node.type].code, a: node.a ?? 0, b: node.b ?? 0 })) };
       processor.port.postMessage({ type: 'init', wasmBytes, project, rackInsert }, [wasmBytes]);
     });
     processor.port.onmessage = ({ data }) => {
       if (data.type === 'snapshot') render(data);
+      else if (data.type === 'rack-route-applied') {
+        const pending = pendingRackRoutes.get(data.requestId);
+        if (pending) { clearTimeout(pending.timer); pendingRackRoutes.delete(data.requestId); pending.resolve(data.accepted); }
+      }
       else if (data.type === 'error') {
         if (transferJob) { transferJob = null; $('save-session').disabled = false; }
         sampleJob = null; freeSource = null; resetSampleCaptureUI();
@@ -818,6 +841,7 @@ async function start() {
     poll = setInterval(() => post({ type: 'snapshot' }), 100);
     post({ type: 'snapshot' });
     button.textContent = 'Stop audio'; button.disabled = false; button.onclick = stop;
+    $('rack-view-switch').disabled = false;
     $('source').disabled = true;
     status(`Running · ${sourceKind === 'none' ? 'no dry input' : sourceKind === 'oscillator' ? 'test tone' : sourceKind === 'file' ? 'looping audio file' : 'microphone'} + Main voice bank · all four layers capturing`);
   } catch (error) {
@@ -825,6 +849,8 @@ async function start() {
   }
 }
 async function stop() {
+  for (const pending of pendingRackRoutes.values()) { clearTimeout(pending.timer); pending.resolve(false); }
+  pendingRackRoutes.clear();
   synthNote(2);
   document.querySelectorAll('.synth-key.held').forEach(key => key.classList.remove('held'));
   if (transferJob?.kind === 'import') post({ type: 'import-cancel' });
@@ -839,6 +865,7 @@ async function stop() {
   inputGain?.disconnect(); processor?.disconnect(); stream?.getTracks().forEach(track => track.stop());
   await context?.close(); sourceNode = null; inputGain = null; processor = null; stream = null; context = null;
   $('audio-button').textContent = 'Start audio'; $('audio-button').disabled = false; $('audio-button').onclick = start;
+  $('rack-view-switch').disabled = false;
   $('source').disabled = false;
 }
 $('audio-button').onclick = start;
