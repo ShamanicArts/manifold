@@ -303,4 +303,18 @@ assert.ok(e.manifold_looper_slew_status(1) < beforeFall);
 assert.equal(e.manifold_looper_slew_parameter(slew.source, -1), 0);
 assert.equal(e.manifold_looper_slew_parameter(slew.source, 17), 0);
 console.log(`Main Slew route: OUT ${(.016).toFixed(3)} → ${beforeFall.toFixed(3)}, sounding energy ${slewEarlyEnergy.toFixed(2)} → ${slewLateEnergy.toFixed(2)}.`);
+const { instance: transientInstance } = await WebAssembly.instantiate(wasm, {});
+const transient = transientInstance.exports;
+assert.equal(transient.manifold_looper_prepare(8_000, 128), 1);
+const transientInput = new Float32Array(transient.memory.buffer, transient.manifold_looper_input_ptr(), 256);
+transientInput[100 * 2] = .9;
+transientInput[100 * 2 + 1] = .9;
+assert.equal(transient.manifold_looper_process(128), 1);
+assert.ok(transient.manifold_looper_peak(0, 1, 0, 4096) > .89);
+transientInput.fill(0);
+for (let index = 0; index < 63; index++) assert.equal(transient.manifold_looper_process(128), 1);
+const transientBins = captureStripBins(contract.segments, 4, 16_000, 240_000, 8192);
+const transientPeaks = transientBins.map(bin => bin ? transient.manifold_looper_peak(0, 1, ...bin) : 0);
+assert.ok(transientPeaks[63] > .89 && transientPeaks[62] === 0,
+  `one-frame transient should remain in the older 1-bar strip's right-side bin: ${transientPeaks}`);
 console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias and Slew routing passed');

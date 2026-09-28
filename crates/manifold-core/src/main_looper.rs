@@ -4,6 +4,7 @@
 pub const LAYERS: usize = 4;
 pub const BARS: [f32; 9] = [0.0625, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0];
 const COPY_PER_BLOCK: usize = 4096;
+const CAPTURE_PEAK_BLOCK: usize = 64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
@@ -39,7 +40,8 @@ struct Loading {
 }
 
 struct Layer {
-    capture: Vec<f32>, // interleaved stereo, rolling 30-second ring
+    capture: Vec<f32>,       // interleaved stereo, rolling 30-second ring
+    capture_peaks: Vec<f32>, // prepared physical-ring maxima for visual queries
     loops: [Vec<f32>; 2],
     active: usize,
     write: usize,
@@ -62,6 +64,7 @@ impl Layer {
     fn new(frames: usize) -> Self {
         Self {
             capture: vec![0.0; frames * 2],
+            capture_peaks: vec![0.0; frames.div_ceil(CAPTURE_PEAK_BLOCK)],
             loops: [vec![0.0; frames * 2], vec![0.0; frames * 2]],
             active: 0,
             write: 0,
@@ -82,6 +85,49 @@ impl Layer {
     }
     fn capacity(&self) -> usize {
         self.capture.len() / 2
+    }
+    fn write_capture(&mut self, left: f32, right: f32) {
+        let frame = self.write;
+        self.capture[frame * 2] = left;
+        self.capture[frame * 2 + 1] = right;
+        let block = frame / CAPTURE_PEAK_BLOCK;
+        let magnitude = left.abs().max(right.abs());
+        if frame % CAPTURE_PEAK_BLOCK == 0 {
+            self.capture_peaks[block] = magnitude;
+        } else {
+            self.capture_peaks[block] = self.capture_peaks[block].max(magnitude);
+        }
+        self.write = (frame + 1) % self.capacity();
+        self.captured = (self.captured + 1).min(self.capacity());
+    }
+    fn capture_peak(&self, start_ago: usize, end_ago: usize) -> f32 {
+        let capacity = self.capacity();
+        let mut age = start_ago.min(self.captured);
+        let end = end_ago.min(self.captured);
+        let dirty_block = if self.write % CAPTURE_PEAK_BLOCK == 0 {
+            None
+        } else {
+            Some(self.write / CAPTURE_PEAK_BLOCK)
+        };
+        let mut peak = 0.0_f32;
+        while age < end {
+            let physical = (self.write + capacity - 1 - age) % capacity;
+            let block = physical / CAPTURE_PEAK_BLOCK;
+            let block_start = block * CAPTURE_PEAK_BLOCK;
+            let block_size = (capacity - block_start).min(CAPTURE_PEAK_BLOCK);
+            let run = (physical - block_start + 1).min(end - age);
+            if run == block_size && dirty_block != Some(block) {
+                peak = peak.max(self.capture_peaks[block]);
+            } else {
+                for offset in 0..run {
+                    let frame = physical - offset;
+                    peak = peak.max(self.capture[frame * 2].abs());
+                    peak = peak.max(self.capture[frame * 2 + 1].abs());
+                }
+            }
+            age += run;
+        }
+        peak.min(1.0)
     }
     fn clear(&mut self) {
         self.commit = None;
@@ -560,11 +606,13 @@ impl MainLooper {
         let Some(layer) = self.layers.get(index) else {
             return 0.0;
         };
-        let count = if kind == 0 {
-            layer.length
-        } else {
-            layer.capacity()
-        };
+        if kind == 1 {
+            return layer.capture_peak(start, end);
+        }
+        if kind != 0 {
+            return 0.0;
+        }
+        let count = layer.length;
         if count == 0 {
             return 0.0;
         }
@@ -573,17 +621,8 @@ impl MainLooper {
         let last = end.min(count);
         let stride = ((last.saturating_sub(first) + 63) / 64).max(1);
         for frame in (first..last).step_by(stride) {
-            let index = if kind == 0 {
-                frame
-            } else {
-                (layer.write + count - 1 - frame) % count
-            };
-            let pcm = if kind == 0 {
-                &layer.loops[layer.active]
-            } else {
-                &layer.capture
-            };
-            peak = peak.max(pcm[index * 2].abs()).max(pcm[index * 2 + 1].abs());
+            let pcm = &layer.loops[layer.active];
+            peak = peak.max(pcm[frame * 2].abs()).max(pcm[frame * 2 + 1].abs());
         }
         peak.min(1.0)
     }
@@ -633,11 +672,7 @@ impl MainLooper {
                 }
                 sum[0] += sample[0];
                 sum[1] += sample[1];
-                let write = layer.write * 2;
-                layer.capture[write] = left[frame];
-                layer.capture[write + 1] = right[frame];
-                layer.write = (layer.write + 1) % layer.capacity();
-                layer.captured = (layer.captured + 1).min(layer.capacity());
+                layer.write_capture(left[frame], right[frame]);
             }
             out_left[frame] = sum[0];
             out_right[frame] = sum[1];
@@ -649,6 +684,57 @@ impl MainLooper {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn capture_peak_keeps_single_frame_transients_through_wrap_and_partial_overwrite() {
+        let mut layer = Layer::new(130); // final peak block is only two frames
+        for frame in 0..130 {
+            layer.write_capture(0.0, if frame == 50 { 0.9 } else { 0.0 });
+        }
+        assert!((layer.capture_peak(0, 130) - 0.9).abs() < 1e-6);
+        assert_eq!(layer.capture_peak(0, 79), 0.0);
+        assert!((layer.capture_peak(79, 80) - 0.9).abs() < 1e-6);
+        layer.write_capture(0.0, 0.0); // a partially overwritten cache block
+        assert!((layer.capture_peak(0, 130) - 0.9).abs() < 1e-6);
+        for _ in 0..50 {
+            layer.write_capture(0.0, 0.0);
+        }
+        assert_eq!(layer.capture_peak(0, 130), 0.0);
+        for _ in 0..77 {
+            layer.write_capture(0.0, 0.0);
+        }
+        layer.write_capture(0.7, 0.0); // first frame of the short final block
+        assert!((layer.capture_peak(0, 130) - 0.7).abs() < 1e-6);
+    }
+    #[test]
+    fn capture_peak_index_agrees_with_every_sample_across_ring_edges() {
+        let mut layer = Layer::new(130);
+        for frame in 0..390 {
+            let left = if frame % 43 == 11 { 0.83 } else { 0.0 };
+            let right = if frame % 29 == 7 { 0.67 } else { 0.0 };
+            layer.write_capture(left, right);
+            if frame % 13 != 0 {
+                continue;
+            }
+            for start in [0, 1, 17, 63, 64, 65, 97, 129] {
+                for end in [1, 18, 64, 65, 96, 130] {
+                    let expected = (start.min(layer.captured)..end.min(layer.captured))
+                        .map(|age| {
+                            let physical =
+                                (layer.write + layer.capacity() - 1 - age) % layer.capacity();
+                            layer.capture[physical * 2]
+                                .abs()
+                                .max(layer.capture[physical * 2 + 1].abs())
+                        })
+                        .fold(0.0_f32, f32::max);
+                    assert_eq!(
+                        layer.capture_peak(start, end),
+                        expected,
+                        "frame={frame}, range={start}..{end}"
+                    );
+                }
+            }
+        }
+    }
     fn feed(looper: &mut MainLooper, data: &[f32]) -> Vec<f32> {
         let mut left = vec![0.0; data.len()];
         let mut right = vec![0.0; data.len()];
