@@ -8,7 +8,7 @@ use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use base64::Engine;
 use crossbeam_queue::ArrayQueue;
@@ -45,9 +45,9 @@ struct ImportAssembly {
     bytes: Vec<u8>,
 }
 
-struct ExportProgress {
-    expected: usize,
-    offset: usize,
+enum ExportProgress {
+    Waiting { started: Instant, reported: bool },
+    Streaming { expected: usize, offset: usize },
 }
 
 struct Session {
@@ -131,19 +131,52 @@ impl State {
         let Some(progress) = slot.as_mut() else {
             return;
         };
+        if let ExportProgress::Waiting { started, reported } = progress {
+            match self.shared.poll_export() {
+                Some(None) => {
+                    if !*reported && started.elapsed() >= Duration::from_secs(2) {
+                        let _ = self.send("{\"kind\":\"status\",\"message\":\"Waiting for host audio to finish the Main session snapshot…\"}");
+                        *reported = true;
+                    }
+                    return;
+                }
+                Some(Some(expected)) => {
+                    let message =
+                        serde_json::json!({"kind":"session-export-start","size":expected})
+                            .to_string();
+                    if !self.send(&message) {
+                        drop(slot);
+                        self.export_failed();
+                        return;
+                    }
+                    *progress = ExportProgress::Streaming {
+                        expected,
+                        offset: 0,
+                    };
+                }
+                None => {
+                    drop(slot);
+                    self.export_failed();
+                    return;
+                }
+            }
+        }
+        let ExportProgress::Streaming { expected, offset } = progress else {
+            return;
+        };
         for _ in 0..EXPORT_CHUNKS_PER_TICK {
-            if progress.offset == progress.expected {
+            if *offset == *expected {
                 self.shared.end_export();
                 let _ = self.send("{\"kind\":\"session-export-end\"}");
                 *slot = None;
                 return;
             }
-            let Some(chunk) = self.shared.export_chunk(progress.offset) else {
+            let Some(chunk) = self.shared.export_chunk(*offset) else {
                 drop(slot);
                 self.export_failed();
                 return;
             };
-            if chunk.len() > progress.expected - progress.offset {
+            if chunk.len() > *expected - *offset {
                 drop(slot);
                 self.export_failed();
                 return;
@@ -156,7 +189,7 @@ impl State {
                 self.export_failed();
                 return;
             }
-            progress.offset += chunk.len();
+            *offset += chunk.len();
         }
     }
 
@@ -297,21 +330,14 @@ impl State {
                     if self.export.lock().ok().is_some_and(|slot| slot.is_some()) {
                         continue;
                     }
-                    let Some(expected) = self.shared.begin_export() else {
-                        self.export_failed();
-                        continue;
-                    };
-                    let message =
-                        serde_json::json!({"kind":"session-export-start","size":expected})
-                            .to_string();
-                    if !self.send(&message) {
+                    if !self.shared.begin_export() {
                         self.export_failed();
                         continue;
                     }
                     if let Ok(mut slot) = self.export.lock() {
-                        *slot = Some(ExportProgress {
-                            expected,
-                            offset: 0,
+                        *slot = Some(ExportProgress::Waiting {
+                            started: Instant::now(),
+                            reported: false,
                         });
                     }
                 }

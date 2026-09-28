@@ -117,7 +117,9 @@ callback reads only prepared event buffers and lock-free control mailboxes.
 The visual peak bank now lives in `manifold-native` for both CLAP and VST3.
 Host project state reopens loop and Sample PCM. The editor's Open and Download
 controls stream bounded chunks through VST3 messages, with preparation and
-file assembly on the control side. A REAPER host run imported and exported
+file assembly on the control side. Download polls the native snapshot from
+the editor timer so a host pause cannot hold that timer inside a long export
+call. A REAPER host run imported and exported
 matching loop PCM and Sample state through those original controls.
 Main now exposes a private, bounded CLAP extension for its authored looper
 commands. It queues editor gestures at the next audio block start without

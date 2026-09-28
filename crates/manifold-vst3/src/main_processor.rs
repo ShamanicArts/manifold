@@ -38,6 +38,16 @@ struct ImportAssembly {
     bytes: Vec<u8>,
 }
 
+enum ExportState {
+    Waiting,
+    Ready(Vec<u8>),
+}
+
+enum ExportPoll {
+    Waiting,
+    Ready(usize),
+}
+
 struct Runtime {
     audio: MainAudioRuntime,
     buffers: MainHostBuffers,
@@ -51,7 +61,7 @@ pub(crate) struct MainProcessor {
     configuration: Mutex<Option<(f32, usize)>>,
     state: Mutex<Option<Vec<u8>>>,
     import: Mutex<Option<ImportAssembly>>,
-    export: Mutex<Option<Vec<u8>>>,
+    export: Mutex<Option<ExportState>>,
     active: AtomicBool,
     processing: AtomicBool,
     blocks_processed: AtomicU64,
@@ -97,6 +107,9 @@ impl MainProcessor {
     fn deactivate(&self) {
         self.processing.store(false, Ordering::Release);
         self.active.store(false, Ordering::Release);
+        if let Ok(mut slot) = self.export.lock() {
+            *slot = None;
+        }
         let runtime = self.runtime.swap(null_mut(), Ordering::AcqRel);
         if !runtime.is_null() {
             unsafe { drop(Box::from_raw(runtime)) };
@@ -105,9 +118,6 @@ impl MainProcessor {
             *control = None;
         }
         if let Ok(mut slot) = self.import.lock() {
-            *slot = None;
-        }
-        if let Ok(mut slot) = self.export.lock() {
             *slot = None;
         }
         self.visual.reset();
@@ -351,6 +361,83 @@ impl MainProcessor {
         true
     }
 
+    fn begin_export(&self) -> bool {
+        let Ok(mut export) = self.export.lock() else {
+            return false;
+        };
+        if export.is_some() {
+            return false;
+        }
+        let pointer = self.runtime.load(Ordering::Acquire);
+        if pointer.is_null()
+            || (self.processing.load(Ordering::Acquire)
+                && self.blocks_processed.load(Ordering::Acquire) == 0)
+        {
+            let Some(bytes) = self
+                .initial_state()
+                .filter(|bytes| !bytes.is_empty() && bytes.len() <= MAX_STATE)
+            else {
+                return false;
+            };
+            *export = Some(ExportState::Ready(bytes));
+            return true;
+        }
+        let Ok(mut slot) = self.control.lock() else {
+            return false;
+        };
+        let Some(control) = slot.as_mut() else {
+            return false;
+        };
+        if !self.processing.load(Ordering::Acquire)
+            && !Self::offline_block(unsafe { &mut *pointer })
+        {
+            return false;
+        }
+        if control.request_session_snapshot().is_err() {
+            return false;
+        }
+        *export = Some(ExportState::Waiting);
+        true
+    }
+
+    fn poll_export(&self) -> Option<ExportPoll> {
+        let mut export = self.export.lock().ok()?;
+        match export.as_ref()? {
+            ExportState::Ready(bytes) => return Some(ExportPoll::Ready(bytes.len())),
+            ExportState::Waiting => {}
+        }
+        let pointer = self.runtime.load(Ordering::Acquire);
+        if pointer.is_null() {
+            *export = None;
+            return None;
+        }
+        let Ok(mut slot) = self.control.try_lock() else {
+            return Some(ExportPoll::Waiting);
+        };
+        let control = slot.as_mut()?;
+        if !self.processing.load(Ordering::Acquire)
+            && !Self::offline_block(unsafe { &mut *pointer })
+        {
+            *export = None;
+            return None;
+        }
+        match control.poll_session_snapshot() {
+            Ok(Some(bytes)) if !bytes.is_empty() && bytes.len() <= MAX_STATE => {
+                let len = bytes.len();
+                if let Ok(mut state) = self.state.lock() {
+                    *state = Some(bytes.clone());
+                }
+                *export = Some(ExportState::Ready(bytes));
+                Some(ExportPoll::Ready(len))
+            }
+            Ok(None) => Some(ExportPoll::Waiting),
+            _ => {
+                *export = None;
+                None
+            }
+        }
+    }
+
     fn snapshot(&self) -> Option<Vec<u8>> {
         let pointer = self.runtime.load(Ordering::Acquire);
         if pointer.is_null() {
@@ -478,23 +565,27 @@ impl IConnectionPointTrait for MainProcessor {
             return kResultOk;
         }
         if kind == b"manifold.main.export.start.v1" {
-            let Some(bytes) = self
-                .snapshot()
-                .filter(|bytes| !bytes.is_empty() && bytes.len() <= MAX_STATE)
-            else {
-                return kResultFalse;
+            return if self.begin_export() {
+                kResultOk
+            } else {
+                kResultFalse
             };
-            let size = (bytes.len() as u32).to_le_bytes();
-            if unsafe { attributes.setBinary(c"size".as_ptr(), size.as_ptr().cast(), 4) }
-                != kResultOk
-            {
-                return kResultFalse;
-            }
-            let Ok(mut slot) = self.export.lock() else {
-                return kResultFalse;
+        }
+        if kind == b"manifold.main.export.poll.v1" {
+            let value = match self.poll_export() {
+                Some(ExportPoll::Waiting) => [0_u8, 0, 0, 0, 0],
+                Some(ExportPoll::Ready(size)) => {
+                    let Ok(size) = u32::try_from(size) else {
+                        return kResultFalse;
+                    };
+                    let mut value = [0_u8; 5];
+                    value[0] = 1;
+                    value[1..].copy_from_slice(&size.to_le_bytes());
+                    value
+                }
+                None => return kResultFalse,
             };
-            *slot = Some(bytes);
-            return kResultOk;
+            return unsafe { attributes.setBinary(c"progress".as_ptr(), value.as_ptr().cast(), 5) };
         }
         if kind == b"manifold.main.export.chunk.v1" {
             let mut data: *const c_void = std::ptr::null();
@@ -510,7 +601,7 @@ impl IConnectionPointTrait for MainProcessor {
             let Ok(slot) = self.export.lock() else {
                 return kResultFalse;
             };
-            let Some(bytes) = slot.as_ref() else {
+            let Some(ExportState::Ready(bytes)) = slot.as_ref() else {
                 return kResultFalse;
             };
             if offset >= bytes.len() {
@@ -1268,7 +1359,26 @@ mod tests {
         }
         assert!(updates.iter().any(|update| update["phase"] == "published"));
 
+        assert!(component.begin_export());
+        assert!(matches!(component.poll_export(), Some(ExportPoll::Waiting)));
         assert_eq!(unsafe { component.setProcessing(0) }, kResultOk);
+        let exported = (0..32)
+            .find_map(|_| match component.poll_export() {
+                Some(ExportPoll::Ready(size)) => Some(size),
+                Some(ExportPoll::Waiting) => None,
+                None => panic!("native export failed after processing stopped"),
+            })
+            .expect("offline blocks complete the pending editor export");
+        let export = component.export.lock().unwrap();
+        let Some(ExportState::Ready(bytes)) = export.as_ref() else {
+            panic!("missing exported bytes");
+        };
+        assert_eq!(bytes.len(), exported);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(bytes).unwrap()["id"],
+            "manifold.main-looper"
+        );
+        drop(export);
         let state: serde_json::Value =
             serde_json::from_slice(&component.snapshot().unwrap()).unwrap();
         assert_eq!(state["id"], "manifold.main-looper");

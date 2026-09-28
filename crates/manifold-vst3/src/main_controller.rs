@@ -171,10 +171,23 @@ impl MainShared {
         true
     }
 
-    pub(crate) fn begin_export(&self) -> Option<usize> {
-        let bytes = self.request_payload(c"manifold.main.export.start.v1", c"size")?;
-        let size = u32::from_le_bytes(bytes.as_slice().try_into().ok()?) as usize;
-        (size > 0 && size <= MAX_STATE).then_some(size)
+    pub(crate) fn begin_export(&self) -> bool {
+        self.send_payload(c"manifold.main.export.start.v1", c"token", &[0])
+    }
+
+    pub(crate) fn poll_export(&self) -> Option<Option<usize>> {
+        let bytes = self.request_payload(c"manifold.main.export.poll.v1", c"progress")?;
+        if bytes.len() != 5 {
+            return None;
+        }
+        match bytes[0] {
+            0 => Some(None),
+            1 => {
+                let size = u32::from_le_bytes(bytes[1..].try_into().ok()?) as usize;
+                (size > 0 && size <= MAX_STATE).then_some(Some(size))
+            }
+            _ => None,
+        }
     }
 
     pub(crate) fn export_chunk(&self, offset: usize) -> Option<Vec<u8>> {
