@@ -6,7 +6,7 @@ const { chromium } = requireFromWeb('playwright-core');
 const browser = await chromium.launch({
   executablePath: process.env.MANIFOLD_CHROMIUM ?? '/usr/bin/chromium',
   headless: true,
-  args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required'],
+  args: ['--no-sandbox', '--mute-audio', '--autoplay-policy=no-user-gesture-required'],
 });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 920 } });
