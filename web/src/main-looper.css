@@ -500,7 +500,7 @@ body {
 .midisynth-panel { position: relative; width: 1280px; height: 504px; background: #0f1726; }
 .midisynth-panel[hidden], .layers[hidden] { display: none; }
 .rack-scroll { position: relative; height: 452px; overflow-y: auto; overflow-x: hidden; scrollbar-color: #334155 #0f1726; }
-.rack-scroll-content { position: relative; width: 1280px; height: 1393px; }
+.rack-scroll-content { position: relative; width: 1280px; height: 1625px; }
 #patch-jump { position: absolute; top: 2px; right: 36px; z-index: 4; height: 23px; padding: 0 9px; border: 1px solid #38bdf8; background: #1e293b; color: #bae6fd; font-size: 10px; cursor: pointer; }
 .rack-row { display: flex; height: 452px; padding-top: 25px; }
 .rack-adsr, .rack-source, .rack-filter { position: relative; flex: none; height: 220px; background: #121a2f; border: 1px solid #1f2b4d; }
@@ -636,6 +636,19 @@ body {
 .rack-compare-patch label { display: block; margin-top: 9px; color: #94a3b8; }
 .rack-compare-patch select { display: block; width: 100%; height: 23px; margin-top: 3px; background: #1f160f; border: 1px solid #5f261d; color: #fdba74; font-size: 10px; }
 #compare-meter { display: block; margin-top: 12px; color: #fdba74; font-size: 9px; }
+.rack-cv-mix { position: absolute; left: 708px; top: 1393px; width: 236px; height: 220px; background: #181228; border: 1px solid #3b2a65; border-radius: 10px; }
+.cv-mix-title, .cv-mix-status, .cv-mix-values { position: absolute; left: 12px; width: 212px; }
+.cv-mix-title { top: 10px; color: #c084fc; font-size: 11px; }
+.cv-mix-status { top: 28px; color: #94a3b8; font-size: 8px; }
+#cv-mix-preview { position: absolute; left: 12px; top: 44px; width: 212px; height: 46px; background: #140f22; border: 1px solid #2b1d48; border-radius: 6px; }
+#cv-mix-level1, #cv-mix-level2, #cv-mix-level3, #cv-mix-level4, #cv-mix-offset { position: absolute; left: 12px; width: 212px; height: 16px; }
+#cv-mix-level1 { top: 98px; } #cv-mix-level2 { top: 118px; } #cv-mix-level3 { top: 138px; } #cv-mix-level4 { top: 158px; } #cv-mix-offset { top: 178px; }
+.cv-mix-values { top: 198px; color: #e9d5ff; font-size: 8px; }
+.rack-cv-mix-patch { position: absolute; left: 944px; top: 1393px; width: 236px; height: 220px; padding: 10px 12px; background: #121a2f; border: 1px solid #1f2b4d; font-size: 9px; }
+.rack-cv-mix-patch strong { color: #c084fc; font-size: 11px; }
+.rack-cv-mix-patch p { color: #94a3b8; line-height: 1.2; margin: 5px 0; }
+.rack-cv-mix-patch label { display: block; margin-top: 3px; color: #94a3b8; }
+.rack-cv-mix-patch select { display: block; width: 100%; height: 21px; margin-top: 2px; background: #140f22; border: 1px solid #3b2a65; color: #e9d5ff; font-size: 9px; }
 .eq-head::before { background: #22d3ee; }
 .eq-module { position: relative; width: 236px; height: 208px; }
 #eq-graph { position: absolute; left: 10px; top: 10px; width: 216px; height: 108px; background: #0a0a1a; border: 1px solid #1f2b4d; cursor: crosshair; touch-action: none; }

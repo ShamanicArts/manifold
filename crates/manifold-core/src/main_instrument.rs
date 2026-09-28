@@ -1,7 +1,7 @@
 //! Main's synth-to-looper routing, with all scratch prepared before processing.
 
 use crate::Filter;
-use crate::cv_utilities::{AttenuverterBias, SampleHold};
+use crate::cv_utilities::{AttenuverterBias, CvMix, SampleHold};
 use crate::effect_slot::{self, EffectSlot};
 use crate::eq8::{self, Eq8};
 use crate::events::EventKind;
@@ -39,6 +39,9 @@ pub struct MainInstrument {
     compare: MainCompare,
     compare_source: MainControlSource,
     compare_input: f32,
+    cv_mix: CvMix,
+    cv_mix_sources: [MainControlSource; 4],
+    cv_mix_inputs: [f32; 4],
     filter_cutoff_base: f32,
     filter_resonance_base: f32,
     filter_cutoff_effective: f32,
@@ -69,7 +72,19 @@ pub struct MainInstrument {
     monitor_right: Vec<f32>,
 }
 
-/// The prepared chain is acyclic: LFO -> ATV -> Slew -> Sample Hold -> Compare.
+/// Values for one audio block. Stages read only values computed before them.
+#[derive(Clone, Copy, Default)]
+struct MainControlFrame {
+    lfos: [LfoOutputs; MAIN_LFO_SLOTS],
+    atv: f32,
+    slew: f32,
+    hold: f32,
+    compare_gate: f32,
+    compare_trigger: f32,
+    cv_mix: f32,
+}
+
+/// The prepared chain is acyclic: LFO -> ATV -> Slew -> Sample Hold -> Compare -> CV Mix.
 #[derive(Clone, Copy)]
 enum MainControlSource {
     Lfo { slot: usize, port: u32 },
@@ -77,6 +92,8 @@ enum MainControlSource {
     Slew,
     SampleHold,
     SampleHoldInv,
+    CompareGate,
+    CompareTrigger,
 }
 
 impl MainControlSource {
@@ -90,14 +107,16 @@ impl MainControlSource {
             17 => Some(Self::Slew),
             18 => Some(Self::SampleHold),
             19 => Some(Self::SampleHoldInv),
+            20 => Some(Self::CompareGate),
+            21 => Some(Self::CompareTrigger),
             _ => None,
         }
     }
 
-    fn sample(self, outputs: &[LfoOutputs; MAIN_LFO_SLOTS], atv: f32, slew: f32, hold: f32) -> f32 {
+    fn sample(self, frame: &MainControlFrame) -> f32 {
         match self {
             Self::Lfo { slot, port } => {
-                let source = outputs[slot];
+                let source = frame.lfos[slot];
                 match port {
                     0 => source.out,
                     1 => source.inv,
@@ -105,10 +124,12 @@ impl MainControlSource {
                     _ => source.eoc,
                 }
             }
-            Self::Atv => atv,
-            Self::Slew => slew,
-            Self::SampleHold => hold,
-            Self::SampleHoldInv => -hold,
+            Self::Atv => frame.atv,
+            Self::Slew => frame.slew,
+            Self::SampleHold => frame.hold,
+            Self::SampleHoldInv => -frame.hold,
+            Self::CompareGate => frame.compare_gate,
+            Self::CompareTrigger => frame.compare_trigger,
         }
     }
 }
@@ -144,7 +165,9 @@ impl MainModulationRoute {
             return false;
         }
         match id {
-            0 if (0.0..=9.0).contains(&value) && value.fract() == 0.0 => self.source = value as u32,
+            0 if (0.0..=11.0).contains(&value) && value.fract() == 0.0 => {
+                self.source = value as u32
+            }
             1 if [0.0, 22.0, 23.0, 129.0, 137.0].contains(&value) => self.target = value as u32,
             2 if (-1.0..=1.0).contains(&value) => self.amount = value,
             3 if (-1.0..=1.0).contains(&value) => self.bias = value,
@@ -155,16 +178,7 @@ impl MainModulationRoute {
         true
     }
 
-    fn effective(
-        self,
-        base: f32,
-        outputs: LfoOutputs,
-        atv_output: f32,
-        slew_output: f32,
-        sample_hold_output: f32,
-        compare_gate: f32,
-        compare_trigger: f32,
-    ) -> f32 {
+    fn effective(self, base: f32, outputs: LfoOutputs, frame: &MainControlFrame) -> f32 {
         if !self.enabled || self.target == 0 {
             return base;
         }
@@ -173,12 +187,14 @@ impl MainModulationRoute {
             1 => ((outputs.inv + 1.0) * 0.5, 0.5),
             2 => (outputs.uni, 0.0),
             3 => (outputs.eoc, 0.0),
-            4 => ((atv_output + 1.0) * 0.5, 0.5),
-            5 => ((slew_output + 1.0) * 0.5, 0.5),
-            6 => ((sample_hold_output + 1.0) * 0.5, 0.5),
-            7 => ((1.0 - sample_hold_output) * 0.5, 0.5),
-            8 => (compare_gate, 0.0),
-            _ => (compare_trigger, 0.0),
+            4 => ((frame.atv + 1.0) * 0.5, 0.5),
+            5 => ((frame.slew + 1.0) * 0.5, 0.5),
+            6 => ((frame.hold + 1.0) * 0.5, 0.5),
+            7 => ((1.0 - frame.hold) * 0.5, 0.5),
+            8 => (frame.compare_gate, 0.0),
+            9 => (frame.compare_trigger, 0.0),
+            10 => ((frame.cv_mix + 1.0) * 0.5, 0.5),
+            _ => ((1.0 - frame.cv_mix) * 0.5, 0.5),
         };
         let (min, max): (f32, f32) = match self.target {
             22 => (80.0, 16_000.0),
@@ -224,6 +240,9 @@ impl MainInstrument {
             compare: MainCompare::new(),
             compare_source: MainControlSource::Lfo { slot: 0, port: 0 },
             compare_input: 0.0,
+            cv_mix: CvMix::new([1.0, 0.0, 0.0, 0.0], 0.0),
+            cv_mix_sources: [MainControlSource::Lfo { slot: 0, port: 0 }; 4],
+            cv_mix_inputs: [0.0; 4],
             filter_cutoff_base: 3200.0,
             filter_resonance_base: 0.75,
             filter_cutoff_effective: 3200.0,
@@ -478,6 +497,32 @@ impl MainInstrument {
         }
     }
 
+    pub fn set_cv_mix_parameter(&mut self, id: u32, value: f32) -> bool {
+        if !value.is_finite() {
+            return false;
+        }
+        match id {
+            0..=4 => self.cv_mix.set_parameter(id, value),
+            5..=8 if value.fract() == 0.0 && (0.0..=21.0).contains(&value) => {
+                let Some(source) = MainControlSource::from_id(value as u32) else {
+                    return false;
+                };
+                self.cv_mix_sources[(id - 5) as usize] = source;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn cv_mix_status(&self, id: u32) -> f32 {
+        match id {
+            0..=3 => self.cv_mix_inputs[id as usize],
+            4 => self.cv_mix.meter(),
+            5 => -self.cv_mix.meter(),
+            _ => 0.0,
+        }
+    }
+
     pub fn lfo_slot_status(&self, slot: usize, id: u32) -> f32 {
         if !self.lfo_active.get(slot).copied().unwrap_or(false) {
             return 0.0;
@@ -590,25 +635,24 @@ impl MainInstrument {
         self.filter_resonance_effective = self.filter_resonance_base;
         self.fx1_mix_effective = self.fx1_mix_base;
         self.fx2_mix_effective = self.fx2_mix_base;
-        let mut outputs = [LfoOutputs::default(); MAIN_LFO_SLOTS];
+        let mut frame = MainControlFrame::default();
         for slot in 0..MAIN_LFO_SLOTS {
             if self.lfo_active[slot] {
-                outputs[slot] = self.lfos[slot].advance(frames);
+                frame.lfos[slot] = self.lfos[slot].advance(frames);
             }
         }
         self.atv_input = MainControlSource::Lfo {
             slot: self.atv_source_slot,
             port: self.atv_source_port,
         }
-        .sample(&outputs, 0.0, 0.0, 0.0);
+        .sample(&frame);
         self.atv_output = self.atv.process_sample(self.atv_input);
-        let slew_input = self.slew_source.sample(&outputs, self.atv_output, 0.0, 0.0);
-        let slew_output = self
+        frame.atv = self.atv_output;
+        let slew_input = self.slew_source.sample(&frame);
+        frame.slew = self
             .slew
             .process(slew_input, frames as f32 / self.sample_rate);
-        self.sample_hold_input =
-            self.sample_hold_source
-                .sample(&outputs, self.atv_output, slew_output, 0.0);
+        self.sample_hold_input = self.sample_hold_source.sample(&frame);
         self.sample_hold_trigger = if self.sample_hold_trigger_source == 4 {
             if self.sample_hold_manual_gate {
                 1.0
@@ -616,15 +660,17 @@ impl MainInstrument {
                 0.0
             }
         } else {
-            outputs[self.sample_hold_trigger_source as usize].eoc
+            frame.lfos[self.sample_hold_trigger_source as usize].eoc
         };
-        let sample_hold_output = self
+        frame.hold = self
             .sample_hold
             .process_sample(self.sample_hold_input, self.sample_hold_trigger);
-        self.compare_input =
-            self.compare_source
-                .sample(&outputs, self.atv_output, slew_output, sample_hold_output);
-        let (compare_gate, compare_trigger) = self.compare.process(self.compare_input);
+        self.compare_input = self.compare_source.sample(&frame);
+        (frame.compare_gate, frame.compare_trigger) = self.compare.process(self.compare_input);
+        for index in 0..4 {
+            self.cv_mix_inputs[index] = self.cv_mix_sources[index].sample(&frame);
+        }
+        frame.cv_mix = self.cv_mix.process_sample(self.cv_mix_inputs);
         // Stable slot order defines composition: Add applies to the current
         // value; a later Replace supersedes earlier routes to that target.
         for slot in 0..MAIN_LFO_SLOTS {
@@ -634,48 +680,20 @@ impl MainInstrument {
             let route = self.modulation[slot];
             match route.target {
                 22 => {
-                    self.filter_cutoff_effective = route.effective(
-                        self.filter_cutoff_effective,
-                        outputs[slot],
-                        self.atv_output,
-                        slew_output,
-                        sample_hold_output,
-                        compare_gate,
-                        compare_trigger,
-                    )
+                    self.filter_cutoff_effective =
+                        route.effective(self.filter_cutoff_effective, frame.lfos[slot], &frame)
                 }
                 23 => {
-                    self.filter_resonance_effective = route.effective(
-                        self.filter_resonance_effective,
-                        outputs[slot],
-                        self.atv_output,
-                        slew_output,
-                        sample_hold_output,
-                        compare_gate,
-                        compare_trigger,
-                    )
+                    self.filter_resonance_effective =
+                        route.effective(self.filter_resonance_effective, frame.lfos[slot], &frame)
                 }
                 129 => {
-                    self.fx1_mix_effective = route.effective(
-                        self.fx1_mix_effective,
-                        outputs[slot],
-                        self.atv_output,
-                        slew_output,
-                        sample_hold_output,
-                        compare_gate,
-                        compare_trigger,
-                    )
+                    self.fx1_mix_effective =
+                        route.effective(self.fx1_mix_effective, frame.lfos[slot], &frame)
                 }
                 137 => {
-                    self.fx2_mix_effective = route.effective(
-                        self.fx2_mix_effective,
-                        outputs[slot],
-                        self.atv_output,
-                        slew_output,
-                        sample_hold_output,
-                        compare_gate,
-                        compare_trigger,
-                    )
+                    self.fx2_mix_effective =
+                        route.effective(self.fx2_mix_effective, frame.lfos[slot], &frame)
                 }
                 _ => {}
             }
@@ -1302,5 +1320,51 @@ mod tests {
         assert!(main.set_compare_parameter(5, 2.0));
         assert_eq!(main.compare_status(3), 2.0);
         assert!(!main.set_compare_parameter(3, 20.0));
+    }
+
+    #[test]
+    fn main_cv_mix_combines_four_typed_inputs_and_routes_out_inv() {
+        let mut main = MainInstrument::new(8_000.0, 128);
+        assert!(main.set_atv_parameter(0, 0.0));
+        assert!(main.set_atv_parameter(1, 0.8));
+        assert!(main.set_sample_hold_parameter(4, -0.4));
+        assert!(main.set_compare_parameter(3, 16.0)); // ATV OUT raises gate
+        for (id, value) in [
+            (0, 0.5),
+            (1, 0.25),
+            (2, 0.0),
+            (3, 0.25),
+            (4, 0.1),
+            (5, 16.0),
+            (6, 18.0),
+            (7, 20.0),
+            (8, 19.0),
+        ] {
+            assert!(main.set_cv_mix_parameter(id, value));
+        }
+        assert!(main.set_modulation_route(0, 10.0)); // CV Mix OUT
+        assert!(main.set_modulation_route(1, 129.0)); // FX1 mix
+        assert!(main.set_modulation_route(2, 1.0));
+        assert!(main.set_modulation_route(4, 1.0)); // Replace
+        assert!(main.set_modulation_route(5, 1.0));
+        let silence = [0.0; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        let mut tick = |main: &mut MainInstrument| {
+            main.process([&silence, &silence], [&mut left, &mut right]);
+        };
+        tick(&mut main);
+        assert!((main.cv_mix_status(0) - 0.8).abs() < 1e-6);
+        assert!((main.cv_mix_status(1) + 0.4).abs() < 1e-6);
+        assert_eq!(main.cv_mix_status(2), 1.0);
+        assert!((main.cv_mix_status(3) - 0.4).abs() < 1e-6);
+        assert!((main.cv_mix_status(4) - 0.5).abs() < 1e-6);
+        assert!((main.lfo_status(7) - 0.75).abs() < 1e-6);
+        assert!(main.set_modulation_route(0, 11.0)); // CV Mix INV
+        tick(&mut main);
+        assert!((main.cv_mix_status(5) + 0.5).abs() < 1e-6);
+        assert!((main.lfo_status(7) - 0.25).abs() < 1e-6);
+        assert!(!main.set_cv_mix_parameter(5, 22.0)); // no feedback to its own OUT
+        assert!(!main.set_cv_mix_parameter(9, 1.0));
     }
 }

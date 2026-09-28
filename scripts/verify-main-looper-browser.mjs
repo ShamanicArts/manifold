@@ -213,6 +213,26 @@ try {
   await page.locator('.rack-compare').screenshot({ path: new URL('../web/public/main-compare-module.png', import.meta.url).pathname });
   await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = element.scrollHeight; });
   await page.screenshot({ path: new URL('../web/public/main-compare-rack.png', import.meta.url).pathname, fullPage: true });
+  const cvMixPanel = await page.locator('.rack-cv-mix').boundingBox();
+  assert.equal(Math.round(cvMixPanel.x - lfoPanel.x), 708);
+  assert.equal(Math.round(cvMixPanel.width), 236);
+  for (const [index, value] of [[1, '16'], [2, '18'], [3, '20'], [4, '19']]) {
+    await page.locator(`#cv-mix-source${index}`).selectOption(value);
+  }
+  await page.locator('#cv-mix-level1').click({ position: { x: 106, y: 8 } });
+  for (const index of [2, 3, 4]) {
+    await page.locator(`#cv-mix-level${index}`).click({ position: { x: 53, y: 8 } });
+  }
+  await page.locator('#cv-mix-offset').click({ position: { x: 117, y: 8 } });
+  assert.equal(await page.locator('#cv-mix-level1').getAttribute('aria-valuenow'), '0.5');
+  assert.equal(await page.locator('#cv-mix-level2').getAttribute('aria-valuenow'), '0.25');
+  assert.equal(await page.locator('#cv-mix-offset').getAttribute('aria-valuenow'), '0.1');
+  await page.waitForFunction(() => /Out [+-]\d+\.\d+/.test(document.querySelector('#cv-mix-values').textContent));
+  await page.locator('#mod-source').selectOption('10');
+  assert.equal(await page.locator('.rack-route').first().locator('h2').textContent(), 'CV Mix → target');
+  await page.locator('.rack-cv-mix').screenshot({ path: new URL('../web/public/main-cv-mix-module.png', import.meta.url).pathname });
+  await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = element.scrollHeight; });
+  await page.screenshot({ path: new URL('../web/public/main-cv-mix-rack.png', import.meta.url).pathname, fullPage: true });
   await page.locator('#add-lfo').click();
   assert.equal(await page.locator('.rack-lfo').count(), 2);
   await page.locator('#lfo-shape-slot-1').selectOption('3');
@@ -308,7 +328,7 @@ try {
   const download = await downloadPromise;
   const bundle = JSON.parse(await readFile(await download.path(), 'utf8'));
   assert.equal(bundle.id, 'manifold.main-looper');
-  assert.equal(bundle.version, 8);
+  assert.equal(bundle.version, 9);
   assert.ok(bundle.sample.frames > 0 && bundle.sample.pcmF32Base64.length > 0);
   assert.equal(bundle.rack.source.waveform, 1);
   assert.equal(bundle.rack.fx2.selected, 5);
@@ -316,7 +336,7 @@ try {
   assert.deepEqual(bundle.rack.lfos.map(lfo => lfo.slot), [0, 1]);
   assert.equal(bundle.rack.lfos[0].shape, 3);
   assert.equal(bundle.rack.lfos[0].route.target, 22);
-  assert.equal(bundle.rack.lfos[0].route.source, 8);
+  assert.equal(bundle.rack.lfos[0].route.source, 10);
   assert.equal(bundle.rack.lfos[1].route.target, 129);
   assert.equal(bundle.rack.lfos[1].route.source, 4);
   assert.equal(bundle.rack.lfos[1].route.enabled, true);
@@ -330,6 +350,8 @@ try {
   assert.ok(Math.abs(bundle.rack.sampleHold.held) <= 1);
   assert.deepEqual(bundle.rack.compare, { direction: 2, threshold: 0, hysteresis: .5,
     source: Number(highSource), gate: true, pulseRemaining: 0 });
+  assert.deepEqual(bundle.rack.cvMix, { level1: .5, level2: .25, level3: .25, level4: .25,
+    offset: .1, source1: 16, source2: 18, source3: 20, source4: 19 });
   assert.ok(bundle.layers[0].frames > 0 && bundle.layers[1].frames > 0);
   await page.locator('#audio-button').click();
   await page.locator('#audio-button').click();
@@ -369,7 +391,9 @@ try {
   assert.equal(await page.locator('#compare-direction').getAttribute('data-value'), '2');
   assert.equal(await page.locator('#compare-hysteresis').getAttribute('aria-valuenow'), '0.5');
   assert.equal(await page.locator('#compare-source').inputValue(), highSource);
-  assert.equal(await page.locator('#mod-source').inputValue(), '8');
+  assert.equal(await page.locator('#cv-mix-level1').getAttribute('aria-valuenow'), '0.5');
+  assert.equal(await page.locator('#cv-mix-source4').inputValue(), '19');
+  assert.equal(await page.locator('#mod-source').inputValue(), '10');
   await page.waitForFunction(() => document.querySelector('#compare-meter').textContent.includes('Gate high'));
   assert.notEqual(await page.locator('#sample-length').textContent(), '0ms');
   await page.locator('[aria-label="Remove LFO 2"]').click();
@@ -389,7 +413,16 @@ try {
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(duplicateSlot)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Invalid Main LFO module'));
   assert.equal(await page.locator('.rack-lfo').count(), 1);
-  const v7 = { ...bundle, version: 7, rack: { ...bundle.rack,
+  const v8 = { ...bundle, version: 8, rack: { ...bundle.rack,
+    lfos: bundle.rack.lfos.map((lfo, index) => index ? lfo : { ...lfo, route: { ...lfo.route, source: 8 } }) } };
+  delete v8.rack.cvMix;
+  await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 8 import'; });
+  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v8.json',
+    mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v8)) });
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
+  assert.equal(await page.locator('#cv-mix-level1').getAttribute('aria-valuenow'), '1');
+  assert.equal(await page.locator('#cv-mix-source1').inputValue(), '0');
+  const v7 = { ...v8, version: 7, rack: { ...v8.rack,
     lfos: bundle.rack.lfos.map((lfo, index) => index ? lfo : { ...lfo, route: { ...lfo.route, source: 6 } }) } };
   delete v7.rack.compare;
   await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 7 import'; });
@@ -517,5 +550,10 @@ try {
   await directCompare.waitForFunction(() => !document.querySelector('#midisynth-panel').hidden
     && document.querySelector('#rack-scroll').scrollTop >= 900);
   assert.equal(await directCompare.locator('.rack-compare').isVisible(), true);
-  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth rack, two live LFO routes, original ATV / Bias, Slew, Sample Hold and Compare panels with typed routing, four-slot add/remove limit, duplicate-slot rejection, Live/L1 Retro and Free Sample, traditional arm/fire, reverse scrub, v1–v8 session reopen, decoded file and Rust synth capture passed`);
+  const directCvMix = await browser.newPage({ viewport: { width: 1440, height: 950 } });
+  await directCvMix.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html#cv-mix`);
+  await directCvMix.waitForFunction(() => !document.querySelector('#midisynth-panel').hidden
+    && document.querySelector('#rack-scroll').scrollTop >= 1140);
+  assert.equal(await directCvMix.locator('.rack-cv-mix').isVisible(), true);
+  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth rack, two live LFO routes, original ATV / Bias, Slew, Sample Hold, Compare and CV Mix panels with typed routing, four-slot add/remove limit, duplicate-slot rejection, Live/L1 Retro and Free Sample, traditional arm/fire, reverse scrub, v1–v9 session reopen, decoded file and Rust synth capture passed`);
 } finally { await browser.close(); }

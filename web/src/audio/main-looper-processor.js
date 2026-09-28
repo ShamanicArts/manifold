@@ -38,7 +38,7 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_looper_output_ptr(), this.capacity * 2);
           this.port.postMessage({ type: 'ready' });
         } else if (this.transferJob && ['control', 'layer-control', 'command', 'synth-note', 'synth-parameter',
-          'lfo-slot-active', 'lfo-parameter', 'lfo-gate', 'modulation-route', 'atv-parameter', 'slew-parameter', 'sample-hold-parameter', 'compare-parameter'].includes(data.type)) {
+          'lfo-slot-active', 'lfo-parameter', 'lfo-gate', 'modulation-route', 'atv-parameter', 'slew-parameter', 'sample-hold-parameter', 'compare-parameter', 'cv-mix-parameter'].includes(data.type)) {
           this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'sample-capture' && this.engine && !this.sampleJob && !this.transferJob && this.freeSource === null) {
           const frames = this.engine.manifold_looper_sample_capture(data.source, data.bars);
@@ -251,6 +251,9 @@ class MainLooperProcessor extends AudioWorkletProcessor {
         } else if (data.type === 'compare-parameter' && this.engine) {
           if (this.engine.manifold_looper_compare_parameter(data.id, data.value) !== 1)
             this.port.postMessage({ type: 'rejected', action: data });
+        } else if (data.type === 'cv-mix-parameter' && this.engine) {
+          if (this.engine.manifold_looper_cv_mix_parameter(data.id, data.value) !== 1)
+            this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'snapshot' && this.engine) {
           const e = this.engine;
           if (this.freeSource !== null) {
@@ -318,7 +321,9 @@ class MainLooperProcessor extends AudioWorkletProcessor {
             compare: { input: e.manifold_looper_compare_status(0),
               gate: e.manifold_looper_compare_status(1) === 1,
               trigger: e.manifold_looper_compare_status(2),
-              pulseRemaining: e.manifold_looper_compare_status(3) } });
+              pulseRemaining: e.manifold_looper_compare_status(3) },
+            cvMix: { inputs: Array.from({ length: 4 }, (_, index) => e.manifold_looper_cv_mix_status(index)),
+              output: e.manifold_looper_cv_mix_status(4), inv: e.manifold_looper_cv_mix_status(5) } });
         }
       } catch (error) {
         if (this.sampleJob && this.engine) this.engine.manifold_looper_sample_cancel();

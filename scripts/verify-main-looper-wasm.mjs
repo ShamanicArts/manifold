@@ -386,6 +386,36 @@ assert.equal(e.manifold_looper_compare_parameter(compare.pulseRemaining, 2), 1);
 assert.equal(e.manifold_looper_compare_status(3), 2);
 assert.equal(e.manifold_looper_compare_parameter(compare.source, 20), 0);
 console.log(`Main Compare route: GATE 0 → 1, sounding energy ${compareDryEnergy.toFixed(2)} → ${compareWetEnergy.toFixed(2)}; both-edge TRIG persists two ticks.`);
+const cvMix = contract.modulation.cvMixParameters;
+assert.equal(e.manifold_looper_atv_parameter(contract.modulation.atvParameters.bias, .8), 1);
+assert.equal(e.manifold_looper_sample_hold_parameter(hold.held, -.4), 1);
+assert.equal(e.manifold_looper_sample_hold_parameter(hold.triggerHigh, 1), 1);
+assert.equal(e.manifold_looper_compare_parameter(compare.direction, 0), 1);
+assert.equal(e.manifold_looper_compare_parameter(compare.source, 16), 1);
+assert.equal(e.manifold_looper_compare_parameter(compare.gate, 0), 1);
+for (const [id, value] of [[cvMix.level1, .5], [cvMix.level2, .25], [cvMix.level3, 0],
+  [cvMix.level4, .25], [cvMix.offset, .1], [cvMix.source1, 16], [cvMix.source2, 18],
+  [cvMix.source3, 20], [cvMix.source4, 19]]) {
+  assert.equal(e.manifold_looper_cv_mix_parameter(id, value), 1);
+}
+assert.equal(e.manifold_looper_modulation_route(contract.modulation.routeParameters.source, 10), 1);
+block(0);
+assert.ok(Math.abs(e.manifold_looper_cv_mix_status(0) - .8) < 1e-6);
+assert.ok(Math.abs(e.manifold_looper_cv_mix_status(1) + .4) < 1e-6);
+assert.equal(e.manifold_looper_cv_mix_status(2), 1);
+assert.ok(Math.abs(e.manifold_looper_cv_mix_status(3) - .4) < 1e-6);
+assert.ok(Math.abs(e.manifold_looper_cv_mix_status(4) - .5) < 1e-6);
+assert.ok(Math.abs(e.manifold_looper_lfo_status(7) - .75) < 1e-6);
+const cvMixOutEnergy = sustainedLevel();
+assert.equal(e.manifold_looper_modulation_route(contract.modulation.routeParameters.source, 11), 1);
+block(0);
+assert.ok(Math.abs(e.manifold_looper_cv_mix_status(5) + .5) < 1e-6);
+assert.ok(Math.abs(e.manifold_looper_lfo_status(7) - .25) < 1e-6);
+const cvMixInvEnergy = sustainedLevel();
+assert.ok(cvMixInvEnergy > cvMixOutEnergy * 1.3,
+  `CV Mix OUT/INV → FX1 mix must change audio: ${cvMixOutEnergy} / ${cvMixInvEnergy}`);
+assert.equal(e.manifold_looper_cv_mix_parameter(cvMix.source4, 22), 0);
+console.log(`Main CV Mix route: OUT +0.50 / INV -0.50, FX1 mix 0.75 → 0.25, sounding energy ${cvMixOutEnergy.toFixed(2)} → ${cvMixInvEnergy.toFixed(2)}.`);
 const { instance: transientInstance } = await WebAssembly.instantiate(wasm, {});
 const transient = transientInstance.exports;
 assert.equal(transient.manifold_looper_prepare(8_000, 128), 1);
@@ -400,4 +430,4 @@ const transientBins = captureStripBins(contract.segments, 4, 16_000, 240_000, 81
 const transientPeaks = transientBins.map(bin => bin ? transient.manifold_looper_peak(0, 1, ...bin) : 0);
 assert.ok(transientPeaks[63] > .89 && transientPeaks[62] === 0,
   `one-frame transient should remain in the older 1-bar strip's right-side bin: ${transientPeaks}`);
-console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias, Slew, Sample Hold and Compare routing passed');
+console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias, Slew, Sample Hold, Compare and CV Mix routing passed');

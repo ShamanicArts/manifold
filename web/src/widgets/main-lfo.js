@@ -15,6 +15,7 @@ export function mountMainLfo(get, post, contract, slot = 0) {
   const paintRouteHeading = () => {
     routeHeading.textContent = state.route.source === 4 ? 'ATV / Bias → target'
       : state.route.source === 5 ? 'Slew → target'
+      : state.route.source >= 10 ? 'CV Mix → target'
         : state.route.source >= 8 ? 'Compare → target'
           : state.route.source >= 6 ? 'Sample Hold → target' : `LFO ${slot + 1} → target`;
   };
