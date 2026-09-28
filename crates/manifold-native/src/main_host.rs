@@ -76,6 +76,24 @@ impl MainAudioRuntime {
             .status(id, layer)
     }
 
+    /// Bounded visual queries. Call from the audio owner and copy scalar
+    /// results into a host-owned bank; never expose the processor to a GUI.
+    pub fn peak(&self, layer: usize, kind: u32, start: usize, end: usize) -> f32 {
+        self.current
+            .processor
+            .instrument()
+            .looper()
+            .peak(layer, kind, start, end)
+    }
+
+    pub fn recorded_frames(&self, layer: usize) -> usize {
+        self.current
+            .processor
+            .instrument()
+            .looper()
+            .recorded_frames(layer)
+    }
+
     /// Host reset while processing is suspended; prepared PCM and controls stay.
     pub fn reset_processing(&mut self) {
         self.current

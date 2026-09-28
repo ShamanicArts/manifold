@@ -872,7 +872,8 @@ if (editorMode) {
     if (!latest || !Array.isArray(data?.layers) || data.layers.length !== project.layers) return;
     const layers = data.layers.map((layer, index) => ({
       ...latest.layers[index], ...layer,
-      peaks: layer.length === latest.layers[index].length ? latest.layers[index].peaks : [],
+      peaks: layer.peaks ?? (layer.length === latest.layers[index].length
+        ? latest.layers[index].peaks : []),
     }));
     render({ ...latest, ...data, layers });
     if (Number.isFinite(data.targetBpm) && document.activeElement !== $('target')) {

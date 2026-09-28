@@ -7,6 +7,7 @@ This never opens a window on the user's desktop or an audio device.
 import argparse
 import ctypes as c
 import importlib.util
+import json
 import os
 from pathlib import Path
 import re
@@ -55,6 +56,7 @@ def main():
     parser.add_argument("--weston", default="weston")
     parser.add_argument("--session", type=Path, default=ROOT / "web/public/main-native-saved-session.json")
     parser.add_argument("--screenshot", type=Path, help="Capture the mounted editor from isolated Xwayland")
+    parser.add_argument("--exercise-live", action="store_true", help="Record First Loop through in-memory host blocks")
     args = parser.parse_args()
     module = args.module.resolve()
     with tempfile.TemporaryDirectory(prefix="manifold-headless-") as directory:
@@ -127,6 +129,37 @@ def main():
                     break
                 time.sleep(0.05)
             assert callbacks[0] >= 2, "Main webview did not acknowledge the Rust presentation"
+            if args.exercise_live:
+                assert probe.fn(plugin.start, c.c_bool, c.c_void_p)(plugin_ptr)
+                command_ptr = probe.fn(plugin.get_extension, c.c_void_p, c.c_void_p, c.c_char_p)(
+                    plugin_ptr, b"shamanic.manifold.main.commands/1")
+                assert command_ptr
+                commands = c.cast(command_ptr, c.POINTER(probe.Commands)).contents
+                enqueue = probe.fn(commands.enqueue, c.c_bool, c.c_void_p, c.c_uint32, c.c_float)
+                assert enqueue(plugin_ptr, 0, 0.0)
+                for _ in range(16):
+                    probe.render(plugin_ptr, plugin, input_value=0.7)
+                assert enqueue(plugin_ptr, 1, 0.0)
+                for _ in range(45):
+                    probe.render(plugin_ptr, plugin, input_value=0.15)
+                probe.fn(plugin.stop, None, c.c_void_p)(plugin_ptr)
+                saved = bytearray()
+
+                @c.CFUNCTYPE(c.c_int64, c.c_void_p, c.c_void_p, c.c_uint64)
+                def write_state(_stream, data, size):
+                    saved.extend(c.string_at(data, size))
+                    return size
+
+                sink = probe.Stream(None, c.cast(write_state, c.c_void_p))
+                assert probe.fn(state.save, c.c_bool, c.c_void_p, c.POINTER(probe.Stream))(
+                    plugin_ptr, c.byref(sink))
+                assert json.loads(saved)["layers"][0]["frames"] > 0, "First Loop host take did not commit"
+                settle = time.monotonic() + 0.6
+                while time.monotonic() < settle:
+                    if callbacks[0] > handled:
+                        handled = callbacks[0]
+                        probe.fn(plugin.main, None, c.c_void_p)(plugin_ptr)
+                    time.sleep(0.05)
             if args.screenshot:
                 time.sleep(0.5)
                 args.screenshot.parent.mkdir(parents=True, exist_ok=True)

@@ -57,11 +57,11 @@
   </section>
   <section>
     <h2>The shared instrument surface</h2>
-    <figure><img src="/main-native-session-browser.png" alt="Actual browser Main looper showing the native-produced session"><figcaption>This is the real browser Main instrument opening the same native-produced session used by the CLAP probe. The packaged Main editor loads this page through a native child webview; an isolated Xwayland host now proves the embedded surface, while a DAW test remains open.</figcaption></figure>
+    <figure><img src="/main-native-session-browser.png" alt="Actual browser Main looper showing the native-produced session"><figcaption>This is the real browser Main instrument opening the same native-produced session used by the CLAP probe. The packaged Main editor loads this page through a native child webview; an isolated Xwayland host proves the embedded surface and now shows a new First Loop take with live capture strips. See the <a href="/main-clap-editor-surface-review.html">editor surface review</a>. A DAW test remains open.</figcaption></figure>
   </section>
   <section>
     <h2>Next implementation gates</h2>
-    <p>Verify the embedded Main window in a DAW, add bounded live waveform/capture views and retrospective Sample capture gestures, then test capture and state save/reopen in that host. The command extension is private to the Main editor bridge; a standard DAW gesture mapping remains to be designed. A distinct Main VST3 processor/controller will use the same native runtime and session envelope.</p>
+    <p>Verify the embedded Main window in a DAW, add native retrospective Sample capture gestures, then test capture and state save/reopen in that host. Measure the bounded visual bank's callback cost on a real device. The command extension is private to the Main editor bridge; a standard DAW gesture mapping remains to be designed. A distinct Main VST3 processor/controller will use the same native runtime and session envelope.</p>
   </section>
 </main></body>
 </html>

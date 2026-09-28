@@ -47,6 +47,8 @@ use manifold_native::main_presentation::compact_main_presentation;
 use manifold_native::main_session::{default_main_session, prepare_main_session};
 use manifold_native::main_session_export::save_template;
 
+use crate::main_visual::MainVisualBank;
+
 const MAX_EVENTS: usize = 4096;
 const MAX_UI_COMMANDS: usize = 128;
 const MAX_STATE: usize = 300 * 1024 * 1024;
@@ -83,6 +85,8 @@ pub(crate) struct Instance {
     values: [AtomicU32; MAIN_HOST_ID_CAPACITY],
     status_values: [AtomicU32; STATUS_COUNT],
     status_epoch: AtomicU64,
+    status_runtime_generation: AtomicU64,
+    visual: MainVisualBank,
     active: AtomicBool,
     processing: AtomicBool,
     #[cfg(target_os = "linux")]
@@ -124,7 +128,10 @@ impl Instance {
                     .store(audio.status(id as u32, layer).to_bits(), Ordering::SeqCst);
             }
         }
+        self.status_runtime_generation
+            .store(audio.generation(), Ordering::SeqCst);
         self.status_epoch.fetch_add(1, Ordering::SeqCst);
+        self.visual.publish_job(audio);
     }
 
     pub(crate) fn editor_status(&self) -> Option<serde_json::Value> {
@@ -137,9 +144,10 @@ impl Instance {
             for (index, destination) in values.iter_mut().enumerate() {
                 *destination = f32::from_bits(self.status_values[index].load(Ordering::SeqCst));
             }
+            let runtime_generation = self.status_runtime_generation.load(Ordering::SeqCst);
             if self.status_epoch.load(Ordering::SeqCst) == before {
                 let field = |id: usize, layer: usize| values[layer * STATUS_FIELDS + id];
-                let layers: Vec<_> = (0..4)
+                let mut layers: Vec<_> = (0..4)
                     .map(|layer| {
                         serde_json::json!({
                             "state": field(7, layer), "length": field(8, layer),
@@ -151,12 +159,28 @@ impl Instance {
                     })
                     .collect();
                 let active = field(1, 0) as usize;
-                return Some(serde_json::json!({
+                let mut result = serde_json::json!({
                     "tempo": field(0, 0), "active": active, "mode": field(2, 0),
                     "recording": field(3, 0) >= 0.5, "overdub": field(4, 0) >= 0.5,
                     "forwardBars": field(5, 0), "captured": field(12, active.min(3)),
-                    "sampleRate": field(19, 0), "targetBpm": field(17, 0), "layers": layers,
-                }));
+                    "sampleRate": field(19, 0), "targetBpm": field(17, 0),
+                });
+                if let Some(visual) = self
+                    .visual
+                    .snapshot()
+                    .filter(|visual| visual.source_generation == runtime_generation)
+                {
+                    for (layer, entry) in layers.iter_mut().enumerate() {
+                        if visual.layer_lengths[layer] == field(8, layer) as usize {
+                            entry["peaks"] = serde_json::json!(visual.layer_peaks[layer]);
+                        }
+                    }
+                    if visual.active == active {
+                        result["segments"] = serde_json::json!(visual.segments);
+                    }
+                }
+                result["layers"] = serde_json::json!(layers);
+                return Some(result);
             }
         }
         None
@@ -253,6 +277,8 @@ impl Instance {
             values: std::array::from_fn(|id| AtomicU32::new(defaults[id].to_bits())),
             status_values: std::array::from_fn(|_| AtomicU32::new(0)),
             status_epoch: AtomicU64::new(0),
+            status_runtime_generation: AtomicU64::new(0),
+            visual: MainVisualBank::new(),
             active: AtomicBool::new(false),
             processing: AtomicBool::new(false),
             #[cfg(target_os = "linux")]
@@ -271,6 +297,7 @@ impl Instance {
         {
             return false;
         }
+        self.visual.reset();
         let Ok(mut control_slot) = self.control.lock() else {
             return false;
         };
@@ -557,6 +584,7 @@ impl Instance {
         self.processing.store(false, Ordering::Release);
         self.active.store(false, Ordering::Release);
         let runtime = self.runtime.swap(null_mut(), Ordering::AcqRel);
+        self.visual.reset();
         if runtime.is_null() {
             return;
         }

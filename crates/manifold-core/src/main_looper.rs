@@ -350,6 +350,19 @@ impl MainLooper {
     pub fn recording(&self) -> bool {
         self.recording_start.is_some()
     }
+    /// Duration of the current recording retained in the rolling capture ring.
+    /// Only the recording layer exposes a live take.
+    pub fn recorded_frames(&self, index: usize) -> usize {
+        let Some(start) = self.recording_start else {
+            return 0;
+        };
+        if index != self.recording_layer {
+            return 0;
+        }
+        self.frame
+            .saturating_sub(start)
+            .min(self.layers[index].capacity() as u64) as usize
+    }
     pub fn overdub(&self) -> bool {
         self.overdub
     }

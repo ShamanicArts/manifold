@@ -7,6 +7,7 @@ mod instance;
 #[cfg(target_os = "linux")]
 mod main_gui;
 mod main_product;
+mod main_visual;
 
 use std::ffi::{CStr, c_char, c_void};
 use std::ptr::null;

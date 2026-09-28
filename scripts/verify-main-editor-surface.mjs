@@ -52,24 +52,36 @@ try {
   assert.ok(actions.some(action => action.kind === 'parameter' && action.id === 1 && action.value === 1));
   assert.ok(actions.some(action => action.kind === 'parameter' && action.id === 0 && action.value === 2));
   assert.ok(actions.some(action => action.kind === 'command' && action.id === 0));
+  const emptyVisuals = await page.evaluate(() => ({
+    layer: document.querySelector('.layer[data-layer="2"] canvas.wave').toDataURL(),
+    capture: document.querySelector('#capture .segment:nth-child(9) canvas').toDataURL(),
+  }));
   await page.evaluate(() => {
     const layers = Array.from(document.querySelectorAll('.layer'), (_, index) => ({
       state: index === 2 ? 2 : 0, length: 0, position: 0, bars: 0,
       pending: 0, volume: 1, speed: 1, muted: false, playing: false,
+      peaks: index === 2 ? Array(128).fill(0.6) : [],
     }));
     window.manifoldEditorLiveStatus({
       tempo: 127, targetBpm: 120, active: 2, mode: 0,
       recording: true, overdub: false, forwardBars: 0,
       captured: 128, sampleRate: 48000, layers,
+      segments: Array.from({ length: 9 }, (_, index) => Array(128).fill(index === 8 ? 0.5 : 0)),
     });
   });
+  const liveVisuals = await page.evaluate(() => ({
+    layer: document.querySelector('.layer[data-layer="2"] canvas.wave').toDataURL(),
+    capture: document.querySelector('#capture .segment:nth-child(9) canvas').toDataURL(),
+  }));
+  assert.notEqual(liveVisuals.layer, emptyVisuals.layer);
+  assert.notEqual(liveVisuals.capture, emptyVisuals.capture);
   assert.match(await page.locator('#rec').textContent(), /REC\*/);
   assert.equal(await page.locator('.layer[data-layer="2"] .state').textContent(), 'Recording');
   assert.equal(await page.locator('#tempo').inputValue(), '127');
   assert.equal(await page.locator('#audio-button').isDisabled(), true);
   assert.equal(await page.locator('#sample-cap').isDisabled(), true);
   assert.deepEqual(errors, []);
-  console.log('Original Main surface restored bounded Rust editor presentation and routed mode, layer, and Record gestures to host IDs without WebAudio.');
+  console.log('Original Main surface restored Rust presentation, repainted live layer/capture peaks, and routed controls without WebAudio.');
 } finally {
   await browser.close();
 }
