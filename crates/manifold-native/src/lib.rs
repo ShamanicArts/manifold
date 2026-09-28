@@ -12,6 +12,7 @@ pub mod capture_mailbox;
 pub mod host_buffers;
 pub mod host_transport;
 pub mod host_values;
+pub mod main_instrument;
 pub mod parameters;
 pub mod project;
 
@@ -25,6 +26,7 @@ const MAX_AUTOMATION_POINTS: usize = 4096;
 #[derive(Debug, PartialEq, Eq)]
 pub enum NativeError {
     Graph(GraphError),
+    InvalidSampleRate,
     BlockTooLarge,
     ChannelLengthMismatch,
     Event(EventError),
