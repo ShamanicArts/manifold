@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+use base64::Engine;
 use crossbeam_queue::ArrayQueue;
 use manifold_native::main_host_parameters::MainParameter;
 use manifold_native::main_instrument::valid_main_command;
@@ -22,6 +23,8 @@ use crate::main_controller::MainShared;
 const WIDTH: i32 = 1280;
 const HEIGHT: i32 = 780;
 const MAX_ACTIONS: usize = 256;
+const MAX_TRANSFER_BYTES: usize = 300 * 1024 * 1024;
+const EXPORT_CHUNKS_PER_TICK: usize = 8;
 
 enum Action {
     Begin(u32),
@@ -30,6 +33,21 @@ enum Action {
     Command(u32, f32),
     Note(u8, u8, u8),
     Sample(u8, u8, f32),
+    ImportStart(usize),
+    ImportChunk(Vec<u8>),
+    ImportEnd,
+    ImportInvalid,
+    Export,
+}
+
+struct ImportAssembly {
+    expected: usize,
+    bytes: Vec<u8>,
+}
+
+struct ExportProgress {
+    expected: usize,
+    offset: usize,
 }
 
 struct Session {
@@ -63,6 +81,8 @@ struct State {
     ready: AtomicBool,
     status_requested: AtomicBool,
     last_sent: AtomicU64,
+    import: Mutex<Option<ImportAssembly>>,
+    export: Mutex<Option<ExportProgress>>,
 }
 
 impl State {
@@ -74,7 +94,70 @@ impl State {
             ready: AtomicBool::new(false),
             status_requested: AtomicBool::new(false),
             last_sent: AtomicU64::new(u64::MAX),
+            import: Mutex::new(None),
+            export: Mutex::new(None),
         })
+    }
+
+    fn send(&self, message: &str) -> bool {
+        self.session
+            .lock()
+            .ok()
+            .and_then(|mut slot| slot.as_mut().map(|session| session.send(message)))
+            .unwrap_or(false)
+    }
+
+    fn import_result(&self, ok: bool) {
+        let message = if ok {
+            "{\"kind\":\"session-import-result\",\"ok\":true,\"message\":\"Main session opened in the native host.\"}"
+        } else {
+            "{\"kind\":\"session-import-result\",\"ok\":false,\"message\":\"Main session rejected; previous state retained.\"}"
+        };
+        let _ = self.send(message);
+    }
+
+    fn export_failed(&self) {
+        self.shared.end_export();
+        if let Ok(mut slot) = self.export.lock() {
+            *slot = None;
+        }
+        let _ = self.send("{\"kind\":\"session-export-result\",\"ok\":false,\"message\":\"Native Main session could not be saved.\"}");
+    }
+
+    fn send_export_chunks(&self) {
+        let Ok(mut slot) = self.export.lock() else {
+            return;
+        };
+        let Some(progress) = slot.as_mut() else {
+            return;
+        };
+        for _ in 0..EXPORT_CHUNKS_PER_TICK {
+            if progress.offset == progress.expected {
+                self.shared.end_export();
+                let _ = self.send("{\"kind\":\"session-export-end\"}");
+                *slot = None;
+                return;
+            }
+            let Some(chunk) = self.shared.export_chunk(progress.offset) else {
+                drop(slot);
+                self.export_failed();
+                return;
+            };
+            if chunk.len() > progress.expected - progress.offset {
+                drop(slot);
+                self.export_failed();
+                return;
+            }
+            let data = base64::engine::general_purpose::STANDARD.encode(&chunk);
+            let message =
+                serde_json::json!({"kind":"session-export-chunk","data":data}).to_string();
+            if !self.send(&message) {
+                drop(slot);
+                self.export_failed();
+                return;
+            }
+            progress.offset += chunk.len();
+        }
     }
 
     fn send_state(&self) -> bool {
@@ -155,6 +238,83 @@ impl State {
                         }
                     }
                 }
+                Action::ImportStart(expected) => {
+                    if let Ok(mut slot) = self.import.lock() {
+                        *slot = None;
+                    }
+                    self.shared.abort_import();
+                    if expected == 0
+                        || expected > MAX_TRANSFER_BYTES
+                        || !self.shared.begin_import(expected)
+                    {
+                        self.import_result(false);
+                    } else if let Ok(mut slot) = self.import.lock() {
+                        *slot = Some(ImportAssembly {
+                            expected,
+                            bytes: Vec::new(),
+                        });
+                    }
+                }
+                Action::ImportChunk(chunk) => {
+                    let Ok(mut slot) = self.import.lock() else {
+                        continue;
+                    };
+                    let Some(import) = slot.as_mut() else {
+                        continue;
+                    };
+                    if chunk.is_empty()
+                        || chunk.len() > import.expected.saturating_sub(import.bytes.len())
+                        || import.bytes.try_reserve(chunk.len()).is_err()
+                        || !self.shared.append_import(&chunk)
+                    {
+                        *slot = None;
+                        self.shared.abort_import();
+                        drop(slot);
+                        self.import_result(false);
+                        continue;
+                    }
+                    import.bytes.extend_from_slice(&chunk);
+                }
+                Action::ImportInvalid => {
+                    if let Ok(mut slot) = self.import.lock() {
+                        *slot = None;
+                    }
+                    self.shared.abort_import();
+                    self.import_result(false);
+                }
+                Action::ImportEnd => {
+                    let import = self.import.lock().ok().and_then(|mut slot| slot.take());
+                    let accepted = import.is_some_and(|import| {
+                        import.bytes.len() == import.expected
+                            && self.shared.finish_import(&import.bytes)
+                    });
+                    if !accepted {
+                        self.shared.abort_import();
+                    }
+                    self.import_result(accepted);
+                }
+                Action::Export => {
+                    if self.export.lock().ok().is_some_and(|slot| slot.is_some()) {
+                        continue;
+                    }
+                    let Some(expected) = self.shared.begin_export() else {
+                        self.export_failed();
+                        continue;
+                    };
+                    let message =
+                        serde_json::json!({"kind":"session-export-start","size":expected})
+                            .to_string();
+                    if !self.send(&message) {
+                        self.export_failed();
+                        continue;
+                    }
+                    if let Ok(mut slot) = self.export.lock() {
+                        *slot = Some(ExportProgress {
+                            expected,
+                            offset: 0,
+                        });
+                    }
+                }
             }
         }
         if self.ready.load(Ordering::Acquire) {
@@ -187,6 +347,7 @@ impl State {
                     }
                 }
             }
+            self.send_export_chunks();
         }
     }
 
@@ -194,6 +355,14 @@ impl State {
         self.ready.store(false, Ordering::Release);
         self.status_requested.store(false, Ordering::Release);
         self.last_sent.store(u64::MAX, Ordering::Release);
+        if let Ok(mut slot) = self.import.lock() {
+            *slot = None;
+        }
+        if let Ok(mut slot) = self.export.lock() {
+            *slot = None;
+        }
+        self.shared.abort_import();
+        self.shared.end_export();
         if let Ok(mut slot) = self.session.lock() {
             if let Some(session) = slot.take() {
                 session.stop();
@@ -405,6 +574,30 @@ impl IPlugViewTrait for View {
                         }
                         Action::Sample(action, source as u8, bars as f32)
                     }
+                    Some("session-import-start") => {
+                        let Some(expected) = value["size"]
+                            .as_u64()
+                            .and_then(|size| usize::try_from(size).ok())
+                        else {
+                            continue;
+                        };
+                        Action::ImportStart(expected)
+                    }
+                    Some("session-import-chunk") => {
+                        match value["data"].as_str().filter(|data| data.len() <= 3000) {
+                            Some(encoded) => {
+                                match base64::engine::general_purpose::STANDARD.decode(encoded) {
+                                    Ok(chunk) if !chunk.is_empty() && chunk.len() <= 2048 => {
+                                        Action::ImportChunk(chunk)
+                                    }
+                                    _ => Action::ImportInvalid,
+                                }
+                            }
+                            None => Action::ImportInvalid,
+                        }
+                    }
+                    Some("session-import-end") => Action::ImportEnd,
+                    Some("session-export") => Action::Export,
                     _ => continue,
                 };
                 let mut action = action;

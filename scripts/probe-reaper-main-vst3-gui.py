@@ -2,6 +2,8 @@
 """Open the packaged original Main view in isolated REAPER/Weston."""
 
 import ctypes as c
+import argparse
+import json
 import os
 from pathlib import Path
 import signal
@@ -60,12 +62,24 @@ def x11_windows() -> list[tuple[int, str, int, int]]:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--exercise-import", action="store_true")
+    parser.add_argument("--exercise-export", action="store_true")
+    parser.add_argument("--import-session", type=Path,
+                        default=ROOT / "projects/main-looper/default-session-v15.json")
+    args = parser.parse_args()
     assert os.environ.get("MANIFOLD_ISOLATED_DISPLAY") == "1"
     assert os.environ.get("DISPLAY") not in (None, ":0")
     assert os.environ.get("WAYLAND_DISPLAY")
     assert BUNDLE.is_dir()
     with tempfile.TemporaryDirectory(prefix="manifold-main-vst3-gui-") as directory:
         work = Path(directory)
+        probe_import = work / "main-import.json"
+        probe_export = work / "main-export.json"
+        if args.exercise_import:
+            document = json.loads(args.import_session.read_bytes())
+            document["targetBpm"] = 137.0
+            probe_import.write_text(json.dumps(document))
         config = work / "reaper.ini"
         config.write_text(f"[reaper]\nvstpath={BUNDLE.parent}\nvstpath64={BUNDLE.parent}\n")
         script = work / "open.lua"
@@ -80,6 +94,12 @@ out:write('done opened Main'); out:close()
 """)
         env = {**os.environ, "GDK_BACKEND": "x11",
                "PULSE_SERVER": "unix:/nonexistent", "PIPEWIRE_REMOTE": "manifold-disconnected"}
+        if args.exercise_import:
+            env["MANIFOLD_MAIN_IMPORT_PROBE"] = str(probe_import)
+        if args.exercise_export:
+            env["MANIFOLD_MAIN_EXPORT_PROBE"] = str(probe_export)
+        if args.exercise_import and args.exercise_export:
+            env["MANIFOLD_MAIN_EXPORT_AFTER_IMPORT_PROBE"] = "1"
         with (work / "reaper.log").open("w") as log:
             process = subprocess.Popen(
                 ["reaper", "-cfgfile", str(config), "-newinst", "-nosplash",
@@ -110,9 +130,40 @@ out:write('done opened Main'); out:close()
                     time.sleep(0.1)
                 assert editor, (work / "reaper.log").read_text()[-2500:]
                 time.sleep(2)
+                if args.exercise_import:
+                    deadline = time.monotonic() + 30
+                    result_path = Path(f"{probe_import}.result")
+                    while time.monotonic() < deadline and not result_path.exists():
+                        time.sleep(0.1)
+                    assert result_path.exists(), (work / "reaper.log").read_text()[-3000:]
+                    result = json.loads(result_path.read_text())
+                    assert result["ok"], result
+                    print(f"Main VST3 editor import: {result}")
+                    time.sleep(1)
+                if args.exercise_export:
+                    deadline = time.monotonic() + 30
+                    while time.monotonic() < deadline and not probe_export.exists():
+                        time.sleep(0.1)
+                    assert probe_export.exists(), (work / "reaper.log").read_text()[-3000:]
+                    exported = json.loads(probe_export.read_bytes())
+                    assert exported["id"] == "manifold.main-looper"
+                    assert exported["version"] == 15
+                    if args.exercise_import:
+                        assert exported["targetBpm"] == 137.0
+                        for source_layer, saved_layer in zip(document["layers"], exported["layers"]):
+                            assert source_layer["pcmF32Base64"] == saved_layer["pcmF32Base64"]
+                        assert document["sample"] == exported["sample"]
+                        report = {"host": "REAPER", "format": "VST3", "importedBytes": probe_import.stat().st_size,
+                                  "exportedBytes": probe_export.stat().st_size,
+                                  "targetBpm": exported["targetBpm"], "layers": len(exported["layers"]),
+                                  "loopPcmExact": True, "sampleExact": True,
+                                  "editorFileControls": "Open and Download"}
+                        (ROOT / "web/public/main-vst3-session-files.json").write_text(json.dumps(report, indent=2) + "\n")
+                    print(f"Main VST3 editor export: {len(probe_export.read_bytes())} bytes, target {exported['targetBpm']}")
                 assert process.poll() is None, "REAPER closed before screenshot"
                 print(f"X11 windows: {x11_windows()}")
-                target = ROOT / "web/public/main-vst3-reaper-editor.png"
+                target = ROOT / ("web/public/main-vst3-reaper-imported.png" if args.exercise_import
+                                 else "web/public/main-vst3-reaper-editor.png")
                 parent = int(editor.split()[2])
                 capture = subprocess.run(
                     ["ffmpeg", "-v", "error", "-f", "x11grab", "-window_id", str(parent),

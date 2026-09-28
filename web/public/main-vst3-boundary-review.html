@@ -26,7 +26,7 @@
     <div class="eyebrow">Manifold v2 / Main instrument / VST3 checkpoint</div>
     <h1>Main plays in REAPER<br>through its own VST3 class.</h1>
     <p>The packaged Main class is a separate VST3 instrument around the same Rust runtime used by the browser and CLAP. Its processor handles stereo audio, timed MIDI and automation, and portable Main sessions. The controller presents the 204 real Main parameter IDs to the host.</p>
-    <div class="actions"><a href="/main-vst3-reaper-editor.png">See the actual REAPER editor →</a><a href="/main-vst3-reaper-note.wav">Listen to the REAPER render</a><a href="/main-vst3-reaper-note.json">Open measured host results</a><a href="/main-clap-session-files-review.html">Review Main CLAP file actions</a></div>
+    <div class="actions"><a href="/main-vst3-reaper-imported.png">See imported Main session →</a><a href="/main-vst3-session-files.json">Read exact file results</a><a href="/main-vst3-reaper-note.wav">Listen to the REAPER render</a><a href="/main-vst3-reaper-note.json">Open measured host results</a></div>
   </header>
   <section>
     <h2>Current proof and next gates</h2>
@@ -35,11 +35,11 @@
       <tr><td>Processor and controller</td><td>Registered as their own VST3 pair. Native audio parity, a note at frame 64, invalid event handling, exact loop and Sample PCM import, and live state save pass Rust tests. The controller exposes 204 authored IDs and imports their values from portable state.</td></tr>
       <tr><td>Official validator</td><td><strong>1,611 passed, zero failed.</strong> The validator’s dense all-parameter automation revealed a bounded event capacity fault; the fixed workspace now covers it without allocating in the callback.</td></tr>
       <tr><td>Original editor</td><td>The real Main page opens inside REAPER as a VST3 plug view. This is a capture of the host window, not a design mockup. Parameter gestures, looper commands, notes, live status requests, and Sample capture requests have VST3 message paths. The REAPER screenshot proves display and attachment; live interaction and capture still need a host run with processing active.</td></tr>
-      <tr><td>Session files</td><td>Host project save and reopen preserve Main state and embedded audio. The editor’s own Open and Download buttons still need the VST3 file transfer bridge; they already work in the Main CLAP editor.</td></tr>
+      <tr><td>Session files</td><td>The original Open and Download controls now cross a bounded VST3 message bridge. An isolated REAPER run imported a 134,087-byte Main session, displayed its loop waveform and target BPM 137, then downloaded 134,087 bytes. All four loop PCM fields and the Sample state matched the imported JSON exactly. <a href="/main-vst3-session-files.json">Read the measured round trip</a>.</td></tr>
       <tr><td>REAPER audio and state</td><td>Main is discovered with 207 reported controls (204 from the plugin). Source Output saves and reopens at normalized 0.1. A fresh one-second host render hears MIDI note 60 at 0.125 s, with zero peak before the note. Its peak is <strong>0.218× the saved default render</strong>, proving the controller edit reached the audio processor. <a href="/main-vst3-reaper-note.json">Read the exact measurements</a>.</td></tr>
     </tbody></table>
   </section>
-  <section><h2>Actual Main VST3 window in REAPER</h2><p>Captured from the X11 plug view in a disposable headless REAPER session. The widget layout is the bundled original Main browser surface.</p><a href="/main-vst3-reaper-editor.png"><img src="/main-vst3-reaper-editor.png" alt="Original Main instrument surface in REAPER" style="display:block;width:100%;height:auto;border:1px solid var(--line)"></a></section>
+  <section><h2>Imported Main session in REAPER</h2><p>Captured from the X11 plug view after the original Open control imported a Main session with loop PCM. The waveform, Playing state, and target BPM 137 are shown by the bundled original widgets.</p><a href="/main-vst3-reaper-imported.png"><img src="/main-vst3-reaper-imported.png" alt="Original Main instrument surface in REAPER after a loop PCM import" style="display:block;width:100%;height:auto;border:1px solid var(--line)"></a></section>
   <section><h2>Hear the real host output</h2><p>This file was rendered offline by REAPER from the saved Main VST3 project. Playback here is only for review; the audio came from the native Rust plugin.</p><audio controls preload="none" src="/main-vst3-reaper-note.wav" style="width:min(100%,640px)"></audio></section>
 </main></body>
 </html>

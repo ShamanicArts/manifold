@@ -31,6 +31,12 @@ const MAX_UI_ACTIONS: usize = 256;
 const STATUS_FIELDS: usize = 20;
 const STATUS_COUNT: usize = STATUS_FIELDS * 4;
 const MAX_STATE: usize = 300 * 1024 * 1024;
+const FILE_CHUNK: usize = 16 * 1024;
+
+struct ImportAssembly {
+    expected: usize,
+    bytes: Vec<u8>,
+}
 
 struct Runtime {
     audio: MainAudioRuntime,
@@ -44,6 +50,8 @@ pub(crate) struct MainProcessor {
     control: Mutex<Option<MainControl>>,
     configuration: Mutex<Option<(f32, usize)>>,
     state: Mutex<Option<Vec<u8>>>,
+    import: Mutex<Option<ImportAssembly>>,
+    export: Mutex<Option<Vec<u8>>>,
     active: AtomicBool,
     processing: AtomicBool,
     blocks_processed: AtomicU64,
@@ -70,6 +78,8 @@ impl MainProcessor {
             control: Mutex::new(None),
             configuration: Mutex::new(None),
             state: Mutex::new(None),
+            import: Mutex::new(None),
+            export: Mutex::new(None),
             active: AtomicBool::new(false),
             processing: AtomicBool::new(false),
             blocks_processed: AtomicU64::new(0),
@@ -93,6 +103,12 @@ impl MainProcessor {
         }
         if let Ok(mut control) = self.control.lock() {
             *control = None;
+        }
+        if let Ok(mut slot) = self.import.lock() {
+            *slot = None;
+        }
+        if let Ok(mut slot) = self.export.lock() {
+            *slot = None;
         }
         self.visual.reset();
         self.status_epoch.store(0, Ordering::Release);
@@ -249,6 +265,92 @@ impl MainProcessor {
             .collect()
     }
 
+    fn begin_import(&self, expected: usize) -> bool {
+        if expected == 0 || expected > MAX_STATE {
+            return false;
+        }
+        let Ok(mut slot) = self.import.lock() else {
+            return false;
+        };
+        *slot = Some(ImportAssembly {
+            expected,
+            bytes: Vec::new(),
+        });
+        true
+    }
+
+    fn append_import(&self, chunk: &[u8]) -> bool {
+        let Ok(mut slot) = self.import.lock() else {
+            return false;
+        };
+        let Some(import) = slot.as_mut() else {
+            return false;
+        };
+        if chunk.is_empty()
+            || chunk.len() > FILE_CHUNK
+            || chunk.len() > import.expected.saturating_sub(import.bytes.len())
+            || import.bytes.try_reserve(chunk.len()).is_err()
+        {
+            *slot = None;
+            return false;
+        }
+        import.bytes.extend_from_slice(chunk);
+        true
+    }
+
+    fn finish_import(&self) -> bool {
+        let Some(import) = self.import.lock().ok().and_then(|mut slot| slot.take()) else {
+            return false;
+        };
+        import.bytes.len() == import.expected && self.apply_import(import.bytes)
+    }
+
+    fn apply_import(&self, bytes: Vec<u8>) -> bool {
+        if bytes.is_empty() || bytes.len() > MAX_STATE {
+            return false;
+        }
+        let pointer = self.runtime.load(Ordering::Acquire);
+        if pointer.is_null() {
+            let Ok(document) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+                return false;
+            };
+            let Some(rate) = document["sampleRate"].as_f64() else {
+                return false;
+            };
+            if prepare_main_session(&bytes, rate as f32, 128).is_err() {
+                return false;
+            }
+        } else {
+            let Ok(mut slot) = self.control.lock() else {
+                return false;
+            };
+            let Some(control) = slot.as_mut() else {
+                return false;
+            };
+            if control.submit_session(&bytes).is_err() {
+                return false;
+            }
+            if !self.processing.load(Ordering::Acquire) {
+                if !Self::offline_block(unsafe { &mut *pointer }) {
+                    return false;
+                }
+                self.publish_status(&unsafe { &*pointer }.audio);
+                control.reclaim();
+            }
+        }
+        if let Ok(mut state) = self.state.lock() {
+            *state = Some(bytes);
+        } else {
+            return false;
+        }
+        for value in &self.pending_values {
+            value.store(u64::MAX, Ordering::Release);
+        }
+        self.pending_dirty.store(false, Ordering::Release);
+        while self.ui_actions.pop().is_some() {}
+        true
+    }
+
     fn snapshot(&self) -> Option<Vec<u8>> {
         let pointer = self.runtime.load(Ordering::Acquire);
         if pointer.is_null() {
@@ -329,6 +431,102 @@ impl IConnectionPointTrait for MainProcessor {
         let Some(attributes) = (unsafe { ComRef::from_raw(message.getAttributes()) }) else {
             return kResultFalse;
         };
+        if kind == b"manifold.main.import.start.v1" {
+            let mut data: *const c_void = std::ptr::null();
+            let mut size = 0;
+            if unsafe { attributes.getBinary(c"size".as_ptr(), &mut data, &mut size) } != kResultOk
+                || data.is_null()
+                || size != 4
+            {
+                return kResultFalse;
+            }
+            let expected = u32::from_le_bytes(unsafe { *(data.cast::<[u8; 4]>()) }) as usize;
+            return if self.begin_import(expected) {
+                kResultOk
+            } else {
+                kResultFalse
+            };
+        }
+        if kind == b"manifold.main.import.chunk.v1" {
+            let mut data: *const c_void = std::ptr::null();
+            let mut size = 0;
+            if unsafe { attributes.getBinary(c"chunk".as_ptr(), &mut data, &mut size) } != kResultOk
+                || data.is_null()
+                || size <= 0
+                || size as usize > FILE_CHUNK
+            {
+                return kResultFalse;
+            }
+            let chunk = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), size as usize) };
+            return if self.append_import(chunk) {
+                kResultOk
+            } else {
+                kResultFalse
+            };
+        }
+        if kind == b"manifold.main.import.end.v1" {
+            return if self.finish_import() {
+                kResultOk
+            } else {
+                kResultFalse
+            };
+        }
+        if kind == b"manifold.main.import.abort.v1" {
+            if let Ok(mut slot) = self.import.lock() {
+                *slot = None;
+            }
+            return kResultOk;
+        }
+        if kind == b"manifold.main.export.start.v1" {
+            let Some(bytes) = self
+                .snapshot()
+                .filter(|bytes| !bytes.is_empty() && bytes.len() <= MAX_STATE)
+            else {
+                return kResultFalse;
+            };
+            let size = (bytes.len() as u32).to_le_bytes();
+            if unsafe { attributes.setBinary(c"size".as_ptr(), size.as_ptr().cast(), 4) }
+                != kResultOk
+            {
+                return kResultFalse;
+            }
+            let Ok(mut slot) = self.export.lock() else {
+                return kResultFalse;
+            };
+            *slot = Some(bytes);
+            return kResultOk;
+        }
+        if kind == b"manifold.main.export.chunk.v1" {
+            let mut data: *const c_void = std::ptr::null();
+            let mut size = 0;
+            if unsafe { attributes.getBinary(c"offset".as_ptr(), &mut data, &mut size) }
+                != kResultOk
+                || data.is_null()
+                || size != 4
+            {
+                return kResultFalse;
+            }
+            let offset = u32::from_le_bytes(unsafe { *(data.cast::<[u8; 4]>()) }) as usize;
+            let Ok(slot) = self.export.lock() else {
+                return kResultFalse;
+            };
+            let Some(bytes) = slot.as_ref() else {
+                return kResultFalse;
+            };
+            if offset >= bytes.len() {
+                return kResultFalse;
+            }
+            let chunk = &bytes[offset..bytes.len().min(offset + FILE_CHUNK)];
+            return unsafe {
+                attributes.setBinary(c"chunk".as_ptr(), chunk.as_ptr().cast(), chunk.len() as u32)
+            };
+        }
+        if kind == b"manifold.main.export.end.v1" {
+            if let Ok(mut slot) = self.export.lock() {
+                *slot = None;
+            }
+            return kResultOk;
+        }
         if kind == b"manifold.main.status.v1" {
             let Some(bytes) = self
                 .editor_status()
@@ -1074,6 +1272,79 @@ mod tests {
         let state: serde_json::Value =
             serde_json::from_slice(&component.snapshot().unwrap()).unwrap();
         assert_eq!(state["id"], "manifold.main-looper");
+        assert_eq!(unsafe { component.setActive(0) }, kResultOk);
+    }
+
+    #[test]
+    fn chunked_main_file_import_preserves_state_on_rejection_and_reopens_audio() {
+        let component = MainProcessor::new();
+        let mut document = default_main_session(48_000.0).unwrap();
+        document["targetBpm"] = serde_json::json!(137.0);
+        let bytes = serde_json::to_vec(&document).unwrap();
+        assert!(component.begin_import(bytes.len()));
+        for chunk in bytes.chunks(37) {
+            assert!(component.append_import(chunk));
+        }
+        assert!(component.finish_import());
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&component.snapshot().unwrap()).unwrap()["targetBpm"],
+            137.0
+        );
+
+        assert!(component.begin_import(bytes.len()));
+        assert!(component.append_import(&bytes[..37]));
+        assert!(!component.finish_import());
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&component.snapshot().unwrap()).unwrap()["targetBpm"],
+            137.0
+        );
+
+        let mut malformed = bytes.clone();
+        malformed[0] = b'!';
+        assert!(component.begin_import(malformed.len()));
+        assert!(component.append_import(&malformed));
+        assert!(!component.finish_import());
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&component.snapshot().unwrap()).unwrap()["targetBpm"],
+            137.0
+        );
+
+        let mut setup = ProcessSetup {
+            processMode: 0,
+            symbolicSampleSize: SymbolicSampleSizes_::kSample32 as i32,
+            maxSamplesPerBlock: 128,
+            sampleRate: 48_000.0,
+        };
+        assert_eq!(unsafe { component.setupProcessing(&mut setup) }, kResultOk);
+        assert_eq!(unsafe { component.setActive(1) }, kResultOk);
+        assert_eq!(unsafe { component.setProcessing(1) }, kResultOk);
+        let mut left = [0.0_f32; 128];
+        let mut right = [0.0_f32; 128];
+        let mut channels = [left.as_mut_ptr(), right.as_mut_ptr()];
+        let mut bus = AudioBusBuffers {
+            numChannels: 2,
+            silenceFlags: 0,
+            __field0: AudioBusBuffers__type0 {
+                channelBuffers32: channels.as_mut_ptr(),
+            },
+        };
+        let mut data = ProcessData {
+            processMode: 0,
+            symbolicSampleSize: SymbolicSampleSizes_::kSample32 as i32,
+            numSamples: 128,
+            numInputs: 0,
+            numOutputs: 1,
+            inputs: null_mut(),
+            outputs: &mut bus,
+            inputParameterChanges: null_mut(),
+            outputParameterChanges: null_mut(),
+            inputEvents: null_mut(),
+            outputEvents: null_mut(),
+            processContext: null_mut(),
+        };
+        assert_eq!(unsafe { component.process(&mut data) }, kResultOk);
+        assert_eq!(component.editor_status().unwrap()["targetBpm"], 137.0);
+        assert_eq!(unsafe { component.setProcessing(0) }, kResultOk);
         assert_eq!(unsafe { component.setActive(0) }, kResultOk);
     }
 

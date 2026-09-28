@@ -1,0 +1,11 @@
+{
+  "host": "REAPER",
+  "format": "VST3",
+  "importedBytes": 134087,
+  "exportedBytes": 134087,
+  "targetBpm": 137.0,
+  "layers": 4,
+  "loopPcmExact": true,
+  "sampleExact": true,
+  "editorFileControls": "Open and Download"
+}

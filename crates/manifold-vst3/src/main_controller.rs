@@ -17,6 +17,7 @@ use crate::util::{copy_wstring, read_stream_limited, utf16_string, write_stream}
 const MAX_STATE: usize = 300 * 1024 * 1024;
 const CONTROLLER_MAGIC: &[u8; 8] = b"MNV3C001";
 const MAX_CONTROLLER_STATE: usize = 16 * 1024;
+const FILE_CHUNK: usize = 16 * 1024;
 
 pub(crate) struct MainController {
     pub(crate) shared: Arc<MainShared>,
@@ -116,7 +117,90 @@ impl MainShared {
         serde_json::from_slice(&bytes).ok()
     }
 
+    pub(crate) fn begin_import(&self, expected: usize) -> bool {
+        let Ok(expected) = u32::try_from(expected) else {
+            return false;
+        };
+        expected > 0
+            && expected as usize <= MAX_STATE
+            && self.send_payload(
+                c"manifold.main.import.start.v1",
+                c"size",
+                &expected.to_le_bytes(),
+            )
+    }
+
+    pub(crate) fn append_import(&self, chunk: &[u8]) -> bool {
+        !chunk.is_empty()
+            && chunk.len() <= FILE_CHUNK
+            && self.send_payload(c"manifold.main.import.chunk.v1", c"chunk", chunk)
+    }
+
+    pub(crate) fn abort_import(&self) {
+        let _ = self.send_payload(c"manifold.main.import.abort.v1", c"token", &[0]);
+    }
+
+    pub(crate) fn finish_import(&self, bytes: &[u8]) -> bool {
+        let Ok(document) = save_template(bytes) else {
+            self.abort_import();
+            return false;
+        };
+        let Some(values) = values_from_session(&document) else {
+            self.abort_import();
+            return false;
+        };
+        let Ok(presentation) = compact_main_presentation(bytes) else {
+            self.abort_import();
+            return false;
+        };
+        if !self.send_payload(c"manifold.main.import.end.v1", c"token", &[0]) {
+            return false;
+        }
+        for &id in &self.ids {
+            let normalized =
+                plain_to_normalized(id, values[id as usize]).unwrap_or(self.defaults[id as usize]);
+            self.normalized[id as usize].store(normalized.to_bits(), Ordering::Release);
+        }
+        if let Ok(mut slot) = self.presentation.lock() {
+            *slot = Some(presentation);
+        }
+        self.version.fetch_add(1, Ordering::Release);
+        if let Some(handler) = self.handler.lock().ok().and_then(|slot| slot.clone()) {
+            unsafe { handler.restartComponent(RestartFlags_::kParamValuesChanged) };
+        }
+        true
+    }
+
+    pub(crate) fn begin_export(&self) -> Option<usize> {
+        let bytes = self.request_payload(c"manifold.main.export.start.v1", c"size")?;
+        let size = u32::from_le_bytes(bytes.as_slice().try_into().ok()?) as usize;
+        (size > 0 && size <= MAX_STATE).then_some(size)
+    }
+
+    pub(crate) fn export_chunk(&self, offset: usize) -> Option<Vec<u8>> {
+        let offset = u32::try_from(offset).ok()?;
+        self.request_payload_with_input(
+            c"manifold.main.export.chunk.v1",
+            c"chunk",
+            Some((c"offset", &offset.to_le_bytes())),
+        )
+        .filter(|chunk| !chunk.is_empty() && chunk.len() <= FILE_CHUNK)
+    }
+
+    pub(crate) fn end_export(&self) {
+        let _ = self.send_payload(c"manifold.main.export.end.v1", c"token", &[0]);
+    }
+
     fn request_payload(&self, kind: &CStr, key: &CStr) -> Option<Vec<u8>> {
+        self.request_payload_with_input(kind, key, None)
+    }
+
+    fn request_payload_with_input(
+        &self,
+        kind: &CStr,
+        key: &CStr,
+        input: Option<(&CStr, &[u8])>,
+    ) -> Option<Vec<u8>> {
         let host = self.host.lock().ok()?.clone()?;
         let peer = self.peer.lock().ok()?.clone()?;
         let mut cid = IMessage_iid;
@@ -127,10 +211,22 @@ impl MainShared {
         }
         let message = unsafe { ComPtr::<IMessage>::from_raw(raw.cast()) }?;
         unsafe { message.setMessageID(kind.as_ptr()) };
+        let attributes = unsafe { ComRef::from_raw(message.getAttributes()) }?;
+        if let Some((input_key, input_bytes)) = input {
+            if unsafe {
+                attributes.setBinary(
+                    input_key.as_ptr(),
+                    input_bytes.as_ptr().cast(),
+                    input_bytes.len() as u32,
+                )
+            } != kResultOk
+            {
+                return None;
+            }
+        }
         if unsafe { peer.notify(message.as_ptr()) } != kResultOk {
             return None;
         }
-        let attributes = unsafe { ComRef::from_raw(message.getAttributes()) }?;
         let mut data: *const c_void = std::ptr::null();
         let mut size = 0;
         if unsafe { attributes.getBinary(key.as_ptr(), &mut data, &mut size) } != kResultOk

@@ -115,8 +115,10 @@ Main page. A host UI timer forwards bounded widget gestures, looper commands,
 notes, status snapshots, and Sample requests through VST3 messages; the audio
 callback reads only prepared event buffers and lock-free control mailboxes.
 The visual peak bank now lives in `manifold-native` for both CLAP and VST3.
-Host project state reopens loop and Sample PCM. The editor's own Open and
-Download controls still need their VST3 file transfer bridge.
+Host project state reopens loop and Sample PCM. The editor's Open and Download
+controls stream bounded chunks through VST3 messages, with preparation and
+file assembly on the control side. A REAPER host run imported and exported
+matching loop PCM and Sample state through those original controls.
 Main now exposes a private, bounded CLAP extension for its authored looper
 commands. It queues editor gestures at the next audio block start without
 turning momentary record/stop/clear actions into persistent parameter values.

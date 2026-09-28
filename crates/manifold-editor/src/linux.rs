@@ -179,6 +179,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    let export_after_import = surface == Surface::Main
+        && std::env::var("MANIFOLD_MAIN_EXPORT_AFTER_IMPORT_PROBE")
+            .ok()
+            .as_deref()
+            == Some("1");
     let mut export = None::<ExportAssembly>;
     let mut probe_export_triggered = false;
     gtk::glib::timeout_add_local(Duration::from_millis(16), move || {
@@ -240,7 +245,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         "window.manifoldEditorReceive ? window.manifoldEditorReceive({document}) : (window.__manifoldPendingState = {document});"
                     );
                     let _ = webview.evaluate_script(&script);
-                    if probe_export.is_some() && !probe_export_triggered {
+                    if probe_export.is_some() && !export_after_import && !probe_export_triggered {
                         probe_export_triggered = true;
                         let _ = webview
                             .evaluate_script("document.getElementById('save-session')?.click();");
@@ -303,6 +308,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     let _ = webview.evaluate_script(&format!(
                         "window.manifoldEditorImportResult?.({result});"
                     ));
+                    if export_after_import
+                        && probe_export.is_some()
+                        && !probe_export_triggered
+                        && result["ok"] == true
+                    {
+                        probe_export_triggered = true;
+                        let _ = webview
+                            .evaluate_script("document.getElementById('save-session')?.click();");
+                    }
                 }
                 Some("session-export-start") => {
                     export = command["size"]
