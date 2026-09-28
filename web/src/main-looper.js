@@ -21,8 +21,11 @@ import { mountMainVelocityMapper } from './widgets/main-velocity-mapper.js';
 import { mountMainArpeggiator } from './widgets/main-arpeggiator.js';
 import { mountMainCapturePlane } from './widgets/main-capture-plane.js';
 import { drawMainLayerKnob } from './widgets/main-layer-knob.js';
+import { mainEditorAction } from './audio/main-editor-control-map.js';
 
 const $ = (id) => document.getElementById(id);
+const editorMode = new URLSearchParams(location.search).has('editor');
+if (editorMode) document.body.classList.add('plugin-editor');
 const bars = project.segments;
 const labels = ['16', '8', '4', '2', '1', '1/2', '1/4', '1/8', '1/16'];
 const layerColors = ['#22d3ee', '#a78bfa', '#f59e0b', '#34d399'];
@@ -30,6 +33,7 @@ let context = null, processor = null, stream = null, sourceNode = null, inputGai
 let latest = null, poll = null, dragging = null;
 let transferJob = null, nextRequest = 1;
 let sampleJob = null, freeSource = null, sampleMode = 0;
+let applyingEditorState = false;
 const status = (message) => { $('status').textContent = message; };
 function formatBars(value) {
   if (!value) return '';
@@ -39,7 +43,17 @@ function formatBars(value) {
   }
   return `${Math.round(value)} ${Math.round(value) === 1 ? 'bar' : 'bars'}`;
 }
-const post = (message) => processor?.port.postMessage(message);
+const post = (message) => {
+  if (!editorMode) return processor?.port.postMessage(message);
+  if (applyingEditorState) return;
+  if (message.type === 'snapshot') {
+    window.ipc?.postMessage(JSON.stringify({ version: 1, kind: 'snapshot' }));
+    return;
+  }
+  const action = mainEditorAction(message, project);
+  if (action) window.ipc?.postMessage(JSON.stringify({ version: 1, ...action }));
+  else status('This Main action is awaiting its native editor bridge.');
+};
 const control = (id, value) => post({ type: 'control', id, value });
 const layerControl = (layer, id, value) => post({ type: 'layer-control', layer, id, value });
 const command = (id, value = 0) => post({ type: 'command', id, value });
@@ -814,3 +828,71 @@ $('stop').onclick = () => command(project.commands.stop);
 $('overdub').onclick = () => control(project.controls.overdub, latest?.overdub ? 0 : 1);
 $('clear-all').onclick = () => command(project.commands.clearAll);
 $('fire').onclick = () => command(project.commands.fireForward);
+
+function editorPeaks(base64, frames) {
+  if (!frames || !base64) return [];
+  const audio = decodePcm(base64, frames);
+  return Array.from({ length: 128 }, (_, bin) => {
+    const start = Math.floor(frames * bin / 128);
+    const end = Math.max(start + 1, Math.floor(frames * (bin + 1) / 128));
+    let peak = 0;
+    for (let frame = start; frame < Math.min(end, frames); frame++) {
+      peak = Math.max(peak, Math.abs(audio[frame * 2]), Math.abs(audio[frame * 2 + 1]));
+    }
+    return peak;
+  });
+}
+
+function editorSnapshot(session) {
+  return {
+    tempo: session.tempo, active: session.activeLayer, mode: session.mode,
+    recording: false, overdub: session.overdub, forwardBars: 0,
+    captured: 0, sampleRate: session.sampleRate,
+    layers: session.layers.map(layer => ({
+      state: !layer.frames ? 0 : layer.playing ? 1 : 3,
+      length: layer.frames, position: layer.position, bars: layer.bars,
+      pending: 0, volume: layer.volume, speed: layer.speed,
+      muted: layer.muted, playing: layer.playing,
+      peaks: layer.peaks ?? editorPeaks(layer.pcmF32Base64, layer.frames),
+    })),
+    segments: bars.map(() => Array(128).fill(0)),
+    sampleFrames: session.sample?.frames ?? 0,
+    samplePeaks: session.sample?.peaks
+      ?? editorPeaks(session.sample?.pcmF32Base64, session.sample?.frames ?? 0),
+    eqResponse: [],
+  };
+}
+
+if (editorMode) {
+  for (const id of ['audio-button', 'save-session', 'open-session', 'sample-cap']) {
+    $(id).disabled = true;
+  }
+  window.manifoldEditorStatus = status;
+  window.manifoldEditorReceive = (session) => {
+    if (session?.id !== project.id || session.version !== project.sessionVersion
+      || !Array.isArray(session.layers) || session.layers.length !== project.layers
+      || !Number.isFinite(session.sampleRate) || !session.rack) {
+      status('The native Main session could not be shown.');
+      return;
+    }
+    applyingEditorState = true;
+    try {
+      context = { sampleRate: session.sampleRate };
+      processor = { port: { postMessage: () => {} } };
+      restoreRack(session.rack);
+      $('target').value = Math.round(session.targetBpm);
+      $('sample-length').textContent = `${Math.round((session.sample?.frames ?? 0) / session.sampleRate * 1000)}ms`;
+      render(editorSnapshot(session));
+      status('Main CLAP session · native audio engine');
+    } catch (error) {
+      status(`Main editor state error: ${error.message}`);
+    } finally {
+      applyingEditorState = false;
+    }
+  };
+  if (window.__manifoldPendingState) {
+    window.manifoldEditorReceive(window.__manifoldPendingState);
+    delete window.__manifoldPendingState;
+  }
+  window.ipc?.postMessage(JSON.stringify({ version: 1, kind: 'editor-ready' }));
+}

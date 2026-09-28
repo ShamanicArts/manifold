@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Main editor surface checkpoint · Manifold v2</title>
+  <style>
+    :root { font: 15px/1.55 system-ui,sans-serif; color:#1d3028; background:#f4f5f0; --line:#c9d6cd; --green:#28624c; }
+    * { box-sizing:border-box; } body { margin:0; } main { max-width:1120px; margin:auto; padding:36px 22px 90px; }
+    header { border-top:3px solid var(--green); padding-top:12px; }
+    .eyebrow { font:11px ui-monospace,monospace; letter-spacing:.13em; text-transform:uppercase; color:#995d3c; }
+    h1,h2 { font-family:Georgia,serif; font-weight:400; line-height:1.12; } h1 { font-size:clamp(38px,6vw,62px); margin:12px 0 18px; } h2 { font-size:27px; margin:0 0 10px; }
+    p { max-width:78ch; color:#395346; } a { color:var(--green); }
+    .actions { display:flex; flex-wrap:wrap; gap:10px; margin:22px 0 0; }
+    .actions a { display:inline-block; padding:10px 14px; border:1px solid var(--green); text-decoration:none; font-weight:600; }
+    .actions a:first-child { background:var(--green); color:white; }
+    section { border-top:1px solid var(--line); margin-top:30px; padding-top:20px; }
+    figure { margin:16px 0 0; padding:10px; border:1px solid var(--line); background:white; }
+    figure img { display:block; width:100%; height:auto; }
+    figcaption { margin-top:7px; font-size:13px; color:#526458; }
+    table { border-collapse:collapse; width:100%; background:white; }
+    th,td { padding:10px 12px; border:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { background:#eaf0e9; font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
+    code { font:12px ui-monospace,monospace; }
+  </style>
+</head>
+<body><main>
+  <header>
+    <div class="eyebrow">Manifold v2 / original Main surface / native editor bridge</div>
+    <h1>The Main widgets can now<br>face the native host.</h1>
+    <p>This is the existing four-layer Main looper page and its real widget modules, opened in an editor mode. It restores a session produced by the Rust host and sends the widgets' own control messages as the stable Main host IDs. This checkpoint is a browser proof of the surface and mapping; the packaged CLAP window is the next connection.</p>
+    <div class="actions"><a href="/main-looper.html">Open the playable Main looper →</a><a href="/main-clap-host-review.html">Review the loadable CLAP processor</a></div>
+  </header>
+  <section>
+    <h2>The rendered surface</h2>
+    <figure><img src="/main-clap-editor-surface.png" alt="Actual Main looper instrument in native editor mode, showing the saved layer waveform and four layer controls"><figcaption>Muted Chromium proof at 1320 × 900. The host mode opens the original Main HTML and widgets; it restores the native-produced version-15 session and draws its saved Layer 1 waveform. No Web Audio engine was created.</figcaption></figure>
+    <figure><img src="/main-clap-editor-rack.png" alt="Actual Main MidiSynth rack in native editor mode, including the authored compact Source, ADSR, Filter, effects, and EQ widgets"><figcaption>The same editor page retains the authored MidiSynth rack and compact widgets. The headless probe checks restored Source Output and LFO 2 values.</figcaption></figure>
+  </section>
+  <section>
+    <h2>Verified boundary</h2>
+    <table><thead><tr><th>Path</th><th>Observed result</th></tr></thead><tbody>
+      <tr><td>Session → original UI</td><td>Native session restores the four looper rows, populated waveform, Sample length, Source Output, and LFO 2 face in the same page used by the browser Main product.</td></tr>
+      <tr><td>Widgets → stable IDs</td><td>Mode sends host ID 1, Active Layer sends ID 0, and Record sends separate command ID 0. The mapper covers the synth, four LFO slots, both effects, EQ, utilities, and voice stages.</td></tr>
+      <tr><td>Audio separation</td><td>The editor probe replaces <code>AudioContext</code> with a throwing stub. Session display and gestures pass without creating browser audio.</td></tr>
+      <tr><td>Current boundary</td><td>Native GUI lifecycle and IPC reception are not wired into the CLAP class yet. Live transport/capture status, sample capture, and session file actions still need native editor paths.</td></tr>
+    </tbody></table>
+  </section>
+</main></body>
+</html>

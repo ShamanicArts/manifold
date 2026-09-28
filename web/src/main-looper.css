@@ -819,3 +819,8 @@ body {
   max-width:1280px;
   overflow:hidden
 }
+
+.plugin-editor .intro { display:none; }
+.plugin-editor .page { padding:8px 12px 24px; }
+.plugin-editor .status { margin:0 0 8px; }
+.plugin-editor #sample-cap:disabled { opacity:.5; cursor:default; }
