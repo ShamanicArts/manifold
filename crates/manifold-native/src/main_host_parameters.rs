@@ -28,6 +28,7 @@ pub const MAIN_HOST_ID_CAPACITY: usize = 1024;
 pub struct MainHostValueBank {
     values: [f32; MAIN_HOST_ID_CAPACITY],
     present: [u64; MAIN_HOST_ID_CAPACITY / 64],
+    lfo_reinitialized: [bool; 4],
 }
 
 impl Default for MainHostValueBank {
@@ -35,6 +36,7 @@ impl Default for MainHostValueBank {
         Self {
             values: [0.0; MAIN_HOST_ID_CAPACITY],
             present: [0; MAIN_HOST_ID_CAPACITY / 64],
+            lfo_reinitialized: [false; 4],
         }
     }
 }
@@ -56,6 +58,19 @@ impl MainHostValueBank {
         self.values[index] = value;
         self.present[index / 64] |= 1_u64 << (index % 64);
     }
+
+    pub(crate) fn reset_lfo_slot(&mut self, slot: usize) {
+        debug_assert!(slot < 4);
+        for local in 0..LFO_STRIDE {
+            let index = (LFO_BASE + slot as u32 * LFO_STRIDE + local) as usize;
+            self.present[index / 64] &= !(1_u64 << (index % 64));
+        }
+        self.lfo_reinitialized[slot] = true;
+    }
+
+    pub fn lfo_reinitialized(&self, slot: usize) -> bool {
+        self.lfo_reinitialized.get(slot).copied().unwrap_or(false)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -69,6 +84,9 @@ pub enum MainParameterTarget {
     Transport(u32),
     Layer { layer: usize, local: u32 },
     Synth(u32),
+    LfoParameter { slot: usize, local: u32 },
+    LfoRoute { slot: usize, local: u32 },
+    LfoActive { slot: usize },
     Atv(u32),
     Slew(u32),
     SampleHold(u32),
@@ -158,6 +176,79 @@ impl MainParameter {
                 _ => return Err(MainParameterError::UnknownId),
             };
             (MainParameterTarget::Synth(local), min, max, discrete, 1.0)
+        } else if (LFO_BASE..LFO_BASE + 4 * LFO_STRIDE).contains(&id) {
+            let slot = ((id - LFO_BASE) / LFO_STRIDE) as usize;
+            let local = (id - LFO_BASE) % LFO_STRIDE;
+            let (target, min, max, discrete) = match local {
+                0 => (
+                    MainParameterTarget::LfoParameter { slot, local },
+                    0.0,
+                    5.0,
+                    true,
+                ),
+                1 => (
+                    MainParameterTarget::LfoParameter { slot, local },
+                    0.01,
+                    20.0,
+                    false,
+                ),
+                2 => (
+                    MainParameterTarget::LfoParameter { slot, local },
+                    0.0,
+                    1.0,
+                    false,
+                ),
+                3 => (
+                    MainParameterTarget::LfoParameter { slot, local },
+                    0.0,
+                    360.0,
+                    false,
+                ),
+                4 => (
+                    MainParameterTarget::LfoParameter { slot, local },
+                    0.0,
+                    1.0,
+                    true,
+                ),
+                5 => (
+                    MainParameterTarget::LfoRoute { slot, local: 0 },
+                    0.0,
+                    12.0,
+                    true,
+                ),
+                6 => {
+                    if ![0.0, 22.0, 23.0, 129.0, 137.0].contains(&value) {
+                        return Err(MainParameterError::InvalidValue);
+                    }
+                    (
+                        MainParameterTarget::LfoRoute { slot, local: 1 },
+                        0.0,
+                        137.0,
+                        true,
+                    )
+                }
+                7 | 8 => (
+                    MainParameterTarget::LfoRoute {
+                        slot,
+                        local: local - 5,
+                    },
+                    -1.0,
+                    1.0,
+                    false,
+                ),
+                9 | 10 => (
+                    MainParameterTarget::LfoRoute {
+                        slot,
+                        local: local - 5,
+                    },
+                    0.0,
+                    1.0,
+                    true,
+                ),
+                11 if slot > 0 => (MainParameterTarget::LfoActive { slot }, 0.0, 1.0, true),
+                _ => return Err(MainParameterError::UnknownId),
+            };
+            (target, min, max, discrete, 1.0)
         } else if (ATV_BASE..ATV_BASE + 4).contains(&id) {
             let local = id - ATV_BASE;
             let (min, max, discrete) = match local {
@@ -310,6 +401,15 @@ impl MainParameter {
                 .looper_mut()
                 .set_layer_control(layer, local, self.value),
             MainParameterTarget::Synth(id) => instrument.set_synth_parameter(id, self.value),
+            MainParameterTarget::LfoParameter { slot, local } => {
+                instrument.set_lfo_slot_parameter(slot, local, self.value)
+            }
+            MainParameterTarget::LfoRoute { slot, local } => {
+                instrument.set_modulation_slot_route(slot, local, self.value)
+            }
+            MainParameterTarget::LfoActive { slot } => {
+                instrument.set_lfo_slot_active(slot, self.value >= 0.5)
+            }
             MainParameterTarget::Atv(id) => instrument.set_atv_parameter(id, self.value),
             MainParameterTarget::Slew(id) => instrument.set_slew_parameter(id, self.value),
             MainParameterTarget::SampleHold(id) => {
@@ -382,7 +482,7 @@ mod tests {
             Err(MainParameterError::UnknownId)
         );
         assert_eq!(
-            MainParameter::decode(LFO_BASE, 1.0),
+            MainParameter::decode(LFO_BASE + 11, 1.0),
             Err(MainParameterError::UnknownId)
         );
         assert_eq!(
@@ -394,6 +494,39 @@ mod tests {
                 .unwrap()
                 .value,
             0.6
+        );
+    }
+
+    #[test]
+    fn lfo_host_ids_validate_each_slot_and_route_target() {
+        for slot in 0..4 {
+            let base = LFO_BASE + slot * LFO_STRIDE;
+            assert!(matches!(
+                MainParameter::decode(base, 3.0).unwrap().target,
+                MainParameterTarget::LfoParameter { slot: found, local: 0 } if found == slot as usize
+            ));
+            assert!(matches!(
+                MainParameter::decode(base + 6, 129.0).unwrap().target,
+                MainParameterTarget::LfoRoute { slot: found, local: 1 } if found == slot as usize
+            ));
+            assert_eq!(
+                MainParameter::decode(base + 6, 24.0),
+                Err(MainParameterError::InvalidValue)
+            );
+            assert_eq!(
+                MainParameter::decode(base + 12, 1.0),
+                Err(MainParameterError::UnknownId)
+            );
+        }
+        assert!(matches!(
+            MainParameter::decode(LFO_BASE + LFO_STRIDE + 11, 1.0)
+                .unwrap()
+                .target,
+            MainParameterTarget::LfoActive { slot: 1 }
+        ));
+        assert_eq!(
+            MainParameter::decode(LFO_BASE, 3.5),
+            Err(MainParameterError::InvalidValue)
         );
     }
 

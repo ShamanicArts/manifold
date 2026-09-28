@@ -6,7 +6,9 @@ use manifold_core::events::{EventError, TimedEvent};
 use manifold_core::main_instrument::MainInstrument;
 
 use crate::NativeError;
-use crate::main_host_parameters::{MainHostValueBank, MainParameter, MainParameterError};
+use crate::main_host_parameters::{
+    MainHostValueBank, MainParameter, MainParameterError, MainParameterTarget,
+};
 
 pub const MAIN_MIDI_TARGET: u64 = 0;
 
@@ -41,6 +43,7 @@ pub enum MainHostEventError {
     Unsorted,
     InvalidMidi,
     InvalidCommand,
+    InactiveLfoSlot,
     Parameter(MainParameterError),
 }
 
@@ -193,6 +196,11 @@ impl MainNativeProcessor {
             return Err(NativeError::ChannelLengthMismatch);
         }
         let mut previous = 0;
+        let mut active_lfos: [bool; 4] = std::array::from_fn(|slot| {
+            self.instrument
+                .lfo_slot_active(slot)
+                .expect("four prepared LFO slots")
+        });
         for (index, action) in actions.iter().enumerate() {
             if (frames == 0 && action.offset != 0) || (frames > 0 && action.offset >= frames) {
                 return Err(NativeError::MainHost(MainHostEventError::OffsetOutOfRange));
@@ -206,9 +214,21 @@ impl MainNativeProcessor {
                     return Err(NativeError::MainHost(MainHostEventError::InvalidMidi));
                 }
                 MainHostEventKind::Parameter { id, value } => {
-                    MainParameter::decode(id, value).map_err(|error| {
+                    let parameter = MainParameter::decode(id, value).map_err(|error| {
                         NativeError::MainHost(MainHostEventError::Parameter(error))
                     })?;
+                    match parameter.target {
+                        MainParameterTarget::LfoParameter { slot, .. }
+                        | MainParameterTarget::LfoRoute { slot, .. }
+                            if !active_lfos[slot] =>
+                        {
+                            return Err(NativeError::MainHost(MainHostEventError::InactiveLfoSlot));
+                        }
+                        MainParameterTarget::LfoActive { slot } => {
+                            active_lfos[slot] = value >= 0.5;
+                        }
+                        _ => {}
+                    }
                 }
                 MainHostEventKind::Command { id, value } if !valid_command(id, value) => {
                     return Err(NativeError::MainHost(MainHostEventError::InvalidCommand));
@@ -236,6 +256,11 @@ impl MainNativeProcessor {
                 MainHostEventKind::Midi(event) => self.instrument.synth_event(event),
                 MainHostEventKind::Parameter { id, value } => {
                     let parameter = MainParameter::decode(id, value).expect("validated above");
+                    if let MainParameterTarget::LfoActive { slot } = parameter.target {
+                        if self.instrument.lfo_slot_active(slot) != Some(value >= 0.5) {
+                            self.host_values.reset_lfo_slot(slot);
+                        }
+                    }
                     let applied = parameter.apply(&mut self.instrument);
                     debug_assert!(applied);
                     self.host_values.record(id, value);

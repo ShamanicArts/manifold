@@ -7,8 +7,9 @@ use std::fs;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use manifold_native::main_host::MainAudioRuntime;
 use manifold_native::main_host_parameters::{
-    ATV_BASE, COMPARE_BASE, CV_MIX_BASE, NOTE_FILTER_BASE, RANGE_BASE, SAMPLE_HOLD_BASE,
-    SCALE_QUANTIZER_BASE, SLEW_BASE, SYNTH_BASE, TRANSPOSE_BASE, VELOCITY_MAPPER_BASE,
+    ATV_BASE, COMPARE_BASE, CV_MIX_BASE, LFO_BASE, LFO_STRIDE, NOTE_FILTER_BASE, RANGE_BASE,
+    SAMPLE_HOLD_BASE, SCALE_QUANTIZER_BASE, SLEW_BASE, SYNTH_BASE, TRANSPOSE_BASE,
+    VELOCITY_MAPPER_BASE,
 };
 use manifold_native::main_instrument::{
     MainAudioBlock, MainHostAudioBlock, MainHostEvent, MainHostEventKind,
@@ -99,6 +100,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         (SYNTH_BASE + 104, -2.0),
         (SYNTH_BASE + 105, 0.8),
         (SYNTH_BASE + 129, 0.25),
+        (LFO_BASE + LFO_STRIDE + 11, 1.0),
+        (LFO_BASE + LFO_STRIDE, 3.0),
+        (LFO_BASE + LFO_STRIDE + 1, 2.5),
+        (LFO_BASE + LFO_STRIDE + 2, 0.35),
+        (LFO_BASE + LFO_STRIDE + 5, 5.0),
+        (LFO_BASE + LFO_STRIDE + 6, 22.0),
+        (LFO_BASE + LFO_STRIDE + 7, 0.2),
+        (LFO_BASE + LFO_STRIDE + 10, 1.0),
         (ATV_BASE, -0.65),
         (ATV_BASE + 1, 0.2),
         (ATV_BASE + 2, 2.0),

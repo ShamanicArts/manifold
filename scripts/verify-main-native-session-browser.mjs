@@ -38,6 +38,10 @@ try {
   await page.locator('[data-main-tab="midisynth"]').click();
   assert.equal(await page.locator('#sample-length').textContent(), '125ms');
   assert.equal(await page.locator('#lfo-shape').inputValue(), String(nativeSession.rack.lfos[0].shape));
+  assert.equal(await page.locator('#lfo-shape-slot-1').inputValue(), '3');
+  assert.match(await page.locator('#lfo-status-slot-1').textContent(), /Square\s+•\s+2\.50 Hz\s+•\s+Depth 35%/);
+  assert.equal(await page.locator('#mod-target-slot-1').inputValue(), '22');
+  assert.equal(await page.locator('#mod-enabled-slot-1').isChecked(), true);
   assert.ok(Math.abs(Number(await page.locator('#source-output').getAttribute('aria-valuenow')) - 0.6) < 1e-5);
   assert.equal(await page.locator('#fx1-module-mix').getAttribute('aria-valuenow'), '0.25');
   assert.equal(await page.locator('#scale-quantizer-root').getAttribute('data-value'), '2');
@@ -75,6 +79,12 @@ try {
         path: new URL(`../web/public/main-native-${name}.png`, import.meta.url).pathname,
       });
     }
+    await page.locator('.rack-lfo[aria-label="Main LFO 2 module"]').screenshot({
+      path: new URL('../web/public/main-native-lfo-2.png', import.meta.url).pathname,
+    });
+    await page.locator('.rack-route[aria-label="Main LFO 2 modulation connection"]').screenshot({
+      path: new URL('../web/public/main-native-lfo-2-route.png', import.meta.url).pathname,
+    });
   }
   const downloadPromise = page.waitForEvent('download');
   await page.locator('#save-session').click();
@@ -100,6 +110,11 @@ try {
   assert.ok(Math.abs(browserSession.rack.compare.threshold - 0.35) < 1e-5);
   assert.equal(browserSession.rack.cvMix.level1, 0.75);
   assert.equal(browserSession.rack.range.mode, 1);
+  const lfo2 = browserSession.rack.lfos.find(lfo => lfo.slot === 1);
+  assert.equal(lfo2.shape, 3);
+  assert.equal(lfo2.rate, 2.5);
+  assert.equal(lfo2.route.target, 22);
+  assert.equal(lfo2.route.enabled, true);
   assert.deepEqual(errors, []);
   console.log('Native Main v15 save opened and re-saved by the actual browser looper with identical loop/sample PCM and rack controls.');
 } finally {

@@ -6,8 +6,8 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 
 use crate::main_host_parameters::{
-    ARPEGGIATOR_BASE, ATV_BASE, COMPARE_BASE, CV_MIX_BASE, NOTE_FILTER_BASE, RANGE_BASE,
-    SAMPLE_HOLD_BASE, SCALE_QUANTIZER_BASE, SLEW_BASE, SYNTH_BASE, TRANSPOSE_BASE,
+    ARPEGGIATOR_BASE, ATV_BASE, COMPARE_BASE, CV_MIX_BASE, LFO_BASE, LFO_STRIDE, NOTE_FILTER_BASE,
+    RANGE_BASE, SAMPLE_HOLD_BASE, SCALE_QUANTIZER_BASE, SLEW_BASE, SYNTH_BASE, TRANSPOSE_BASE,
     VELOCITY_MAPPER_BASE,
 };
 use crate::main_session::{FX_CONTROL_COUNTS, default_main_session};
@@ -53,7 +53,72 @@ fn set_host_field(
     Ok(())
 }
 
+fn apply_lfos(rack: &mut Value, snapshot: &MainPcmSnapshot) -> Result<(), MainExportError> {
+    let lfos = rack
+        .get_mut("lfos")
+        .and_then(Value::as_array_mut)
+        .ok_or(MainExportError::InvalidTemplate("lfos"))?;
+    for slot in 0..4 {
+        let base = LFO_BASE + slot * LFO_STRIDE;
+        let active_event = snapshot.host_values.get(base + 11);
+        if active_event == Some(0.0) {
+            lfos.retain(|lfo| lfo["slot"].as_u64() != Some(slot as u64));
+            continue;
+        }
+        let index = lfos
+            .iter()
+            .position(|lfo| lfo["slot"].as_u64() == Some(slot as u64));
+        if index.is_none() && active_event != Some(1.0) {
+            continue;
+        }
+        let index = if index.is_none() || snapshot.host_values.lfo_reinitialized(slot as usize) {
+            let mut fresh = default_main_session(48_000.0)
+                .map_err(|_| MainExportError::InvalidTemplate("default lfo"))?["rack"]["lfos"][0]
+                .clone();
+            fresh["slot"] = json!(slot);
+            if let Some(index) = index {
+                lfos[index] = fresh;
+                index
+            } else {
+                lfos.push(fresh);
+                lfos.len() - 1
+            }
+        } else {
+            index.expect("existing LFO slot")
+        };
+        let lfo = &mut lfos[index];
+        for (local, key) in [
+            (0, "shape"),
+            (1, "rate"),
+            (2, "depth"),
+            (3, "phase"),
+            (4, "retrig"),
+        ] {
+            if let Some(value) = snapshot.host_values.get(base + local) {
+                lfo[key] = json!(value);
+            }
+        }
+        for (local, key) in [
+            (5, "source"),
+            (6, "target"),
+            (7, "amount"),
+            (8, "bias"),
+            (9, "mode"),
+        ] {
+            if let Some(value) = snapshot.host_values.get(base + local) {
+                lfo["route"][key] = json!(value);
+            }
+        }
+        if let Some(value) = snapshot.host_values.get(base + 10) {
+            lfo["route"]["enabled"] = json!(value >= 0.5);
+        }
+    }
+    lfos.sort_by_key(|lfo| lfo["slot"].as_u64().unwrap_or(u64::MAX));
+    Ok(())
+}
+
 fn apply_rack(rack: &mut Value, snapshot: &MainPcmSnapshot) -> Result<(), MainExportError> {
+    apply_lfos(rack, snapshot)?;
     for (id, module, key, scale, bias) in [
         (0, "source", "waveform", 1.0, 0.0),
         (1, "source", "sampleBlend", 0.5, 0.5),

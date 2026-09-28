@@ -411,6 +411,10 @@ impl MainInstrument {
         true
     }
 
+    pub fn lfo_slot_active(&self, slot: usize) -> Option<bool> {
+        self.lfo_active.get(slot).copied()
+    }
+
     pub fn set_lfo_slot_parameter(&mut self, slot: usize, id: u32, value: f32) -> bool {
         if !self.lfo_active.get(slot).copied().unwrap_or(false) {
             return false;

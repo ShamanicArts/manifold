@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Main LFO slots through native host controls · Manifold v2</title>
+  <style>
+    :root { font: 15px/1.55 system-ui, sans-serif; color: #1d3028; background: #f4f5f0; --line: #c9d6cd; --green: #28624c; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 980px; margin: auto; padding: 36px 22px 90px; }
+    header { border-top: 3px solid var(--green); padding-top: 12px; }
+    .eyebrow { font: 11px ui-monospace, monospace; letter-spacing: .13em; text-transform: uppercase; color: #995d3c; }
+    h1, h2 { font-family: Georgia, serif; font-weight: 400; line-height: 1.12; }
+    h1 { font-size: clamp(38px, 6vw, 62px); margin: 12px 0 18px; }
+    h2 { font-size: 27px; margin: 0 0 10px; }
+    p { max-width: 72ch; color: #395346; }
+    a { color: var(--green); }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0 0; }
+    .actions a { display: inline-block; padding: 10px 14px; border: 1px solid var(--green); text-decoration: none; font-weight: 600; }
+    .actions a:first-child { background: var(--green); color: white; }
+    section { border-top: 1px solid var(--line); margin-top: 30px; padding-top: 20px; }
+    .faces { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; margin-top: 16px; }
+    figure { margin: 0; padding: 10px; border: 1px solid var(--line); background: white; max-width: 100%; }
+    figure img { display: block; max-width: 100%; height: auto; }
+    figcaption { margin-top: 7px; font-size: 13px; color: #526458; }
+    table { border-collapse: collapse; width: 100%; background: white; }
+    th, td { padding: 10px 12px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: #eaf0e9; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+    code { font: 12px ui-monospace, monospace; }
+  </style>
+</head>
+<body><main>
+  <header>
+    <div class="eyebrow">Manifold v2 / Main native host / LFO slots</div>
+    <h1>Native automation creates<br>the original LFO 2.</h1>
+    <p>The Rust Main host path now addresses four fixed LFO slots. The native example activates slot 2, sets its wave and timing, then connects Slew OUT to Filter cutoff. The screenshots below come from the actual browser Main instrument after opening the native session.</p>
+    <div class="actions">
+      <a href="/main-looper.html">Open the actual Main looper →</a>
+      <a href="/main-native-saved-session.json" download>Download the native save</a>
+      <a href="/main-native-utility-host-review.html">Review the six utilities</a>
+    </div>
+  </header>
+  <section>
+    <h2>The restored face and route</h2>
+    <div class="faces">
+      <figure><img src="/main-native-lfo-2.png" alt="Actual Main LFO 2 module, Square wave, 2.50 hertz, 35 percent depth"><figcaption>LFO 2 · Square, 2.50 Hz, 35% depth</figcaption></figure>
+      <figure><img src="/main-native-lfo-2-route.png" alt="Actual Main LFO 2 route, Slew OUT connected to Filter cutoff with amount 0.20"><figcaption>Slew OUT → Filter cutoff · amount +0.20, connected</figcaption></figure>
+    </div>
+  </section>
+  <section>
+    <h2>Slot lifecycle</h2>
+    <table><thead><tr><th>Action</th><th>Host behavior</th></tr></thead><tbody>
+      <tr><td>Address a control or route</td><td>Each slot has a fixed 16-ID stride from <code>512</code>. Local IDs 0–4 set LFO controls; 5–10 set route fields.</td></tr>
+      <tr><td>Activate or remove slots 2–4</td><td>Local ID 11 toggles that slot. Slot 1 is always present. Controls for an absent slot reject the entire block before output or state changes.</td></tr>
+      <tr><td>Remove and recreate</td><td>DSP and route state reset. The host value bank clears old slot edits; the next save uses the original default LFO face until new edits arrive.</td></tr>
+      <tr><td>Save and reopen</td><td>The native save emits the browser's sparse <code>rack.lfos</code> array. The browser opens and saves both the current and upgraded v3 examples with identical loop/sample PCM and the native LFO 2 controls.</td></tr>
+    </tbody></table>
+    <p>Native tests also activate all four slots, reject a malformed queue before slot activation, verify a removed slot disappears from the saved array, and check that a recreated slot does not inherit stale route values.</p>
+  </section>
+  <section>
+    <h2>Next boundary</h2>
+    <p>The assembled Main runtime and its stable host ID bank now need a loadable Main CLAP class and VST3 processor/controller, followed by external host save/reopen and audio checks. Repeated FX type switching still needs a callback cost measurement on a real audio device.</p>
+  </section>
+</main></body>
+</html>

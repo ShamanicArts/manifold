@@ -291,9 +291,9 @@ impl Drop for MainControl {
 mod tests {
     use super::*;
     use crate::main_host_parameters::{
-        ARPEGGIATOR_BASE, ATV_BASE, COMPARE_BASE, CV_MIX_BASE, NOTE_FILTER_BASE, RANGE_BASE,
-        SAMPLE_HOLD_BASE, SCALE_QUANTIZER_BASE, SLEW_BASE, SYNTH_BASE, TRANSPOSE_BASE,
-        VELOCITY_MAPPER_BASE,
+        ARPEGGIATOR_BASE, ATV_BASE, COMPARE_BASE, CV_MIX_BASE, LFO_BASE, LFO_STRIDE,
+        NOTE_FILTER_BASE, RANGE_BASE, SAMPLE_HOLD_BASE, SCALE_QUANTIZER_BASE, SLEW_BASE,
+        SYNTH_BASE, TRANSPOSE_BASE, VELOCITY_MAPPER_BASE,
     };
     use crate::main_instrument::{MainHostEvent, MainHostEventKind};
     use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -823,6 +823,135 @@ mod tests {
         assert_eq!(reopened.instrument().eq_control_snapshot()[40], -3.0);
         assert!((reopened.instrument().eq_control_snapshot()[41] - 0.65).abs() < 1e-6);
         assert_eq!(reopened.instrument().arpeggiator_status(11), 1.0);
+    }
+
+    #[test]
+    fn lfo_host_slot_activation_exports_browser_state_and_clears_removed_memory() {
+        fn automate(audio: &mut MainAudioRuntime, changes: &[(u32, f32)]) {
+            let actions: Vec<_> = changes
+                .iter()
+                .map(|&(id, value)| MainHostEvent {
+                    offset: 64,
+                    kind: MainHostEventKind::Parameter { id, value },
+                })
+                .collect();
+            let mut left = [0.0; 128];
+            let mut right = [0.0; 128];
+            audio
+                .process_host(MainHostAudioBlock {
+                    input: None,
+                    output: [&mut left, &mut right],
+                    actions: &actions,
+                })
+                .unwrap();
+        }
+        fn save(audio: &mut MainAudioRuntime, control: &mut MainControl) -> Value {
+            control.request_session_snapshot().unwrap();
+            loop {
+                render(audio);
+                if let Some(bytes) = control.poll_session_snapshot().unwrap() {
+                    return serde_json::from_slice(&bytes).unwrap();
+                }
+            }
+        }
+        let (mut audio, mut control) = MainAudioRuntime::prepare(8_000.0, 128).unwrap();
+        let slot = LFO_BASE + LFO_STRIDE;
+        let mut left = [0.5; 128];
+        let mut right = [0.5; 128];
+        assert!(matches!(
+            audio.process_host(MainHostAudioBlock {
+                input: None,
+                output: [&mut left, &mut right],
+                actions: &[MainHostEvent {
+                    offset: 64,
+                    kind: MainHostEventKind::Parameter {
+                        id: slot,
+                        value: 3.0
+                    },
+                }],
+            }),
+            Err(NativeError::MainHost(
+                crate::main_instrument::MainHostEventError::InactiveLfoSlot
+            ))
+        ));
+        assert_eq!(left, [0.5; 128]);
+        assert_eq!(right, [0.5; 128]);
+        assert!(matches!(
+            audio.process_host(MainHostAudioBlock {
+                input: None,
+                output: [&mut left, &mut right],
+                actions: &[
+                    MainHostEvent {
+                        offset: 64,
+                        kind: MainHostEventKind::Parameter {
+                            id: slot + 11,
+                            value: 1.0
+                        }
+                    },
+                    MainHostEvent {
+                        offset: 64,
+                        kind: MainHostEventKind::Parameter {
+                            id: slot + 6,
+                            value: 24.0
+                        }
+                    },
+                ],
+            }),
+            Err(NativeError::MainHost(
+                crate::main_instrument::MainHostEventError::Parameter(
+                    crate::main_host_parameters::MainParameterError::InvalidValue
+                )
+            ))
+        ));
+        assert_eq!(
+            audio.current.processor.instrument().lfo_slot_active(1),
+            Some(false)
+        );
+        assert_eq!(left, [0.5; 128]);
+        automate(
+            &mut audio,
+            &[
+                (slot + 11, 1.0),
+                (slot, 3.0),
+                (slot + 1, 2.5),
+                (slot + 2, 0.35),
+                (slot + 5, 5.0),
+                (slot + 6, 22.0),
+                (slot + 7, 0.2),
+                (slot + 10, 1.0),
+            ],
+        );
+        let saved = save(&mut audio, &mut control);
+        assert_eq!(saved["rack"]["lfos"].as_array().unwrap().len(), 2);
+        assert_eq!(saved["rack"]["lfos"][1]["slot"], 1);
+        assert_eq!(saved["rack"]["lfos"][1]["shape"], 3.0);
+        assert_eq!(saved["rack"]["lfos"][1]["rate"], 2.5);
+        assert_eq!(saved["rack"]["lfos"][1]["route"]["target"], 22.0);
+        assert_eq!(saved["rack"]["lfos"][1]["route"]["enabled"], true);
+        prepare_main_session(&serde_json::to_vec(&saved).unwrap(), 8_000.0, 128).unwrap();
+
+        automate(&mut audio, &[(slot + 11, 0.0)]);
+        let removed = save(&mut audio, &mut control);
+        assert_eq!(removed["rack"]["lfos"].as_array().unwrap().len(), 1);
+        automate(&mut audio, &[(slot + 11, 1.0)]);
+        let restarted = save(&mut audio, &mut control);
+        assert_eq!(restarted["rack"]["lfos"][1]["shape"], 0);
+        assert_eq!(restarted["rack"]["lfos"][1]["rate"], 1);
+        assert_eq!(restarted["rack"]["lfos"][1]["route"]["enabled"], false);
+        prepare_main_session(&serde_json::to_vec(&restarted).unwrap(), 8_000.0, 128).unwrap();
+        automate(
+            &mut audio,
+            &[
+                (LFO_BASE + 2 * LFO_STRIDE + 11, 1.0),
+                (LFO_BASE + 2 * LFO_STRIDE, 4.0),
+                (LFO_BASE + 3 * LFO_STRIDE + 11, 1.0),
+                (LFO_BASE + 3 * LFO_STRIDE, 5.0),
+            ],
+        );
+        let all_slots = save(&mut audio, &mut control);
+        assert_eq!(all_slots["rack"]["lfos"].as_array().unwrap().len(), 4);
+        assert_eq!(all_slots["rack"]["lfos"][2]["shape"], 4.0);
+        assert_eq!(all_slots["rack"]["lfos"][3]["shape"], 5.0);
     }
 
     #[test]
