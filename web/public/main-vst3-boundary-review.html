@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Main VST3 boundary · Manifold v2</title>
+  <style>
+    :root { font:15px/1.55 system-ui,sans-serif; color:#1d3028; background:#f4f5f0; --line:#c9d6cd; --green:#28624c; }
+    * { box-sizing:border-box; } body { margin:0; } main { max-width:1080px; margin:auto; padding:36px 22px 90px; }
+    header { border-top:3px solid var(--green); padding-top:12px; }
+    .eyebrow { font:11px ui-monospace,monospace; letter-spacing:.13em; text-transform:uppercase; color:#995d3c; }
+    h1,h2 { font-family:Georgia,serif; font-weight:400; line-height:1.12; }
+    h1 { font-size:clamp(38px,6vw,62px); margin:12px 0 18px; } h2 { font-size:27px; margin:0 0 10px; }
+    p { max-width:78ch; color:#395346; } a { color:var(--green); }
+    .actions { display:flex; flex-wrap:wrap; gap:10px; margin:22px 0 0; }
+    .actions a { display:inline-block; padding:10px 14px; border:1px solid var(--green); text-decoration:none; font-weight:600; }
+    .actions a:first-child { background:var(--green); color:white; }
+    section { border-top:1px solid var(--line); margin-top:30px; padding-top:20px; }
+    table { border-collapse:collapse; width:100%; background:white; }
+    th,td { padding:10px 12px; border:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { background:#eaf0e9; font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
+    code { font:12px ui-monospace,monospace; }
+  </style>
+</head>
+<body><main>
+  <header>
+    <div class="eyebrow">Manifold v2 / Main instrument / VST3 checkpoint</div>
+    <h1>The Main VST3 host path<br>starts at the real parameter contract.</h1>
+    <p>The existing Graph and Standalone FX VST3 classes are separate products. Main needs its own processor and controller around the Rust Main runtime and the original web editor. The first code slice maps VST3’s normalized automation values to the stable Main IDs already used by browser and CLAP.</p>
+    <div class="actions"><a href="/main-clap-host-review.html">Review the running Main CLAP host →</a><a href="/main-clap-session-files-review.html">Review portable Main state</a></div>
+  </header>
+  <section>
+    <h2>Current proof and next gates</h2>
+    <table><thead><tr><th>Area</th><th>Status</th></tr></thead><tbody>
+      <tr><td>Fixed parameter IDs</td><td>VST3 conversion uses <code>MainParameter::spec</code>. Signed loop speed, continuous Source controls, discrete choices, and the sparse LFO route enum round trip. Every declared Main host ID decodes at normalized 0, 0.5, and 1.</td></tr>
+      <tr><td>Processor</td><td>Next: use the prepared <code>MainAudioRuntime</code> and host buffer adapter for stereo audio, timed notes, and automation. Session publication and retirement stay outside the callback.</td></tr>
+      <tr><td>Controller and editor</td><td>Next: enumerate those same fixed IDs, synchronize portable Main state, and embed the original Main page through the VST3 view and controller message bridge.</td></tr>
+      <tr><td>Host validation</td><td>Pending: VST3 class/factory probe, validator, DAW audio/state run, original Source capture and session controls in the editor, and real-device callback timing.</td></tr>
+    </tbody></table>
+  </section>
+</main></body>
+</html>

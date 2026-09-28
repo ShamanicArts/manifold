@@ -9,6 +9,10 @@ mod graph_controller;
 #[cfg(target_os = "linux")]
 mod graph_editor;
 mod graph_processor;
+// Prepared for the distinct Main processor/controller pair; this contract is
+// tested before either class is registered with a host.
+#[allow(dead_code)]
+mod main_values;
 mod preset;
 mod processor;
 mod util;
