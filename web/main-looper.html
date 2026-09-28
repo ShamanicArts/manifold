@@ -8,7 +8,7 @@
     <div id="instrument-frame" class="instrument-frame">
       <section class="instrument" aria-label="Main looper instrument">
         <div class="transport"><select id="mode" aria-label="Recording mode"><option value="0">First Loop</option><option value="1">Free Mode</option><option value="2">Traditional</option></select><button id="rec" class="red">● REC</button><button id="play" class="green">▶ PLAY</button><button id="stop">⏹ STOP</button><button id="overdub">Overdub</button><button id="clear-all" class="clear">Clear</button><div id="donuts" class="donuts"></div><span class="link">○ link</span><label class="number">BPM<input id="tempo" type="number" min="40" max="240" value="120"></label><label class="number target">Target<input id="target" type="number" min="40" max="240" value="120"></label></div>
-        <div id="capture" class="capture" aria-label="Retrospective capture plane, older audio at left and newest audio at right"></div>
+        <div id="capture" class="capture" aria-label="Retrospective capture plane: longest ranges at left, newest audio at the right edge of each strip"></div>
         <div class="tabs" role="tablist" aria-label="Main instrument views"><button type="button" class="tab active" data-main-tab="looper" role="tab" aria-selected="true">Looper</button><button type="button" class="tab" data-main-tab="midisynth" role="tab" aria-selected="false">MidiSynth</button></div>
         <div id="layers" class="layers" role="tabpanel" aria-label="Looper"></div>
         <div id="midisynth-panel" class="midisynth-panel" role="tabpanel" aria-label="MidiSynth" hidden>

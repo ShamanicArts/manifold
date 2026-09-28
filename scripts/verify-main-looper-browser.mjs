@@ -16,7 +16,12 @@ try {
   const firstWave = await page.locator('.layer .wave').first().boundingBox();
   const firstVolume = await page.locator('.layer .knob').first().boundingBox();
   assert.equal(Math.round(firstWave.x - firstLayer.x), 56);
+  assert.equal(Math.round(firstWave.y - firstLayer.y), 6);
   assert.equal(Math.round(firstVolume.x - firstLayer.x), 1044);
+  for (const [selector, y] of [['.label', 6], ['.state', 38], ['.bars', 70]]) {
+    const bounds = await page.locator(`.layer:first-child .layer-meta ${selector}`).boundingBox();
+    assert.equal(Math.round(bounds.y - firstLayer.y), y, `${selector} follows the original strip`);
+  }
   const transportBounds = await page.locator('.transport').boundingBox();
   const captureBounds = await page.locator('#capture').boundingBox();
   const tabBounds = await page.locator('.tabs').boundingBox();
@@ -28,6 +33,7 @@ try {
   assert.equal(Math.round(firstCaptureStrip.y - captureBounds.y), 4);
   assert.equal(Math.round(firstCaptureStrip.width), 142);
   assert.equal(Math.round(lastCaptureStrip.x - captureBounds.x), 1136);
+  assert.equal(await page.locator('.segment').first().evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(15, 27, 45)');
   await page.locator('.segment').nth(6).hover();
   const hoverRange = await page.locator('.capture-range.hover').boundingBox();
   assert.equal(Math.round(hoverRange.x - captureBounds.x), 852);
