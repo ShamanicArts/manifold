@@ -22,6 +22,7 @@ pub mod main_sample_handoff;
 pub mod main_session;
 pub mod main_session_export;
 pub mod main_snapshot;
+pub mod main_visual;
 pub mod parameters;
 pub mod project;
 

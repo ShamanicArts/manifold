@@ -967,7 +967,7 @@ if (editorMode) {
       $('target').value = Math.round(session.targetBpm);
       $('sample-length').textContent = `${Math.round((session.sample?.frames ?? 0) / session.sampleRate * 1000)}ms`;
       render(editorSnapshot(session));
-      status('Main CLAP session · native audio engine');
+      status('Main session · native audio engine');
       window.ipc?.postMessage(JSON.stringify({ version: 1, kind: 'state-applied', id: project.id }));
     } catch (error) {
       status(`Main editor state error: ${error.message}`);

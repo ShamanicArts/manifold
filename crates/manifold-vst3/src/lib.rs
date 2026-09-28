@@ -10,6 +10,8 @@ mod graph_controller;
 mod graph_editor;
 mod graph_processor;
 mod main_controller;
+#[cfg(target_os = "linux")]
+mod main_editor;
 mod main_processor;
 mod main_values;
 mod preset;

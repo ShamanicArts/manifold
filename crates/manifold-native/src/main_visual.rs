@@ -3,7 +3,7 @@
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
-use manifold_native::main_host::MainAudioRuntime;
+use crate::main_host::MainAudioRuntime;
 
 const BINS: usize = 128;
 const LAYERS: usize = 4;
@@ -35,7 +35,7 @@ impl Frame {
     }
 }
 
-pub(crate) struct VisualSnapshot {
+pub struct VisualSnapshot {
     pub layer_peaks: [Vec<f32>; LAYERS],
     pub layer_lengths: [usize; LAYERS],
     pub active: usize,
@@ -45,7 +45,7 @@ pub(crate) struct VisualSnapshot {
     pub sample_frames: usize,
 }
 
-pub(crate) struct MainVisualBank {
+pub struct MainVisualBank {
     frames: [Frame; 2],
     generation: AtomicU64,
     cursor: AtomicU32,
@@ -190,7 +190,7 @@ impl MainVisualBank {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use manifold_native::main_instrument::{MainHostAudioBlock, MainHostEvent, MainHostEventKind};
+    use crate::main_instrument::{MainHostAudioBlock, MainHostEvent, MainHostEventKind};
 
     #[test]
     fn host_capture_and_new_first_loop_reach_ordered_editor_bins() {

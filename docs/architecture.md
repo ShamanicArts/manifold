@@ -109,7 +109,14 @@ bounded widget IPC, and a lock-free scalar status bank back to that page.
 The original session file controls stream bounded JSON chunks between the
 child editor and the native CLAP state boundary; preparation and file writing
 run outside the audio callback.
-Main VST3 remains separate.
+Main VST3 has a separate processor/controller pair around the same native
+runtime and 204 fixed host IDs. Its Linux X11 plug view embeds the original
+Main page. A host UI timer forwards bounded widget gestures, looper commands,
+notes, status snapshots, and Sample requests through VST3 messages; the audio
+callback reads only prepared event buffers and lock-free control mailboxes.
+The visual peak bank now lives in `manifold-native` for both CLAP and VST3.
+Host project state reopens loop and Sample PCM. The editor's own Open and
+Download controls still need their VST3 file transfer bridge.
 Main now exposes a private, bounded CLAP extension for its authored looper
 commands. It queues editor gestures at the next audio block start without
 turning momentary record/stop/clear actions into persistent parameter values.

@@ -46,7 +46,7 @@ use manifold_native::main_sample_handoff::SampleUpdate;
 use manifold_native::main_session::{default_main_session, prepare_main_session};
 use manifold_native::main_session_export::save_template;
 
-use crate::main_visual::MainVisualBank;
+use manifold_native::main_visual::MainVisualBank;
 
 const MAX_EVENTS: usize = 4096;
 const MAX_UI_COMMANDS: usize = 128;

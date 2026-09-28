@@ -3,15 +3,20 @@
 use std::ffi::{CStr, c_void};
 use std::ptr::null_mut;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+use crossbeam_queue::ArrayQueue;
 use manifold_core::events::EventKind;
 use manifold_native::main_host::{MainAudioRuntime, MainControl};
 use manifold_native::main_host_buffers::{MainHostBuffers, RawMainHostBlock};
 use manifold_native::main_host_parameters::MAIN_HOST_ID_CAPACITY;
-use manifold_native::main_instrument::{MainHostAudioBlock, MainHostEvent, MainHostEventKind};
+use manifold_native::main_instrument::{
+    MainHostAudioBlock, MainHostEvent, MainHostEventKind, valid_main_command,
+};
+use manifold_native::main_sample_handoff::SampleUpdate;
 use manifold_native::main_session::{default_main_session, prepare_main_session};
+use manifold_native::main_visual::MainVisualBank;
 use vst3::{Class, ComRef, Steinberg::Vst::*, Steinberg::*, uid};
 
 use crate::main_controller::MainController;
@@ -22,6 +27,9 @@ use crate::util::{copy_wstring, read_stream_limited, write_stream};
 // bounded event workspace on activation so those dense queues never allocate
 // or get partially applied in the audio callback.
 const MAX_EVENTS: usize = 65_536;
+const MAX_UI_ACTIONS: usize = 256;
+const STATUS_FIELDS: usize = 20;
+const STATUS_COUNT: usize = STATUS_FIELDS * 4;
 const MAX_STATE: usize = 300 * 1024 * 1024;
 
 struct Runtime {
@@ -41,6 +49,12 @@ pub(crate) struct MainProcessor {
     blocks_processed: AtomicU64,
     pending_values: [AtomicU64; MAIN_HOST_ID_CAPACITY],
     pending_dirty: AtomicBool,
+    ui_actions: ArrayQueue<MainHostEvent>,
+    status_values: [AtomicU32; STATUS_COUNT],
+    status_epoch: AtomicU64,
+    status_generation: AtomicU64,
+    sample_frames: AtomicU32,
+    visual: MainVisualBank,
 }
 
 // VST3 serializes process calls on one component. The control endpoint uses
@@ -61,6 +75,12 @@ impl MainProcessor {
             blocks_processed: AtomicU64::new(0),
             pending_values: std::array::from_fn(|_| AtomicU64::new(u64::MAX)),
             pending_dirty: AtomicBool::new(false),
+            ui_actions: ArrayQueue::new(MAX_UI_ACTIONS),
+            status_values: std::array::from_fn(|_| AtomicU32::new(0)),
+            status_epoch: AtomicU64::new(0),
+            status_generation: AtomicU64::new(0),
+            sample_frames: AtomicU32::new(0),
+            visual: MainVisualBank::new(),
         }
     }
 
@@ -74,6 +94,8 @@ impl MainProcessor {
         if let Ok(mut control) = self.control.lock() {
             *control = None;
         }
+        self.visual.reset();
+        self.status_epoch.store(0, Ordering::Release);
     }
 
     fn offline_block(runtime: &mut Runtime) -> bool {
@@ -105,6 +127,126 @@ impl MainProcessor {
                     .ok()
                     .and_then(|value| serde_json::to_vec(&value).ok())
             })
+    }
+
+    fn publish_status(&self, audio: &MainAudioRuntime) {
+        self.status_epoch.fetch_add(1, Ordering::SeqCst);
+        for layer in 0..4 {
+            for id in 0..STATUS_FIELDS {
+                self.status_values[layer * STATUS_FIELDS + id]
+                    .store(audio.status(id as u32, layer).to_bits(), Ordering::SeqCst);
+            }
+        }
+        self.status_generation
+            .store(audio.generation(), Ordering::SeqCst);
+        self.sample_frames
+            .store(audio.synth_sample_frames() as u32, Ordering::SeqCst);
+        self.status_epoch.fetch_add(1, Ordering::SeqCst);
+        self.visual.publish_job(audio);
+    }
+
+    fn editor_status(&self) -> Option<serde_json::Value> {
+        let mut values = [0.0_f32; STATUS_COUNT];
+        for _ in 0..5 {
+            let before = self.status_epoch.load(Ordering::SeqCst);
+            if before == 0 || before % 2 != 0 {
+                continue;
+            }
+            for (index, destination) in values.iter_mut().enumerate() {
+                *destination = f32::from_bits(self.status_values[index].load(Ordering::SeqCst));
+            }
+            let runtime_generation = self.status_generation.load(Ordering::SeqCst);
+            let sample_frames = self.sample_frames.load(Ordering::SeqCst) as usize;
+            if self.status_epoch.load(Ordering::SeqCst) != before {
+                continue;
+            }
+            let field = |id: usize, layer: usize| values[layer * STATUS_FIELDS + id];
+            let mut layers: Vec<_> = (0..4)
+                .map(|layer| {
+                    serde_json::json!({
+                        "state":field(7,layer), "length":field(8,layer),
+                        "position":field(9,layer), "bars":field(10,layer),
+                        "pending":field(11,layer), "volume":field(13,layer),
+                        "speed":field(14,layer), "muted":field(15,layer)>=0.5,
+                        "playing":field(16,layer)>=0.5,
+                    })
+                })
+                .collect();
+            let active = field(1, 0) as usize;
+            let mut result = serde_json::json!({
+                "tempo":field(0,0), "active":active, "mode":field(2,0),
+                "recording":field(3,0)>=0.5, "overdub":field(4,0)>=0.5,
+                "forwardBars":field(5,0), "captured":field(12,active.min(3)),
+                "sampleRate":field(19,0), "targetBpm":field(17,0),
+                "sampleFrames":sample_frames,
+            });
+            if let Some(visual) = self
+                .visual
+                .snapshot()
+                .filter(|visual| visual.source_generation == runtime_generation)
+            {
+                for (layer, entry) in layers.iter_mut().enumerate() {
+                    if visual.layer_lengths[layer] == field(8, layer) as usize {
+                        entry["peaks"] = serde_json::json!(visual.layer_peaks[layer]);
+                    }
+                }
+                if visual.active == active {
+                    result["segments"] = serde_json::json!(visual.segments);
+                }
+                if visual.sample_frames == sample_frames {
+                    result["samplePeaks"] = serde_json::json!(visual.sample_peaks);
+                }
+            }
+            result["layers"] = serde_json::json!(layers);
+            return Some(result);
+        }
+        None
+    }
+
+    fn sample_action(&self, action: u8, source: usize, bars: f32) -> bool {
+        if !self.active.load(Ordering::Acquire) || !self.processing.load(Ordering::Acquire) {
+            return false;
+        }
+        let Ok(mut slot) = self.control.lock() else {
+            return false;
+        };
+        let Some(control) = slot.as_mut() else {
+            return false;
+        };
+        match action {
+            0 => control.request_retro_sample(source, bars),
+            1 => control.start_free_sample(source),
+            2 => control.finish_free_sample(),
+            3 => control.cancel_free_sample(),
+            _ => false,
+        }
+    }
+
+    fn sample_updates(&self) -> Vec<serde_json::Value> {
+        let Ok(mut slot) = self.control.try_lock() else {
+            return Vec::new();
+        };
+        let Some(control) = slot.as_mut() else {
+            return Vec::new();
+        };
+        control
+            .poll_sample()
+            .into_iter()
+            .map(|update| match update {
+                SampleUpdate::Started { frames } => {
+                    serde_json::json!({"phase":"started","frames":frames})
+                }
+                SampleUpdate::FreeStarted => serde_json::json!({"phase":"free-started"}),
+                SampleUpdate::FreeCancelled => serde_json::json!({"phase":"free-cancelled"}),
+                SampleUpdate::Progress { copied, total } => {
+                    serde_json::json!({"phase":"progress","copied":copied,"total":total})
+                }
+                SampleUpdate::Published { frames } => {
+                    serde_json::json!({"phase":"published","frames":frames})
+                }
+                SampleUpdate::Rejected => serde_json::json!({"phase":"rejected"}),
+            })
+            .collect()
     }
 
     fn snapshot(&self) -> Option<Vec<u8>> {
@@ -180,12 +322,110 @@ impl IConnectionPointTrait for MainProcessor {
             return kInvalidArgument;
         };
         let id = unsafe { message.getMessageID() };
-        if id.is_null() || unsafe { CStr::from_ptr(id) }.to_bytes() != b"manifold.main.params.v1" {
+        if id.is_null() {
             return kResultFalse;
         }
+        let kind = unsafe { CStr::from_ptr(id) }.to_bytes();
         let Some(attributes) = (unsafe { ComRef::from_raw(message.getAttributes()) }) else {
             return kResultFalse;
         };
+        if kind == b"manifold.main.status.v1" {
+            let Some(bytes) = self
+                .editor_status()
+                .and_then(|value| serde_json::to_vec(&value).ok())
+            else {
+                return kResultFalse;
+            };
+            return unsafe {
+                attributes.setBinary(
+                    c"status".as_ptr(),
+                    bytes.as_ptr().cast(),
+                    bytes.len() as u32,
+                )
+            };
+        }
+        if kind == b"manifold.main.sample.poll.v1" {
+            let Ok(bytes) = serde_json::to_vec(&self.sample_updates()) else {
+                return kResultFalse;
+            };
+            return unsafe {
+                attributes.setBinary(
+                    c"updates".as_ptr(),
+                    bytes.as_ptr().cast(),
+                    bytes.len() as u32,
+                )
+            };
+        }
+        if kind == b"manifold.main.sample.v1" {
+            let mut data: *const c_void = std::ptr::null();
+            let mut size = 0;
+            if unsafe { attributes.getBinary(c"sample".as_ptr(), &mut data, &mut size) }
+                != kResultOk
+                || data.is_null()
+                || size != 8
+            {
+                return kResultFalse;
+            }
+            let bytes = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), 8) };
+            let action = bytes[0];
+            let source = bytes[1] as usize;
+            let bars = f32::from_le_bytes(bytes[4..8].try_into().unwrap());
+            return if self.sample_action(action, source, bars) {
+                kResultOk
+            } else {
+                kResultFalse
+            };
+        }
+        if kind == b"manifold.main.action.v1" {
+            let mut data: *const c_void = std::ptr::null();
+            let mut size = 0;
+            if unsafe { attributes.getBinary(c"action".as_ptr(), &mut data, &mut size) }
+                != kResultOk
+                || data.is_null()
+                || size != 12
+            {
+                return kResultFalse;
+            }
+            let bytes = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), 12) };
+            let kind = u32::from_le_bytes(bytes[..4].try_into().unwrap());
+            let id = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
+            let value = f32::from_le_bytes(bytes[8..].try_into().unwrap());
+            let action = match kind {
+                0 if valid_main_command(id, value) => MainHostEventKind::Command { id, value },
+                1 => {
+                    let action = (id >> 16) as u8;
+                    let note = ((id >> 8) & 0xff) as u8;
+                    let velocity = (id & 0xff) as u8;
+                    let midi = match (action, note, velocity) {
+                        (0, 0..=127, 1..=127) => EventKind::NoteOn {
+                            channel: 0,
+                            note,
+                            velocity,
+                        },
+                        (1, 0..=127, _) => EventKind::NoteOff { channel: 0, note },
+                        (2, _, _) => EventKind::AllNotesOff,
+                        _ => return kResultFalse,
+                    };
+                    MainHostEventKind::Midi(midi)
+                }
+                _ => return kResultFalse,
+            };
+            return if self
+                .ui_actions
+                .push(MainHostEvent {
+                    offset: 0,
+                    kind: action,
+                })
+                .is_ok()
+            {
+                kResultOk
+            } else {
+                kResultFalse
+            };
+        }
+        if kind != b"manifold.main.params.v1" {
+            return kResultFalse;
+        }
         let mut data: *const c_void = std::ptr::null();
         let mut size = 0;
         if unsafe { attributes.getBinary(c"values".as_ptr(), &mut data, &mut size) } != kResultOk
@@ -361,6 +601,8 @@ impl IComponentTrait for MainProcessor {
         self.runtime
             .store(Box::into_raw(runtime), Ordering::Release);
         self.blocks_processed.store(0, Ordering::Release);
+        self.visual.reset();
+        self.status_epoch.store(0, Ordering::Release);
         self.active.store(true, Ordering::Release);
         kResultOk
     }
@@ -501,6 +743,7 @@ impl IAudioProcessorTrait for MainProcessor {
                 runtime,
                 &self.pending_values,
                 &self.pending_dirty,
+                &self.ui_actions,
             )
         } {
             return kResultFalse;
@@ -531,6 +774,7 @@ impl IAudioProcessorTrait for MainProcessor {
                 (*data.outputs).silenceFlags = 0;
             }
         }
+        self.publish_status(&runtime.audio);
         self.blocks_processed.fetch_add(1, Ordering::Release);
         kResultOk
     }
@@ -569,6 +813,7 @@ unsafe fn collect_actions(
     runtime: &mut Runtime,
     pending: &[AtomicU64; MAIN_HOST_ID_CAPACITY],
     dirty: &AtomicBool,
+    ui_actions: &ArrayQueue<MainHostEvent>,
 ) -> bool {
     runtime.tagged.clear();
     runtime.actions.clear();
@@ -592,6 +837,12 @@ unsafe fn collect_actions(
                 },
             ));
         }
+    }
+    while let Some(event) = ui_actions.pop() {
+        if runtime.tagged.len() == MAX_EVENTS {
+            return false;
+        }
+        runtime.tagged.push((runtime.tagged.len(), event));
     }
     if let Some(changes) = unsafe { ComRef::from_raw(data.inputParameterChanges) } {
         let count = unsafe { changes.getParameterCount() };
@@ -796,6 +1047,28 @@ mod tests {
         assert_eq!(output_left, reference_left);
         assert_eq!(output_right, reference_right);
         assert!(output_left.iter().any(|value| *value != 0.0));
+        let status = component.editor_status().expect("processed Main status");
+        assert_eq!(status["layers"].as_array().unwrap().len(), 4);
+        assert_eq!(status["sampleRate"], 48_000.0);
+        assert!(component.sample_action(1, 0, 0.0));
+        assert_eq!(unsafe { component.process(&mut data) }, kResultOk);
+        assert!(
+            component
+                .sample_updates()
+                .iter()
+                .any(|update| update["phase"] == "free-started")
+        );
+        assert!(component.sample_action(2, 0, 0.0));
+        assert_eq!(unsafe { component.process(&mut data) }, kResultOk);
+        let mut updates = component.sample_updates();
+        for _ in 0..16 {
+            if updates.iter().any(|update| update["phase"] == "published") {
+                break;
+            }
+            assert_eq!(unsafe { component.process(&mut data) }, kResultOk);
+            updates.extend(component.sample_updates());
+        }
+        assert!(updates.iter().any(|update| update["phase"] == "published"));
 
         assert_eq!(unsafe { component.setProcessing(0) }, kResultOk);
         let state: serde_json::Value =
