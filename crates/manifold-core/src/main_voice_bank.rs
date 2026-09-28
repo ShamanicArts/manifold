@@ -7,6 +7,7 @@ use crate::events::EventKind;
 use crate::main_directional::MainDirectionalMotion;
 use crate::main_pitch::route_main_pitch;
 use crate::main_scale_quantizer::MainScaleQuantizer;
+use crate::main_transpose::MainTranspose;
 use crate::main_voice_allocator::{EnvelopePhase, MAIN_VOICE_COUNT, MainVoiceAllocator};
 use crate::oscillator::Oscillator;
 use crate::phase_vocoder::PhaseVocoder;
@@ -64,6 +65,7 @@ struct MainVoice {
 pub struct MainVoiceBank {
     allocator: MainVoiceAllocator,
     scale_quantizer: MainScaleQuantizer,
+    transpose: MainTranspose,
     voices: [MainVoice; MAIN_VOICE_COUNT],
     raw_left: Vec<f32>,
     raw_right: Vec<f32>,
@@ -134,6 +136,7 @@ impl MainVoiceBank {
         Self {
             allocator: MainVoiceAllocator::default(),
             scale_quantizer: MainScaleQuantizer::new(),
+            transpose: MainTranspose::new(),
             voices,
             raw_left: vec![0.0; max_frames],
             raw_right: vec![0.0; max_frames],
@@ -374,6 +377,28 @@ impl MainVoiceBank {
         self.scale_quantizer.status(id)
     }
 
+    pub fn set_transpose_parameter(&mut self, id: u32, value: f32) -> bool {
+        self.transpose.set_parameter(id, value)
+    }
+
+    pub fn transpose_status(&self, id: u32) -> f32 {
+        self.transpose.status(id)
+    }
+
+    fn routed_note(&self, source_note: u8) -> u8 {
+        let scale_note = self.scale_quantizer.note(source_note);
+        if self.transpose.connected() {
+            let input = if self.transpose.source() == 0 {
+                source_note
+            } else {
+                scale_note
+            };
+            self.transpose.note(input)
+        } else {
+            scale_note
+        }
+    }
+
     pub fn event(&mut self, event: EventKind) {
         match event {
             EventKind::NoteOn {
@@ -394,10 +419,10 @@ impl MainVoiceBank {
                             self.direction_mode,
                         )
                     });
-                let voice = &mut self.voices[index];
-                let pitched_note = self.scale_quantizer.note(note);
+                let pitched_note = self.routed_note(note);
                 let frequency =
                     (440.0_f64 * 2.0_f64.powf((pitched_note as f64 - 69.0) / 12.0)) as f32;
+                let voice = &mut self.voices[index];
                 voice.envelope.reset();
                 voice.wave_add.reset();
                 voice.wave_add_oscillator.reset_phase();
@@ -517,12 +542,24 @@ impl MainVoiceBank {
         let wave_gain = (std::f32::consts::FRAC_PI_2 * t).cos();
         let sample_gain = (std::f32::consts::FRAC_PI_2 * t).sin();
         self.scale_quantizer.begin_block();
+        self.transpose.begin_block();
         for index in 0..MAIN_VOICE_COUNT {
             let source_voice = self.allocator.slots()[index];
             if !source_voice.active {
                 continue;
             }
-            let slot = self.scale_quantizer.voice(index, source_voice);
+            let scale_voice = self.scale_quantizer.voice(index, source_voice);
+            let transpose_input = if self.transpose.source() == 0 {
+                source_voice
+            } else {
+                scale_voice
+            };
+            let transpose_voice = self.transpose.voice(index, transpose_input);
+            let slot = if self.transpose.connected() {
+                transpose_voice
+            } else {
+                scale_voice
+            };
             let voice = &mut self.voices[index];
             let note_frequency =
                 (440.0_f64 * 2.0_f64.powf((slot.note as f64 - 69.0) / 12.0)) as f32;
@@ -784,6 +821,41 @@ impl MainVoiceBank {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transpose_selects_raw_or_scale_voice_and_retains_source_release() {
+        let mut bank = MainVoiceBank::new(8_000.0, 128, 9);
+        assert!(bank.set_scale_quantizer_parameter(3, 1.0));
+        assert!(bank.set_transpose_parameter(0, 7.0));
+        assert!(bank.set_transpose_parameter(2, 1.0));
+        bank.event(EventKind::NoteOn {
+            channel: 0,
+            note: 61,
+            velocity: 100,
+        });
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        bank.process_planar([&mut left, &mut right]);
+        assert_eq!(bank.scale_quantizer_status(2), 60.0);
+        assert_eq!(bank.transpose_status(1), 60.0);
+        assert_eq!(bank.transpose_status(2), 67.0);
+        assert_eq!(bank.allocator.slots()[0].note, 61);
+        assert!(bank.set_transpose_parameter(1, 0.0)); // raw voice as input
+        bank.process_planar([&mut left, &mut right]);
+        assert_eq!(bank.transpose_status(1), 61.0);
+        assert_eq!(bank.transpose_status(2), 68.0);
+        assert!(bank.set_transpose_parameter(0, -24.0));
+        bank.process_planar([&mut left, &mut right]);
+        assert_eq!(bank.transpose_status(2), 37.0);
+        bank.event(EventKind::NoteOff {
+            channel: 0,
+            note: 61,
+        });
+        assert!(!bank.allocator.slots()[0].gate);
+        bank.event(EventKind::AllNotesOff);
+        bank.process_planar([&mut left, &mut right]);
+        assert_eq!(bank.transpose_status(0), 0.0);
+    }
 
     #[test]
     fn scale_quantizer_retones_held_voices_and_releases_by_source_note() {

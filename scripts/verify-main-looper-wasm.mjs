@@ -477,6 +477,27 @@ for (let i = 0; i < 30; i++) assert.equal(scaleEngine.manifold_looper_process(12
 assert.equal(scaleEngine.manifold_looper_scale_quantizer_status(0), 0);
 assert.equal(scaleEngine.manifold_looper_scale_quantizer_parameter(scaleIds.scale, Number.NaN), 0);
 console.log(`Main Scale Quantizer: held C#4 changes from C4 to D4, sounding crossings ${nearestCrossings} → ${upwardCrossings}; source C#4 note-off releases it.`);
+const transposeIds = contract.modulation.transposeParameters;
+assert.equal(scaleEngine.manifold_looper_scale_quantizer_parameter(scaleIds.direction, 1), 1);
+assert.equal(scaleEngine.manifold_looper_transpose_parameter(transposeIds.semitones, 12), 1);
+assert.equal(scaleEngine.manifold_looper_transpose_parameter(transposeIds.source, 1), 1);
+assert.equal(scaleEngine.manifold_looper_transpose_parameter(transposeIds.connected, 1), 1);
+assert.equal(scaleEngine.manifold_looper_synth_note(0, 61, 100), 1);
+const scaleToTransposeCrossings = scaleCrossings();
+assert.equal(scaleEngine.manifold_looper_scale_quantizer_status(2), 60);
+assert.equal(scaleEngine.manifold_looper_transpose_status(1), 60);
+assert.equal(scaleEngine.manifold_looper_transpose_status(2), 72);
+assert.equal(scaleEngine.manifold_looper_transpose_parameter(transposeIds.source, 0), 1);
+const rawToTransposeCrossings = scaleCrossings();
+assert.equal(scaleEngine.manifold_looper_transpose_status(1), 61);
+assert.equal(scaleEngine.manifold_looper_transpose_status(2), 73);
+assert.ok(rawToTransposeCrossings > scaleToTransposeCrossings * 1.04,
+  `Transpose source must change held-note pitch: ${scaleToTransposeCrossings} → ${rawToTransposeCrossings} crossings`);
+assert.equal(scaleEngine.manifold_looper_synth_note(1, 61, 0), 1);
+for (let i = 0; i < 30; i++) assert.equal(scaleEngine.manifold_looper_process(128), 1);
+assert.equal(scaleEngine.manifold_looper_transpose_status(0), 0);
+assert.equal(scaleEngine.manifold_looper_transpose_parameter(transposeIds.source, 2), 0);
+console.log(`Main Transpose: Scale C4 → C5 or raw C#4 → C#5, sounding crossings ${scaleToTransposeCrossings} → ${rawToTransposeCrossings}; source C#4 note-off releases it.`);
 const { instance: transientInstance } = await WebAssembly.instantiate(wasm, {});
 const transient = transientInstance.exports;
 assert.equal(transient.manifold_looper_prepare(8_000, 128), 1);
@@ -491,4 +512,4 @@ const transientBins = captureStripBins(contract.segments, 4, 16_000, 240_000, 81
 const transientPeaks = transientBins.map(bin => bin ? transient.manifold_looper_peak(0, 1, ...bin) : 0);
 assert.ok(transientPeaks[63] > .89 && transientPeaks[62] === 0,
   `one-frame transient should remain in the older 1-bar strip's right-side bin: ${transientPeaks}`);
-console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias, Slew, Sample Hold, Compare, CV Mix, Range and per-voice Scale Quantizer routing passed');
+console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias, Slew, Sample Hold, Compare, CV Mix, Range, Scale Quantizer and Transpose voice routing passed');

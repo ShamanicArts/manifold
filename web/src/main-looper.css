@@ -500,7 +500,7 @@ body {
 .midisynth-panel { position: relative; width: 1280px; height: 504px; background: #0f1726; }
 .midisynth-panel[hidden], .layers[hidden] { display: none; }
 .rack-scroll { position: relative; height: 452px; overflow-y: auto; overflow-x: hidden; scrollbar-color: #334155 #0f1726; }
-.rack-scroll-content { position: relative; width: 1280px; height: 1857px; }
+.rack-scroll-content { position: relative; width: 1280px; height: 2089px; }
 #patch-jump { position: absolute; top: 2px; right: 36px; z-index: 4; height: 23px; padding: 0 9px; border: 1px solid #38bdf8; background: #1e293b; color: #bae6fd; font-size: 10px; cursor: pointer; }
 .rack-row { display: flex; height: 452px; padding-top: 25px; }
 .rack-adsr, .rack-source, .rack-filter { position: relative; flex: none; height: 220px; background: #121a2f; border: 1px solid #1f2b4d; }
@@ -680,6 +680,21 @@ body {
 .rack-scale-quantizer-patch p { color: #94a3b8; line-height: 1.4; }
 .rack-scale-quantizer-patch label { display: flex; align-items: center; gap: 7px; margin-top: 12px; color: #bbf7d0; }
 #scale-quantizer-meter { display: block; margin-top: 14px; color: #94a3b8; }
+.rack-transpose { position: absolute; left: 0; top: 1857px; width: 236px; height: 220px; background: #0f1f17; border: 1px solid #1f3b2d; border-radius: 10px; }
+.transpose-title, .transpose-status, .transpose-range, .transpose-values { position: absolute; left: 12px; width: 212px; }
+.transpose-title { top: 10px; color: #4ade80; font-size: 10px; }
+.transpose-status { top: 28px; color: #94a3b8; font-size: 8px; }
+#transpose-preview { position: absolute; left: 12px; top: 44px; width: 212px; height: 54px; background: #0d1812; border: 1px solid #1c2d23; border-radius: 6px; }
+#transpose-semitones { position: absolute; left: 12px; top: 106px; width: 212px; height: 18px; }
+.transpose-range { top: 132px; color: #86efac; font-size: 8px; }
+.transpose-values { top: 150px; color: #bbf7d0; font-size: 8px; }
+.rack-transpose-patch { position: absolute; left: 236px; top: 1857px; width: 236px; height: 220px; padding: 12px; background: #121a2f; border: 1px solid #1f2b4d; font-size: 10px; }
+.rack-transpose-patch strong { color: #4ade80; font-size: 11px; }
+.rack-transpose-patch p { color: #94a3b8; line-height: 1.4; }
+.rack-transpose-patch label { display: block; margin-top: 10px; color: #94a3b8; }
+.rack-transpose-patch select { display: block; width: 100%; height: 23px; margin-top: 4px; background: #112417; border: 1px solid #1f3b2d; color: #bbf7d0; font-size: 10px; }
+.rack-transpose-patch .transpose-connect { display: flex; align-items: center; gap: 7px; color: #bbf7d0; }
+#transpose-meter { display: block; margin-top: 12px; color: #94a3b8; }
 .eq-head::before { background: #22d3ee; }
 .eq-module { position: relative; width: 236px; height: 208px; }
 #eq-graph { position: absolute; left: 10px; top: 10px; width: 216px; height: 108px; background: #0a0a1a; border: 1px solid #1f2b4d; cursor: crosshair; touch-action: none; }

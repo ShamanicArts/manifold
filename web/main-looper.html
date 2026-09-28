@@ -180,6 +180,20 @@
             <label><input id="scale-quantizer-connected" type="checkbox"> Connect MidiSynth voices</label>
             <output id="scale-quantizer-meter">No connected voices</output>
           </section>
+          <section id="transpose" class="rack-transpose" aria-label="Main Transpose module">
+            <div class="transpose-title">TRANSPOSE</div><div id="transpose-status" class="transpose-status">Shift ±0 st</div>
+            <canvas id="transpose-preview" width="424" height="108" aria-label="Transpose input and output voice pitches"></canvas>
+            <div id="transpose-semitones"></div>
+            <div class="transpose-range">Range: -24 .. +24 st</div>
+            <div id="transpose-values" class="transpose-values">Preview: — → —</div>
+          </section>
+          <section class="rack-transpose-patch" aria-label="Transpose voice connection">
+            <strong>VOICE IN → VOICE OUT</strong>
+            <p>Choose a typed voice source. When connected, Transpose output feeds MidiSynth while the original note still controls release.</p>
+            <label>IN source<select id="transpose-source" aria-label="Transpose voice source"><option value="0">Raw MidiSynth voices</option><option value="1">Scale Quantizer voice</option></select></label>
+            <label class="transpose-connect"><input id="transpose-connected" type="checkbox"> Route Transpose to synth</label>
+            <output id="transpose-meter">No connected voices</output>
+          </section>
           <button id="add-lfo" type="button">+ LFO</button>
           </div></div>
           <button id="patch-jump" type="button" aria-label="Show Main modulation rack row">PATCH ↓</button>

@@ -403,6 +403,24 @@ pub extern "C" fn manifold_looper_scale_quantizer_status(id: u32) -> f32 {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_transpose_parameter(id: u32, value: f32) -> u32 {
+    LOOPER.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(engine.instrument.set_transpose_parameter(id, value))
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_transpose_status(id: u32) -> f32 {
+    LOOPER.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .map_or(0.0, |engine| engine.instrument.transpose_status(id))
+    })
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn manifold_looper_eq_response(frequency: f32) -> f32 {
     LOOPER.with(|slot| {
         slot.borrow()

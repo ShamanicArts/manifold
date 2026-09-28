@@ -38,7 +38,7 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_looper_output_ptr(), this.capacity * 2);
           this.port.postMessage({ type: 'ready' });
         } else if (this.transferJob && ['control', 'layer-control', 'command', 'synth-note', 'synth-parameter',
-          'lfo-slot-active', 'lfo-parameter', 'lfo-gate', 'modulation-route', 'atv-parameter', 'slew-parameter', 'sample-hold-parameter', 'compare-parameter', 'cv-mix-parameter', 'range-parameter', 'scale-quantizer-parameter'].includes(data.type)) {
+          'lfo-slot-active', 'lfo-parameter', 'lfo-gate', 'modulation-route', 'atv-parameter', 'slew-parameter', 'sample-hold-parameter', 'compare-parameter', 'cv-mix-parameter', 'range-parameter', 'scale-quantizer-parameter', 'transpose-parameter'].includes(data.type)) {
           this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'sample-capture' && this.engine && !this.sampleJob && !this.transferJob && this.freeSource === null) {
           const frames = this.engine.manifold_looper_sample_capture(data.source, data.bars);
@@ -260,6 +260,9 @@ class MainLooperProcessor extends AudioWorkletProcessor {
         } else if (data.type === 'scale-quantizer-parameter' && this.engine) {
           if (this.engine.manifold_looper_scale_quantizer_parameter(data.id, data.value) !== 1)
             this.port.postMessage({ type: 'rejected', action: data });
+        } else if (data.type === 'transpose-parameter' && this.engine) {
+          if (this.engine.manifold_looper_transpose_parameter(data.id, data.value) !== 1)
+            this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'snapshot' && this.engine) {
           const e = this.engine;
           if (this.freeSource !== null) {
@@ -334,6 +337,10 @@ class MainLooperProcessor extends AudioWorkletProcessor {
             scaleQuantizer: { voices: Array.from({ length: 8 }, (_, index) => ({ index,
               input: e.manifold_looper_scale_quantizer_status(1 + index * 2),
               output: e.manifold_looper_scale_quantizer_status(2 + index * 2) }))
+              .filter(voice => voice.input >= 0) },
+            transpose: { voices: Array.from({ length: 8 }, (_, index) => ({ index,
+              input: e.manifold_looper_transpose_status(1 + index * 2),
+              output: e.manifold_looper_transpose_status(2 + index * 2) }))
               .filter(voice => voice.input >= 0) } });
         }
       } catch (error) {
