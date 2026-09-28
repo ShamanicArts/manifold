@@ -500,7 +500,7 @@ body {
 .midisynth-panel { position: relative; width: 1280px; height: 504px; background: #0f1726; }
 .midisynth-panel[hidden], .layers[hidden] { display: none; }
 .rack-scroll { position: relative; height: 452px; overflow-y: auto; overflow-x: hidden; scrollbar-color: #334155 #0f1726; }
-.rack-scroll-content { position: relative; width: 1280px; height: 2089px; }
+.rack-scroll-content { position: relative; width: 1280px; height: 2321px; }
 #patch-jump { position: absolute; top: 2px; right: 36px; z-index: 4; height: 23px; padding: 0 9px; border: 1px solid #38bdf8; background: #1e293b; color: #bae6fd; font-size: 10px; cursor: pointer; }
 .rack-row { display: flex; height: 452px; padding-top: 25px; }
 .rack-adsr, .rack-source, .rack-filter { position: relative; flex: none; height: 220px; background: #121a2f; border: 1px solid #1f2b4d; }
@@ -712,6 +712,23 @@ body {
 .rack-note-filter-patch select { display: block; width: 100%; height: 23px; margin-top: 4px; background: #112417; border: 1px solid #1f3b2d; color: #bbf7d0; font-size: 10px; }
 .rack-note-filter-patch .note-filter-connect { display: flex; align-items: center; gap: 7px; color: #bbf7d0; }
 #note-filter-meter { display: block; margin-top: 12px; color: #94a3b8; }
+.rack-velocity-mapper { position: absolute; left: 0; top: 2089px; width: 236px; height: 220px; background: #1a1f1c; border: 1px solid #2d3b32; border-radius: 10px; }
+.velocity-mapper-title, .velocity-mapper-status, .velocity-mapper-values { position: absolute; left: 12px; width: 212px; }
+.velocity-mapper-title { top: 10px; color: #4ade80; font-size: 11px; }
+.velocity-mapper-status { top: 28px; color: #94a3b8; font-size: 8px; }
+#velocity-mapper-preview { position: absolute; left: 12px; top: 44px; width: 212px; height: 54px; background: #101611; border: 1px solid #203127; border-radius: 6px; }
+#velocity-mapper-curve { position: absolute; left: 12px; top: 106px; width: 88px; height: 18px; cursor: pointer; }
+#velocity-mapper-curve canvas { display: block; width: 100%; height: 100%; }
+#velocity-mapper-amount, #velocity-mapper-offset { position: absolute; left: 12px; width: 212px; height: 18px; }
+#velocity-mapper-amount { top: 130px; } #velocity-mapper-offset { top: 152px; }
+.velocity-mapper-values { top: 176px; color: #bbf7d0; font-size: 8px; }
+.rack-velocity-mapper-patch { position: absolute; left: 236px; top: 2089px; width: 236px; height: 220px; padding: 12px; background: #121a2f; border: 1px solid #1f2b4d; font-size: 10px; }
+.rack-velocity-mapper-patch strong { color: #4ade80; font-size: 11px; }
+.rack-velocity-mapper-patch p { color: #94a3b8; line-height: 1.4; }
+.rack-velocity-mapper-patch label { display: block; margin-top: 10px; color: #94a3b8; }
+.rack-velocity-mapper-patch select { display: block; width: 100%; height: 23px; margin-top: 4px; background: #112417; border: 1px solid #2d3b32; color: #bbf7d0; font-size: 10px; }
+.rack-velocity-mapper-patch .velocity-mapper-connect { display: flex; align-items: center; gap: 7px; color: #bbf7d0; }
+#velocity-mapper-meter { display: block; margin-top: 12px; color: #94a3b8; }
 .eq-head::before { background: #22d3ee; }
 .eq-module { position: relative; width: 236px; height: 208px; }
 #eq-graph { position: absolute; left: 10px; top: 10px; width: 216px; height: 108px; background: #0a0a1a; border: 1px solid #1f2b4d; cursor: crosshair; touch-action: none; }

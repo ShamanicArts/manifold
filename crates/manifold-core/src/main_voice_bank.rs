@@ -9,6 +9,7 @@ use crate::main_note_filter::MainNoteFilter;
 use crate::main_pitch::route_main_pitch;
 use crate::main_scale_quantizer::MainScaleQuantizer;
 use crate::main_transpose::MainTranspose;
+use crate::main_velocity_mapper::MainVelocityMapper;
 use crate::main_voice_allocator::{EnvelopePhase, MAIN_VOICE_COUNT, MainVoiceAllocator};
 use crate::oscillator::Oscillator;
 use crate::phase_vocoder::PhaseVocoder;
@@ -61,6 +62,7 @@ struct MainVoice {
     phrase: PhraseGain,
     envelope: AdsrEnvelope,
     motion: MainDirectionalMotion,
+    mapped_gain: f32,
 }
 
 pub struct MainVoiceBank {
@@ -68,6 +70,8 @@ pub struct MainVoiceBank {
     scale_quantizer: MainScaleQuantizer,
     transpose: MainTranspose,
     note_filter: MainNoteFilter,
+    velocity_mapper: MainVelocityMapper,
+    velocity_gain_smoothing: f32,
     voices: [MainVoice; MAIN_VOICE_COUNT],
     raw_left: Vec<f32>,
     raw_right: Vec<f32>,
@@ -133,6 +137,7 @@ impl MainVoiceBank {
                 phrase: PhraseGain::new(sample_rate, 0.0, 0.2),
                 envelope,
                 motion: MainDirectionalMotion::new(sample_rate),
+                mapped_gain: 1.0,
             }
         });
         Self {
@@ -140,6 +145,9 @@ impl MainVoiceBank {
             scale_quantizer: MainScaleQuantizer::new(),
             transpose: MainTranspose::new(),
             note_filter: MainNoteFilter::new(),
+            velocity_mapper: MainVelocityMapper::new(),
+            velocity_gain_smoothing: (1.0 - (-1.0 / (0.010 * sample_rate)).exp())
+                .clamp(0.0001, 1.0),
             voices,
             raw_left: vec![0.0; max_frames],
             raw_right: vec![0.0; max_frames],
@@ -396,6 +404,14 @@ impl MainVoiceBank {
         self.note_filter.status(id)
     }
 
+    pub fn set_velocity_mapper_parameter(&mut self, id: u32, value: f32) -> bool {
+        self.velocity_mapper.set_parameter(id, value)
+    }
+
+    pub fn velocity_mapper_status(&self, id: u32) -> f32 {
+        self.velocity_mapper.status(id)
+    }
+
     fn routed_note(&self, source_note: u8) -> u8 {
         let scale_note = self.scale_quantizer.note(source_note);
         let transpose_input = if self.transpose.source() == 0 {
@@ -404,16 +420,28 @@ impl MainVoiceBank {
             scale_note
         };
         let transpose_note = self.transpose.note(transpose_input);
-        if self.note_filter.connected() {
-            match self.note_filter.source() {
-                0 => source_note,
-                1 => scale_note,
-                _ => transpose_note,
-            }
+        let filter_note = match self.note_filter.source() {
+            0 => source_note,
+            1 => scale_note,
+            _ => transpose_note,
+        };
+        let current_note = if self.note_filter.connected() {
+            filter_note
         } else if self.transpose.connected() {
             transpose_note
         } else {
             scale_note
+        };
+        if self.velocity_mapper.connected() {
+            match self.velocity_mapper.source() {
+                0 => source_note,
+                1 => scale_note,
+                2 => transpose_note,
+                3 => filter_note,
+                _ => current_note,
+            }
+        } else {
+            current_note
         }
     }
 
@@ -441,6 +469,7 @@ impl MainVoiceBank {
                 let frequency =
                     (440.0_f64 * 2.0_f64.powf((pitched_note as f64 - 69.0) / 12.0)) as f32;
                 let voice = &mut self.voices[index];
+                voice.mapped_gain = 1.0;
                 voice.envelope.reset();
                 voice.wave_add.reset();
                 voice.wave_add_oscillator.reset_phase();
@@ -562,6 +591,7 @@ impl MainVoiceBank {
         self.scale_quantizer.begin_block();
         self.transpose.begin_block();
         self.note_filter.begin_block();
+        self.velocity_mapper.begin_block();
         for index in 0..MAIN_VOICE_COUNT {
             let source_voice = self.allocator.slots()[index];
             if !source_voice.active {
@@ -585,10 +615,28 @@ impl MainVoiceBank {
                 _ => transpose_voice,
             };
             let filtered_voice = self.note_filter.voice(index, note_filter_input);
-            let slot = if self.note_filter.connected() {
+            let default_or_filtered = if self.note_filter.connected() {
                 filtered_voice
             } else {
                 default_voice
+            };
+            let mapper_input = match self.velocity_mapper.source() {
+                0 => source_voice,
+                1 => scale_voice,
+                2 => transpose_voice,
+                3 => filtered_voice,
+                _ => default_or_filtered,
+            };
+            let mapped_voice = self.velocity_mapper.voice(index, mapper_input);
+            let slot = if self.velocity_mapper.connected() {
+                mapped_voice
+            } else {
+                default_or_filtered
+            };
+            let target_mapped_gain = if self.velocity_mapper.connected() {
+                slot.target_amp / source_voice.target_amp.max(0.0001)
+            } else {
+                1.0
             };
             let voice = &mut self.voices[index];
             voice.envelope.set_gate(slot.gate);
@@ -692,7 +740,7 @@ impl MainVoiceBank {
                     &mut self.pitched_right[..frames],
                 ],
             );
-            let amp = slot.target_amp;
+            let amp = source_voice.target_amp;
             for frame in 0..frames {
                 self.wave[frame] = voice.oscillator.process_sample(Some(self.raw_left[frame]));
                 self.pitched_left[frame] *= 2.0 * amp;
@@ -800,7 +848,13 @@ impl MainVoiceBank {
             }
             for frame in 0..frames {
                 let envelope = voice.envelope.process_sample();
-                let scaling = envelope * self.master * 0.5 * if slot.active { 1.0 } else { 0.0 };
+                voice.mapped_gain +=
+                    (target_mapped_gain - voice.mapped_gain) * self.velocity_gain_smoothing;
+                let scaling = envelope
+                    * self.master
+                    * 0.5
+                    * voice.mapped_gain
+                    * if slot.active { 1.0 } else { 0.0 };
                 if self.direction_mode == 1 {
                     left[frame] += (self.raw_left[frame] * wave_gain
                         + self.ring_left[frame] * sample_gain)
@@ -855,6 +909,86 @@ impl MainVoiceBank {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn velocity_mapper_changes_held_audio_and_preserves_source_note_release() {
+        let mut bank = MainVoiceBank::new(8_000.0, 128, 9);
+        assert!(bank.set_parameter(0, 0.0)); // sine
+        assert!(bank.set_parameter(1, -1.0)); // Wave only
+        assert!(bank.set_parameter(11, 0.005));
+        assert!(bank.set_parameter(14, 0.02));
+        bank.event(EventKind::NoteOn {
+            channel: 0,
+            note: 61,
+            velocity: 100,
+        });
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        for _ in 0..20 {
+            bank.process_planar([&mut left, &mut right]);
+        }
+        let baseline: f32 = left.iter().map(|value| value.abs()).sum();
+        assert!(baseline > 0.1);
+        assert!(bank.set_velocity_mapper_parameter(1, 2.0)); // Hard
+        assert!(bank.set_velocity_mapper_parameter(4, 1.0)); // current route
+        for _ in 0..20 {
+            bank.process_planar([&mut left, &mut right]);
+        }
+        let mapped: f32 = left.iter().map(|value| value.abs()).sum();
+        assert!(
+            mapped < baseline * 0.55,
+            "Hard curve must audibly reduce held velocity: {baseline} → {mapped}"
+        );
+        let source_amp = bank.allocator.slots()[0].target_amp;
+        assert!((bank.velocity_mapper_status(1) - source_amp).abs() < 1e-6);
+        assert!((bank.velocity_mapper_status(2) - source_amp * source_amp).abs() < 1e-6);
+        assert!(bank.set_velocity_mapper_parameter(2, 0.2));
+        for _ in 0..20 {
+            bank.process_planar([&mut left, &mut right]);
+        }
+        let lifted: f32 = left.iter().map(|value| value.abs()).sum();
+        assert!(
+            lifted > mapped * 2.0,
+            "Offset must reopen held amplitude: {mapped} → {lifted}"
+        );
+        bank.event(EventKind::NoteOff {
+            channel: 0,
+            note: 61,
+        });
+        assert!(!bank.allocator.slots()[0].gate);
+        for _ in 0..8 {
+            bank.process_planar([&mut left, &mut right]);
+        }
+        assert_eq!(bank.velocity_mapper_status(0), 0.0);
+    }
+
+    #[test]
+    fn velocity_mapper_current_source_preserves_filter_gate_and_raw_source_can_bypass_it() {
+        let mut bank = MainVoiceBank::new(8_000.0, 128, 9);
+        assert!(bank.set_parameter(0, 0.0));
+        assert!(bank.set_parameter(1, -1.0));
+        for (id, value) in [(0, 60.0), (1, 60.0), (4, 1.0)] {
+            assert!(bank.set_note_filter_parameter(id, value));
+        }
+        assert!(bank.set_velocity_mapper_parameter(4, 1.0));
+        bank.event(EventKind::NoteOn {
+            channel: 0,
+            note: 61,
+            velocity: 100,
+        });
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        bank.process_planar([&mut left, &mut right]);
+        assert!(left.iter().all(|sample| *sample == 0.0));
+        assert!(bank.set_velocity_mapper_parameter(3, 0.0)); // raw voice
+        for _ in 0..8 {
+            bank.process_planar([&mut left, &mut right]);
+        }
+        assert!(left.iter().any(|sample| sample.abs() > 0.001));
+        assert!(bank.set_velocity_mapper_parameter(3, 3.0)); // Note Filter voice
+        bank.process_planar([&mut left, &mut right]);
+        assert!(left.iter().all(|sample| *sample == 0.0));
+    }
 
     #[test]
     fn note_filter_mutes_held_voice_reopens_on_range_change_and_releases_source_note() {

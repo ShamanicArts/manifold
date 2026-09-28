@@ -530,6 +530,34 @@ assert.equal(scaleEngine.manifold_looper_synth_note(1, 61, 0), 1);
 for (let i = 0; i < 30; i++) assert.equal(scaleEngine.manifold_looper_process(128), 1);
 assert.equal(scaleEngine.manifold_looper_note_filter_status(0), 0);
 console.log(`Main Note Filter: raw C#4 blocked then released by range and mode changes; typed Transpose C#5 and Scale C4 inputs select independently (${blockedCrossings} → ${passingCrossings} sounding crossings).`);
+const velocityIds = contract.modulation.velocityMapperParameters;
+assert.equal(scaleEngine.manifold_looper_note_filter_parameter(noteFilterIds.connected, 0), 1);
+assert.equal(scaleEngine.manifold_looper_velocity_mapper_parameter(velocityIds.source, 4), 1);
+assert.equal(scaleEngine.manifold_looper_synth_note(0, 61, 100), 1);
+function heldEnergy() {
+  let sum = 0;
+  for (let blockIndex = 0; blockIndex < 90; blockIndex++) {
+    assert.equal(scaleEngine.manifold_looper_process(128), 1);
+    if (blockIndex >= 10) for (let frame = 0; frame < 128; frame++) sum += Math.abs(scaleOutput[frame]);
+  }
+  return sum;
+}
+const linearEnergy = heldEnergy();
+assert.equal(scaleEngine.manifold_looper_velocity_mapper_parameter(velocityIds.curve, 2), 1);
+assert.equal(scaleEngine.manifold_looper_velocity_mapper_parameter(velocityIds.connected, 1), 1);
+const hardEnergy = heldEnergy();
+assert.ok(hardEnergy < linearEnergy * .6,
+  `Hard curve must reduce held-note energy: ${linearEnergy} → ${hardEnergy}`);
+const sourceAmp = scaleEngine.manifold_looper_velocity_mapper_status(1);
+assert.ok(Math.abs(scaleEngine.manifold_looper_velocity_mapper_status(2) - sourceAmp * sourceAmp) < .00001);
+assert.equal(scaleEngine.manifold_looper_velocity_mapper_parameter(velocityIds.offset, .2), 1);
+const liftedEnergy = heldEnergy();
+assert.ok(liftedEnergy > hardEnergy * 1.5,
+  `Velocity offset must raise the held-note energy: ${hardEnergy} → ${liftedEnergy}`);
+assert.equal(scaleEngine.manifold_looper_synth_note(1, 61, 0), 1);
+for (let i = 0; i < 30; i++) assert.equal(scaleEngine.manifold_looper_process(128), 1);
+assert.equal(scaleEngine.manifold_looper_velocity_mapper_status(0), 0);
+console.log(`Main Velocity Mapper: held-note Hard curve energy ${linearEnergy.toFixed(2)} → ${hardEnergy.toFixed(2)}, offset +0.20 → ${liftedEnergy.toFixed(2)}; source C#4 note-off releases it.`);
 const { instance: transientInstance } = await WebAssembly.instantiate(wasm, {});
 const transient = transientInstance.exports;
 assert.equal(transient.manifold_looper_prepare(8_000, 128), 1);
@@ -544,4 +572,4 @@ const transientBins = captureStripBins(contract.segments, 4, 16_000, 240_000, 81
 const transientPeaks = transientBins.map(bin => bin ? transient.manifold_looper_peak(0, 1, ...bin) : 0);
 assert.ok(transientPeaks[0] > .89 && transientPeaks[1] === 0,
   `one-frame transient should enter the older 1-bar strip's left-side bin: ${transientPeaks}`);
-console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias, Slew, Sample Hold, Compare, CV Mix, Range, Scale Quantizer, Transpose and Note Filter voice routing passed');
+console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias, Slew, Sample Hold, Compare, CV Mix, Range, Scale Quantizer, Transpose, Note Filter and Velocity Mapper voice routing passed');

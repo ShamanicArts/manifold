@@ -439,6 +439,24 @@ pub extern "C" fn manifold_looper_note_filter_status(id: u32) -> f32 {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_velocity_mapper_parameter(id: u32, value: f32) -> u32 {
+    LOOPER.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(engine.instrument.set_velocity_mapper_parameter(id, value))
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_velocity_mapper_status(id: u32) -> f32 {
+    LOOPER.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .map_or(0.0, |engine| engine.instrument.velocity_mapper_status(id))
+    })
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn manifold_looper_eq_response(frequency: f32) -> f32 {
     LOOPER.with(|slot| {
         slot.borrow()

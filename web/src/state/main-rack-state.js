@@ -4,7 +4,7 @@ import { LABELS } from '../widgets/fx-slot-data.js';
 const validNumber = (value, min, max) => Number.isFinite(value) && value >= min && value <= max;
 const validInteger = (value, min, max) => Number.isInteger(value) && value >= min && value <= max;
 
-export function validateMainRackState(rack, requireLfo = true, modulation = null, requireMulti = false, requireAtv = false, requireSlew = false, requireSampleHold = false, requireCompare = false, requireCvMix = false, requireRange = false, requireScaleQuantizer = false, requireTranspose = false, requireNoteFilter = false) {
+export function validateMainRackState(rack, requireLfo = true, modulation = null, requireMulti = false, requireAtv = false, requireSlew = false, requireSampleHold = false, requireCompare = false, requireCvMix = false, requireRange = false, requireScaleQuantizer = false, requireTranspose = false, requireNoteFilter = false, requireVelocityMapper = false) {
   const source = rack?.source, adsr = rack?.adsr, filter = rack?.filter;
   const eq = rack?.eq;
   const sourceRanges = {
@@ -137,6 +137,14 @@ export function validateMainRackState(rack, requireLfo = true, modulation = null
       || !validInteger(noteFilter.mode, 0, 1) || !validInteger(noteFilter.source, 0, 2)
       || typeof noteFilter.connected !== 'boolean') {
       throw new Error('Invalid Main Note Filter module state.');
+    }
+  }
+  if (requireVelocityMapper || rack.velocityMapper !== undefined) {
+    const velocity = rack.velocityMapper;
+    if (!velocity || !validNumber(velocity.amount, 0, 1) || !validInteger(velocity.curve, 0, 2)
+      || !validNumber(velocity.offset, -1, 1) || !validInteger(velocity.source, 0, 4)
+      || typeof velocity.connected !== 'boolean') {
+      throw new Error('Invalid Main Velocity Mapper module state.');
     }
   }
   return rack;

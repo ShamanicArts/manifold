@@ -208,6 +208,20 @@
             <label class="note-filter-connect"><input id="note-filter-connected" type="checkbox"> Route Note Filter to synth</label>
             <output id="note-filter-meter">No connected voices</output>
           </section>
+          <section id="velocity-mapper" class="rack-velocity-mapper" aria-label="Main Velocity Mapper module">
+            <div class="velocity-mapper-title">VELOCITY</div><div id="velocity-mapper-status" class="velocity-mapper-status">Linear  •  Amt 100%  •  Off 0%</div>
+            <canvas id="velocity-mapper-preview" width="424" height="108" aria-label="Velocity Mapper input and output amplitude curve"></canvas>
+            <div id="velocity-mapper-curve" aria-label="Velocity Mapper curve"></div>
+            <div id="velocity-mapper-amount"></div><div id="velocity-mapper-offset"></div>
+            <div id="velocity-mapper-values" class="velocity-mapper-values">Preview: —</div>
+          </section>
+          <section class="rack-velocity-mapper-patch" aria-label="Velocity Mapper voice connection">
+            <strong>VOICE IN → VOICE OUT</strong>
+            <p>Shape the selected voice amplitude. Current route follows connected pitch and gate stages.</p>
+            <label>IN source<select id="velocity-mapper-source" aria-label="Velocity Mapper voice source"><option value="4">Current routed voice</option><option value="0">Raw MidiSynth voices</option><option value="1">Scale Quantizer voice</option><option value="2">Transpose voice</option><option value="3">Note Filter voice</option></select></label>
+            <label class="velocity-mapper-connect"><input id="velocity-mapper-connected" type="checkbox"> Route Velocity Mapper to synth</label>
+            <output id="velocity-mapper-meter">No connected voices</output>
+          </section>
           <button id="add-lfo" type="button">+ LFO</button>
           </div></div>
           <button id="patch-jump" type="button" aria-label="Show Main modulation rack row">PATCH ↓</button>
