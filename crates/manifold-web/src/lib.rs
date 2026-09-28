@@ -38,7 +38,9 @@ struct WorkletEngine {
 
 struct LooperEngine {
     instrument: MainInstrument,
+    sample_rate: f32,
     capacity: usize,
+    started: bool,
     input: Vec<f32>,
     output: Vec<f32>,
     transfer: Vec<f32>,
@@ -88,7 +90,9 @@ pub extern "C" fn manifold_looper_prepare(sample_rate: f32, capacity: u32) -> u3
     LOOPER.with(|slot| {
         *slot.borrow_mut() = Some(LooperEngine {
             instrument: MainInstrument::new(sample_rate, capacity as usize),
+            sample_rate,
             capacity: capacity as usize,
+            started: false,
             input: vec![0.0; capacity as usize * 2],
             output: vec![0.0; capacity as usize * 2],
             transfer: vec![0.0; 4096 * 2],
@@ -123,6 +127,7 @@ pub extern "C" fn manifold_looper_process(frames: u32) -> u32 {
         if frames > e.capacity {
             return 0;
         }
+        e.started = true;
         let (left_in, right_in) = e.input.split_at(e.capacity);
         let (left_out, right_out) = e.output.split_at_mut(e.capacity);
         e.instrument.process(
@@ -130,6 +135,48 @@ pub extern "C" fn manifold_looper_process(frames: u32) -> u32 {
             [&mut left_out[..frames], &mut right_out[..frames]],
         );
         1
+    })
+}
+
+/// Consume an authored post-voice graph before Main starts processing. The
+/// graph builder receives nodes, edges, and initial values through the shared
+/// Graph ABI. Live edits require a separate off-callback publication path.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_prepare_rack_insert() -> u32 {
+    let description = GRAPH_BUILDER.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        match slot.take() {
+            Some(builder)
+                if !builder.patchable
+                    && builder.description.nodes.len() == builder.expected_nodes
+                    && builder.description.connections.len() == builder.expected_connections =>
+            {
+                Some(builder.description)
+            }
+            _ => None,
+        }
+    });
+    let Some(description) = description else {
+        return 0;
+    };
+    LOOPER.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let Some(engine) = slot.as_mut() else {
+            return 0;
+        };
+        if engine.started {
+            return 0;
+        }
+        let Ok(mut plan) = description.compile(engine.sample_rate, engine.capacity) else {
+            return 0;
+        };
+        engine.instrument.prepare_rack_insert_controls(&mut plan);
+        u32::from(
+            engine
+                .instrument
+                .replace_prepared_rack_insert(Some(plan))
+                .is_ok(),
+        )
     })
 }
 /// Main voice bank events use the same prepared Rust instrument as the looper.

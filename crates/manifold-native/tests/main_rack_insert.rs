@@ -7,9 +7,16 @@ const DEFAULT_INSERT: &[u8] =
 const CV_INSERT: &[u8] =
     include_bytes!("../../../projects/main-looper/lfo-filter-rack-insert.json");
 
-fn render(project: Option<&[u8]>, cutoff: f32) -> (f32, f32) {
+fn render_with_route(project: Option<&[u8]>, cutoff: f32, main_route: bool) -> (f32, f32) {
     let mut main = MainInstrument::new(48_000.0, 128);
     assert!(main.set_synth_parameter(22, cutoff));
+    if main_route {
+        assert!(main.set_lfo_slot_parameter(0, 0, 3.0));
+        assert!(main.set_lfo_slot_parameter(0, 1, 1.0));
+        assert!(main.set_modulation_slot_route(0, 1, 22.0));
+        assert!(main.set_modulation_slot_route(0, 2, 0.5));
+        assert!(main.set_modulation_slot_route(0, 5, 1.0));
+    }
     if let Some(project) = project {
         let mut plan = NativeProject::parse(project)
             .unwrap()
@@ -39,6 +46,10 @@ fn render(project: Option<&[u8]>, cutoff: f32) -> (f32, f32) {
         }
     }
     (energy, main.looper().peak(0, 1, 8_000, 12_000))
+}
+
+fn render(project: Option<&[u8]>, cutoff: f32) -> (f32, f32) {
+    render_with_route(project, cutoff, false)
 }
 
 #[test]
@@ -104,4 +115,16 @@ fn main_controls_reach_the_prepared_insert_and_bad_preparation_keeps_the_old_pla
     let retired = main.replace_prepared_rack_insert(None).unwrap();
     assert!(retired.is_some());
     assert!(!main.has_rack_insert());
+}
+
+#[test]
+fn existing_main_lfo_route_stays_audible_through_the_default_insert() {
+    let (plain, _) = render(Some(DEFAULT_INSERT), 800.0);
+    let (fixed, _) = render_with_route(None, 800.0, true);
+    let (insert, _) = render_with_route(Some(DEFAULT_INSERT), 800.0, true);
+    assert!((fixed - plain).abs() > plain * 0.1);
+    assert!(
+        (insert - fixed).abs() < fixed * 0.001,
+        "fixed {fixed}, insert {insert}"
+    );
 }

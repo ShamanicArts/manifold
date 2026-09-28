@@ -940,6 +940,14 @@ impl MainInstrument {
         // The shared SVF clamps its public 0.1–2 resonance control to 1.
         // Report the target the audio processor actually received.
         self.filter_resonance_effective = self.filter.resonance();
+        if let Some(insert) = &mut self.rack_insert {
+            // Main's existing block-rate utility routes remain audible when
+            // the authored insert replaces the fixed post-voice chain.
+            insert.set_parameter(6, 1, self.filter_cutoff_effective);
+            insert.set_parameter(6, 2, self.filter_resonance_effective);
+            insert.set_parameter(7, 1, self.fx1_mix_effective);
+            insert.set_parameter(8, 1, self.fx2_mix_effective);
+        }
         self.synth.process_planar([
             &mut self.synth_left[..frames],
             &mut self.synth_right[..frames],

@@ -33,6 +33,29 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           const module = await WebAssembly.compile(data.wasmBytes);
           this.engine = (await WebAssembly.instantiate(module, {})).exports;
           if (this.engine.manifold_looper_prepare(sampleRate, this.capacity) !== 1) throw new Error('Looper preparation failed');
+          const graph = data.rackInsert;
+          if (!graph || this.engine.manifold_graph_begin(graph.nodes.length, graph.connections.length) !== 1) {
+            throw new Error('Main rack graph is missing or too large');
+          }
+          for (const node of graph.nodes) {
+            if (this.engine.manifold_graph_node(node.id, node.kind, node.a, node.b) !== 1) {
+              throw new Error(`Invalid Main rack node ${node.id}`);
+            }
+          }
+          for (const edge of graph.connections) {
+            if (this.engine.manifold_graph_edge(edge.from, edge.to, edge.inputPort) !== 1) {
+              throw new Error('Invalid Main rack connection');
+            }
+          }
+          const mainControlledFilters = new Set(graph.nodes.filter(node =>
+            node.kind === 6 || node.kind === 16).map(node => node.id));
+          for (const parameter of graph.initialParameters) {
+            if (this.engine.manifold_graph_initial_parameter(parameter.nodeId, parameter.id, parameter.value) !== 1
+              && !(mainControlledFilters.has(parameter.nodeId) && parameter.id <= 2)) {
+              throw new Error(`Invalid Main rack parameter ${parameter.nodeId}/${parameter.id}`);
+            }
+          }
+          if (this.engine.manifold_looper_prepare_rack_insert() !== 1) throw new Error('Main rack insert preparation failed');
           this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_looper_input_ptr(), this.capacity * 2);
           this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_looper_output_ptr(), this.capacity * 2);
           this.port.postMessage({ type: 'ready' });

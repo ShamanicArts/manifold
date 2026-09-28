@@ -1,5 +1,9 @@
 import './main-looper.css';
 import project from '../../projects/main-looper/project.json';
+import rackCatalog from '../../projects/main-looper/rack.json';
+import { NODE_TYPES } from './graph/topology.js';
+import { initialRackDocument } from './state/rack-document.js';
+import { compileMainRackInsert } from './state/main-rack-graph.js';
 import { encodePcm, decodePcm } from './state/stereo-source.js';
 import { validateMainRackState } from './state/main-rack-state.js';
 import { mountCompactSlider } from './widgets/compact-slider.js';
@@ -744,7 +748,10 @@ async function start() {
         if (data.type === 'ready') { clearTimeout(timeout); resolve(); }
         else if (data.type === 'error') { clearTimeout(timeout); reject(new Error(data.message)); }
       };
-      processor.port.postMessage({ type: 'init', wasmBytes, project }, [wasmBytes]);
+      const insert = compileMainRackInsert(initialRackDocument(rackCatalog), rackCatalog);
+      const rackInsert = { ...insert, nodes: insert.nodes.map(node =>
+        ({ id: node.id, kind: NODE_TYPES[node.type].code, a: node.a ?? 0, b: node.b ?? 0 })) };
+      processor.port.postMessage({ type: 'init', wasmBytes, project, rackInsert }, [wasmBytes]);
     });
     processor.port.onmessage = ({ data }) => {
       if (data.type === 'snapshot') render(data);
