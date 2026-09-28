@@ -16,6 +16,7 @@ pub mod main_host;
 pub mod main_host_parameters;
 pub mod main_instrument;
 pub mod main_session;
+pub mod main_snapshot;
 pub mod parameters;
 pub mod project;
 

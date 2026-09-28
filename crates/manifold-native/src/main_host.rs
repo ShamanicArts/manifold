@@ -11,8 +11,13 @@ use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
 use crossbeam_queue::ArrayQueue;
 
 use crate::NativeError;
-use crate::main_instrument::{MainAudioBlock, MainHostAudioBlock, MainNativeProcessor};
+use crate::main_instrument::{
+    MainAudioBlock, MainHostAudioBlock, MainHostEventKind, MainNativeProcessor,
+};
 use crate::main_session::{MainSessionError, prepare_main_session};
+use crate::main_snapshot::{
+    self, MainPcmSnapshot, MainSnapshotError, SnapshotAudio, SnapshotControl,
+};
 
 struct Prepared {
     processor: MainNativeProcessor,
@@ -46,6 +51,7 @@ impl Drop for Exchange {
 pub struct MainAudioRuntime {
     current: Box<Prepared>,
     exchange: Arc<Exchange>,
+    snapshot: SnapshotAudio,
 }
 
 pub struct MainControl {
@@ -53,6 +59,7 @@ pub struct MainControl {
     next_generation: u64,
     sample_rate: f32,
     max_frames: usize,
+    snapshot: SnapshotControl,
 }
 
 impl MainAudioRuntime {
@@ -68,18 +75,21 @@ impl MainAudioRuntime {
             retired: ArrayQueue::new(4),
             published: AtomicU64::new(0),
         });
+        let (snapshot_audio, snapshot_control) = main_snapshot::prepare();
         let audio = Self {
             current: Box::new(Prepared {
                 processor,
                 generation: 0,
             }),
             exchange: Arc::clone(&exchange),
+            snapshot: snapshot_audio,
         };
         let control = MainControl {
             exchange,
             next_generation: 1,
             sample_rate,
             max_frames,
+            snapshot: snapshot_control,
         };
         Ok((audio, control))
     }
@@ -92,23 +102,40 @@ impl MainAudioRuntime {
     /// A rejected block does not publish a waiting session.
     pub fn process(&mut self, block: MainAudioBlock<'_>) -> Result<(), NativeError> {
         self.current.processor.process(block)?;
-        self.publish_pending();
+        let published = self.publish_pending();
+        let interrupted = published || !self.exchange.pending.load(Ordering::Acquire).is_null();
+        self.snapshot.after_block(
+            self.current.processor.instrument(),
+            self.current.generation,
+            interrupted,
+        );
         Ok(())
     }
 
     pub fn process_host(&mut self, block: MainHostAudioBlock<'_>) -> Result<(), NativeError> {
+        let mutating = block
+            .actions
+            .iter()
+            .any(|action| matches!(action.kind, MainHostEventKind::Command { .. }));
         self.current.processor.process_host(block)?;
-        self.publish_pending();
+        let published = self.publish_pending();
+        let interrupted =
+            mutating || published || !self.exchange.pending.load(Ordering::Acquire).is_null();
+        self.snapshot.after_block(
+            self.current.processor.instrument(),
+            self.current.generation,
+            interrupted,
+        );
         Ok(())
     }
 
-    fn publish_pending(&mut self) {
+    fn publish_pending(&mut self) -> bool {
         if self.exchange.retired.is_full() {
-            return;
+            return false;
         }
         let pending = self.exchange.pending.swap(null_mut(), Ordering::AcqRel);
         if pending.is_null() {
-            return;
+            return false;
         }
         // SAFETY: the successful swap gives the audio side sole ownership.
         let next = unsafe { Box::from_raw(pending) };
@@ -118,10 +145,21 @@ impl MainAudioRuntime {
         self.exchange
             .published
             .store(self.current.generation, Ordering::Release);
+        true
     }
 }
 
 impl MainControl {
+    /// Request a coherent PCM/transport snapshot. Poll on this control thread
+    /// until it completes or is interrupted by a loop command or import.
+    pub fn request_pcm_snapshot(&mut self) -> Result<u64, MainSnapshotError> {
+        self.snapshot.request()
+    }
+
+    pub fn poll_pcm_snapshot(&mut self) -> Result<Option<MainPcmSnapshot>, MainSnapshotError> {
+        self.snapshot.poll()
+    }
+
     /// Parse and prepare off the callback. A failed import preserves the
     /// current and pending runtimes. The latest accepted pending file wins.
     pub fn submit_session(&mut self, bytes: &[u8]) -> Result<u64, MainSessionError> {
@@ -178,9 +216,12 @@ impl Drop for MainControl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::main_instrument::{MainHostEvent, MainHostEventKind};
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     use serde_json::{Value, json};
     use std::sync::Barrier;
+    use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+    use std::time::{Duration, Instant};
 
     const EMPTY: &str = include_str!("../tests/fixtures/main-browser-v15-empty.json");
 
@@ -195,6 +236,32 @@ mod tests {
         state["layers"][0]["bars"] = json!(0.0625);
         state["layers"][0]["playing"] = json!(true);
         state["layers"][0]["pcmF32Base64"] = json!(STANDARD.encode(bytes));
+        serde_json::to_vec(&state).unwrap()
+    }
+
+    fn snapshot_session() -> Vec<u8> {
+        let mut state: Value = serde_json::from_str(EMPTY).unwrap();
+        state["sampleRate"] = json!(8_000);
+        let frames = 9_000;
+        let loop_pcm: Vec<f32> = (0..frames)
+            .flat_map(|frame| [frame as f32 / frames as f32, -0.25])
+            .collect();
+        let sample_pcm: Vec<f32> = (0..frames)
+            .flat_map(|frame| [0.5, -(frame as f32 / frames as f32)])
+            .collect();
+        let encode = |pcm: &[f32]| {
+            STANDARD.encode(
+                pcm.iter()
+                    .flat_map(|sample| sample.to_le_bytes())
+                    .collect::<Vec<u8>>(),
+            )
+        };
+        state["layers"][0]["frames"] = json!(frames);
+        state["layers"][0]["bars"] = json!(0.25);
+        state["layers"][0]["playing"] = json!(true);
+        state["layers"][0]["pcmF32Base64"] = json!(encode(&loop_pcm));
+        state["sample"]["frames"] = json!(frames);
+        state["sample"]["pcmF32Base64"] = json!(encode(&sample_pcm));
         serde_json::to_vec(&state).unwrap()
     }
 
@@ -264,5 +331,149 @@ mod tests {
         assert_eq!(thread.join().unwrap(), 1);
         assert_eq!(control.published_generation(), 1);
         assert_eq!(control.reclaim(), 1);
+    }
+
+    #[test]
+    fn pcm_snapshot_uses_bounded_chunks_and_preserves_loop_and_sample_order() {
+        let (mut audio, mut control) = MainAudioRuntime::prepare(8_000.0, 128).unwrap();
+        control.submit_session(&snapshot_session()).unwrap();
+        render(&mut audio); // publish prepared session
+        assert_eq!(audio.generation(), 1);
+        control.reclaim();
+        let id = control.request_pcm_snapshot().unwrap();
+        assert_eq!(control.request_pcm_snapshot(), Err(MainSnapshotError::Busy));
+        for _ in 0..4 {
+            render(&mut audio); // producer hits the two-chunk pool limit
+        }
+        assert!(control.poll_pcm_snapshot().unwrap().is_none());
+        let snapshot = loop {
+            render(&mut audio);
+            if let Some(snapshot) = control.poll_pcm_snapshot().unwrap() {
+                break snapshot;
+            }
+        };
+        assert_eq!(id, 1);
+        assert_eq!(snapshot.header.generation, 1);
+        assert_eq!(snapshot.header.layers[0].frames, 9_000);
+        assert_eq!(snapshot.header.sample_frames, 9_000);
+        assert_eq!(snapshot.layers[0].len(), 18_000);
+        assert_eq!(snapshot.sample.len(), 18_000);
+        assert_eq!(snapshot.layers[0][0], 0.0);
+        assert!((snapshot.layers[0][8_192] - 4_096.0 / 9_000.0).abs() < 1e-6);
+        assert!((snapshot.layers[0][17_998] - 8_999.0 / 9_000.0).abs() < 1e-6);
+        assert_eq!(snapshot.layers[0][17_999], -0.25);
+        assert_eq!(snapshot.sample[0], 0.5);
+        assert!((snapshot.sample[17_999] + 8_999.0 / 9_000.0).abs() < 1e-6);
+        assert!(snapshot.layers[1..].iter().all(Vec::is_empty));
+    }
+
+    #[test]
+    fn loop_command_cancels_snapshot_without_blocking_audio() {
+        let (mut audio, mut control) = MainAudioRuntime::prepare(8_000.0, 128).unwrap();
+        control.submit_session(&snapshot_session()).unwrap();
+        render(&mut audio);
+        control.reclaim();
+        control.request_pcm_snapshot().unwrap();
+        render(&mut audio);
+        assert!(control.poll_pcm_snapshot().unwrap().is_none());
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        audio
+            .process_host(MainHostAudioBlock {
+                input: None,
+                output: [&mut left, &mut right],
+                actions: &[MainHostEvent {
+                    offset: 0,
+                    kind: MainHostEventKind::Command { id: 5, value: 0.0 },
+                }],
+            })
+            .unwrap();
+        assert_eq!(
+            control.poll_pcm_snapshot().err(),
+            Some(MainSnapshotError::Interrupted)
+        );
+        assert!(control.request_pcm_snapshot().is_ok());
+    }
+
+    #[test]
+    fn session_publication_cancels_old_pcm_snapshot() {
+        let (mut audio, mut control) = MainAudioRuntime::prepare(8_000.0, 128).unwrap();
+        control.submit_session(&snapshot_session()).unwrap();
+        render(&mut audio);
+        control.reclaim();
+        control.request_pcm_snapshot().unwrap();
+        render(&mut audio);
+        assert!(control.poll_pcm_snapshot().unwrap().is_none());
+        let mut replacement: Value = serde_json::from_str(EMPTY).unwrap();
+        replacement["sampleRate"] = json!(8_000);
+        control
+            .submit_session(&serde_json::to_vec(&replacement).unwrap())
+            .unwrap();
+        render(&mut audio);
+        assert_eq!(audio.generation(), 2);
+        assert_eq!(
+            control.poll_pcm_snapshot().err(),
+            Some(MainSnapshotError::Interrupted)
+        );
+        assert_eq!(control.reclaim(), 1);
+    }
+
+    #[test]
+    fn recording_rejects_a_snapshot_until_the_take_is_finished() {
+        let (mut audio, mut control) = MainAudioRuntime::prepare(8_000.0, 128).unwrap();
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        audio
+            .process_host(MainHostAudioBlock {
+                input: None,
+                output: [&mut left, &mut right],
+                actions: &[MainHostEvent {
+                    offset: 0,
+                    kind: MainHostEventKind::Command { id: 0, value: 0.0 },
+                }],
+            })
+            .unwrap();
+        control.request_pcm_snapshot().unwrap();
+        render(&mut audio);
+        assert_eq!(
+            control.poll_pcm_snapshot().err(),
+            Some(MainSnapshotError::Unstable)
+        );
+    }
+
+    #[test]
+    fn control_thread_assembles_pcm_while_audio_thread_keeps_rendering() {
+        let (mut audio, mut control) = MainAudioRuntime::prepare(8_000.0, 128).unwrap();
+        control.submit_session(&snapshot_session()).unwrap();
+        render(&mut audio);
+        control.reclaim();
+        control.request_pcm_snapshot().unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let audio_stop = Arc::clone(&stop);
+        let worker = std::thread::spawn(move || {
+            let mut blocks = 0;
+            while !audio_stop.load(AtomicOrdering::Acquire) && blocks < 100_000 {
+                render(&mut audio);
+                blocks += 1;
+                std::thread::yield_now();
+            }
+            blocks
+        });
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut result = None;
+        while Instant::now() < deadline {
+            if let Some(snapshot) = control.poll_pcm_snapshot().unwrap() {
+                result = Some(snapshot);
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        stop.store(true, AtomicOrdering::Release);
+        assert!(worker.join().unwrap() > 0);
+        let snapshot = result.expect("audio/control PCM transfer timed out");
+        assert_eq!(snapshot.header.generation, 1);
+        assert_eq!(snapshot.layers[0].len(), 18_000);
+        assert_eq!(snapshot.sample.len(), 18_000);
+        assert_eq!(snapshot.sample[0], 0.5);
     }
 }
