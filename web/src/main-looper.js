@@ -937,6 +937,7 @@ if (editorMode) {
       case 'published':
         sampleJob = null; freeSource = null; resetSampleCaptureUI();
         $('sample-length').textContent = `${Math.round(data.frames / context.sampleRate * 1000)}ms`;
+        sampleBlend.setValue(1, true);
         status('Main Sample captured. Play the keyboard to hear the new source.');
         break;
       case 'free-cancelled':

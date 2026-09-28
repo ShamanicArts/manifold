@@ -110,6 +110,7 @@ def main() -> None:
                 output.setframerate(48000)
                 output.writeframes((4096).to_bytes(2, "little", signed=True) * 2 * 48000 * 8)
             project = work / "main-live.rpp"
+            sample_project = work / "main-sample.rpp"
             script = work / "host.lua"
             script.write_text(f"""
 reaper.GetSetProjectInfo(0,'PROJECT_SRATE',48000,true)
@@ -133,7 +134,16 @@ local function poll()
   if value=='play' then reaper.SetEditCurPos(0,false,false); reaper.OnPlayButton() end
   if value=='stop' then reaper.OnStopButton() end
   if value=='mute-input' then reaper.SetMediaItemInfo_Value(item,'B_MUTE',1) end
+  if value=='add-note' then
+   local midi=reaper.CreateNewMIDIItemInProj(track,0,1,false)
+   local take=reaper.GetActiveTake(midi)
+   reaper.MIDI_InsertNote(take,false,false,
+    reaper.MIDI_GetPPQPosFromProjTime(take,0.125),
+    reaper.MIDI_GetPPQPosFromProjTime(take,0.75),0,60,100,false)
+   reaper.MIDI_Sort(take)
+  end
   if value=='save' then reaper.Main_SaveProjectEx(0,'{project}',0) end
+  if value=='save-sample' then reaper.Main_SaveProjectEx(0,'{sample_project}',0) end
   local out=io.open('{work / 'result.txt'}','w')
   out:write(value .. ' ' .. tostring(reaper.GetPlayState()) .. ' ' .. tostring(reaper.GetPlayPosition()))
   out:close()
@@ -180,9 +190,11 @@ reaper.defer(poll)
                     command("save")
                     try:
                         state = saved_main(project)
-                        if state["layers"][0]["frames"] > 0 and state["sample"]["frames"] > 0:
+                        if (state["layers"][0]["frames"] > 0 and state["sample"]["frames"] > 0
+                            and state["rack"]["source"]["sampleBlend"] == 1):
                             break
-                        last_error = ("state frames", state["layers"][0]["frames"], state["sample"]["frames"])
+                        last_error = ("state", state["layers"][0]["frames"],
+                                      state["sample"]["frames"], state["rack"]["source"]["sampleBlend"])
                     except (OSError, ValueError, IndexError, KeyError) as error:
                         last_error = repr(error)
                     time.sleep(.3)
@@ -212,6 +224,16 @@ reaper.defer(poll)
                         "-i", os.environ["DISPLAY"], "-frames:v", "1", "-y", str(screenshot)],
                         env=env, capture_output=True, text=True, timeout=15)
                     assert capture.returncode == 0 and screenshot.stat().st_size > 10_000, capture.stderr
+                loop_probe.write_text("play")
+                status(Path(f"{loop_probe}.status"),
+                       lambda data: data["layers"][0]["length"] > 0
+                       and data["layers"][0]["playing"] is False)
+                assert command("add-note").startswith("add-note 1")
+                command("save-sample")
+                sample_state = saved_main(sample_project)
+                assert sample_state["sample"]["frames"] == sample_frames
+                assert sample_state["rack"]["source"]["sampleBlend"] == 1
+                assert sample_state["layers"][0]["playing"] is False
                 command("stop")
                 print("Saved Main live capture:", loop_frames, sample_frames, loop_peak, sample_peak)
                 os.killpg(process.pid, signal.SIGTERM)
@@ -219,30 +241,48 @@ reaper.defer(poll)
                 process = None
                 render_env = {key: value for key, value in env.items()
                               if key not in ("MANIFOLD_MAIN_LOOP_PROBE", "MANIFOLD_MAIN_SAMPLE_PROBE")}
-                with (work / "render.log").open("w") as render_log:
-                    rendered = subprocess.run(
-                        ["pw-jack", "reaper", "-cfgfile", str(config), "-newinst", "-nosplash",
-                         "-renderproject", str(project)],
-                        env=render_env, stdout=render_log, stderr=subprocess.STDOUT, timeout=60)
-                assert rendered.returncode == 0, (work / "render.log").read_text()[-1500:]
-                render_file = work / "main-live.wav"
-                assert render_file.is_file(), (work / "render.log").read_text()[-1500:]
-                raw = subprocess.check_output(["ffmpeg", "-v", "error", "-i", str(render_file),
-                                               "-f", "f32le", "-acodec", "pcm_f32le", "-"])
-                audio = array("f")
-                audio.frombytes(raw)
+
+                def render_saved(saved_project: Path):
+                    log_path = work / f"{saved_project.stem}-render.log"
+                    with log_path.open("w") as render_log:
+                        rendered = subprocess.run(
+                            ["pw-jack", "reaper", "-cfgfile", str(config), "-newinst", "-nosplash",
+                             "-renderproject", str(saved_project)],
+                            env=render_env, stdout=render_log, stderr=subprocess.STDOUT, timeout=60)
+                    assert rendered.returncode == 0, log_path.read_text()[-1500:]
+                    render_file = work / f"{saved_project.stem}.wav"
+                    assert render_file.is_file(), log_path.read_text()[-1500:]
+                    raw = subprocess.check_output(["ffmpeg", "-v", "error", "-i", str(render_file),
+                                                   "-f", "f32le", "-acodec", "pcm_f32le", "-"])
+                    audio = array("f")
+                    audio.frombytes(raw)
+                    return render_file, audio
+
+                render_file, audio = render_saved(project)
                 render_peak = max(abs(sample) for sample in audio)
                 assert render_peak > .01, render_peak
                 review_audio = ROOT / "web/public/main-vst3-reaper-live-render.ogg"
                 subprocess.run(["ffmpeg", "-v", "error", "-i", str(render_file),
                     "-c:a", "libopus", "-b:a", "96k", "-y", str(review_audio)],
                     check=True, timeout=20)
+                sample_render_file, sample_audio = render_saved(sample_project)
+                sample_note_peak = max(abs(sample) for sample in sample_audio)
+                sample_lead_peak = max(abs(sample) for sample in sample_audio[:4800 * 2])
+                assert sample_lead_peak < 1e-5 and sample_note_peak > .01, (sample_lead_peak, sample_note_peak)
+                subprocess.run(["ffmpeg", "-v", "error", "-i", str(sample_render_file),
+                    "-c:a", "libopus", "-b:a", "96k", "-y",
+                    str(ROOT / "web/public/main-vst3-reaper-sample-note.ogg")],
+                    check=True, timeout=20)
                 report = {"host":"REAPER VST3", "audioSink":"private PipeWire null sink",
                           "editorActions":["First Loop REC", "REC stop", "Sample Retro Cap"],
                           "loopFrames":loop_frames, "loopPeak":loop_peak,
                           "sampleFrames":sample_frames, "samplePeak":sample_peak,
                           "savedAndReopened":True, "freshRenderFrames":len(audio)//2,
-                          "freshRenderPeak":render_peak}
+                          "freshRenderPeak":render_peak,
+                          "sampleSourceBlend":sample_state["rack"]["source"]["sampleBlend"],
+                          "sampleNoteRenderFrames":len(sample_audio)//2,
+                          "sampleNoteRenderPeak":sample_note_peak,
+                          "sampleNotePreNotePeak":sample_lead_peak}
                 (ROOT / "web/public/main-vst3-reaper-live.json").write_text(json.dumps(report,indent=2)+"\n")
                 print(json.dumps(report))
         except Exception:

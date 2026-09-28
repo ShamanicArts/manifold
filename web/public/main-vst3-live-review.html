@@ -25,20 +25,21 @@
   <header>
     <div class="eyebrow">Manifold v2 / Main instrument / live VST3 host proof</div>
     <h1>Record and capture<br>through the original Main editor.</h1>
-    <p>REAPER played a generated stereo source into the Rust Main VST3. The original REC button started and stopped First Loop; the original Source Cap captured a retrospective Sample. REAPER saved both PCM buffers. A new offline REAPER render reopened the project with its input media muted and played audible loop output.</p>
-    <div class="actions"><a href="/main-vst3-reaper-live.png">Open host screenshot →</a><a href="/main-vst3-reaper-live-render.ogg">Listen to fresh render</a><a href="/main-vst3-reaper-live.json">Open measurements</a><a href="/main-vst3-boundary-review.html">VST3 boundary review</a></div>
+    <p>REAPER played a generated stereo source into the Rust Main VST3. The original REC button started and stopped First Loop; the original Source Cap captured a retrospective Sample. REAPER saved both PCM buffers. Fresh renders reopened the project with input muted and proved loop playback, then note-triggered Sample playback with the loop paused.</p>
+    <div class="actions"><a href="/main-vst3-reaper-live.png">Open host screenshot →</a><a href="/main-vst3-reaper-live-render.ogg">Listen to loop render</a><a href="/main-vst3-reaper-sample-note.ogg">Listen to Sample note</a><a href="/main-vst3-reaper-live.json">Open measurements</a></div>
   </header>
   <section>
     <h2>Measured in the host</h2>
     <table><thead><tr><th>Observation</th><th>Result</th></tr></thead><tbody>
-      <tr><td>First Loop</td><td>56,320 saved stereo frames; PCM peak 0.125. The live status reported a committed, playing layer.</td></tr>
-      <tr><td>Source Sample</td><td>112,640 saved stereo frames; PCM peak 0.125. The native capture endpoint reported <strong>published</strong>.</td></tr>
+      <tr><td>First Loop</td><td>51,200 saved stereo frames; PCM peak 0.125. The live status reported a committed, playing layer.</td></tr>
+      <tr><td>Source Sample</td><td>102,400 saved stereo frames; PCM peak 0.125. The native capture endpoint reported <strong>published</strong>, and the original Blend control switched to Sample 1.00.</td></tr>
       <tr><td>Fresh REAPER render</td><td>384,000 frames at 48 kHz after reopening the saved VST3 project. Input media was muted; output peak was <strong>0.177</strong>.</td></tr>
+      <tr><td>Fresh Sample note</td><td>A second saved project paused the loop and sent MIDI note 60 with input muted. Its new 48 kHz render was silent before the note (peak 0) and reached <strong>0.011</strong> after it. The saved Source blend was 1.00 Sample.</td></tr>
       <tr><td>Audio isolation</td><td>The GUI host ran on headless Weston. REAPER connected through a private PipeWire JACK server exposing only a null sink. No user speaker output was used.</td></tr>
     </tbody></table>
-    <p>The fresh render proves loop output after host recall. Separate note-triggered playback of the captured Sample is the next gate.</p>
+    <p>Both renders came from saved VST3 projects reopened in new REAPER processes. <a href="/main-vst3-reaper-live.json">Exact values are in the result JSON.</a></p>
   </section>
   <section><h2>Original widgets in REAPER</h2><p>This is the actual packaged Main editor after the Sample capture completed. The looper waveform and Sample waveform are both visible.</p><a href="/main-vst3-reaper-live.png"><img src="/main-vst3-reaper-live.png" alt="Original Main VST3 editor in REAPER after loop and Sample capture"></a></section>
-  <section><h2>Fresh host output</h2><p>REAPER rendered this saved project in a new process with its input item muted.</p><audio controls preload="none" src="/main-vst3-reaper-live-render.ogg" style="width:min(100%,640px)"></audio></section>
+  <section><h2>Fresh host output</h2><p>Loop playback with input muted.</p><audio controls preload="none" src="/main-vst3-reaper-live-render.ogg" style="width:min(100%,640px)"></audio><p>Captured Sample from a MIDI note with loop paused and input muted.</p><audio controls preload="none" src="/main-vst3-reaper-sample-note.ogg" style="width:min(100%,640px)"></audio></section>
 </main></body>
 </html>

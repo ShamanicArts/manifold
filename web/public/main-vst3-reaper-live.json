@@ -6,11 +6,15 @@
     "REC stop",
     "Sample Retro Cap"
   ],
-  "loopFrames": 56320,
+  "loopFrames": 51200,
   "loopPeak": 0.125,
-  "sampleFrames": 112640,
+  "sampleFrames": 102400,
   "samplePeak": 0.125,
   "savedAndReopened": true,
   "freshRenderFrames": 384000,
-  "freshRenderPeak": 0.17677664756774902
+  "freshRenderPeak": 0.17677664756774902,
+  "sampleSourceBlend": 1.0,
+  "sampleNoteRenderFrames": 384000,
+  "sampleNoteRenderPeak": 0.011048674583435059,
+  "sampleNotePreNotePeak": 0.0
 }
