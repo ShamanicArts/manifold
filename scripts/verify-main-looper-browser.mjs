@@ -181,6 +181,38 @@ try {
   await page.locator('.rack-sample-hold').screenshot({ path: new URL('../web/public/main-sample-hold-module.png', import.meta.url).pathname });
   await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = element.scrollHeight; });
   await page.screenshot({ path: new URL('../web/public/main-sample-hold-rack.png', import.meta.url).pathname, fullPage: true });
+  const comparePanel = await page.locator('.rack-compare').boundingBox();
+  assert.equal(Math.round(comparePanel.x - lfoPanel.x), 708);
+  assert.equal(Math.round(comparePanel.width), 236);
+  await page.locator('#compare-direction').click();
+  assert.equal(await page.locator('.rack-compare .project-dropdown-overlay').isVisible(), true);
+  await page.locator('#compare-direction').focus();
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await page.locator('#compare-direction').getAttribute('data-value'), '1');
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await page.locator('#compare-direction').getAttribute('data-value'), '2');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.rack-compare .project-dropdown-overlay').isVisible(), false);
+  await page.locator('#compare-threshold').focus();
+  await page.keyboard.press('End');
+  assert.equal(await page.locator('#compare-threshold').getAttribute('aria-valuenow'), '1');
+  await page.locator('#compare-threshold').dblclick();
+  assert.equal(await page.locator('#compare-threshold').getAttribute('aria-valuenow'), '0');
+  await page.locator('#compare-hysteresis').focus();
+  await page.keyboard.press('End');
+  assert.equal(await page.locator('#compare-hysteresis').getAttribute('aria-valuenow'), '0.5');
+  const heldValue = Number(heldText.match(/Hold ([+-]\d+\.\d+)/)[1]);
+  const lowSource = heldValue < 0 ? '18' : '19';
+  const highSource = heldValue < 0 ? '19' : '18';
+  await page.locator('#compare-source').selectOption(lowSource);
+  await page.waitForFunction(() => document.querySelector('#compare-meter').textContent.includes('Gate low'));
+  await page.locator('#compare-source').selectOption(highSource);
+  await page.waitForFunction(() => document.querySelector('#compare-meter').textContent.includes('Gate high'));
+  await page.locator('#mod-source').selectOption('8');
+  assert.equal(await page.locator('.rack-route').first().locator('h2').textContent(), 'Compare → target');
+  await page.locator('.rack-compare').screenshot({ path: new URL('../web/public/main-compare-module.png', import.meta.url).pathname });
+  await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = element.scrollHeight; });
+  await page.screenshot({ path: new URL('../web/public/main-compare-rack.png', import.meta.url).pathname, fullPage: true });
   await page.locator('#add-lfo').click();
   assert.equal(await page.locator('.rack-lfo').count(), 2);
   await page.locator('#lfo-shape-slot-1').selectOption('3');
@@ -276,7 +308,7 @@ try {
   const download = await downloadPromise;
   const bundle = JSON.parse(await readFile(await download.path(), 'utf8'));
   assert.equal(bundle.id, 'manifold.main-looper');
-  assert.equal(bundle.version, 7);
+  assert.equal(bundle.version, 8);
   assert.ok(bundle.sample.frames > 0 && bundle.sample.pcmF32Base64.length > 0);
   assert.equal(bundle.rack.source.waveform, 1);
   assert.equal(bundle.rack.fx2.selected, 5);
@@ -284,7 +316,7 @@ try {
   assert.deepEqual(bundle.rack.lfos.map(lfo => lfo.slot), [0, 1]);
   assert.equal(bundle.rack.lfos[0].shape, 3);
   assert.equal(bundle.rack.lfos[0].route.target, 22);
-  assert.equal(bundle.rack.lfos[0].route.source, 6);
+  assert.equal(bundle.rack.lfos[0].route.source, 8);
   assert.equal(bundle.rack.lfos[1].route.target, 129);
   assert.equal(bundle.rack.lfos[1].route.source, 4);
   assert.equal(bundle.rack.lfos[1].route.enabled, true);
@@ -296,6 +328,8 @@ try {
   assert.equal(bundle.rack.sampleHold.manualGate, true);
   assert.equal(bundle.rack.sampleHold.triggerHigh, true);
   assert.ok(Math.abs(bundle.rack.sampleHold.held) <= 1);
+  assert.deepEqual(bundle.rack.compare, { direction: 2, threshold: 0, hysteresis: .5,
+    source: Number(highSource), gate: true, pulseRemaining: 0 });
   assert.ok(bundle.layers[0].frames > 0 && bundle.layers[1].frames > 0);
   await page.locator('#audio-button').click();
   await page.locator('#audio-button').click();
@@ -332,10 +366,11 @@ try {
   assert.equal(await page.locator('#sample-hold-trigger-source').inputValue(), '4');
   assert.equal(await page.locator('#sample-hold-manual-gate').isChecked(), true);
   assert.match(await page.locator('#sample-hold-values').textContent(), /Hold [+-]\d+\.\d+/);
-  await page.waitForFunction(() => {
-    const match = document.querySelector('#mod-effective').textContent.match(/cutoff (\d+)/i);
-    return match && Number(match[1]) < 16000;
-  }, { timeout: 2500 });
+  assert.equal(await page.locator('#compare-direction').getAttribute('data-value'), '2');
+  assert.equal(await page.locator('#compare-hysteresis').getAttribute('aria-valuenow'), '0.5');
+  assert.equal(await page.locator('#compare-source').inputValue(), highSource);
+  assert.equal(await page.locator('#mod-source').inputValue(), '8');
+  await page.waitForFunction(() => document.querySelector('#compare-meter').textContent.includes('Gate high'));
   assert.notEqual(await page.locator('#sample-length').textContent(), '0ms');
   await page.locator('[aria-label="Remove LFO 2"]').click();
   assert.equal(await page.locator('.rack-lfo').count(), 1);
@@ -354,7 +389,17 @@ try {
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(duplicateSlot)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Invalid Main LFO module'));
   assert.equal(await page.locator('.rack-lfo').count(), 1);
-  const v6 = { ...bundle, version: 6, rack: { ...bundle.rack,
+  const v7 = { ...bundle, version: 7, rack: { ...bundle.rack,
+    lfos: bundle.rack.lfos.map((lfo, index) => index ? lfo : { ...lfo, route: { ...lfo.route, source: 6 } }) } };
+  delete v7.rack.compare;
+  await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 7 import'; });
+  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v7.json',
+    mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v7)) });
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
+  assert.equal(await page.locator('#compare-direction').getAttribute('data-value'), '0');
+  assert.equal(await page.locator('#compare-hysteresis').getAttribute('aria-valuenow'), '0.05');
+  assert.equal(await page.locator('#compare-source').inputValue(), '0');
+  const v6 = { ...v7, version: 6, rack: { ...v7.rack,
     lfos: bundle.rack.lfos.map((lfo, index) => index ? lfo : { ...lfo, route: { ...lfo.route, source: 5 } }) } };
   delete v6.rack.sampleHold;
   await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 6 import'; });
@@ -467,5 +512,10 @@ try {
   await directHold.waitForFunction(() => !document.querySelector('#midisynth-panel').hidden
     && document.querySelector('#rack-scroll').scrollTop >= 690);
   assert.equal(await directHold.locator('.rack-sample-hold').isVisible(), true);
-  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth rack, two live LFO routes, original ATV / Bias, Slew and Sample Hold panels with typed routing, four-slot add/remove limit, duplicate-slot rejection, Live/L1 Retro and Free Sample, traditional arm/fire, reverse scrub, v1–v7 session reopen, decoded file and Rust synth capture passed`);
+  const directCompare = await browser.newPage({ viewport: { width: 1440, height: 950 } });
+  await directCompare.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html#compare`);
+  await directCompare.waitForFunction(() => !document.querySelector('#midisynth-panel').hidden
+    && document.querySelector('#rack-scroll').scrollTop >= 900);
+  assert.equal(await directCompare.locator('.rack-compare').isVisible(), true);
+  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth rack, two live LFO routes, original ATV / Bias, Slew, Sample Hold and Compare panels with typed routing, four-slot add/remove limit, duplicate-slot rejection, Live/L1 Retro and Free Sample, traditional arm/fire, reverse scrub, v1–v8 session reopen, decoded file and Rust synth capture passed`);
 } finally { await browser.close(); }

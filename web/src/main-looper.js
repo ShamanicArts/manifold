@@ -11,6 +11,7 @@ import { mountMainLfoRack } from './widgets/main-lfo-rack.js';
 import { mountMainAtvBias } from './widgets/main-atv-bias.js';
 import { mountMainSlew } from './widgets/main-slew.js';
 import { mountMainSampleHold } from './widgets/main-sample-hold.js';
+import { mountMainCompare } from './widgets/main-compare.js';
 import { mountMainCapturePlane } from './widgets/main-capture-plane.js';
 import { drawMainLayerKnob } from './widgets/main-layer-knob.js';
 
@@ -47,6 +48,7 @@ const lfo = mountMainLfoRack($, post, project.modulation);
 const atv = mountMainAtvBias($, post);
 const slew = mountMainSlew($, post, project.modulation.slewParameters);
 const sampleHold = mountMainSampleHold($, post, project.modulation.sampleHoldParameters);
+const compare = mountMainCompare($, post, project.modulation.compareParameters);
 const selectedSegment = id => Number($(id).querySelector('[aria-pressed="true"]').dataset.value);
 function wireSegments(id, change) {
   const group = $(id);
@@ -177,7 +179,7 @@ function restoreSource(state) {
 function rackSnapshot() {
   return { source: sourceSnapshot(), adsr: adsr.snapshot(), filter: filter.snapshot(),
     fx1: fx1.snapshot(), fx2: fx2.snapshot(), eq: eq.snapshot(), lfos: lfo.snapshot(),
-    atv: atv.snapshot(), slew: slew.snapshot(), sampleHold: sampleHold.snapshot() };
+    atv: atv.snapshot(), slew: slew.snapshot(), sampleHold: sampleHold.snapshot(), compare: compare.snapshot() };
 }
 function restoreRack(state) {
   restoreSource(state.source);
@@ -188,6 +190,9 @@ function restoreRack(state) {
   slew.restore(state.slew ?? { riseMs: 0, fallMs: 0, shape: 1, source: 0 });
   sampleHold.restore(state.sampleHold ?? {
     mode: 0, source: 0, triggerSource: 0, manualGate: false, held: 0, triggerHigh: false,
+  });
+  compare.restore(state.compare ?? {
+    direction: 0, threshold: 0, hysteresis: .05, source: 0, gate: false, pulseRemaining: 0,
   });
 }
 drawSourceGraph();
@@ -264,7 +269,7 @@ for (const tab of document.querySelectorAll('[data-main-tab]')) {
       button.classList.toggle('active', selected);
       button.setAttribute('aria-selected', String(selected));
     }
-    requestAnimationFrame(() => { sizeInstrument(); if (synth) { paintSampleSliders(); adsr.paint(); filter.paint(); fx1.paint(); fx2.paint(); eq.paint(); lfo.paint(); atv.paint(); slew.paint(); sampleHold.paint(); } });
+    requestAnimationFrame(() => { sizeInstrument(); if (synth) { paintSampleSliders(); adsr.paint(); filter.paint(); fx1.paint(); fx2.paint(); eq.paint(); lfo.paint(); atv.paint(); slew.paint(); sampleHold.paint(); compare.paint(); } });
   });
 }
 if (location.hash === '#slew') {
@@ -274,6 +279,10 @@ if (location.hash === '#slew') {
 if (location.hash === '#sample-hold') {
   document.querySelector('[data-main-tab="midisynth"]').click();
   requestAnimationFrame(() => { $('rack-scroll').scrollTop = 712; sampleHold.paint(); });
+}
+if (location.hash === '#compare') {
+  document.querySelector('[data-main-tab="midisynth"]').click();
+  requestAnimationFrame(() => { $('rack-scroll').scrollTop = 944; compare.paint(); });
 }
 
 const noteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B', 'C'];
@@ -435,6 +444,7 @@ function render(data) {
   if (data.atv) atv.setStatus(data.atv);
   if (data.slew) slew.setStatus(data.slew);
   if (data.sampleHold) sampleHold.setStatus(data.sampleHold);
+  if (data.compare) compare.setStatus(data.compare);
   latestSamplePeaks = data.samplePeaks ?? [];
   eq.setResponse(data.eqResponse);
   drawSourceGraph();
@@ -522,6 +532,7 @@ function handleTransfer(data) {
     job.state = data.state;
     job.state.rack = job.rack;
     Object.assign(job.state.rack.sampleHold, data.sampleHold);
+    Object.assign(job.state.rack.compare, data.compare);
     job.audio = data.state.layers.map(layer => new Float32Array(layer.frames * 2));
     job.sampleAudio = new Float32Array(data.state.sample.frames * 2);
     nextSaveChunk();
@@ -558,7 +569,7 @@ $('save-session').onclick = () => {
   if (transferJob || sampleJob || freeSource !== null) return;
   const id = nextRequest++;
   let rack;
-  try { rack = validateMainRackState(rackSnapshot(), true, project.modulation, true, true, true, true); }
+  try { rack = validateMainRackState(rackSnapshot(), true, project.modulation, true, true, true, true, true); }
   catch (error) { status(error.message); return; }
   transferJob = { kind: 'save', id, state: null, audio: null, layer: 0, offset: 0,
     sampleOffset: 0, sampleAudio: null, rack };
@@ -572,7 +583,7 @@ $('open-session').onchange = async () => {
   if (!file) return;
   try {
     const state = JSON.parse(await file.text());
-    if (state.format !== project.format || ![1, 2, 3, 4, 5, 6, project.sessionVersion].includes(state.version) || state.id !== project.id
+    if (state.format !== project.format || ![1, 2, 3, 4, 5, 6, 7, project.sessionVersion].includes(state.version) || state.id !== project.id
       || state.sampleRate !== context.sampleRate || !Array.isArray(state.layers) || state.layers.length !== project.layers
       || !Number.isFinite(state.tempo) || !Number.isFinite(state.targetBpm)
       || !Number.isInteger(state.activeLayer) || state.activeLayer < 0 || state.activeLayer >= project.layers
@@ -589,7 +600,7 @@ $('open-session').onchange = async () => {
     });
     let sampleAudio = null;
     if (state.version >= 2) {
-      validateMainRackState(state.rack, state.version >= 3, project.modulation, state.version >= 4, state.version >= 5, state.version >= 6, state.version >= 7);
+      validateMainRackState(state.rack, state.version >= 3, project.modulation, state.version >= 4, state.version >= 5, state.version >= 6, state.version >= 7, state.version >= 8);
       if (!state.sample || !Number.isInteger(state.sample.frames)
         || state.sample.frames < 0 || state.sample.frames > Math.min(1_440_000, context.sampleRate * project.captureSeconds)
         || (state.sample.frames === 0 && state.sample.pcmF32Base64 !== '')) {
@@ -668,6 +679,7 @@ async function start() {
     atv.sendState();
     slew.sendState();
     sampleHold.sendState();
+    compare.sendState();
     if (sourceKind === 'microphone') {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
       sourceNode = context.createMediaStreamSource(stream);

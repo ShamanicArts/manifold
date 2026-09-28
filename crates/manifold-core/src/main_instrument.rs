@@ -5,6 +5,7 @@ use crate::cv_utilities::{AttenuverterBias, SampleHold};
 use crate::effect_slot::{self, EffectSlot};
 use crate::eq8::{self, Eq8};
 use crate::events::EventKind;
+use crate::main_compare::MainCompare;
 use crate::main_control_slew::MainControlSlew;
 use crate::main_lfo::{LfoOutputs, MainLfo};
 use crate::main_looper::LAYERS;
@@ -35,6 +36,9 @@ pub struct MainInstrument {
     sample_hold_manual_gate: bool,
     sample_hold_input: f32,
     sample_hold_trigger: f32,
+    compare: MainCompare,
+    compare_source: MainControlSource,
+    compare_input: f32,
     filter_cutoff_base: f32,
     filter_resonance_base: f32,
     filter_cutoff_effective: f32,
@@ -65,12 +69,14 @@ pub struct MainInstrument {
     monitor_right: Vec<f32>,
 }
 
-/// The prepared chain is acyclic: LFO -> ATV -> Slew -> Sample Hold.
+/// The prepared chain is acyclic: LFO -> ATV -> Slew -> Sample Hold -> Compare.
 #[derive(Clone, Copy)]
 enum MainControlSource {
     Lfo { slot: usize, port: u32 },
     Atv,
     Slew,
+    SampleHold,
+    SampleHoldInv,
 }
 
 impl MainControlSource {
@@ -82,11 +88,13 @@ impl MainControlSource {
             }),
             16 => Some(Self::Atv),
             17 => Some(Self::Slew),
+            18 => Some(Self::SampleHold),
+            19 => Some(Self::SampleHoldInv),
             _ => None,
         }
     }
 
-    fn sample(self, outputs: &[LfoOutputs; MAIN_LFO_SLOTS], atv: f32, slew: f32) -> f32 {
+    fn sample(self, outputs: &[LfoOutputs; MAIN_LFO_SLOTS], atv: f32, slew: f32, hold: f32) -> f32 {
         match self {
             Self::Lfo { slot, port } => {
                 let source = outputs[slot];
@@ -99,6 +107,8 @@ impl MainControlSource {
             }
             Self::Atv => atv,
             Self::Slew => slew,
+            Self::SampleHold => hold,
+            Self::SampleHoldInv => -hold,
         }
     }
 }
@@ -134,7 +144,7 @@ impl MainModulationRoute {
             return false;
         }
         match id {
-            0 if (0.0..=7.0).contains(&value) && value.fract() == 0.0 => self.source = value as u32,
+            0 if (0.0..=9.0).contains(&value) && value.fract() == 0.0 => self.source = value as u32,
             1 if [0.0, 22.0, 23.0, 129.0, 137.0].contains(&value) => self.target = value as u32,
             2 if (-1.0..=1.0).contains(&value) => self.amount = value,
             3 if (-1.0..=1.0).contains(&value) => self.bias = value,
@@ -152,6 +162,8 @@ impl MainModulationRoute {
         atv_output: f32,
         slew_output: f32,
         sample_hold_output: f32,
+        compare_gate: f32,
+        compare_trigger: f32,
     ) -> f32 {
         if !self.enabled || self.target == 0 {
             return base;
@@ -164,7 +176,9 @@ impl MainModulationRoute {
             4 => ((atv_output + 1.0) * 0.5, 0.5),
             5 => ((slew_output + 1.0) * 0.5, 0.5),
             6 => ((sample_hold_output + 1.0) * 0.5, 0.5),
-            _ => ((1.0 - sample_hold_output) * 0.5, 0.5),
+            7 => ((1.0 - sample_hold_output) * 0.5, 0.5),
+            8 => (compare_gate, 0.0),
+            _ => (compare_trigger, 0.0),
         };
         let (min, max): (f32, f32) = match self.target {
             22 => (80.0, 16_000.0),
@@ -207,6 +221,9 @@ impl MainInstrument {
             sample_hold_manual_gate: false,
             sample_hold_input: 0.0,
             sample_hold_trigger: 0.0,
+            compare: MainCompare::new(),
+            compare_source: MainControlSource::Lfo { slot: 0, port: 0 },
+            compare_input: 0.0,
             filter_cutoff_base: 3200.0,
             filter_resonance_base: 0.75,
             filter_cutoff_effective: 3200.0,
@@ -436,6 +453,31 @@ impl MainInstrument {
         }
     }
 
+    pub fn set_compare_parameter(&mut self, id: u32, value: f32) -> bool {
+        if id == 3 {
+            if !value.is_finite() || value.fract() != 0.0 || !(0.0..=19.0).contains(&value) {
+                return false;
+            }
+            let Some(source) = MainControlSource::from_id(value as u32) else {
+                return false;
+            };
+            self.compare_source = source;
+            true
+        } else {
+            self.compare.set_parameter(id, value)
+        }
+    }
+
+    pub fn compare_status(&self, id: u32) -> f32 {
+        match id {
+            0 => self.compare_input,
+            1 => self.compare.gate(),
+            2 => self.compare.trigger(),
+            3 => self.compare.pulse_remaining() as f32,
+            _ => 0.0,
+        }
+    }
+
     pub fn lfo_slot_status(&self, slot: usize, id: u32) -> f32 {
         if !self.lfo_active.get(slot).copied().unwrap_or(false) {
             return 0.0;
@@ -558,15 +600,15 @@ impl MainInstrument {
             slot: self.atv_source_slot,
             port: self.atv_source_port,
         }
-        .sample(&outputs, 0.0, 0.0);
+        .sample(&outputs, 0.0, 0.0, 0.0);
         self.atv_output = self.atv.process_sample(self.atv_input);
-        let slew_input = self.slew_source.sample(&outputs, self.atv_output, 0.0);
+        let slew_input = self.slew_source.sample(&outputs, self.atv_output, 0.0, 0.0);
         let slew_output = self
             .slew
             .process(slew_input, frames as f32 / self.sample_rate);
         self.sample_hold_input =
             self.sample_hold_source
-                .sample(&outputs, self.atv_output, slew_output);
+                .sample(&outputs, self.atv_output, slew_output, 0.0);
         self.sample_hold_trigger = if self.sample_hold_trigger_source == 4 {
             if self.sample_hold_manual_gate {
                 1.0
@@ -579,6 +621,10 @@ impl MainInstrument {
         let sample_hold_output = self
             .sample_hold
             .process_sample(self.sample_hold_input, self.sample_hold_trigger);
+        self.compare_input =
+            self.compare_source
+                .sample(&outputs, self.atv_output, slew_output, sample_hold_output);
+        let (compare_gate, compare_trigger) = self.compare.process(self.compare_input);
         // Stable slot order defines composition: Add applies to the current
         // value; a later Replace supersedes earlier routes to that target.
         for slot in 0..MAIN_LFO_SLOTS {
@@ -594,6 +640,8 @@ impl MainInstrument {
                         self.atv_output,
                         slew_output,
                         sample_hold_output,
+                        compare_gate,
+                        compare_trigger,
                     )
                 }
                 23 => {
@@ -603,6 +651,8 @@ impl MainInstrument {
                         self.atv_output,
                         slew_output,
                         sample_hold_output,
+                        compare_gate,
+                        compare_trigger,
                     )
                 }
                 129 => {
@@ -612,6 +662,8 @@ impl MainInstrument {
                         self.atv_output,
                         slew_output,
                         sample_hold_output,
+                        compare_gate,
+                        compare_trigger,
                     )
                 }
                 137 => {
@@ -621,6 +673,8 @@ impl MainInstrument {
                         self.atv_output,
                         slew_output,
                         sample_hold_output,
+                        compare_gate,
+                        compare_trigger,
                     )
                 }
                 _ => {}
@@ -1205,5 +1259,48 @@ mod tests {
         assert_eq!(main.sample_hold_status(4), 1.0);
         assert!(!main.set_sample_hold_parameter(1, 18.0));
         assert!(!main.set_sample_hold_parameter(2, 5.0));
+    }
+
+    #[test]
+    fn main_compare_routes_hysteretic_gate_and_both_edge_trigger() {
+        let mut main = MainInstrument::new(8_000.0, 128);
+        assert!(main.set_atv_parameter(0, 0.0));
+        assert!(main.set_atv_parameter(1, -0.2));
+        assert!(main.set_compare_parameter(3, 16.0)); // ATV OUT
+        assert!(main.set_modulation_route(0, 8.0)); // Compare GATE
+        assert!(main.set_modulation_route(1, 129.0)); // FX1 mix
+        assert!(main.set_modulation_route(2, 1.0));
+        assert!(main.set_modulation_route(4, 1.0)); // Replace
+        assert!(main.set_modulation_route(5, 1.0));
+        let silence = [0.0; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        let mut tick = |main: &mut MainInstrument| {
+            main.process([&silence, &silence], [&mut left, &mut right]);
+        };
+        tick(&mut main);
+        assert_eq!(main.compare_status(1), 0.0);
+        assert_eq!(main.lfo_status(7), 0.0);
+        assert!(main.set_atv_parameter(1, 0.2));
+        tick(&mut main);
+        assert_eq!(main.compare_status(1), 1.0);
+        assert_eq!(main.compare_status(2), 1.0);
+        assert_eq!(main.lfo_status(7), 1.0);
+        assert!(main.set_compare_parameter(0, 2.0)); // Both edges
+        assert!(main.set_modulation_route(0, 9.0)); // Compare TRIG
+        assert!(main.set_atv_parameter(1, -0.2));
+        tick(&mut main);
+        assert_eq!(main.compare_status(1), 0.0);
+        assert_eq!(main.compare_status(2), 1.0);
+        assert_eq!(main.lfo_status(7), 1.0);
+        tick(&mut main);
+        assert_eq!(main.compare_status(2), 1.0);
+        tick(&mut main);
+        assert_eq!(main.compare_status(2), 0.0);
+        assert_eq!(main.lfo_status(7), 0.0);
+        assert!(main.set_compare_parameter(4, 1.0));
+        assert!(main.set_compare_parameter(5, 2.0));
+        assert_eq!(main.compare_status(3), 2.0);
+        assert!(!main.set_compare_parameter(3, 20.0));
     }
 }

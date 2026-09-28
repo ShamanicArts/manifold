@@ -350,6 +350,42 @@ block(0);
 assert.equal(e.manifold_looper_sample_hold_status(2), .25);
 assert.equal(e.manifold_looper_sample_hold_parameter(hold.source, 18), 0);
 console.log(`Main Sample Hold route: FX1 mix 0.875 → 0.300, sounding energy ${heldHighEnergy.toFixed(2)} → ${heldLowEnergy.toFixed(2)}.`);
+const compare = contract.modulation.compareParameters;
+assert.equal(e.manifold_looper_atv_parameter(contract.modulation.atvParameters.bias, -.2), 1);
+for (const [id, value] of [[compare.direction, 0], [compare.threshold, 0],
+  [compare.hysteresis, .05], [compare.source, 16], [compare.gate, 0], [compare.pulseRemaining, 0]]) {
+  assert.equal(e.manifold_looper_compare_parameter(id, value), 1);
+}
+assert.equal(e.manifold_looper_modulation_route(contract.modulation.routeParameters.source, 8), 1);
+block(0);
+assert.equal(e.manifold_looper_compare_status(1), 0);
+assert.equal(e.manifold_looper_lfo_status(7), 0);
+const compareDryEnergy = sustainedLevel();
+assert.equal(e.manifold_looper_atv_parameter(contract.modulation.atvParameters.bias, .2), 1);
+block(0);
+assert.equal(e.manifold_looper_compare_status(1), 1);
+assert.equal(e.manifold_looper_compare_status(2), 1);
+assert.equal(e.manifold_looper_lfo_status(7), 1);
+const compareWetEnergy = sustainedLevel();
+assert.ok(compareDryEnergy > compareWetEnergy * 1.2,
+  `Compare GATE → FX1 mix must change sounding audio: ${compareDryEnergy} / ${compareWetEnergy}`);
+assert.equal(e.manifold_looper_compare_parameter(compare.direction, 2), 1);
+assert.equal(e.manifold_looper_modulation_route(contract.modulation.routeParameters.source, 9), 1);
+assert.equal(e.manifold_looper_atv_parameter(contract.modulation.atvParameters.bias, -.2), 1);
+block(0);
+assert.equal(e.manifold_looper_compare_status(1), 0);
+assert.equal(e.manifold_looper_compare_status(2), 1);
+assert.equal(e.manifold_looper_lfo_status(7), 1);
+block(0);
+assert.equal(e.manifold_looper_compare_status(2), 1);
+block(0);
+assert.equal(e.manifold_looper_compare_status(2), 0);
+assert.equal(e.manifold_looper_lfo_status(7), 0);
+assert.equal(e.manifold_looper_compare_parameter(compare.gate, 1), 1);
+assert.equal(e.manifold_looper_compare_parameter(compare.pulseRemaining, 2), 1);
+assert.equal(e.manifold_looper_compare_status(3), 2);
+assert.equal(e.manifold_looper_compare_parameter(compare.source, 20), 0);
+console.log(`Main Compare route: GATE 0 → 1, sounding energy ${compareDryEnergy.toFixed(2)} → ${compareWetEnergy.toFixed(2)}; both-edge TRIG persists two ticks.`);
 const { instance: transientInstance } = await WebAssembly.instantiate(wasm, {});
 const transient = transientInstance.exports;
 assert.equal(transient.manifold_looper_prepare(8_000, 128), 1);
@@ -364,4 +400,4 @@ const transientBins = captureStripBins(contract.segments, 4, 16_000, 240_000, 81
 const transientPeaks = transientBins.map(bin => bin ? transient.manifold_looper_peak(0, 1, ...bin) : 0);
 assert.ok(transientPeaks[63] > .89 && transientPeaks[62] === 0,
   `one-frame transient should remain in the older 1-bar strip's right-side bin: ${transientPeaks}`);
-console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias, Slew and Sample Hold routing passed');
+console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias, Slew, Sample Hold and Compare routing passed');

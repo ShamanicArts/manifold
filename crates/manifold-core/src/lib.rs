@@ -21,6 +21,7 @@ pub mod legacy_filter;
 pub mod lfo;
 pub mod limiter;
 pub mod loop_capture;
+pub mod main_compare;
 pub mod main_control_slew;
 pub mod main_directional;
 pub mod main_instrument;

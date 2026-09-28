@@ -79,7 +79,7 @@
           <section class="rack-route" aria-label="Main modulation connection">
             <div class="rack-shell-head route-head">PATCH / SCALAR CONTROL</div>
             <div class="route-content"><h2>LFO → target</h2><p>A typed control route. Audio stays in the Rust engine; these controls set the route.</p>
-              <label>Output<select id="mod-source"><option value="0">OUT · bipolar</option><option value="1">INV · bipolar</option><option value="2">UNI · unipolar</option><option value="3">EOC · trigger</option><option value="4">ATV / Bias OUT</option><option value="5">Slew OUT</option><option value="6">Sample Hold OUT</option><option value="7">Sample Hold INV</option></select></label>
+              <label>Output<select id="mod-source"><option value="0">OUT · bipolar</option><option value="1">INV · bipolar</option><option value="2">UNI · unipolar</option><option value="3">EOC · trigger</option><option value="4">ATV / Bias OUT</option><option value="5">Slew OUT</option><option value="6">Sample Hold OUT</option><option value="7">Sample Hold INV</option><option value="8">Compare GATE</option><option value="9">Compare TRIG</option></select></label>
               <label>Target<select id="mod-target"><option value="0">Disconnected</option><option value="22">Filter cutoff</option><option value="23">Filter resonance</option><option value="129">FX1 mix</option><option value="137">FX2 mix</option></select></label>
               <label>Apply<select id="mod-mode"><option value="0">Add to base</option><option value="1">Replace base</option></select></label>
               <div id="mod-amount" class="route-slider"></div><div id="mod-bias" class="route-slider"></div>
@@ -126,6 +126,19 @@
             <label>TRIG source<select id="sample-hold-trigger-source" aria-label="Sample Hold trigger source"></select></label>
             <label class="sample-hold-gate"><input id="sample-hold-manual-gate" type="checkbox"> Manual gate</label>
             <output id="sample-hold-trigger-meter">Trigger low</output>
+          </section>
+          <section id="compare" class="rack-compare" aria-label="Main Compare module">
+            <div class="compare-title">COMPARE</div><div id="compare-status" class="compare-status">Rising  •  Th 0.00  •  Hy 0.05</div>
+            <canvas id="compare-preview" width="424" height="108" aria-label="Compare input threshold gate and trigger"></canvas>
+            <div id="compare-direction" aria-label="Compare direction"></div>
+            <div id="compare-threshold"></div><div id="compare-hysteresis"></div>
+            <div id="compare-values" class="compare-values">In 0.00  •  Gate 0  •  Trig 0</div>
+          </section>
+          <section class="rack-compare-patch" aria-label="Compare input connection">
+            <strong>CONTROL IN → GATE / TRIG</strong>
+            <p>Choose a control input. Compare GATE and TRIG can drive the existing Filter or FX routes.</p>
+            <label>IN source<select id="compare-source" aria-label="Compare input source"></select></label>
+            <output id="compare-meter">Gate low  •  Trigger low</output>
           </section>
           <button id="add-lfo" type="button">+ LFO</button>
           </div></div>
