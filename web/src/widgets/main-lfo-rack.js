@@ -2,7 +2,7 @@ import { mountMainLfo, DEFAULT_LFO_STATE } from './main-lfo.js';
 
 // Fixed engine slots give each live module a stable identity. The DOM can be
 // inserted or removed while the prepared Rust LFOs and routes remain bounded.
-export function mountMainLfoRack(get, post, contract) {
+export function mountMainLfoRack(get, post, contract, onRouteState = () => {}) {
   const content = get('rack-scroll').querySelector('.rack-scroll-content');
   const lfoTemplate = content.querySelector('.rack-lfo').cloneNode(true);
   const routeTemplate = content.querySelector('.rack-route').cloneNode(true);
@@ -24,6 +24,9 @@ export function mountMainLfoRack(get, post, contract) {
     if (slot <= 0 || slot >= slots.length || slots[slot]) return false;
     const module = lfoTemplate.cloneNode(true);
     const route = routeTemplate.cloneNode(true);
+    module.classList.remove('rack-lfo-primary');
+    module.classList.add('rack-utility');
+    module.querySelector('.main-patch-face')?.remove();
     markCloneIds(module, slot);
     markCloneIds(route, slot);
     module.style.top = `${465 + slot * 232}px`;
@@ -31,6 +34,9 @@ export function mountMainLfoRack(get, post, contract) {
     module.setAttribute('aria-label', `Main LFO ${slot + 1} module`);
     route.setAttribute('aria-label', `Main LFO ${slot + 1} modulation connection`);
     module.querySelector('.lfo-title').textContent = `LFO ${slot + 1}`;
+    const header = module.querySelector('.rack-shell-head');
+    header.textContent = `LFO ${slot + 1}`;
+    header.removeAttribute('title');
     route.querySelector('h2').textContent = `LFO ${slot + 1} → target`;
     const remove = document.createElement('button');
     remove.type = 'button'; remove.className = 'lfo-remove'; remove.textContent = '×';
@@ -38,7 +44,7 @@ export function mountMainLfoRack(get, post, contract) {
     remove.addEventListener('click', () => removeSlot(slot));
     module.append(remove);
     content.append(module, route);
-    const widget = mountMainLfo(scopedGet(slot), post, contract, slot);
+    const widget = mountMainLfo(scopedGet(slot), post, contract, slot, onRouteState);
     slots[slot] = { module, route, widget };
     post({ type: 'lfo-slot-active', slot, active: 1 });
     widget.sendState();
@@ -57,11 +63,12 @@ export function mountMainLfoRack(get, post, contract) {
     return true;
   }
 
-  slots[0] = { widget: mountMainLfo(scopedGet(0), post, contract, 0) };
+  slots[0] = { widget: mountMainLfo(scopedGet(0), post, contract, 0, onRouteState) };
   get('add-lfo').addEventListener('click', () => add());
   return {
     add,
     remove: removeSlot,
+    applyCableRoute(connected) { slots[0].widget.applyCableRoute(connected); },
     paint() { slots.forEach(entry => entry?.widget.paint()); },
     snapshot() { return slots.flatMap((entry, slot) => entry ? [{ slot, ...entry.widget.snapshot() }] : []); },
     restore(saved) {

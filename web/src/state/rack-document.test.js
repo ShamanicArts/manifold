@@ -2,13 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import catalog from '../../../projects/main-looper/rack.json' with { type: 'json' };
 import { initialRackDocument, validateRackDocument, setRackViewMode, placeRackModule,
-  moveRackModule, resizeRackModule, resizeRackModuleWithFlow, addRackModule, removeRackModule,
+  moveRackModule, resizeRackModule, resizeRackModuleWithFlow, removeRackModule,
   connectRackPorts, replaceRackInput,
   disconnectRackInput } from './rack-document.js';
 
 test('legacy Main default chain is a validated typed rack document', () => {
   const rack = initialRackDocument(catalog);
-  assert.equal(rack.modules.length, 6);
+  assert.equal(rack.modules.length, 7);
+  assert.equal(rack.modules.find(module => module.id === 'lfo1').row, 2);
   assert.deepEqual(rack.connections.map(({ id }) => id), [
     'midi_in_to_adsr', 'adsr_to_oscillator', 'oscillator_to_filter', 'filter_to_fx1',
     'fx1_to_fx2', 'fx2_to_eq', 'eq_to_output',
@@ -30,7 +31,7 @@ test('legacy Main default chain is a validated typed rack document', () => {
 
 test('module edits retain identity and reject collisions', () => {
   const rack = initialRackDocument(catalog);
-  const moved = placeRackModule(rack, 'eq', 2, 0, catalog);
+  const moved = placeRackModule(rack, 'eq', 2, 1, catalog);
   assert.equal(moved.modules.find(({ id }) => id === 'eq').row, 2);
   assert.equal(rack.modules.find(({ id }) => id === 'eq').row, 1);
   assert.throws(() => placeRackModule(rack, 'eq', 0, 1, catalog), /overlapping/);
@@ -40,7 +41,7 @@ test('module edits retain identity and reject collisions', () => {
 
 test('occupied drops insert into legacy row flow; free drops keep sparse slots', () => {
   const rack = initialRackDocument(catalog);
-  const positions = document => Object.fromEntries(document.modules.map(({ id, row, col }) =>
+  const positions = document => Object.fromEntries(document.modules.filter(module => module.id !== 'lfo1').map(({ id, row, col }) =>
     [id, `${row},${col}`]));
   assert.deepEqual(positions(moveRackModule(rack, 'fx1', 0, 1, catalog, 400)), {
     adsr: '0,0', oscillator: '0,3', filter: '1,0', fx1: '0,1', fx2: '1,2', eq: '1,4',
@@ -48,14 +49,14 @@ test('occupied drops insert into legacy row flow; free drops keep sparse slots',
   assert.deepEqual(positions(moveRackModule(rack, 'oscillator', 0, 3, catalog, 1050)), {
     adsr: '0,0', oscillator: '0,3', filter: '0,1', fx1: '1,0', fx2: '1,2', eq: '1,4',
   });
-  assert.deepEqual(positions(moveRackModule(rack, 'eq', 2, 0, catalog)), {
-    adsr: '0,0', oscillator: '0,1', filter: '0,3', fx1: '1,0', fx2: '1,2', eq: '2,0',
+  assert.deepEqual(positions(moveRackModule(rack, 'eq', 2, 1, catalog)), {
+    adsr: '0,0', oscillator: '0,1', filter: '0,3', fx1: '1,0', fx2: '1,2', eq: '2,1',
   });
 });
 
 test('dropping an earlier shell on the next shell midpoint visibly reflows the row', () => {
   const rack = initialRackDocument(catalog);
-  const positions = document => Object.fromEntries(document.modules.map(({ id, row, col }) =>
+  const positions = document => Object.fromEntries(document.modules.filter(module => module.id !== 'lfo1').map(({ id, row, col }) =>
     [id, `${row},${col}`]));
   assert.deepEqual(positions(moveRackModule(rack, 'adsr', 0, 1, catalog, 472)), {
     adsr: '0,2', oscillator: '0,0', filter: '0,3',
@@ -85,7 +86,7 @@ test('Filter width toggles through an occupied cell and preserves module identit
 
 test('typed CV connection can be added and unpatched without altering audio chain', () => {
   const rack = initialRackDocument(catalog);
-  const withLfo = addRackModule(rack, { id: 'lfo1', nodeId: 11, type: 'lfo', row: 2, col: 0, w: 1, h: 1 }, catalog);
+  const withLfo = rack;
   const connected = connectRackPorts(withLfo,
     { moduleId: 'lfo1', portId: 'out' }, { moduleId: 'filter', portId: 'cutoff' }, catalog);
   assert.equal(connected.connections.length, rack.connections.length + 1);

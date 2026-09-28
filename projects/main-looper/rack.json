@@ -23,7 +23,8 @@
       { "id": "filter", "nodeId": 6, "type": "filter", "row": 0, "col": 3, "w": 2, "h": 1 },
       { "id": "fx1", "nodeId": 7, "type": "fx1", "row": 1, "col": 0, "w": 2, "h": 1 },
       { "id": "fx2", "nodeId": 8, "type": "fx2", "row": 1, "col": 2, "w": 2, "h": 1 },
-      { "id": "eq", "nodeId": 9, "type": "eq", "row": 1, "col": 4, "w": 1, "h": 1 }
+      { "id": "eq", "nodeId": 9, "type": "eq", "row": 1, "col": 4, "w": 1, "h": 1 },
+      { "id": "lfo1", "nodeId": 11, "type": "lfo", "row": 2, "col": 0, "w": 1, "h": 1 }
     ],
     "connections": [
       { "id": "midi_in_to_adsr", "from": { "moduleId": "__midiInput", "portId": "voice" }, "to": { "moduleId": "adsr", "portId": "midi" } },

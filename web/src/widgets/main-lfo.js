@@ -6,7 +6,7 @@ export const DEFAULT_LFO_STATE = Object.freeze({
   route: { source: 0, target: 0, amount: .05, bias: 0, mode: 0, enabled: false },
 });
 
-export function mountMainLfo(get, post, contract, slot = 0) {
+export function mountMainLfo(get, post, contract, slot = 0, onRouteState = () => {}) {
   const ids = contract.lfoParameters, routeIds = contract.routeParameters;
   const state = { ...DEFAULT_LFO_STATE, route: { ...DEFAULT_LFO_STATE.route } };
   const canvas = get('lfo-preview'), ctx = canvas.getContext('2d');
@@ -46,6 +46,7 @@ export function mountMainLfo(get, post, contract, slot = 0) {
 
   const lfoParam = (id, value) => post({ type: 'lfo-parameter', slot, id, value });
   const routeParam = (id, value) => post({ type: 'modulation-route', slot, id, value });
+  const routeChanged = () => onRouteState({ slot, ...state.route });
   function paint() {
     const w = 212, h = 54;
     ctx.setTransform(2, 0, 0, 2, 0, 0);
@@ -89,11 +90,13 @@ export function mountMainLfo(get, post, contract, slot = 0) {
         get('mod-enabled').checked = state.route.enabled;
         routeParam(routeIds.enabled, Number(state.route.enabled));
       }
+      if (key === 'source' || key === 'target') routeChanged();
     });
   }
   get('mod-enabled').addEventListener('change', event => {
     state.route.enabled = event.target.checked;
     routeParam(routeIds.enabled, Number(state.route.enabled));
+    routeChanged();
   });
   get('lfo-reset').addEventListener('click', () => {
     post({ type: 'lfo-gate', slot, id: 0, high: 1 });
@@ -102,6 +105,15 @@ export function mountMainLfo(get, post, contract, slot = 0) {
   get('lfo-sync').addEventListener('change', event => post({ type: 'lfo-gate', slot, id: 1, high: Number(event.target.checked) }));
   paint();
   return {
+    applyCableRoute(connected) {
+      state.route.source = 0;
+      state.route.target = connected ? 22 : 0;
+      state.route.enabled = connected;
+      get('mod-source').value = '0';
+      get('mod-target').value = String(state.route.target);
+      get('mod-enabled').checked = connected;
+      paintRouteHeading();
+    },
     paint() { paint(); Object.values(sliders).forEach(slider => slider.paint()); },
     snapshot() { return { shape: state.shape, rate: state.rate, depth: state.depth,
       phase: state.phase, retrig: state.retrig, route: { ...state.route } }; },

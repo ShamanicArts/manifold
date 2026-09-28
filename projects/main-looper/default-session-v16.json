@@ -614,6 +614,15 @@
         "col": 4,
         "w": 1,
         "h": 1
+      },
+      {
+        "id": "lfo1",
+        "nodeId": 11,
+        "type": "lfo",
+        "row": 2,
+        "col": 0,
+        "w": 1,
+        "h": 1
       }
     ],
     "connections": [

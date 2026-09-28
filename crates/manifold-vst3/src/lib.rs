@@ -569,6 +569,7 @@ mod tests {
             include_bytes!("../../../web/public/main-audio-patch-saved-session.json").as_slice(),
             include_bytes!("../../../web/public/main-rack-layout-saved-session.json").as_slice(),
             include_bytes!("../../../web/public/main-filter-compact-saved-session.json").as_slice(),
+            include_bytes!("../../../web/public/main-lfo-rack-saved-session.json").as_slice(),
         ] {
             let component = main_processor::MainProcessor::new();
             let (incoming, _) = stream(fixture.to_vec());

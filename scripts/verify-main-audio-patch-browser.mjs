@@ -19,7 +19,7 @@ try {
   await page.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html`);
   await page.locator('[data-main-tab="midisynth"]').click();
   await page.locator('#rack-view-switch').click();
-  assert.equal(await page.locator('.main-patch-face:visible').count(), 6);
+  assert.equal(await page.locator('.main-patch-face:visible').count(), 7);
   await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 7);
   assert.equal(await page.locator('.main-rack-wire').count(), 7);
   await page.locator('#audio-button').click();
@@ -67,7 +67,7 @@ try {
   await page.locator('#rack-view-switch').click();
   assert.equal(await page.locator('.main-patch-port[data-module="filter"][data-port="in"]').isDisabled(), true);
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ patchFaces: 6, wires: 7, wasmRouteAccepted: true, unpatchAccepted: true,
+  console.log(JSON.stringify({ patchFaces: 7, wires: 7, wasmRouteAccepted: true, unpatchAccepted: true,
     editedRouteSavesAndReopens: true, defaultRouteSaves: true, pageErrors: errors.length }));
 } finally {
   await browser.close();

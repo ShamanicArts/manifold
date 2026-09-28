@@ -2,7 +2,7 @@
 // contract. This is a strict first slice: unsupported voice/CV edits fail here
 // instead of appearing in the UI while silently leaving audio unchanged.
 import { NODE_TYPES, validateTopology } from '../graph/topology.js';
-import { validateRackDocument } from './rack-document.js';
+import { addRackModule, validateRackDocument } from './rack-document.js';
 
 const AUDIO_TYPES = { source: 'main-voice-bank', filter: 'svf', fx1: 'effect-slot-legacy',
   fx2: 'effect-slot-legacy', eq: 'eq8', lfo: 'lfo' };
@@ -45,7 +45,9 @@ export function compileMainRackAudio(rackDocument, catalog) {
     { id: 1, type: 'input.raw' },
     { id: catalog.endpoints.__rackOutput.nodeId, type: 'output' },
     { id: catalog.endpoints.__midiInput.nodeId, type: 'midi-input' },
-    ...rack.modules.filter(module => module.id !== 'adsr').map(module => {
+    ...rack.modules.filter(module => module.id !== 'adsr'
+      && (module.type !== 'lfo' || cvConnections.some(edge => edge.from.moduleId === module.id)))
+      .map(module => {
       const type = module.type === 'filter' && cvFilters.has(module.id)
         ? 'modulated-svf' : AUDIO_TYPES[module.type];
       return { id: module.nodeId, type, ...(NODE_TYPES[type].args ?? {}) };
@@ -80,8 +82,23 @@ export function compileMainRackAudio(rackDocument, catalog) {
 // MainInstrument already owns the voice bank, its sample assets, and the
 // looper. Its prepared insert graph receives that voice output as raw input.
 export function compileMainRackInsert(rackDocument, catalog) {
-  const full = compileMainRackAudio(rackDocument, catalog);
-  const voiceNodeId = rackDocument.modules.find(module => module.id === 'oscillator').nodeId;
+  // MainInstrument already runs the four LFO slots and their scalar routes.
+  // The rack's LFO shell names that prepared control source; compiling it as
+  // another graph LFO would silently create a second oscillator.
+  const rack = validateRackDocument(rackDocument, catalog);
+  if (rack.connections.some(edge => (edge.from.moduleId === 'lfo1'
+    || edge.to.moduleId === 'lfo1') && (edge.from.moduleId !== 'lfo1'
+    || edge.from.portId !== 'out' || edge.to.moduleId !== 'filter'
+    || edge.to.portId !== 'cutoff'))) {
+    throw new Error('This Main control cable has no prepared route.');
+  }
+  const audioRack = { ...rack,
+    modules: rack.modules.filter(module => module.type !== 'lfo'),
+    connections: rack.connections.filter(edge =>
+      edge.from.moduleId !== 'lfo1' && edge.to.moduleId !== 'lfo1'),
+  };
+  const full = compileMainRackAudio(audioRack, catalog);
+  const voiceNodeId = rack.modules.find(module => module.id === 'oscillator').nodeId;
   const midiNodeId = catalog.endpoints.__midiInput.nodeId;
   return validateTopology({ ...full, inputSource: 'external',
     nodes: full.nodes.filter(node => node.id !== midiNodeId && node.id !== voiceNodeId),
@@ -95,14 +112,18 @@ export function compileMainRackInsert(rackDocument, catalog) {
 // Filter has its original compact width; other module sizes await their faces.
 export function validateMainRackInsertDocument(document, catalog) {
   const rack = validateRackDocument(document, catalog);
-  if (rack.modules.length !== catalog.initial.modules.length ||
+  if (rack.modules.length < catalog.initial.modules.length - 1
+    || rack.modules.length > catalog.initial.modules.length ||
     rack.modules.some(module => {
       const original = catalog.initial.modules.find(item => item.id === module.id);
       return !original || ['nodeId', 'type']
         .some(key => module[key] !== original[key])
         || (module.id === 'filter' ? !((module.w === 1 || module.w === 2) && module.h === 1)
           : module.w !== original.w || module.h !== original.h);
-    })) throw new Error('This Main session uses modules or sizes that the current rack cannot display.');
+    }) || catalog.initial.modules.some(module => module.id !== 'lfo1'
+      && !rack.modules.some(item => item.id === module.id))) {
+    throw new Error('This Main session uses modules or sizes that the current rack cannot display.');
+  }
   const stage = { oscillator: 0, filter: 1, fx1: 2, fx2: 3, eq: 4, __rackOutput: 5 };
   if (rack.connections.some(edge => edge.from.moduleId in stage && edge.to.moduleId in stage
     && stage[edge.from.moduleId] >= stage[edge.to.moduleId])) {
@@ -110,4 +131,30 @@ export function validateMainRackInsertDocument(document, catalog) {
   }
   compileMainRackInsert(rack, catalog);
   return rack;
+}
+
+export function withMainLfoShell(document, catalog) {
+  const rack = validateMainRackInsertDocument(document, catalog);
+  if (rack.modules.some(module => module.id === 'lfo1')) return rack;
+  const shell = catalog.initial.modules.find(module => module.id === 'lfo1');
+  for (let row = shell.row; row < catalog.grid.maxRows; row++) {
+    for (let col = 0; col < catalog.grid.columns; col++) {
+      try {
+        return validateMainRackInsertDocument(addRackModule(rack, { ...shell, row, col }, catalog), catalog);
+      } catch { /* Look for an unoccupied grid cell. */ }
+    }
+  }
+  throw new Error('The saved Main rack has no cell for its LFO shell.');
+}
+
+export function validateMainRackControlRoute(document, rackState) {
+  const cable = document.connections.some(edge => edge.from.moduleId === 'lfo1'
+    && edge.from.portId === 'out' && edge.to.moduleId === 'filter' && edge.to.portId === 'cutoff');
+  if (cable) {
+    const route = rackState?.lfos?.find(lfo => lfo.slot === 0)?.route;
+    if (route?.source !== 0 || route?.target !== 22 || route?.enabled !== true) {
+      throw new Error('The saved LFO cable and Rust modulation route disagree.');
+    }
+  }
+  return document;
 }

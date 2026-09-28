@@ -1,5 +1,5 @@
 //! The saved Main rack is validated and compiled on the host control thread.
-//! This first session contract accepts the six prepared audio modules only.
+//! The six prepared audio shells and the first Main control shell share a grid.
 
 use std::collections::BTreeSet;
 
@@ -46,7 +46,7 @@ fn audio_connections(document: &Value) -> Result<Vec<Value>, MainSessionError> {
     let original = catalog["initial"]["modules"]
         .as_array()
         .ok_or_else(invalid)?;
-    if modules.len() != original.len() {
+    if modules.len() < original.len() - 1 || modules.len() > original.len() {
         return Err(invalid());
     }
     let mut identities = BTreeSet::new();
@@ -91,6 +91,12 @@ fn audio_connections(document: &Value) -> Result<Vec<Value>, MainSessionError> {
             }
         }
     }
+    for module in original {
+        let id = name(&module["id"])?;
+        if id != "lfo1" && !identities.contains(id) {
+            return Err(invalid());
+        }
+    }
     let connections = document["connections"].as_array().ok_or_else(invalid)?;
     if connections.len() > 256 {
         return Err(invalid());
@@ -111,6 +117,9 @@ fn audio_connections(document: &Value) -> Result<Vec<Value>, MainSessionError> {
         if (from, to) == (("__midiInput", "voice"), ("adsr", "midi"))
             || (from, to) == (("adsr", "voice"), ("oscillator", "voice"))
         {
+            continue;
+        }
+        if (from, to) == (("lfo1", "out"), ("filter", "cutoff")) && identities.contains("lfo1") {
             continue;
         }
         let source = match from {
@@ -152,6 +161,34 @@ fn audio_connections(document: &Value) -> Result<Vec<Value>, MainSessionError> {
         }
     }
     Ok(compiled)
+}
+
+pub(crate) fn validate_control_route(
+    document: &Value,
+    rack: &Value,
+) -> Result<(), MainSessionError> {
+    let cable = document["connections"]
+        .as_array()
+        .ok_or_else(invalid)?
+        .iter()
+        .any(|edge| {
+            edge["from"]["moduleId"] == "lfo1"
+                && edge["from"]["portId"] == "out"
+                && edge["to"]["moduleId"] == "filter"
+                && edge["to"]["portId"] == "cutoff"
+        });
+    if !cable {
+        return Ok(());
+    }
+    let lfo = rack["lfos"]
+        .as_array()
+        .and_then(|lfos| lfos.iter().find(|lfo| lfo["slot"] == 0))
+        .ok_or_else(invalid)?;
+    let route = &lfo["route"];
+    if route["source"] != 0 || route["target"] != 22 || route["enabled"] != true {
+        return Err(invalid());
+    }
+    Ok(())
 }
 
 pub fn validate_layout_update(current: &Value, next: &Value) -> Result<(), MainSessionError> {
@@ -325,5 +362,59 @@ mod tests {
         assert_eq!(native["rackDocument"], browser["rackDocument"]);
         assert_eq!(native["rackDocument"]["modules"][2]["w"], 1);
         assert_eq!(native["rack"]["filter"], browser["rack"]["filter"]);
+    }
+
+    #[test]
+    fn browser_lfo_cable_uses_the_existing_main_route_in_native_audio() {
+        let bytes = include_bytes!("../../../web/public/main-lfo-rack-saved-session.json");
+        let browser: Value = serde_json::from_slice(bytes).unwrap();
+        assert_eq!(
+            audio_connections(&browser["rackDocument"]).unwrap().len(),
+            5
+        );
+        validate_control_route(&browser["rackDocument"], &browser["rack"]).unwrap();
+        let exported = crate::main_session_export::save_template(bytes).unwrap();
+        assert_eq!(exported["rackDocument"], browser["rackDocument"]);
+
+        fn energy(state: &Value) -> f32 {
+            let bytes = serde_json::to_vec(state).unwrap();
+            let mut processor =
+                crate::main_session::prepare_main_session(&bytes, 48_000.0, 128).unwrap();
+            let instrument = processor.instrument_control_mut();
+            instrument.synth_event(EventKind::NoteOn {
+                channel: 0,
+                note: 96,
+                velocity: 120,
+            });
+            let dry = [0.0; 128];
+            let mut left = [0.0; 128];
+            let mut right = [0.0; 128];
+            let mut energy = 0.0;
+            for block in 0..120 {
+                instrument.process([&dry, &dry], [&mut left, &mut right]);
+                if block >= 40 {
+                    energy += left.iter().map(|sample| sample.abs()).sum::<f32>();
+                }
+            }
+            energy
+        }
+
+        let mut connected = browser.clone();
+        connected["rack"]["filter"]["cutoff"] = json!(800.0);
+        connected["rack"]["lfos"][0]["shape"] = json!(3);
+        connected["rack"]["lfos"][0]["route"]["amount"] = json!(0.5);
+        let live = energy(&connected);
+        let mut disconnected = connected.clone();
+        disconnected["rack"]["lfos"][0]["route"]["enabled"] = json!(false);
+        disconnected["rackDocument"]["connections"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|edge| edge["from"]["moduleId"] != "lfo1");
+        let plain = energy(&disconnected);
+        assert!(
+            (live - plain).abs() > plain * 0.1,
+            "LFO cable {live}, disconnected {plain}"
+        );
+        assert!(validate_control_route(&connected["rackDocument"], &disconnected["rack"]).is_err());
     }
 }

@@ -3,10 +3,17 @@ import assert from 'node:assert/strict';
 import catalog from '../../../projects/main-looper/rack.json' with { type: 'json' };
 import fixture from '../../../projects/main-looper/default-rack-graph.json' with { type: 'json' };
 import insertFixture from '../../../projects/main-looper/default-rack-insert.json' with { type: 'json' };
-import { initialRackDocument, addRackModule, connectRackPorts, disconnectRackInput,
-  moveRackModule, resizeRackModuleWithFlow, replaceRackInput } from './rack-document.js';
+import defaultSession from '../../../projects/main-looper/default-session-v16.json' with { type: 'json' };
+import { initialRackDocument, connectRackPorts, disconnectRackInput,
+  moveRackModule, removeRackModule, resizeRackModuleWithFlow, replaceRackInput } from './rack-document.js';
 import { compileMainRackAudio, compileMainRackInsert,
-  validateMainRackInsertDocument } from './main-rack-graph.js';
+  validateMainRackControlRoute, validateMainRackInsertDocument,
+  withMainLfoShell } from './main-rack-graph.js';
+
+test('native default session and browser start with the same seven-shell rack', () => {
+  assert.deepEqual(defaultSession.rackDocument, initialRackDocument(catalog));
+  assert.equal(defaultSession.rackDocument.modules.length, 7);
+});
 
 test('Main v16 audio document accepts saved bypass but rejects backward prepared routes', () => {
   const original = initialRackDocument(catalog);
@@ -79,9 +86,8 @@ test('audio rewiring changes the compiled signal and keeps parked module state',
   assert.ok(original.connections.some(edge => edge.from.moduleId === 'eq' && edge.to.moduleId === '__rackOutput'));
 });
 
-test('LFO OUT to Filter Cutoff creates an audible control edge', () => {
-  let rack = addRackModule(initialRackDocument(catalog),
-    { id: 'lfo1', nodeId: 11, type: 'lfo', row: 2, col: 0, w: 1, h: 1 }, catalog);
+test('LFO OUT to Filter Cutoff uses the portable graph CV edge and Main existing slot', () => {
+  let rack = initialRackDocument(catalog);
   rack = connectRackPorts(rack, { moduleId: 'lfo1', portId: 'out' },
     { moduleId: 'filter', portId: 'cutoff' }, catalog);
   const signal = compileMainRackAudio(rack, catalog);
@@ -89,20 +95,36 @@ test('LFO OUT to Filter Cutoff creates an audible control edge', () => {
   assert.ok(signal.nodes.some(node => node.id === 6 && node.type === 'modulated-svf'));
   assert.ok(signal.nodes.some(node => node.id === 11 && node.type === 'lfo'));
   assert.ok(signal.connections.some(edge => edge.from === 11 && edge.to === 6 && edge.inputPort === 1));
-  assert.ok(insert.connections.some(edge => edge.from === 11 && edge.to === 6 && edge.inputPort === 1));
+  assert.ok(!insert.nodes.some(node => node.id === 11));
+  assert.ok(!insert.connections.some(edge => edge.from === 11));
+  assert.ok(insert.nodes.some(node => node.id === 6 && node.type === 'svf'));
   assert.ok(insert.connections.some(edge => edge.from === 1 && edge.to === 6 && edge.inputPort === 0));
   assert.equal(signal.initialParameters.find(parameter => parameter.nodeId === 11 && parameter.id === 1).value, 1);
+  assert.deepEqual(validateMainRackInsertDocument(rack, catalog), rack);
+  assert.equal(validateMainRackControlRoute(rack, { lfos: [{ slot: 0,
+    route: { source: 0, target: 22, enabled: true } }] }), rack);
+  assert.throws(() => validateMainRackControlRoute(rack, { lfos: [{ slot: 0,
+    route: { source: 0, target: 22, enabled: false } }] }), /disagree/);
+});
+
+test('older six-shell Main documents gain LFO 1 without changing their audio cables', () => {
+  const current = initialRackDocument(catalog);
+  const old = removeRackModule(current, 'lfo1', catalog);
+  const migrated = withMainLfoShell(old, catalog);
+  assert.equal(migrated.modules.length, 7);
+  assert.deepEqual(migrated.connections, old.connections);
+  assert.deepEqual(compileMainRackInsert(migrated, catalog), compileMainRackInsert(old, catalog));
 });
 
 test('unsupported voice and control ports fail before publication', () => {
   const original = initialRackDocument(catalog);
   const noVoice = disconnectRackInput(original, { moduleId: 'oscillator', portId: 'voice' }, catalog);
   assert.throws(() => compileMainRackAudio(noVoice, catalog), /voice rewiring/);
-  const withLfo = addRackModule(original,
-    { id: 'lfo1', nodeId: 11, type: 'lfo', row: 2, col: 0, w: 1, h: 1 }, catalog);
+  const withLfo = original;
   const inverse = connectRackPorts(withLfo, { moduleId: 'lfo1', portId: 'inv' },
     { moduleId: 'filter', portId: 'cutoff' }, catalog);
   assert.throws(() => compileMainRackAudio(inverse, catalog), /no DSP mapping/);
+  assert.throws(() => compileMainRackInsert(inverse, catalog), /no prepared route/);
   const resonance = connectRackPorts(withLfo, { moduleId: 'lfo1', portId: 'out' },
     { moduleId: 'filter', portId: 'resonance' }, catalog);
   assert.throws(() => compileMainRackAudio(resonance, catalog), /no DSP mapping/);

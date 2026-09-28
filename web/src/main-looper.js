@@ -2,7 +2,8 @@ import './main-looper.css';
 import project from '../../projects/main-looper/project.json';
 import rackCatalog from '../../projects/main-looper/rack.json';
 import { NODE_TYPES } from './graph/topology.js';
-import { compileMainRackInsert, validateMainRackInsertDocument } from './state/main-rack-graph.js';
+import { compileMainRackInsert, validateMainRackInsertDocument,
+  validateMainRackControlRoute } from './state/main-rack-graph.js';
 import { mountMainAudioPatch } from './widgets/main-audio-patch.js';
 import { encodePcm, decodePcm } from './state/stereo-source.js';
 import { validateMainRackState } from './state/main-rack-state.js';
@@ -65,6 +66,29 @@ const rackPatch = mountMainAudioPatch({
       pendingRackRoutes.set(requestId, { resolve, timer });
       processor.port.postMessage({ type: 'rack-routes', requestId, routes });
     });
+  },
+  onControlRoute: async connected => {
+    if (editorMode) return false;
+    const previous = lfo.snapshot().find(item => item.slot === 0)?.route;
+    if (!previous) return false;
+    const next = { source: 0, target: connected ? 22 : 0, enabled: connected };
+    if (!processor) { lfo.applyCableRoute(connected); return true; }
+    const routes = [
+      { slot: 0, id: project.modulation.routeParameters.source,
+        value: next.source, previous: previous.source },
+      { slot: 0, id: project.modulation.routeParameters.target,
+        value: next.target, previous: previous.target },
+      { slot: 0, id: project.modulation.routeParameters.enabled,
+        value: Number(next.enabled), previous: Number(previous.enabled) },
+    ];
+    const requestId = nextRequest++;
+    const accepted = await new Promise(resolve => {
+      const timer = setTimeout(() => { pendingRackRoutes.delete(requestId); resolve(false); }, 5000);
+      pendingRackRoutes.set(requestId, { resolve, timer });
+      processor.port.postMessage({ type: 'modulation-routes', requestId, routes });
+    });
+    if (accepted) lfo.applyCableRoute(connected);
+    return accepted;
   },
   onLayout: document => {
     if (!editorMode) return Promise.resolve(true);
@@ -180,7 +204,8 @@ const filter = mountMainFilter($, synthParameter, synthIds);
 const eq = mountMainEq($, synthParameter, project.eqParameters);
 const fx1 = mountMainFxSlot($('fx1-module'), synthParameter, project.fxParameters.fx1Base);
 const fx2 = mountMainFxSlot($('fx2-module'), synthParameter, project.fxParameters.fx2Base);
-const lfo = mountMainLfoRack($, post, project.modulation);
+const lfo = mountMainLfoRack($, post, project.modulation,
+  route => { if (!editorMode) rackPatch.reflectControlRoute(route); });
 const atv = mountMainAtvBias($, post);
 const slew = mountMainSlew($, post, project.modulation.slewParameters);
 const sampleHold = mountMainSampleHold($, post, project.modulation.sampleHoldParameters);
@@ -332,6 +357,7 @@ function restoreRack(state) {
   adsr.restore(state.adsr); filter.restore(state.filter);
   fx1.restore(state.fx1); fx2.restore(state.fx2); eq.restore(state.eq);
   lfo.restore(state.lfos ?? state.lfo);
+  if (!editorMode) rackPatch.reflectControlRoute(lfo.snapshot().find(item => item.slot === 0)?.route);
   atv.restore(state.atv ?? { amount: 1, bias: 0, slot: 0, port: 0 });
   slew.restore(state.slew ?? { riseMs: 0, fallMs: 0, shape: 1, source: 0 });
   sampleHold.restore(state.sampleHold ?? {
@@ -418,7 +444,7 @@ function rackUtilityTop(selector, inset = 0) {
 $('patch-jump').onclick = () => {
   const scroll = $('rack-scroll');
   const bottom = scroll.scrollTop > 100;
-  scroll.scrollTo({ top: bottom ? 0 : rackUtilityTop('.rack-lfo', 13), behavior: 'smooth' });
+  scroll.scrollTo({ top: bottom ? 0 : rackUtilityTop('.rack-route', 13), behavior: 'smooth' });
   $('patch-jump').textContent = bottom ? 'ROUTES ↓' : 'RACK ↑';
   $('patch-jump').setAttribute('aria-label', bottom ? 'Scroll to Main modulation route controls' : 'Scroll back to Main rack controls');
   requestAnimationFrame(() => lfo.paint());
@@ -778,7 +804,10 @@ $('save-session').onclick = () => {
   }
   const id = nextRequest++;
   let rack;
-  try { rack = validateMainRackState(rackSnapshot(), true, project.modulation, true, true, true, true, true, true, true, true, true, true, true); }
+  try {
+    rack = validateMainRackState(rackSnapshot(), true, project.modulation, true, true, true, true, true, true, true, true, true, true, true);
+    validateMainRackControlRoute(rackPatch.document(), rack);
+  }
   catch (error) { status(error.message); return; }
   transferJob = { kind: 'save', id, state: null, audio: null, layer: 0, offset: 0,
     sampleOffset: 0, sampleAudio: null, rack, rackDocument: rackPatch.document() };
@@ -838,6 +867,7 @@ $('open-session').onchange = async () => {
     let sampleAudio = null;
     if (state.version >= 16) {
       state.rackDocument = validateMainRackInsertDocument(state.rackDocument, rackCatalog);
+      validateMainRackControlRoute(state.rackDocument, state.rack);
     }
     if (state.version >= 2) {
       validateMainRackState(state.rack, state.version >= 3, project.modulation, state.version >= 4, state.version >= 5, state.version >= 6, state.version >= 7, state.version >= 8, state.version >= 9, state.version >= 10, state.version >= 11, state.version >= 12, state.version >= 13, state.version >= 14, state.version >= 15);
@@ -886,7 +916,7 @@ async function start() {
     });
     processor.port.onmessage = ({ data }) => {
       if (data.type === 'snapshot') render(data);
-      else if (data.type === 'rack-route-applied') {
+      else if (data.type === 'rack-route-applied' || data.type === 'control-route-applied') {
         const pending = pendingRackRoutes.get(data.requestId);
         if (pending) { clearTimeout(pending.timer); pendingRackRoutes.delete(data.requestId); pending.resolve(data.accepted); }
       }

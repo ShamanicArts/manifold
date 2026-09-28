@@ -595,6 +595,10 @@ pub fn prepare_main_session(
         apply_rack(instrument, member(&state, "rack")?, version)?;
     }
     if version >= 16 {
+        crate::main_rack_document::validate_control_route(
+            member(&state, "rackDocument")?,
+            member(&state, "rack")?,
+        )?;
         crate::main_rack_document::prepare_audio_insert(
             instrument,
             member(&state, "rackDocument")?,

@@ -1,18 +1,20 @@
-import { compileMainRackInsert, validateMainRackInsertDocument } from '../state/main-rack-graph.js';
+import { compileMainRackInsert, validateMainRackInsertDocument, withMainLfoShell } from '../state/main-rack-graph.js';
 import { initialRackDocument, moveRackModule, resizeRackModuleWithFlow,
   replaceRackInput, disconnectRackInput,
   setRackViewMode } from '../state/rack-document.js';
 
 const SHELLS = {
   adsr: '.rack-adsr', oscillator: '.rack-source', filter: '.rack-filter',
-  fx1: '.rack-fx1', fx2: '.rack-fx2', eq: '.rack-eq',
+  fx1: '.rack-fx1', fx2: '.rack-fx2', eq: '.rack-eq', lfo1: '.rack-lfo-primary',
 };
 const AUDIO_INPUTS = new Set(['filter:in', 'fx1:in', 'fx2:in', 'eq:in', '__rackOutput:main']);
 const AUDIO_OUTPUTS = new Set(['oscillator:out', 'filter:out', 'fx1:out', 'fx2:out', 'eq:out']);
+const CONTROL_INPUTS = new Set(['filter:cutoff']);
+const CONTROL_OUTPUTS = new Set(['lfo1:out']);
 const NS = 'http://www.w3.org/2000/svg';
 const endpointKey = endpoint => `${endpoint.moduleId}:${endpoint.portId}`;
 
-export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoutes, onLayout,
+export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoutes, onControlRoute, onLayout,
   onError, readOnly = false }) {
   let rack = initialRackDocument(catalog);
   let pending = false;
@@ -30,7 +32,9 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
   function makePort(moduleId, port, direction, host) {
     const endpoint = { moduleId, portId: port.id };
     const active = port.kind === 'audio' && (direction === 'input'
-      ? AUDIO_INPUTS.has(endpointKey(endpoint)) : AUDIO_OUTPUTS.has(endpointKey(endpoint)));
+      ? AUDIO_INPUTS.has(endpointKey(endpoint)) : AUDIO_OUTPUTS.has(endpointKey(endpoint)))
+      || port.kind === 'cv' && (direction === 'input'
+        ? CONTROL_INPUTS.has(endpointKey(endpoint)) : CONTROL_OUTPUTS.has(endpointKey(endpoint)));
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `main-patch-port main-patch-${port.kind} ${active ? '' : 'main-patch-unavailable'}`;
@@ -242,20 +246,23 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
       const from = portButtons.get(`output:${endpointKey(source)}`);
       const bounds = content.getBoundingClientRect();
       const scale = bounds.width / content.offsetWidth;
+      const kind = source.moduleId === 'lfo1' ? 'cv' : 'audio';
       drawWire(anchor(from), { x: (drag.x - bounds.left) / scale,
-        y: (drag.y - bounds.top) / scale }, 'audio', true);
+        y: (drag.y - bounds.top) / scale }, kind, true);
     }
   }
   async function apply(next, to, from) {
     if (pending) return;
     try {
       compileMainRackInsert(next, catalog);
-      const target = to.moduleId === '__rackOutput' ? catalog.endpoints.__rackOutput.nodeId
+      pending = true;
+      const control = to.moduleId === 'filter' && to.portId === 'cutoff';
+      const target = control ? 0 : to.moduleId === '__rackOutput' ? catalog.endpoints.__rackOutput.nodeId
         : next.modules.find(module => module.id === to.moduleId).nodeId;
       const sourceId = !from ? 0 : from.moduleId === 'oscillator' ? 1
         : next.modules.find(module => module.id === from.moduleId).nodeId;
-      pending = true;
-      const accepted = await onRoute({ to: target, port: 0, from: sourceId });
+      const accepted = control ? await onControlRoute(Boolean(from))
+        : await onRoute({ to: target, port: 0, from: sourceId });
       if (!accepted) throw new Error('The Rust rack rejected this cable.');
       rack = next;
       source = null;
@@ -302,13 +309,20 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
   }
   async function restore(document, alreadyApplied = false) {
     if (pending) throw new Error('A cable edit is still pending.');
-    const next = validateMainRackInsertDocument(document ?? initialRackDocument(catalog), catalog);
+    const next = withMainLfoShell(document ?? initialRackDocument(catalog), catalog);
     const routes = audioTargets.map(moduleId => ({ ...routeFor(next, moduleId),
       previous: routeFor(rack, moduleId).from }))
       .filter(route => route.from !== route.previous);
     pending = true;
     try {
+      const controlCable = item => item.connections.some(edge => edge.from.moduleId === 'lfo1'
+        && edge.from.portId === 'out' && edge.to.moduleId === 'filter' && edge.to.portId === 'cutoff');
+      const controlChanged = controlCable(next) !== controlCable(rack);
+      if (!alreadyApplied && controlChanged && !await onControlRoute(controlCable(next))) {
+        throw new Error('The Rust rack rejected the saved control cable.');
+      }
       if (!alreadyApplied && routes.length && !await onRoutes(routes)) {
+        if (controlChanged) await onControlRoute(controlCable(rack));
         throw new Error('The Rust rack rejected the saved cables.');
       }
       rack = next;
@@ -325,6 +339,19 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
   return {
     document: () => rack,
     restore,
+    reflectControlRoute(route) {
+      if (pending) return;
+      const from = { moduleId: 'lfo1', portId: 'out' };
+      const to = { moduleId: 'filter', portId: 'cutoff' };
+      const connected = route?.source === 0 && route?.target === 22 && route?.enabled === true;
+      const hasCable = rack.connections.some(edge => endpointKey(edge.from) === endpointKey(from)
+        && endpointKey(edge.to) === endpointKey(to));
+      if (connected === hasCable || !rack.modules.some(module => module.id === 'lfo1')) return;
+      rack = validateMainRackInsertDocument(connected
+        ? replaceRackInput(rack, from, to, catalog)
+        : disconnectRackInput(rack, to, catalog), catalog);
+      paintWires();
+    },
     pending: () => pending,
     isEdited: () => rack.connections.some(edge => !catalog.initial.connections.some(initial =>
       endpointKey(initial.from) === endpointKey(edge.from) && endpointKey(initial.to) === endpointKey(edge.to)))

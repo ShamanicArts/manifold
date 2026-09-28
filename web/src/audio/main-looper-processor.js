@@ -64,6 +64,8 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           this.port.postMessage({ type: 'rack-route-applied', requestId: data.requestId, accepted: false });
         } else if (data.type === 'rack-routes' && this.transferJob) {
           this.port.postMessage({ type: 'rack-route-applied', requestId: data.requestId, accepted: false });
+        } else if (data.type === 'modulation-routes' && this.transferJob) {
+          this.port.postMessage({ type: 'control-route-applied', requestId: data.requestId, accepted: false });
         } else if (this.transferJob && ['control', 'layer-control', 'command', 'synth-note', 'synth-parameter',
           'lfo-slot-active', 'lfo-parameter', 'lfo-gate', 'modulation-route', 'atv-parameter', 'slew-parameter', 'sample-hold-parameter', 'compare-parameter', 'cv-mix-parameter', 'range-parameter', 'scale-quantizer-parameter', 'transpose-parameter', 'note-filter-parameter', 'velocity-mapper-parameter'].includes(data.type)) {
           this.port.postMessage({ type: 'rejected', action: data });
@@ -268,6 +270,18 @@ class MainLooperProcessor extends AudioWorkletProcessor {
             this.engine.manifold_looper_set_rack_route(route.to, route.port, route.previous);
           }
           this.port.postMessage({ type: 'rack-route-applied', requestId: data.requestId, accepted });
+        } else if (data.type === 'modulation-routes' && this.engine) {
+          let applied = 0;
+          for (const route of data.routes) {
+            if (this.engine.manifold_looper_modulation_slot_route(route.slot, route.id, route.value) !== 1) break;
+            applied++;
+          }
+          const accepted = applied === data.routes.length;
+          if (!accepted) for (let index = applied - 1; index >= 0; index--) {
+            const route = data.routes[index];
+            this.engine.manifold_looper_modulation_slot_route(route.slot, route.id, route.previous);
+          }
+          this.port.postMessage({ type: 'control-route-applied', requestId: data.requestId, accepted });
         } else if (data.type === 'lfo-slot-active' && this.engine) {
           if (this.engine.manifold_looper_lfo_slot_active(data.slot, Number(data.active)) !== 1)
             this.port.postMessage({ type: 'rejected', action: data });

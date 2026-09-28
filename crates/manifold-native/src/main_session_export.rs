@@ -270,6 +270,49 @@ fn apply_rack(rack: &mut Value, snapshot: &MainPcmSnapshot) -> Result<(), MainEx
     Ok(())
 }
 
+fn reconcile_first_lfo_cable(state: &mut Value) -> Result<(), MainExportError> {
+    let has_shell = state["rackDocument"]["modules"]
+        .as_array()
+        .ok_or(MainExportError::InvalidTemplate("rackDocument modules"))?
+        .iter()
+        .any(|module| module["id"] == "lfo1");
+    if !has_shell {
+        return Ok(());
+    }
+    let route = state["rack"]["lfos"]
+        .as_array()
+        .and_then(|lfos| lfos.iter().find(|lfo| lfo["slot"] == 0))
+        .ok_or(MainExportError::InvalidTemplate("LFO 1 route"))?["route"]
+        .clone();
+    let connected = route["source"] == 0 && route["target"] == 22 && route["enabled"] == true;
+    let connections = state["rackDocument"]["connections"]
+        .as_array_mut()
+        .ok_or(MainExportError::InvalidTemplate("rackDocument connections"))?;
+    let existing = connections.iter().position(|edge| {
+        edge["from"]["moduleId"] == "lfo1"
+            && edge["from"]["portId"] == "out"
+            && edge["to"]["moduleId"] == "filter"
+            && edge["to"]["portId"] == "cutoff"
+    });
+    if connected && existing.is_none() {
+        let mut index = 1;
+        while connections
+            .iter()
+            .any(|edge| edge["id"] == format!("connection_{index}"))
+        {
+            index += 1;
+        }
+        connections.push(json!({
+            "id": format!("connection_{index}"),
+            "from": { "moduleId": "lfo1", "portId": "out" },
+            "to": { "moduleId": "filter", "portId": "cutoff" },
+        }));
+    } else if !connected {
+        connections.retain(|edge| edge["from"]["moduleId"] != "lfo1");
+    }
+    Ok(())
+}
+
 /// Build a v16 save template from a previously validated browser session.
 /// Old versions inherit only modules they did not define from the authored
 /// default, while their UI-only choices and existing module values survive.
@@ -379,5 +422,46 @@ pub fn export_main_session(
     state["sample"]["frames"] = json!(header.sample_frames);
     state["sample"]["pcmF32Base64"] = json!(pcm_base64(&snapshot.sample));
     apply_rack(&mut state["rack"], snapshot)?;
+    reconcile_first_lfo_cable(&mut state)?;
     serde_json::to_vec(&state).map_err(MainExportError::Json)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_route_changes_keep_the_saved_cable_in_step() {
+        let mut state: Value = serde_json::from_slice(include_bytes!(
+            "../../../web/public/main-lfo-rack-saved-session.json"
+        ))
+        .unwrap();
+        state["rack"]["lfos"][0]["route"]["enabled"] = json!(false);
+        reconcile_first_lfo_cable(&mut state).unwrap();
+        assert!(
+            state["rackDocument"]["connections"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|edge| edge["from"]["moduleId"] != "lfo1")
+        );
+        state["rack"]["lfos"][0]["route"]["enabled"] = json!(true);
+        reconcile_first_lfo_cable(&mut state).unwrap();
+        assert!(
+            crate::main_rack_document::validate_control_route(
+                &state["rackDocument"],
+                &state["rack"]
+            )
+            .is_ok()
+        );
+        assert_eq!(
+            state["rackDocument"]["connections"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|edge| edge["from"]["moduleId"] == "lfo1")
+                .count(),
+            1
+        );
+    }
 }

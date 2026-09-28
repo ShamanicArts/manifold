@@ -67,7 +67,7 @@ try {
   assert.deepEqual(Object.fromEntries(session.rackDocument.modules.map(module =>
     [module.id, [module.row, module.col]])), {
     adsr: [0, 0], oscillator: [0, 3], filter: [1, 0],
-    fx1: [0, 1], fx2: [1, 2], eq: [1, 4],
+    fx1: [0, 1], fx2: [1, 2], eq: [1, 4], lfo1: [2, 0],
   });
   await writeFile(new URL('../web/public/main-rack-reflow-saved-session.json', import.meta.url), bytes);
 
@@ -79,8 +79,8 @@ try {
   await page.waitForFunction(() => document.querySelector('.rack-fx2')?.style.top === '465px');
   const geometry = await page.locator('.rack-scroll-content').evaluate(content => {
     const box = selector => {
-      const { top, bottom } = content.querySelector(selector).getBoundingClientRect();
-      return { top, bottom };
+      const { left, right, top, bottom } = content.querySelector(selector).getBoundingClientRect();
+      return { left, right, top, bottom };
     };
     return { fx2: box('.rack-fx2'), eq: box('.rack-eq'), lfo: box('.rack-lfo'),
       route: box('.rack-route'), atv: box('.rack-atv'), height: content.offsetHeight,
@@ -88,7 +88,9 @@ try {
   });
   assert.equal(geometry.shift, '220px');
   assert.equal(geometry.height, 2773);
-  for (const utility of [geometry.lfo, geometry.route, geometry.atv]) {
+  assert.ok(geometry.lfo.left >= geometry.eq.right - 1,
+    'the rack LFO reflows beside EQ rather than overlapping it');
+  for (const utility of [geometry.route, geometry.atv]) {
     assert.ok(utility.top >= geometry.fx2.bottom - 1, 'utility overlaps reflowed FX2');
     assert.ok(utility.top >= geometry.eq.bottom - 1, 'utility overlaps reflowed EQ');
   }
