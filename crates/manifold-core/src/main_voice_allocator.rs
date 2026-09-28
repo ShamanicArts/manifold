@@ -83,6 +83,12 @@ impl MainVoiceAllocator {
         index
     }
 
+    pub fn set_target_amp(&mut self, index: usize, amp: f32) {
+        if let Some(slot) = self.slots.get_mut(index) {
+            slot.target_amp = amp.clamp(0.0, 1.0);
+        }
+    }
+
     /// Old note-off releases every active slot carrying this note.
     pub fn note_off(&mut self, note: u8) {
         for slot in &mut self.slots {

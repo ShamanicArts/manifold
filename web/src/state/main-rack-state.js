@@ -4,7 +4,7 @@ import { LABELS } from '../widgets/fx-slot-data.js';
 const validNumber = (value, min, max) => Number.isFinite(value) && value >= min && value <= max;
 const validInteger = (value, min, max) => Number.isInteger(value) && value >= min && value <= max;
 
-export function validateMainRackState(rack, requireLfo = true, modulation = null, requireMulti = false, requireAtv = false, requireSlew = false, requireSampleHold = false, requireCompare = false, requireCvMix = false, requireRange = false, requireScaleQuantizer = false, requireTranspose = false, requireNoteFilter = false, requireVelocityMapper = false) {
+export function validateMainRackState(rack, requireLfo = true, modulation = null, requireMulti = false, requireAtv = false, requireSlew = false, requireSampleHold = false, requireCompare = false, requireCvMix = false, requireRange = false, requireScaleQuantizer = false, requireTranspose = false, requireNoteFilter = false, requireVelocityMapper = false, requireArpeggiator = false) {
   const source = rack?.source, adsr = rack?.adsr, filter = rack?.filter;
   const eq = rack?.eq;
   const sourceRanges = {
@@ -145,6 +145,14 @@ export function validateMainRackState(rack, requireLfo = true, modulation = null
       || !validNumber(velocity.offset, -1, 1) || !validInteger(velocity.source, 0, 4)
       || typeof velocity.connected !== 'boolean') {
       throw new Error('Invalid Main Velocity Mapper module state.');
+    }
+  }
+  if (requireArpeggiator || rack.arpeggiator !== undefined) {
+    const arp = rack.arpeggiator;
+    if (!arp || !validInteger(arp.mode, 0, 3) || !validInteger(arp.hold, 0, 1)
+      || !validNumber(arp.rate, .25, 20) || !validInteger(arp.octaves, 1, 4)
+      || !validInteger(arp.gate, 5, 100) || typeof arp.connected !== 'boolean') {
+      throw new Error('Invalid Main Arpeggiator module state.');
     }
   }
   return rack;

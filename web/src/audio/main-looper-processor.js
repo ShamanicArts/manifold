@@ -268,6 +268,9 @@ class MainLooperProcessor extends AudioWorkletProcessor {
         } else if (data.type === 'velocity-mapper-parameter' && this.engine) {
           if (this.engine.manifold_looper_velocity_mapper_parameter(data.id, data.value) !== 1)
             this.port.postMessage({ type: 'rejected', action: data });
+        } else if (data.type === 'arpeggiator-parameter' && this.engine) {
+          if (this.engine.manifold_looper_arpeggiator_parameter(data.id, data.value) !== 1)
+            this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'snapshot' && this.engine) {
           const e = this.engine;
           if (this.freeSource !== null) {
@@ -351,6 +354,10 @@ class MainLooperProcessor extends AudioWorkletProcessor {
               note: e.manifold_looper_note_filter_status(1 + index * 2),
               passes: e.manifold_looper_note_filter_status(2 + index * 2) === 1 }))
               .filter(voice => voice.note >= 0) },
+            arpeggiator: { held: e.manifold_looper_arpeggiator_status(0),
+              note: e.manifold_looper_arpeggiator_status(1),
+              gates: e.manifold_looper_arpeggiator_status(2),
+              lanes: Array.from({ length: 8 }, (_, index) => e.manifold_looper_arpeggiator_status(3 + index) === 1) },
             velocityMapper: { voices: Array.from({ length: 8 }, (_, index) => ({ index,
               input: e.manifold_looper_velocity_mapper_status(1 + index * 2),
               output: e.manifold_looper_velocity_mapper_status(2 + index * 2) }))

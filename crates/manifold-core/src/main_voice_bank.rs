@@ -4,13 +4,16 @@
 use crate::envelope::AdsrEnvelope;
 use crate::envelope_follower::EnvelopeFollower;
 use crate::events::EventKind;
+use crate::main_arpeggiator::{ArpChanges, MainArpeggiator};
 use crate::main_directional::MainDirectionalMotion;
 use crate::main_note_filter::MainNoteFilter;
 use crate::main_pitch::route_main_pitch;
 use crate::main_scale_quantizer::MainScaleQuantizer;
 use crate::main_transpose::MainTranspose;
 use crate::main_velocity_mapper::MainVelocityMapper;
-use crate::main_voice_allocator::{EnvelopePhase, MAIN_VOICE_COUNT, MainVoiceAllocator};
+use crate::main_voice_allocator::{
+    EnvelopePhase, MAIN_VOICE_COUNT, MainVoiceAllocator, MainVoiceSlot,
+};
 use crate::oscillator::Oscillator;
 use crate::phase_vocoder::PhaseVocoder;
 use crate::phrase_gain::PhraseGain;
@@ -67,6 +70,10 @@ struct MainVoice {
 
 pub struct MainVoiceBank {
     allocator: MainVoiceAllocator,
+    arp_sources: MainVoiceAllocator,
+    arpeggiator: MainArpeggiator,
+    arp_connected: bool,
+    sample_clock: u64,
     scale_quantizer: MainScaleQuantizer,
     transpose: MainTranspose,
     note_filter: MainNoteFilter,
@@ -142,6 +149,10 @@ impl MainVoiceBank {
         });
         Self {
             allocator: MainVoiceAllocator::default(),
+            arp_sources: MainVoiceAllocator::default(),
+            arpeggiator: MainArpeggiator::new(sample_rate),
+            arp_connected: false,
+            sample_clock: 0,
             scale_quantizer: MainScaleQuantizer::new(),
             transpose: MainTranspose::new(),
             note_filter: MainNoteFilter::new(),
@@ -412,6 +423,48 @@ impl MainVoiceBank {
         self.velocity_mapper.status(id)
     }
 
+    /// Parameter 5 connects the typed voice route; 0–4 are the original face.
+    pub fn set_arpeggiator_parameter(&mut self, id: u32, value: f32) -> bool {
+        if id == 5 {
+            if value != 0.0 && value != 1.0 {
+                return false;
+            }
+            let connected = value == 1.0;
+            if connected != self.arp_connected {
+                let held = if connected {
+                    *self.allocator.slots()
+                } else {
+                    *self.arp_sources.slots()
+                };
+                self.panic();
+                self.arp_connected = connected;
+                if connected {
+                    for slot in held.into_iter().filter(|slot| slot.active && slot.gate) {
+                        let index = self.arp_sources.note_on(slot.note, 100);
+                        self.arp_sources.set_target_amp(index, slot.target_amp);
+                    }
+                } else {
+                    for slot in held.into_iter().filter(|slot| slot.active && slot.gate) {
+                        let index = self.allocator.note_on(slot.note, 100);
+                        self.allocator.set_target_amp(index, slot.target_amp);
+                        self.prepare_voice(index, slot.note, slot.target_amp);
+                    }
+                }
+            }
+            true
+        } else {
+            self.arpeggiator.set_parameter(id, value)
+        }
+    }
+
+    pub fn arpeggiator_status(&self, id: u32) -> f32 {
+        if id == 11 {
+            f32::from(self.arp_connected)
+        } else {
+            self.arpeggiator.status(id)
+        }
+    }
+
     fn routed_note(&self, source_note: u8) -> u8 {
         let scale_note = self.scale_quantizer.note(source_note);
         let transpose_input = if self.transpose.source() == 0 {
@@ -446,59 +499,89 @@ impl MainVoiceBank {
     }
 
     pub fn event(&mut self, event: EventKind) {
+        if self.arp_connected {
+            match event {
+                EventKind::NoteOn {
+                    note, velocity: 0, ..
+                }
+                | EventKind::NoteOff { note, .. } => {
+                    self.arp_sources.note_off(note);
+                    for index in 0..MAIN_VOICE_COUNT {
+                        if self.arp_sources.slots()[index].active
+                            && !self.arp_sources.slots()[index].gate
+                        {
+                            self.arp_sources
+                                .report_envelope(index, EnvelopePhase::Idle, 0.0);
+                        }
+                    }
+                }
+                EventKind::NoteOn { note, velocity, .. } => {
+                    self.arp_sources.note_on(note, velocity);
+                }
+                EventKind::AllNotesOff => self.panic(),
+                EventKind::PitchBend { .. } => {}
+            }
+            return;
+        }
         match event {
             EventKind::NoteOn {
                 note, velocity: 0, ..
             } => self.release(note),
             EventKind::NoteOn { note, velocity, .. } => {
                 let index = self.allocator.note_on(note, velocity);
-                self.temporal_positions[index] = 0.0;
-                let raw_target = self
-                    .temporal_recipe
-                    .filter(|_| !self.temporal_source_frames.is_empty() && self.direction_mode >= 4)
-                    .map(|recipe| {
-                        prepare_raw_temporal_target(
-                            &self.temporal_source_frames,
-                            recipe,
-                            &self.wave_target,
-                            0.0,
-                            self.direction_mode,
-                        )
-                    });
-                let pitched_note = self.routed_note(note);
-                let frequency =
-                    (440.0_f64 * 2.0_f64.powf((pitched_note as f64 - 69.0) / 12.0)) as f32;
-                let voice = &mut self.voices[index];
-                voice.mapped_gain = 1.0;
-                voice.envelope.reset();
-                voice.wave_add.reset();
-                voice.wave_add_oscillator.reset_phase();
-                if let Some(first) = raw_target {
-                    voice.sample_add.load_partials(first);
-                } else if let Some(first) = self.temporal_source_targets.first() {
-                    voice.sample_add.load_partials(*first);
-                }
-                voice.sample_add.reset();
-                voice.follower.reset();
-                voice.envelope.set_gate(true);
-                voice.vocoder.reset();
-                voice
-                    .ring_sample_to_wave
-                    .reset_to([120.0, 0.0, 0.0, 0.0, 0.0]);
-                voice
-                    .ring_wave_to_sample
-                    .reset_to([120.0, 0.0, 0.0, 0.0, 0.0]);
-                voice.motion.set_parameter(1, frequency);
-                voice.motion.set_parameter(8, 1.0);
-                voice
-                    .oscillator
-                    .set_parameter(2, self.allocator.slots()[index].target_amp);
-                voice.player.set_parameter(7, 1.0);
+                let target_amp = self.allocator.slots()[index].target_amp;
+                self.prepare_voice(index, note, target_amp);
             }
             EventKind::NoteOff { note, .. } => self.release(note),
             EventKind::AllNotesOff => self.panic(),
             EventKind::PitchBend { .. } => {}
         }
+    }
+
+    fn prepare_voice(&mut self, index: usize, note: u8, target_amp: f32) {
+        self.temporal_positions[index] = 0.0;
+        let raw_target = self
+            .temporal_recipe
+            .filter(|_| !self.temporal_source_frames.is_empty() && self.direction_mode >= 4)
+            .map(|recipe| {
+                prepare_raw_temporal_target(
+                    &self.temporal_source_frames,
+                    recipe,
+                    &self.wave_target,
+                    0.0,
+                    self.direction_mode,
+                )
+            });
+        let pitched_note = if self.arp_connected {
+            note
+        } else {
+            self.routed_note(note)
+        };
+        let frequency = (440.0_f64 * 2.0_f64.powf((pitched_note as f64 - 69.0) / 12.0)) as f32;
+        let voice = &mut self.voices[index];
+        voice.mapped_gain = 1.0;
+        voice.envelope.reset();
+        voice.wave_add.reset();
+        voice.wave_add_oscillator.reset_phase();
+        if let Some(first) = raw_target {
+            voice.sample_add.load_partials(first);
+        } else if let Some(first) = self.temporal_source_targets.first() {
+            voice.sample_add.load_partials(*first);
+        }
+        voice.sample_add.reset();
+        voice.follower.reset();
+        voice.envelope.set_gate(true);
+        voice.vocoder.reset();
+        voice
+            .ring_sample_to_wave
+            .reset_to([120.0, 0.0, 0.0, 0.0, 0.0]);
+        voice
+            .ring_wave_to_sample
+            .reset_to([120.0, 0.0, 0.0, 0.0, 0.0]);
+        voice.motion.set_parameter(1, frequency);
+        voice.motion.set_parameter(8, 1.0);
+        voice.oscillator.set_parameter(2, target_amp);
+        voice.player.set_parameter(7, 1.0);
     }
 
     fn release(&mut self, note: u8) {
@@ -513,6 +596,8 @@ impl MainVoiceBank {
 
     fn panic(&mut self) {
         self.allocator.panic();
+        self.arp_sources.panic();
+        self.arpeggiator.reset();
         for voice in &mut self.voices {
             voice.envelope.reset();
             voice.wave_add.reset();
@@ -536,6 +621,7 @@ impl MainVoiceBank {
     /// temporal recipes, and the bank's current sound controls prepared.
     pub fn reset_processing(&mut self) {
         self.panic();
+        self.sample_clock = 0;
         self.temporal_positions.fill(0.0);
         for voice in &mut self.voices {
             voice.player.reset();
@@ -548,18 +634,29 @@ impl MainVoiceBank {
 
     pub fn meter(&self, band: usize) -> Option<f32> {
         match band {
-            0 => Some(
+            0 => Some(if self.arp_connected {
+                (0..MAIN_VOICE_COUNT)
+                    .filter(|&index| self.arpeggiator.output(index).active)
+                    .count() as f32
+            } else {
                 self.allocator
                     .slots()
                     .iter()
                     .filter(|slot| slot.active)
-                    .count() as f32,
-            ),
-            1..=MAIN_VOICE_COUNT => Some(if self.allocator.slots()[band - 1].active {
-                self.voices[band - 1].player.meter(0).unwrap_or(0.0)
-            } else {
-                -1.0
+                    .count() as f32
             }),
+            1..=MAIN_VOICE_COUNT => {
+                let active = if self.arp_connected {
+                    self.arpeggiator.output(band - 1).active
+                } else {
+                    self.allocator.slots()[band - 1].active
+                };
+                Some(if active {
+                    self.voices[band - 1].player.meter(0).unwrap_or(0.0)
+                } else {
+                    -1.0
+                })
+            }
             _ => None,
         }
     }
@@ -578,6 +675,68 @@ impl MainVoiceBank {
             .copy_stereo_interleaved(start_frame, destination)
     }
 
+    fn route_voice(&mut self, index: usize, source_voice: MainVoiceSlot) -> MainVoiceSlot {
+        let scale_voice = self.scale_quantizer.voice(index, source_voice);
+        let transpose_input = if self.transpose.source() == 0 {
+            source_voice
+        } else {
+            scale_voice
+        };
+        let transpose_voice = self.transpose.voice(index, transpose_input);
+        let default_voice = if self.transpose.connected() {
+            transpose_voice
+        } else {
+            scale_voice
+        };
+        let note_filter_input = match self.note_filter.source() {
+            0 => source_voice,
+            1 => scale_voice,
+            _ => transpose_voice,
+        };
+        let filtered_voice = self.note_filter.voice(index, note_filter_input);
+        let default_or_filtered = if self.note_filter.connected() {
+            filtered_voice
+        } else {
+            default_voice
+        };
+        let mapper_input = match self.velocity_mapper.source() {
+            0 => source_voice,
+            1 => scale_voice,
+            2 => transpose_voice,
+            3 => filtered_voice,
+            _ => default_or_filtered,
+        };
+        let mapped_voice = self.velocity_mapper.voice(index, mapper_input);
+        if self.velocity_mapper.connected() {
+            mapped_voice
+        } else {
+            default_or_filtered
+        }
+    }
+
+    fn refresh_arp_inputs(&mut self) {
+        let mut routed = [MainVoiceSlot::default(); MAIN_VOICE_COUNT];
+        for (index, slot) in routed.iter_mut().enumerate() {
+            *slot = self.route_voice(index, self.arp_sources.slots()[index]);
+        }
+        let changes = self.arpeggiator.update_inputs(routed, self.sample_clock);
+        self.apply_arp_changes(changes);
+    }
+
+    fn apply_arp_changes(&mut self, changes: ArpChanges) {
+        for index in 0..MAIN_VOICE_COUNT {
+            let bit = 1 << index;
+            if changes.released & bit != 0 {
+                self.voices[index].envelope.set_gate(false);
+                self.voices[index].motion.set_parameter(8, 0.0);
+            }
+            if changes.started & bit != 0 {
+                let slot = self.arpeggiator.output(index);
+                self.prepare_voice(index, slot.note, slot.target_amp);
+            }
+        }
+    }
+
     pub fn process_planar(&mut self, output: [&mut [f32]; 2]) {
         let [left, right] = output;
         let frames = left.len();
@@ -585,55 +744,57 @@ impl MainVoiceBank {
         debug_assert!(frames <= self.raw_left.len());
         left.fill(0.0);
         right.fill(0.0);
-        let t = (self.blend + 1.0) * 0.5;
-        let wave_gain = (std::f32::consts::FRAC_PI_2 * t).cos();
-        let sample_gain = (std::f32::consts::FRAC_PI_2 * t).sin();
         self.scale_quantizer.begin_block();
         self.transpose.begin_block();
         self.note_filter.begin_block();
         self.velocity_mapper.begin_block();
+        if self.arp_connected {
+            self.refresh_arp_inputs();
+            let mut offset = 0;
+            while offset < frames {
+                let now = self.sample_clock + offset as u64;
+                if self
+                    .arpeggiator
+                    .next_deadline()
+                    .is_some_and(|deadline| deadline <= now)
+                {
+                    let changes = self.arpeggiator.fire_due(now);
+                    self.apply_arp_changes(changes);
+                    continue;
+                }
+                let end = self.arpeggiator.next_deadline().map_or(frames, |deadline| {
+                    (deadline.saturating_sub(self.sample_clock) as usize).min(frames)
+                });
+                self.process_segment([&mut left[offset..end], &mut right[offset..end]]);
+                offset = end;
+            }
+        } else {
+            self.process_segment([left, right]);
+        }
+        self.sample_clock = self.sample_clock.saturating_add(frames as u64);
+    }
+
+    fn process_segment(&mut self, output: [&mut [f32]; 2]) {
+        let [left, right] = output;
+        let frames = left.len();
+        let t = (self.blend + 1.0) * 0.5;
+        let wave_gain = (std::f32::consts::FRAC_PI_2 * t).cos();
+        let sample_gain = (std::f32::consts::FRAC_PI_2 * t).sin();
         for index in 0..MAIN_VOICE_COUNT {
-            let source_voice = self.allocator.slots()[index];
+            let source_voice = if self.arp_connected {
+                self.arpeggiator.output(index)
+            } else {
+                self.allocator.slots()[index]
+            };
             if !source_voice.active {
                 continue;
             }
-            let scale_voice = self.scale_quantizer.voice(index, source_voice);
-            let transpose_input = if self.transpose.source() == 0 {
+            let slot = if self.arp_connected {
                 source_voice
             } else {
-                scale_voice
+                self.route_voice(index, source_voice)
             };
-            let transpose_voice = self.transpose.voice(index, transpose_input);
-            let default_voice = if self.transpose.connected() {
-                transpose_voice
-            } else {
-                scale_voice
-            };
-            let note_filter_input = match self.note_filter.source() {
-                0 => source_voice,
-                1 => scale_voice,
-                _ => transpose_voice,
-            };
-            let filtered_voice = self.note_filter.voice(index, note_filter_input);
-            let default_or_filtered = if self.note_filter.connected() {
-                filtered_voice
-            } else {
-                default_voice
-            };
-            let mapper_input = match self.velocity_mapper.source() {
-                0 => source_voice,
-                1 => scale_voice,
-                2 => transpose_voice,
-                3 => filtered_voice,
-                _ => default_or_filtered,
-            };
-            let mapped_voice = self.velocity_mapper.voice(index, mapper_input);
-            let slot = if self.velocity_mapper.connected() {
-                mapped_voice
-            } else {
-                default_or_filtered
-            };
-            let target_mapped_gain = if self.velocity_mapper.connected() {
+            let target_mapped_gain = if self.velocity_mapper.connected() && !self.arp_connected {
                 slot.target_amp / source_voice.target_amp.max(0.0001)
             } else {
                 1.0
@@ -897,9 +1058,19 @@ impl MainVoiceBank {
             } else {
                 EnvelopePhase::Sustain
             };
-            self.allocator
-                .report_envelope(index, phase, voice.envelope.level());
-            if !self.allocator.slots()[index].active {
+            if self.arp_connected {
+                self.arpeggiator
+                    .report_envelope(index, phase, voice.envelope.level());
+            } else {
+                self.allocator
+                    .report_envelope(index, phase, voice.envelope.level());
+            }
+            let active = if self.arp_connected {
+                self.arpeggiator.output(index).active
+            } else {
+                self.allocator.slots()[index].active
+            };
+            if !active {
                 voice.player.set_parameter(6, 0.0);
             }
         }
@@ -909,6 +1080,103 @@ impl MainVoiceBank {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn main_arp_renders_sample_timed_chord_at_two_host_block_sizes() {
+        fn render(block: usize) -> Vec<f32> {
+            let mut bank = MainVoiceBank::new(8_000.0, block, 9);
+            assert!(bank.set_parameter(0, 0.0));
+            assert!(bank.set_parameter(1, -1.0));
+            assert!(bank.set_arpeggiator_parameter(0, 20.0));
+            assert!(bank.set_arpeggiator_parameter(3, 0.5));
+            assert!(bank.set_arpeggiator_parameter(5, 1.0));
+            for note in [64, 60] {
+                bank.event(EventKind::NoteOn {
+                    channel: 0,
+                    note,
+                    velocity: 100,
+                });
+            }
+            let mut out = Vec::new();
+            for _ in 0..(1600 / block) {
+                let mut left = vec![0.0; block];
+                let mut right = vec![0.0; block];
+                bank.process_planar([&mut left, &mut right]);
+                out.extend(left);
+            }
+            assert_eq!(bank.arpeggiator_status(0), 2.0);
+            assert_eq!(bank.arpeggiator_status(1), 64.0);
+            bank.event(EventKind::NoteOff {
+                channel: 0,
+                note: 60,
+            });
+            bank.event(EventKind::NoteOff {
+                channel: 0,
+                note: 64,
+            });
+            let mut left = vec![0.0; block];
+            let mut right = vec![0.0; block];
+            bank.process_planar([&mut left, &mut right]);
+            assert_eq!(bank.arpeggiator_status(0), 0.0);
+            assert_eq!(bank.arpeggiator_status(2), 0.0);
+            out
+        }
+        let small = render(32);
+        let large = render(128);
+        assert!(small[..240].iter().all(|sample| *sample == 0.0));
+        assert!(small[250..400].iter().any(|sample| sample.abs() > 0.01));
+        let deviation = small
+            .iter()
+            .zip(&large)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0_f32, f32::max);
+        assert!(
+            deviation < 1e-5,
+            "Main arp changed with host block size: {deviation}"
+        );
+    }
+
+    #[test]
+    fn main_arp_route_changes_preserve_held_source_and_clear_old_output_lanes() {
+        let mut bank = MainVoiceBank::new(8_000.0, 128, 9);
+        bank.set_parameter(1, -1.0);
+        bank.event(EventKind::NoteOn {
+            channel: 0,
+            note: 60,
+            velocity: 100,
+        });
+        assert!(bank.set_arpeggiator_parameter(5, 1.0));
+        assert!(bank.allocator.slots().iter().all(|slot| !slot.active));
+        assert_eq!(
+            bank.arp_sources
+                .slots()
+                .iter()
+                .filter(|slot| slot.gate)
+                .count(),
+            1
+        );
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        for _ in 0..4 {
+            bank.process_planar([&mut left, &mut right]);
+        }
+        assert_eq!(bank.arpeggiator_status(0), 1.0);
+        assert!(bank.set_arpeggiator_parameter(5, 0.0));
+        assert_eq!(bank.arpeggiator_status(2), 0.0);
+        assert_eq!(
+            bank.allocator
+                .slots()
+                .iter()
+                .filter(|slot| slot.gate)
+                .count(),
+            1
+        );
+        bank.event(EventKind::NoteOff {
+            channel: 0,
+            note: 60,
+        });
+        assert!(bank.allocator.slots().iter().all(|slot| !slot.gate));
+    }
 
     #[test]
     fn velocity_mapper_changes_held_audio_and_preserves_source_note_release() {

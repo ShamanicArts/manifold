@@ -500,7 +500,7 @@ body {
 .midisynth-panel { position: relative; width: 1280px; height: 504px; background: #0f1726; }
 .midisynth-panel[hidden], .layers[hidden] { display: none; }
 .rack-scroll { position: relative; height: 452px; overflow-y: auto; overflow-x: hidden; scrollbar-color: #334155 #0f1726; }
-.rack-scroll-content { position: relative; width: 1280px; height: 2321px; }
+.rack-scroll-content { position: relative; width: 1280px; height: 2553px; }
 #patch-jump { position: absolute; top: 2px; right: 36px; z-index: 4; height: 23px; padding: 0 9px; border: 1px solid #38bdf8; background: #1e293b; color: #bae6fd; font-size: 10px; cursor: pointer; }
 .rack-row { display: flex; height: 452px; padding-top: 25px; }
 .rack-adsr, .rack-source, .rack-filter { position: relative; flex: none; height: 220px; background: #121a2f; border: 1px solid #1f2b4d; }
@@ -729,6 +729,23 @@ body {
 .rack-velocity-mapper-patch select { display: block; width: 100%; height: 23px; margin-top: 4px; background: #112417; border: 1px solid #2d3b32; color: #bbf7d0; font-size: 10px; }
 .rack-velocity-mapper-patch .velocity-mapper-connect { display: flex; align-items: center; gap: 7px; color: #bbf7d0; }
 #velocity-mapper-meter { display: block; margin-top: 12px; color: #94a3b8; }
+.rack-arpeggiator { position: absolute; left: 0; top: 2321px; width: 236px; height: 220px; background: #121a2f; border: 1px solid #1f2b4d; border-radius: 10px; }
+.arp-title, .arp-status, .arp-note { position: absolute; left: 12px; width: 212px; }
+.arp-title { top: 10px; color: #f59e0b; font-size: 11px; }
+.arp-status { top: 28px; color: #94a3b8; font-size: 8px; }
+#arp-mode { position: absolute; left: 12px; top: 50px; width: 92px; height: 18px; cursor: pointer; }
+#arp-hold { position: absolute; left: 112px; top: 50px; width: 112px; height: 18px; }
+#arp-rate, #arp-octaves, #arp-gate { position: absolute; left: 12px; width: 212px; height: 18px; }
+#arp-rate { top: 76px; } #arp-octaves { top: 98px; } #arp-gate { top: 120px; }
+.arp-note { top: 146px; color: #fde68a; font-size: 8px; }
+.rack-arpeggiator-patch { position: absolute; left: 236px; top: 2321px; width: 236px; height: 220px; padding: 12px; background: #121a2f; border: 1px solid #1f2b4d; font-size: 10px; }
+.rack-arpeggiator-patch strong { color: #f59e0b; font-size: 11px; }
+.rack-arpeggiator-patch p { color: #94a3b8; line-height: 1.4; }
+.rack-arpeggiator-patch label { display: flex; align-items: center; gap: 7px; margin-top: 12px; color: #fde68a; }
+#arp-meter { display: block; margin-top: 12px; color: #94a3b8; }
+.arp-lanes { display: flex; gap: 5px; margin-top: 14px; }
+.arp-lanes i { width: 14px; height: 9px; background: #1e293b; border: 1px solid #475569; border-radius: 2px; }
+.arp-lanes i.active { background: #f59e0b; border-color: #fbbf24; }
 .eq-head::before { background: #22d3ee; }
 .eq-module { position: relative; width: 236px; height: 208px; }
 #eq-graph { position: absolute; left: 10px; top: 10px; width: 216px; height: 108px; background: #0a0a1a; border: 1px solid #1f2b4d; cursor: crosshair; touch-action: none; }

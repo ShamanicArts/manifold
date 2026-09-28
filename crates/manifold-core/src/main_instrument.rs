@@ -591,6 +591,14 @@ impl MainInstrument {
         self.synth.velocity_mapper_status(id)
     }
 
+    pub fn set_arpeggiator_parameter(&mut self, id: u32, value: f32) -> bool {
+        self.synth.set_arpeggiator_parameter(id, value)
+    }
+
+    pub fn arpeggiator_status(&self, id: u32) -> f32 {
+        self.synth.arpeggiator_status(id)
+    }
+
     pub fn lfo_slot_status(&self, slot: usize, id: u32) -> f32 {
         if !self.lfo_active.get(slot).copied().unwrap_or(false) {
             return 0.0;

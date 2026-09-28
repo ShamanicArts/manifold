@@ -1,6 +1,6 @@
 # Main Arpeggiator port boundary
 
-The historical face is `UserScripts/projects/Main/ui/components/arp.ui.lua`; behavior is `UserScripts/projects/Main/lib/arp_runtime.lua`. Both are read-only. The existing `crates/manifold-core/src/midi_arpeggiator.rs` already implements a fixed-capacity, sample-clocked MIDI version used in the graph workbench. Main still needs its own typed voice-output lanes and a route into the assembled instrument.
+The historical face is `UserScripts/projects/Main/ui/components/arp.ui.lua`; behavior is `UserScripts/projects/Main/lib/arp_runtime.lua`. Both are read-only. The existing `crates/manifold-core/src/midi_arpeggiator.rs` already implements a fixed-capacity, sample-clocked MIDI version used in the graph workbench. The checkpoint below adds typed output lanes and a route into the assembled Main instrument.
 
 ## Behavior to preserve
 
@@ -17,6 +17,12 @@ Use a prepared eight-lane Arp state with a monotonic sample clock. Reuse the sch
 
 The first connected route should consume the currently routed voice payload and feed Arp output to the synth. Source-note release must not be confused with timed output-lane release. Changing the connection while notes are held needs an explicit transition that closes old output lanes and starts the new route without leaving a stuck note. Browser controls and status remain off the audio thread; the original face reads bounded held count, current note, and output-gate snapshots.
 
-## Proof required before checkpoint
+## Acceptance proof
 
 Probe native and Wasm output at two block sizes with the same event times. Verify the first step after the 30 ms chord window; sorted Up/Down/Up-Down sequences; octave expansion; deterministic Random seed; Hold latch and release; gate length; an overlapping same-pitch lane; and no stuck voice after route changes. Browser verification must use the actual `main-looper.html#arpeggiator` instrument, its original-size face, live steps, and a versioned session reopen. A static arpeggio graph preview would not prove this port.
+
+## First connected route, 28 September 2026
+
+`MainArpeggiator` now owns eight typed output lanes and a fixed 32-step sequence. It reads Main's currently routed source voice after Scale Quantizer, Transpose, Note Filter, and Velocity Mapper, retaining each source slot's amplitude and index. `MainVoiceBank` divides only its synth rendering at step and gate deadlines, then renders the rest of Main as one block. The original 236×220 amber face on the real Main page controls this route and shows held count, current note, and eight live lane gates. Version 15 sessions save its controls; earlier sessions open with the route disconnected.
+
+Native tests exercise two host block sizes, source ownership across route changes, same-pitch output overlap, Hold, octave expansion, and the 30 ms capture window. A direct Wasm probe compares 32 and 128 frame outputs and checks Transpose-fed audible steps and note-off; headless Chromium checks the face, lane status, direct link, and session reopen. The old Lua runtime updated on the UI clock; the sample-clocked gate and step timing here is an explicit v2 change. Arbitrary dynamic voice graph connections and multiple Arpeggiator instances are still future work.

@@ -334,6 +334,23 @@ try {
   await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = element.scrollHeight; });
   await page.screenshot({ path: new URL('../web/public/main-velocity-mapper-rack.png', import.meta.url).pathname, fullPage: true });
   await page.keyboard.up('Space');
+  const arpPanel = await page.locator('.rack-arpeggiator').boundingBox();
+  assert.equal(Math.round(arpPanel.x - lfoPanel.x), 0);
+  assert.equal(Math.round(arpPanel.width), 236);
+  assert.equal(Math.round(arpPanel.height), 220);
+  await page.locator('#arp-octaves').focus();
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await page.locator('#arp-octaves').getAttribute('aria-valuenow'), '2');
+  await page.locator('#arp-connected').check();
+  await page.locator('[aria-label="Play C♯4"]').focus();
+  await page.keyboard.down('Space');
+  await page.waitForFunction(() => document.querySelector('#arp-status').textContent.includes('Held 1'));
+  await page.waitForFunction(() => document.querySelector('#arp-note').textContent.includes('Output: 68'));
+  await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = element.scrollHeight; });
+  await page.locator('.rack-arpeggiator').screenshot({ path: new URL('../web/public/main-arpeggiator-module.png', import.meta.url).pathname });
+  await page.screenshot({ path: new URL('../web/public/main-arpeggiator-rack.png', import.meta.url).pathname, fullPage: true });
+  await page.keyboard.up('Space');
+  await page.waitForFunction(() => document.querySelector('#arp-status').textContent.includes('Held 0'));
   await page.locator('#add-lfo').click();
   assert.equal(await page.locator('.rack-lfo').count(), 2);
   await page.locator('#lfo-shape-slot-1').selectOption('3');
@@ -429,7 +446,7 @@ try {
   const download = await downloadPromise;
   const bundle = JSON.parse(await readFile(await download.path(), 'utf8'));
   assert.equal(bundle.id, 'manifold.main-looper');
-  assert.equal(bundle.version, 14);
+  assert.equal(bundle.version, 15);
   assert.ok(bundle.sample.frames > 0 && bundle.sample.pcmF32Base64.length > 0);
   assert.equal(bundle.rack.source.waveform, 1);
   assert.equal(bundle.rack.fx2.selected, 5);
@@ -461,6 +478,7 @@ try {
   assert.deepEqual(bundle.rack.transpose, { semitones: 7, source: 0, connected: true });
   assert.deepEqual(bundle.rack.noteFilter, { low: 68, high: 68, mode: 0, source: 2, connected: true });
   assert.deepEqual(bundle.rack.velocityMapper, { amount: 1, curve: 2, offset: .2, source: 4, connected: true });
+  assert.deepEqual(bundle.rack.arpeggiator, { mode: 0, hold: 0, rate: 8, octaves: 2, gate: 60, connected: true });
   assert.ok(bundle.layers[0].frames > 0 && bundle.layers[1].frames > 0);
   await page.locator('#audio-button').click();
   await page.locator('#audio-button').click();
@@ -516,6 +534,8 @@ try {
   assert.equal(await page.locator('#velocity-mapper-curve').getAttribute('data-value'), '2');
   assert.equal(await page.locator('#velocity-mapper-offset').getAttribute('aria-valuenow'), '0.2');
   assert.equal(await page.locator('#velocity-mapper-connected').isChecked(), true);
+  assert.equal(await page.locator('#arp-octaves').getAttribute('aria-valuenow'), '2');
+  assert.equal(await page.locator('#arp-connected').isChecked(), true);
   assert.equal(await page.locator('#mod-source').inputValue(), '12');
   await page.waitForFunction(() => document.querySelector('#compare-meter').textContent.includes('Gate high'));
   assert.notEqual(await page.locator('#sample-length').textContent(), '0ms');
@@ -536,7 +556,14 @@ try {
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(duplicateSlot)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Invalid Main LFO module'));
   assert.equal(await page.locator('.rack-lfo').count(), 1);
-  const v13 = { ...bundle, version: 13, rack: { ...bundle.rack } };
+  const v14 = { ...bundle, version: 14, rack: { ...bundle.rack } };
+  delete v14.rack.arpeggiator;
+  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v14.json',
+    mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v14)) });
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
+  assert.equal(await page.locator('#arp-connected').isChecked(), false);
+  assert.equal(await page.locator('#arp-octaves').getAttribute('aria-valuenow'), '1');
+  const v13 = { ...v14, version: 13, rack: { ...v14.rack } };
   delete v13.rack.velocityMapper;
   await page.locator('#open-session').setInputFiles({ name: 'main-looper-v13.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v13)) });
@@ -742,5 +769,10 @@ try {
   await directVelocity.waitForFunction(() => !document.querySelector('#midisynth-panel').hidden
     && document.querySelector('#rack-scroll').scrollTop >= 1800);
   assert.equal(await directVelocity.locator('.rack-velocity-mapper').isVisible(), true);
-  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth rack, two live LFO routes, original ATV / Bias, Slew, Sample Hold, Compare, CV Mix, Range, Scale Quantizer, Transpose, Note Filter and Velocity Mapper faces with typed routing, four-slot add/remove limit, duplicate-slot rejection, Live/L1 Retro and Free Sample, traditional arm/fire, reverse scrub, v1–v14 session reopen, decoded file and Rust synth capture passed`);
+  const directArp = await browser.newPage({ viewport: { width: 1440, height: 950 } });
+  await directArp.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html#arpeggiator`);
+  await directArp.waitForFunction(() => !document.querySelector('#midisynth-panel').hidden
+    && document.querySelector('#rack-scroll').scrollTop >= 2000);
+  assert.equal(await directArp.locator('.rack-arpeggiator').isVisible(), true);
+  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth rack, two live LFO routes, original ATV / Bias, Slew, Sample Hold, Compare, CV Mix, Range, Scale Quantizer, Transpose, Note Filter, Velocity Mapper and Arpeggiator faces with typed routing, four-slot add/remove limit, duplicate-slot rejection, Live/L1 Retro and Free Sample, traditional arm/fire, reverse scrub, v1–v15 session reopen, decoded file and Rust synth capture passed`);
 } finally { await browser.close(); }

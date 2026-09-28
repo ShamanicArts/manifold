@@ -222,6 +222,19 @@
             <label class="velocity-mapper-connect"><input id="velocity-mapper-connected" type="checkbox"> Route Velocity Mapper to synth</label>
             <output id="velocity-mapper-meter">No connected voices</output>
           </section>
+          <section id="arpeggiator" class="rack-arpeggiator" aria-label="Main Arpeggiator module">
+            <div class="arp-title">ARPEGGIATOR</div><div id="arp-status" class="arp-status">Up  •  Held 0  •  Gate Off</div>
+            <div id="arp-mode" aria-label="Arpeggiator mode"></div><div id="arp-hold"></div>
+            <div id="arp-rate"></div><div id="arp-octaves"></div><div id="arp-gate"></div>
+            <div id="arp-note" class="arp-note">Output: —</div>
+          </section>
+          <section class="rack-arpeggiator-patch" aria-label="Arpeggiator voice connection">
+            <strong>VOICE IN → VOICE OUT</strong>
+            <p>Current routed voices feed eight timed output lanes. Play the keyboard to hear the sequence.</p>
+            <label><input id="arp-connected" type="checkbox"> Route Arpeggiator to synth</label>
+            <div class="arp-lanes" aria-label="Eight output lane gates"><i id="arp-lane-0"></i><i id="arp-lane-1"></i><i id="arp-lane-2"></i><i id="arp-lane-3"></i><i id="arp-lane-4"></i><i id="arp-lane-5"></i><i id="arp-lane-6"></i><i id="arp-lane-7"></i></div>
+            <output id="arp-meter">Route disconnected</output>
+          </section>
           <button id="add-lfo" type="button">+ LFO</button>
           </div></div>
           <button id="patch-jump" type="button" aria-label="Show Main modulation rack row">PATCH ↓</button>

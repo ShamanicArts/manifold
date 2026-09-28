@@ -558,6 +558,54 @@ assert.equal(scaleEngine.manifold_looper_synth_note(1, 61, 0), 1);
 for (let i = 0; i < 30; i++) assert.equal(scaleEngine.manifold_looper_process(128), 1);
 assert.equal(scaleEngine.manifold_looper_velocity_mapper_status(0), 0);
 console.log(`Main Velocity Mapper: held-note Hard curve energy ${linearEnergy.toFixed(2)} → ${hardEnergy.toFixed(2)}, offset +0.20 → ${liftedEnergy.toFixed(2)}; source C#4 note-off releases it.`);
+const { instance: arpInstance } = await WebAssembly.instantiate(wasm, {});
+const arpEngine = arpInstance.exports;
+assert.equal(arpEngine.manifold_looper_prepare(8_000, 128), 1);
+const arpInput = new Float32Array(arpEngine.memory.buffer, arpEngine.manifold_looper_input_ptr(), 256);
+const arpOutput = new Float32Array(arpEngine.memory.buffer, arpEngine.manifold_looper_output_ptr(), 256);
+arpInput.fill(0);
+assert.equal(arpEngine.manifold_looper_synth_parameter(ids.blend, -1), 1);
+assert.equal(arpEngine.manifold_looper_transpose_parameter(contract.modulation.transposeParameters.semitones, 12), 1);
+assert.equal(arpEngine.manifold_looper_transpose_parameter(contract.modulation.transposeParameters.connected, 1), 1);
+assert.equal(arpEngine.manifold_looper_arpeggiator_parameter(contract.modulation.arpeggiatorParameters.rate, 20), 1);
+assert.equal(arpEngine.manifold_looper_arpeggiator_parameter(contract.modulation.arpeggiatorParameters.connected, 1), 1);
+for (const note of [64, 60]) assert.equal(arpEngine.manifold_looper_synth_note(0, note, 100), 1);
+const arpSamples = [];
+for (let blockIndex = 0; blockIndex < 6; blockIndex++) {
+  assert.equal(arpEngine.manifold_looper_process(128), 1);
+  arpSamples.push(...arpOutput.subarray(0, 128));
+  if (blockIndex === 1) {
+    assert.equal(arpEngine.manifold_looper_arpeggiator_status(0), 2);
+    assert.equal(arpEngine.manifold_looper_arpeggiator_status(1), 72);
+  }
+}
+assert.ok(arpSamples.slice(0, 240).every(value => value === 0), 'Wasm first step must wait for the 30 ms chord window');
+assert.ok(arpSamples.slice(250, 400).some(value => Math.abs(value) > .001), 'Wasm Main arp must render actual synth audio');
+assert.equal(arpEngine.manifold_looper_arpeggiator_status(1), 76);
+const { instance: arpSmallInstance } = await WebAssembly.instantiate(wasm, {});
+const arpSmall = arpSmallInstance.exports;
+assert.equal(arpSmall.manifold_looper_prepare(8_000, 128), 1);
+const arpSmallInput = new Float32Array(arpSmall.memory.buffer, arpSmall.manifold_looper_input_ptr(), 256);
+const arpSmallOutput = new Float32Array(arpSmall.memory.buffer, arpSmall.manifold_looper_output_ptr(), 256);
+arpSmallInput.fill(0);
+assert.equal(arpSmall.manifold_looper_synth_parameter(ids.blend, -1), 1);
+assert.equal(arpSmall.manifold_looper_transpose_parameter(contract.modulation.transposeParameters.semitones, 12), 1);
+assert.equal(arpSmall.manifold_looper_transpose_parameter(contract.modulation.transposeParameters.connected, 1), 1);
+assert.equal(arpSmall.manifold_looper_arpeggiator_parameter(contract.modulation.arpeggiatorParameters.rate, 20), 1);
+assert.equal(arpSmall.manifold_looper_arpeggiator_parameter(contract.modulation.arpeggiatorParameters.connected, 1), 1);
+for (const note of [64, 60]) assert.equal(arpSmall.manifold_looper_synth_note(0, note, 100), 1);
+const arpSmallSamples = [];
+for (let blockIndex = 0; blockIndex < 24; blockIndex++) {
+  assert.equal(arpSmall.manifold_looper_process(32), 1);
+  arpSmallSamples.push(...arpSmallOutput.subarray(0, 32));
+}
+const arpBlockDeviation = Math.max(...arpSamples.map((sample, index) => Math.abs(sample - arpSmallSamples[index])));
+assert.ok(arpBlockDeviation < .00001, `Wasm Main arp changes with host block size: ${arpBlockDeviation}`);
+for (const note of [60, 64]) assert.equal(arpEngine.manifold_looper_synth_note(1, note, 0), 1);
+assert.equal(arpEngine.manifold_looper_process(128), 1);
+assert.equal(arpEngine.manifold_looper_arpeggiator_status(0), 0);
+assert.equal(arpEngine.manifold_looper_arpeggiator_status(2), 0);
+console.log('Main Arpeggiator: typed Transpose C5/E5 input, 30 ms capture window, audible timed Wasm steps, and source-note release passed.');
 const { instance: transientInstance } = await WebAssembly.instantiate(wasm, {});
 const transient = transientInstance.exports;
 assert.equal(transient.manifold_looper_prepare(8_000, 128), 1);
@@ -572,4 +620,4 @@ const transientBins = captureStripBins(contract.segments, 4, 16_000, 240_000, 81
 const transientPeaks = transientBins.map(bin => bin ? transient.manifold_looper_peak(0, 1, ...bin) : 0);
 assert.ok(transientPeaks[0] > .89 && transientPeaks[1] === 0,
   `one-frame transient should enter the older 1-bar strip's left-side bin: ${transientPeaks}`);
-console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias, Slew, Sample Hold, Compare, CV Mix, Range, Scale Quantizer, Transpose, Note Filter and Velocity Mapper voice routing passed');
+console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias, Slew, Sample Hold, Compare, CV Mix, Range, Scale Quantizer, Transpose, Note Filter, Velocity Mapper and Arpeggiator voice routing passed');
