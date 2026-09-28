@@ -1697,6 +1697,47 @@ mod tests {
     }
 
     #[test]
+    fn standalone_sample_browser_take_reopens_in_native_graph() {
+        let bytes = include_bytes!("../../../web/public/standalone-sample-browser-project.json");
+        let original: Value = serde_json::from_slice(bytes).unwrap();
+        assert_eq!(original["signal"]["selectedCaptureSourceId"], 1);
+        assert_eq!(original["signal"]["selectedCaptureNodeId"], 10);
+        assert_eq!(original["assets"][0]["frames"], 24_000);
+        let mut prepared = NativeProject::parse(bytes)
+            .unwrap()
+            .prepare_with_state(48_000.0, 128)
+            .unwrap();
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        prepared
+            .processor
+            .process(AudioBlock {
+                main: None,
+                sidechain: None,
+                output: [&mut left, &mut right],
+                events: &[TimedEvent {
+                    offset: 24,
+                    node: 4_u32.into(),
+                    kind: EventKind::NoteOn {
+                        channel: 0,
+                        note: 60,
+                        velocity: 127,
+                    },
+                }],
+            })
+            .unwrap();
+        assert_eq!(left[..24], [0.0; 24]);
+        assert!(left[40..].iter().any(|sample| sample.abs() > 0.001));
+        assert!(right[40..].iter().any(|sample| sample.abs() > 0.001));
+        let saved: Value = serde_json::from_slice(&prepared.save_state().unwrap()).unwrap();
+        assert_eq!(saved["signal"]["selectedCaptureSourceId"], 1);
+        assert_eq!(
+            saved["assets"][0]["pcmF32Base64"],
+            original["assets"][0]["pcmF32Base64"]
+        );
+    }
+
+    #[test]
     fn capture_source_registry_requires_unique_ids_and_matching_selection() {
         let mut document: Value = serde_json::from_slice(include_bytes!(
             "../../../projects/graph-workspace/retrospective-multisource.json"

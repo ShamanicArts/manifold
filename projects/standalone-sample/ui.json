@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "projectId": "manifold.standalone-sample",
+  "source": [
+    "Standalone_Sample/ui/main.ui.lua",
+    "Standalone_Sample/ui/components/standalone_sample.ui.lua",
+    "Standalone_Sample/ui/behaviors/standalone_sample.lua"
+  ],
+  "height": 220,
+  "widths": { "split": 472 },
+  "shell": {
+    "background": "#0b1220",
+    "border": "#1f2b4d",
+    "header": "#111827",
+    "headerHeight": 12,
+    "accent": "#22d3ee",
+    "accentWidth": 18,
+    "title": "Sample",
+    "settingsLabel": "SET"
+  },
+  "module": {
+    "id": "sampleRoot",
+    "type": "Panel",
+    "bounds": { "split": [0, 0, 472, 208] },
+    "children": [
+      { "id": "sample_graph", "type": "Canvas", "bounds": { "split": [10, 10, 226, 126] },
+        "style": { "bg": "#0d1420", "border": "#1a1a3a" } },
+      { "id": "sample_panel", "type": "Panel", "bounds": { "split": [242, 10, 220, 188] },
+        "style": { "bg": "#0b1220", "border": "#1f2937" } },
+      { "id": "sample_source_dropdown", "type": "Dropdown", "options": ["Audio Input", "Sidechain"],
+        "maxVisibleRows": 2, "bounds": { "split": [246, 18, 68, 20] } }
+    ]
+  }
+}

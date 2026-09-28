@@ -2102,9 +2102,11 @@ mod tests {
         instance.deactivate();
     }
 
-    #[test]
-    fn browser_two_source_capture_reopens_and_plays_in_clap() {
-        let bytes = include_bytes!("../../../artifacts/fixtures/two-source-browser-capture.json");
+    fn browser_capture_reopens_and_plays_in_clap(
+        bytes: &[u8],
+        expected_mode: &str,
+        expected_frames: u64,
+    ) {
         let host = clap_host {
             clap_version: CLAP_VERSION,
             host_data: null_mut(),
@@ -2214,15 +2216,43 @@ mod tests {
         };
         assert!(unsafe { STATE.save.unwrap()(plugin, &stream) });
         let document: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+        let original: serde_json::Value = serde_json::from_slice(bytes).unwrap();
         assert_eq!(document["signal"]["selectedCaptureNodeId"], 10);
-        assert_eq!(document["signal"]["captureWindowMode"], "bars");
-        assert_eq!(document["signal"]["captureWindowBars"], 0.1);
-        assert_eq!(document["signal"]["captureTempoBpm"], 120);
-        assert_eq!(document["assets"][0]["frames"], 9_600);
+        if !original["signal"]["selectedCaptureSourceId"].is_null() {
+            assert_eq!(document["signal"]["selectedCaptureSourceId"], 1);
+        }
+        assert_eq!(document["signal"]["captureWindowMode"], expected_mode);
+        if expected_mode == "bars" {
+            assert_eq!(document["signal"]["captureWindowBars"], 0.1);
+            assert_eq!(document["signal"]["captureTempoBpm"], 120);
+        }
+        assert_eq!(document["assets"][0]["frames"], expected_frames);
+        assert_eq!(
+            document["assets"][0]["pcmF32Base64"],
+            original["assets"][0]["pcmF32Base64"]
+        );
         unsafe {
             (*plugin).stop_processing.unwrap()(plugin);
             (*plugin).deactivate.unwrap()(plugin);
             (*plugin).destroy.unwrap()(plugin);
         }
+    }
+
+    #[test]
+    fn browser_two_source_capture_reopens_and_plays_in_clap() {
+        browser_capture_reopens_and_plays_in_clap(
+            include_bytes!("../../../artifacts/fixtures/two-source-browser-capture.json"),
+            "bars",
+            9_600,
+        );
+    }
+
+    #[test]
+    fn standalone_sample_browser_take_reopens_and_plays_in_clap() {
+        browser_capture_reopens_and_plays_in_clap(
+            include_bytes!("../../../web/public/standalone-sample-browser-project.json"),
+            "seconds",
+            24_000,
+        );
     }
 }

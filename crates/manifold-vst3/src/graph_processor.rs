@@ -1605,9 +1605,11 @@ mod tests {
         assert_eq!(unsafe { component.setActive(0) }, kResultOk);
     }
 
-    #[test]
-    fn browser_two_source_capture_reopens_and_plays_in_vst3() {
-        let bytes = include_bytes!("../../../artifacts/fixtures/two-source-browser-capture.json");
+    fn browser_capture_reopens_and_plays_in_vst3(
+        bytes: &[u8],
+        expected_mode: &str,
+        expected_frames: u64,
+    ) {
         let component = GraphProcessor::new();
         let mut setup = ProcessSetup {
             processMode: 0,
@@ -1694,11 +1696,39 @@ mod tests {
         assert!(left.iter().any(|sample| sample.abs() > 0.001));
         let saved = component.capture_state().unwrap();
         let document: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+        let original: serde_json::Value = serde_json::from_slice(bytes).unwrap();
         assert_eq!(document["signal"]["selectedCaptureNodeId"], 10);
-        assert_eq!(document["signal"]["captureWindowMode"], "bars");
-        assert_eq!(document["signal"]["captureWindowBars"], 0.1);
-        assert_eq!(document["signal"]["captureTempoBpm"], 120);
-        assert_eq!(document["assets"][0]["frames"], 9_600);
+        if !original["signal"]["selectedCaptureSourceId"].is_null() {
+            assert_eq!(document["signal"]["selectedCaptureSourceId"], 1);
+        }
+        assert_eq!(document["signal"]["captureWindowMode"], expected_mode);
+        if expected_mode == "bars" {
+            assert_eq!(document["signal"]["captureWindowBars"], 0.1);
+            assert_eq!(document["signal"]["captureTempoBpm"], 120);
+        }
+        assert_eq!(document["assets"][0]["frames"], expected_frames);
+        assert_eq!(
+            document["assets"][0]["pcmF32Base64"],
+            original["assets"][0]["pcmF32Base64"]
+        );
         assert_eq!(unsafe { component.setActive(0) }, kResultOk);
+    }
+
+    #[test]
+    fn browser_two_source_capture_reopens_and_plays_in_vst3() {
+        browser_capture_reopens_and_plays_in_vst3(
+            include_bytes!("../../../artifacts/fixtures/two-source-browser-capture.json"),
+            "bars",
+            9_600,
+        );
+    }
+
+    #[test]
+    fn standalone_sample_browser_take_reopens_and_plays_in_vst3() {
+        browser_capture_reopens_and_plays_in_vst3(
+            include_bytes!("../../../web/public/standalone-sample-browser-project.json"),
+            "seconds",
+            24_000,
+        );
     }
 }

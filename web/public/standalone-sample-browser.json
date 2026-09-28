@@ -1,0 +1,50 @@
+{
+  "widgets": [
+    {
+      "id": "sampleRoot",
+      "x": 0,
+      "y": 0,
+      "width": 472,
+      "height": 208
+    },
+    {
+      "id": "sample_graph",
+      "x": 10,
+      "y": 10,
+      "width": 226,
+      "height": 126
+    },
+    {
+      "id": "sample_panel",
+      "x": 242,
+      "y": 10,
+      "width": 220,
+      "height": 188
+    },
+    {
+      "id": "sample_source_dropdown",
+      "x": 246,
+      "y": 18,
+      "width": 68,
+      "height": 20
+    }
+  ],
+  "sidechain": {
+    "sourceId": 1,
+    "frames": 24000,
+    "measuredHz": 330,
+    "loopStart": 0.2
+  },
+  "audioInput": {
+    "sourceId": 0,
+    "frames": 24000,
+    "measuredHz": 166.66666666666669
+  },
+  "fileReplacement": {
+    "frames": 9600,
+    "label": "test-tone.wav"
+  },
+  "outputDuringNote": "-17.8 dB",
+  "reopenedSource": 1,
+  "audioIsolation": "Headless Chromium, --mute-audio, PULSE_SERVER to nonexistent socket"
+}
