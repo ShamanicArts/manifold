@@ -6,7 +6,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 
 use crate::main_host_parameters::{ARPEGGIATOR_BASE, SYNTH_BASE};
-use crate::main_session::FX_CONTROL_COUNTS;
+use crate::main_session::{FX_CONTROL_COUNTS, default_main_session};
 use crate::main_snapshot::MainPcmSnapshot;
 
 #[derive(Debug)]
@@ -140,12 +140,56 @@ fn apply_rack(rack: &mut Value, snapshot: &MainPcmSnapshot) -> Result<(), MainEx
     Ok(())
 }
 
-/// Strip large PCM strings from a previously validated browser v15 session.
-/// Retain the UI-only choices for a later native save of the same generation.
-pub fn strip_audio_template(bytes: &[u8]) -> Result<Option<Value>, MainExportError> {
+/// Build a v15 save template from a previously validated browser session.
+/// Old versions inherit only modules they did not define from the authored
+/// default, while their UI-only choices and existing module values survive.
+pub fn save_template(bytes: &[u8]) -> Result<Value, MainExportError> {
     let mut state: Value = serde_json::from_slice(bytes).map_err(MainExportError::Json)?;
-    if state["version"].as_i64() != Some(15) {
-        return Ok(None);
+    let version = state["version"]
+        .as_i64()
+        .filter(|version| (1..=15).contains(version))
+        .ok_or(MainExportError::InvalidTemplate("version"))?;
+    if version < 15 {
+        let sample_rate = state["sampleRate"]
+            .as_f64()
+            .ok_or(MainExportError::InvalidTemplate("sampleRate"))?
+            as f32;
+        let mut upgraded = default_main_session(sample_rate)
+            .map_err(|_| MainExportError::InvalidTemplate("default session"))?;
+        if let Some(rack) = state.get("rack").and_then(Value::as_object) {
+            for key in [
+                "source",
+                "adsr",
+                "filter",
+                "fx1",
+                "fx2",
+                "eq",
+                "lfos",
+                "atv",
+                "slew",
+                "sampleHold",
+                "compare",
+                "cvMix",
+                "range",
+                "scaleQuantizer",
+                "transpose",
+                "noteFilter",
+                "velocityMapper",
+                "arpeggiator",
+            ] {
+                if let Some(value) = rack.get(key) {
+                    upgraded["rack"][key] = value.clone();
+                }
+            }
+            if rack.get("lfos").is_none() {
+                if let Some(lfo) = rack.get("lfo") {
+                    let mut lfo = lfo.clone();
+                    lfo["slot"] = json!(0);
+                    upgraded["rack"]["lfos"] = json!([lfo]);
+                }
+            }
+        }
+        state = upgraded;
     }
     let layers = state["layers"]
         .as_array_mut()
@@ -155,7 +199,7 @@ pub fn strip_audio_template(bytes: &[u8]) -> Result<Option<Value>, MainExportErr
         layer["pcmF32Base64"] = json!("");
     }
     state["sample"]["pcmF32Base64"] = json!("");
-    Ok(Some(state))
+    Ok(state)
 }
 
 /// Reassemble the exact browser Main envelope. This allocates and serializes

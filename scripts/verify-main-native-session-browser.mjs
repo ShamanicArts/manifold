@@ -4,8 +4,8 @@ import { readFile } from 'node:fs/promises';
 
 const requireFromWeb = createRequire(new URL('../web/package.json', import.meta.url));
 const { chromium } = requireFromWeb('playwright-core');
-const nativeSession = JSON.parse(await readFile(
-  new URL('../web/public/main-native-saved-session.json', import.meta.url), 'utf8'));
+const nativeSession = JSON.parse(await readFile(process.argv[2]
+  ?? new URL('../web/public/main-native-saved-session.json', import.meta.url), 'utf8'));
 const browser = await chromium.launch({
   executablePath: process.env.MANIFOLD_CHROMIUM ?? '/usr/bin/chromium',
   headless: true,
@@ -30,11 +30,14 @@ try {
     { timeout: 15000 });
   await page.waitForFunction(() => document.querySelector('.layer[data-layer="0"] .state').textContent === 'Playing');
   assert.match(await page.locator('.layer[data-layer="0"] .bars').textContent(), /bar/);
-  await page.locator('#instrument-frame').screenshot({
-    path: new URL('../web/public/main-native-session-browser.png', import.meta.url).pathname,
-  });
+  if (!process.argv[2]) {
+    await page.locator('#instrument-frame').screenshot({
+      path: new URL('../web/public/main-native-session-browser.png', import.meta.url).pathname,
+    });
+  }
   await page.locator('[data-main-tab="midisynth"]').click();
   assert.equal(await page.locator('#sample-length').textContent(), '125ms');
+  assert.equal(await page.locator('#lfo-shape').inputValue(), String(nativeSession.rack.lfos[0].shape));
   assert.ok(Math.abs(Number(await page.locator('#source-output').getAttribute('aria-valuenow')) - 0.6) < 1e-5);
   assert.equal(await page.locator('#fx1-module-mix').getAttribute('aria-valuenow'), '0.25');
   const downloadPromise = page.waitForEvent('download');

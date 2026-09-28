@@ -40,6 +40,7 @@
     <div class="actions">
       <a href="/main-looper.html">Open the actual Main looper →</a>
       <a href="/main-native-saved-session.json" download>Download native-saved session</a>
+      <a href="/main-native-v3-upgraded-session.json" download>Download upgraded v3 session</a>
       <a href="/main-capture-orientation-review.html">Inspect capture direction</a>
     </div>
   </header>
@@ -60,7 +61,7 @@
   <section>
     <h2>Proof and next boundary</h2>
     <p>The native reimport test checks PCM, changed controls, inactive FX memories, EQ, and Arpeggiator state. The browser probe checks the real page, the loaded loop and sample, and byte-identical PCM after a second save. Reproduce with <code>cargo run -p manifold-native --example export_main_browser_session -- web/public/main-native-saved-session.json</code> and <code>node scripts/verify-main-native-session-browser.mjs</code>.</p>
-    <p>A fresh native Main instance now starts from the browser-authored default version-15 session and can save immediately. The native test reopens that save and compares note audio sample by sample. Older version 1–14 imports still need promotion before saving; Main CLAP/VST3 state callbacks are next.</p>
+    <p>A fresh native Main instance starts from the browser-authored default version-15 session and can save immediately. The native test reopens that save and compares note audio sample by sample. Older imports now upgrade to a complete version-15 save; native probes cover versions 1, 3, and 14. An upgraded version-3 file also opened and re-saved in the actual browser looper with identical PCM and its old single LFO preserved. Main CLAP/VST3 state callbacks are next.</p>
   </section>
 </main></body>
 </html>

@@ -15,8 +15,8 @@ use crate::NativeError;
 use crate::main_instrument::{
     MainAudioBlock, MainHostAudioBlock, MainHostEventKind, MainNativeProcessor,
 };
-use crate::main_session::{MainSessionError, prepare_main_session};
-use crate::main_session_export::{MainExportError, export_main_session, strip_audio_template};
+use crate::main_session::{MainSessionError, default_main_session, prepare_main_session};
+use crate::main_session_export::{MainExportError, export_main_session, save_template};
 use crate::main_snapshot::{
     self, MainPcmSnapshot, MainSnapshotError, SnapshotAudio, SnapshotControl,
 };
@@ -81,11 +81,8 @@ impl MainAudioRuntime {
         // The browser-authored empty session is the product default on every
         // host. Preparing through the loader gives fresh native instances the
         // same audible state that their first save will later describe.
-        let mut template: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../projects/main-looper/default-session-v15.json"
-        ))
-        .map_err(|_| NativeError::InvalidDefaultSession)?;
-        template["sampleRate"] = serde_json::json!(sample_rate);
+        let template =
+            default_main_session(sample_rate).map_err(|_| NativeError::InvalidDefaultSession)?;
         let bytes =
             serde_json::to_vec(&template).map_err(|_| NativeError::InvalidDefaultSession)?;
         let processor =
@@ -232,11 +229,11 @@ impl MainControl {
     /// Parse and prepare off the callback. A failed import preserves the
     /// current and pending runtimes. The latest accepted pending file wins.
     pub fn submit_session(&mut self, bytes: &[u8]) -> Result<u64, MainSessionError> {
-        let template = strip_audio_template(bytes).map_err(|error| match error {
+        let processor = prepare_main_session(bytes, self.sample_rate, self.max_frames)?;
+        let template = save_template(bytes).map_err(|error| match error {
             MainExportError::Json(error) => MainSessionError::Json(error),
             _ => MainSessionError::Invalid("save template"),
         })?;
-        let processor = prepare_main_session(bytes, self.sample_rate, self.max_frames)?;
         let generation = self.next_generation;
         self.next_generation += 1;
         let pointer = Box::into_raw(Box::new(Prepared {
@@ -252,9 +249,7 @@ impl MainControl {
                 drop(displaced);
             }
         }
-        if let Some(template) = template {
-            self.templates.insert(generation, template);
-        }
+        self.templates.insert(generation, template);
         self.reclaim();
         Ok(generation)
     }
@@ -415,6 +410,69 @@ mod tests {
                 (fresh - restored).abs() < 1e-5,
                 "fresh={fresh} restored={restored}"
             );
+        }
+    }
+
+    #[test]
+    fn legacy_main_imports_upgrade_to_complete_v15_saves() {
+        for version in [1, 3, 14] {
+            let mut legacy: Value = serde_json::from_str(EMPTY).unwrap();
+            legacy["sampleRate"] = json!(8_000);
+            legacy["version"] = json!(version);
+            if version == 1 {
+                legacy.as_object_mut().unwrap().remove("sample");
+                legacy.as_object_mut().unwrap().remove("rack");
+            } else {
+                legacy["rack"]["source"]["waveform"] = json!(2);
+                legacy["rack"]["filter"]["cutoff"] = json!(1_000);
+                if version == 3 {
+                    let mut lfo = legacy["rack"]["lfos"][0].clone();
+                    lfo.as_object_mut().unwrap().remove("slot");
+                    lfo["shape"] = json!(3);
+                    let rack = legacy["rack"].as_object_mut().unwrap();
+                    rack.retain(|key, _| {
+                        ["source", "adsr", "filter", "fx1", "fx2", "eq"].contains(&key.as_str())
+                    });
+                    rack.insert("lfo".into(), lfo);
+                } else {
+                    legacy["rack"]["range"]["min"] = json!(0.2);
+                    legacy["rack"]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("arpeggiator");
+                }
+            }
+            let (mut audio, mut control) = MainAudioRuntime::prepare(8_000.0, 128).unwrap();
+            control
+                .submit_session(&serde_json::to_vec(&legacy).unwrap())
+                .unwrap();
+            render(&mut audio);
+            control.reclaim();
+            control.request_session_snapshot().unwrap();
+            let mut saved = None;
+            for _ in 0..8 {
+                render(&mut audio);
+                if let Some(bytes) = control.poll_session_snapshot().unwrap() {
+                    saved = Some(bytes);
+                    break;
+                }
+            }
+            let saved = saved.expect("legacy save completes promptly");
+            let state: Value = serde_json::from_slice(&saved).unwrap();
+            assert_eq!(state["version"], 15);
+            assert_eq!(state["rack"]["lfos"].as_array().unwrap().len(), 1);
+            assert!(state["rack"]["arpeggiator"].is_object());
+            if version == 3 {
+                assert_eq!(state["rack"]["lfos"][0]["shape"], 3);
+            }
+            if version >= 3 {
+                assert_eq!(state["rack"]["source"]["waveform"], 2);
+                assert_eq!(state["rack"]["filter"]["cutoff"], 1_000);
+            }
+            if version == 14 {
+                assert_eq!(state["rack"]["range"]["min"], 0.2);
+            }
+            prepare_main_session(&saved, 8_000.0, 128).unwrap();
         }
     }
 

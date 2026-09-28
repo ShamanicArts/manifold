@@ -40,6 +40,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let output = std::env::args_os()
         .nth(1)
         .ok_or("pass an output JSON path")?;
+    let legacy_v3 = match std::env::args().nth(2).as_deref() {
+        None => false,
+        Some("--legacy-v3") => true,
+        Some(_) => return Err("optional second argument must be --legacy-v3".into()),
+    };
     let mut session: Value = serde_json::from_str(include_str!(
         "../../../projects/main-looper/default-session-v15.json"
     ))?;
@@ -62,6 +67,21 @@ fn main() -> Result<(), Box<dyn Error>> {
     session["sample"]["frames"] = json!(frames);
     session["sample"]["pcmF32Base64"] = json!(encoded);
     session["rack"]["source"]["sampleBlend"] = json!(0.4);
+    if legacy_v3 {
+        session["version"] = json!(3);
+        let mut lfo = session["rack"]["lfos"][0].clone();
+        lfo.as_object_mut()
+            .ok_or("default LFO is not an object")?
+            .remove("slot");
+        lfo["shape"] = json!(3);
+        let rack = session["rack"]
+            .as_object_mut()
+            .ok_or("default rack is not an object")?;
+        rack.retain(|key, _| {
+            ["source", "adsr", "filter", "fx1", "fx2", "eq"].contains(&key.as_str())
+        });
+        rack.insert("lfo".into(), lfo);
+    }
     let (mut audio, mut control) =
         MainAudioRuntime::prepare(48_000.0, 128).map_err(|error| format!("prepare: {error:?}"))?;
     control

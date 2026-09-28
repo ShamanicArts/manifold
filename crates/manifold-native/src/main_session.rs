@@ -13,6 +13,15 @@ pub(crate) const FX_CONTROL_COUNTS: [i64; 21] = [
     5, 5, 4, 5, 2, 2, 3, 2, 2, 2, 3, 4, 3, 4, 3, 4, 3, 3, 4, 3, 4,
 ];
 
+pub fn default_main_session(sample_rate: f32) -> Result<Value, MainSessionError> {
+    let mut session: Value = serde_json::from_str(include_str!(
+        "../../../projects/main-looper/default-session-v15.json"
+    ))
+    .map_err(MainSessionError::Json)?;
+    session["sampleRate"] = serde_json::json!(sample_rate);
+    Ok(session)
+}
+
 #[derive(Debug)]
 pub enum MainSessionError {
     Json(serde_json::Error),
@@ -516,6 +525,10 @@ pub fn prepare_main_session(
     }
     let mut processor = MainNativeProcessor::prepare(sample_rate, max_frames)?;
     let instrument = processor.instrument_control_mut();
+    if version < 15 {
+        let defaults = default_main_session(sample_rate)?;
+        apply_rack(instrument, member(&defaults, "rack")?, 15)?;
+    }
     let looper = instrument.looper_mut();
     for (key, id, min, max) in [
         ("activeLayer", 0, 0.0, 3.0),
