@@ -1,7 +1,7 @@
 //! Main's synth-to-looper routing, with all scratch prepared before processing.
 
 use crate::Filter;
-use crate::cv_utilities::AttenuverterBias;
+use crate::cv_utilities::{AttenuverterBias, SampleHold};
 use crate::effect_slot::{self, EffectSlot};
 use crate::eq8::{self, Eq8};
 use crate::events::EventKind;
@@ -29,6 +29,12 @@ pub struct MainInstrument {
     atv_output: f32,
     slew: MainControlSlew,
     slew_source: MainControlSource,
+    sample_hold: SampleHold,
+    sample_hold_source: MainControlSource,
+    sample_hold_trigger_source: u32,
+    sample_hold_manual_gate: bool,
+    sample_hold_input: f32,
+    sample_hold_trigger: f32,
     filter_cutoff_base: f32,
     filter_resonance_base: f32,
     filter_cutoff_effective: f32,
@@ -59,12 +65,12 @@ pub struct MainInstrument {
     monitor_right: Vec<f32>,
 }
 
-/// A control input is either one of four ports on a prepared LFO or the
-/// prepared ATV output. This acyclic order permits LFO -> ATV -> Slew.
+/// The prepared chain is acyclic: LFO -> ATV -> Slew -> Sample Hold.
 #[derive(Clone, Copy)]
 enum MainControlSource {
     Lfo { slot: usize, port: u32 },
     Atv,
+    Slew,
 }
 
 impl MainControlSource {
@@ -75,11 +81,12 @@ impl MainControlSource {
                 port: id % 4,
             }),
             16 => Some(Self::Atv),
+            17 => Some(Self::Slew),
             _ => None,
         }
     }
 
-    fn sample(self, outputs: &[LfoOutputs; MAIN_LFO_SLOTS], atv: f32) -> f32 {
+    fn sample(self, outputs: &[LfoOutputs; MAIN_LFO_SLOTS], atv: f32, slew: f32) -> f32 {
         match self {
             Self::Lfo { slot, port } => {
                 let source = outputs[slot];
@@ -91,6 +98,7 @@ impl MainControlSource {
                 }
             }
             Self::Atv => atv,
+            Self::Slew => slew,
         }
     }
 }
@@ -126,7 +134,7 @@ impl MainModulationRoute {
             return false;
         }
         match id {
-            0 if (0.0..=5.0).contains(&value) && value.fract() == 0.0 => self.source = value as u32,
+            0 if (0.0..=7.0).contains(&value) && value.fract() == 0.0 => self.source = value as u32,
             1 if [0.0, 22.0, 23.0, 129.0, 137.0].contains(&value) => self.target = value as u32,
             2 if (-1.0..=1.0).contains(&value) => self.amount = value,
             3 if (-1.0..=1.0).contains(&value) => self.bias = value,
@@ -137,7 +145,14 @@ impl MainModulationRoute {
         true
     }
 
-    fn effective(self, base: f32, outputs: LfoOutputs, atv_output: f32, slew_output: f32) -> f32 {
+    fn effective(
+        self,
+        base: f32,
+        outputs: LfoOutputs,
+        atv_output: f32,
+        slew_output: f32,
+        sample_hold_output: f32,
+    ) -> f32 {
         if !self.enabled || self.target == 0 {
             return base;
         }
@@ -147,7 +162,9 @@ impl MainModulationRoute {
             2 => (outputs.uni, 0.0),
             3 => (outputs.eoc, 0.0),
             4 => ((atv_output + 1.0) * 0.5, 0.5),
-            _ => ((slew_output + 1.0) * 0.5, 0.5),
+            5 => ((slew_output + 1.0) * 0.5, 0.5),
+            6 => ((sample_hold_output + 1.0) * 0.5, 0.5),
+            _ => ((1.0 - sample_hold_output) * 0.5, 0.5),
         };
         let (min, max): (f32, f32) = match self.target {
             22 => (80.0, 16_000.0),
@@ -184,6 +201,12 @@ impl MainInstrument {
             atv_output: 0.0,
             slew: MainControlSlew::new(),
             slew_source: MainControlSource::Lfo { slot: 0, port: 0 },
+            sample_hold: SampleHold::new(0),
+            sample_hold_source: MainControlSource::Lfo { slot: 0, port: 0 },
+            sample_hold_trigger_source: 0,
+            sample_hold_manual_gate: false,
+            sample_hold_input: 0.0,
+            sample_hold_trigger: 0.0,
             filter_cutoff_base: 3200.0,
             filter_resonance_base: 0.75,
             filter_cutoff_effective: 3200.0,
@@ -363,6 +386,56 @@ impl MainInstrument {
         }
     }
 
+    pub fn set_sample_hold_parameter(&mut self, id: u32, value: f32) -> bool {
+        if !value.is_finite() {
+            return false;
+        }
+        match id {
+            0 if value.fract() == 0.0 && (0.0..=2.0).contains(&value) => {
+                self.sample_hold.set_parameter(0, value)
+            }
+            1 if value.fract() == 0.0 && (0.0..=17.0).contains(&value) => {
+                let Some(source) = MainControlSource::from_id(value as u32) else {
+                    return false;
+                };
+                self.sample_hold_source = source;
+                true
+            }
+            2 if value.fract() == 0.0 && (0.0..=4.0).contains(&value) => {
+                self.sample_hold_trigger_source = value as u32;
+                true
+            }
+            3 if value == 0.0 || value == 1.0 => {
+                self.sample_hold_manual_gate = value == 1.0;
+                true
+            }
+            4 if (-1.0..=1.0).contains(&value) => self
+                .sample_hold
+                .restore(value, self.sample_hold.trigger_high()),
+            5 if value == 0.0 || value == 1.0 => self
+                .sample_hold
+                .restore(self.sample_hold.meter(), value == 1.0),
+            _ => false,
+        }
+    }
+
+    pub fn sample_hold_status(&self, id: u32) -> f32 {
+        match id {
+            0 => self.sample_hold_input,
+            1 => self.sample_hold_trigger,
+            2 => self.sample_hold.meter(),
+            3 => -self.sample_hold.meter(),
+            4 => {
+                if self.sample_hold.trigger_high() {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            _ => 0.0,
+        }
+    }
+
     pub fn lfo_slot_status(&self, slot: usize, id: u32) -> f32 {
         if !self.lfo_active.get(slot).copied().unwrap_or(false) {
             return 0.0;
@@ -485,12 +558,27 @@ impl MainInstrument {
             slot: self.atv_source_slot,
             port: self.atv_source_port,
         }
-        .sample(&outputs, 0.0);
+        .sample(&outputs, 0.0, 0.0);
         self.atv_output = self.atv.process_sample(self.atv_input);
-        let slew_input = self.slew_source.sample(&outputs, self.atv_output);
+        let slew_input = self.slew_source.sample(&outputs, self.atv_output, 0.0);
         let slew_output = self
             .slew
             .process(slew_input, frames as f32 / self.sample_rate);
+        self.sample_hold_input =
+            self.sample_hold_source
+                .sample(&outputs, self.atv_output, slew_output);
+        self.sample_hold_trigger = if self.sample_hold_trigger_source == 4 {
+            if self.sample_hold_manual_gate {
+                1.0
+            } else {
+                0.0
+            }
+        } else {
+            outputs[self.sample_hold_trigger_source as usize].eoc
+        };
+        let sample_hold_output = self
+            .sample_hold
+            .process_sample(self.sample_hold_input, self.sample_hold_trigger);
         // Stable slot order defines composition: Add applies to the current
         // value; a later Replace supersedes earlier routes to that target.
         for slot in 0..MAIN_LFO_SLOTS {
@@ -505,6 +593,7 @@ impl MainInstrument {
                         outputs[slot],
                         self.atv_output,
                         slew_output,
+                        sample_hold_output,
                     )
                 }
                 23 => {
@@ -513,6 +602,7 @@ impl MainInstrument {
                         outputs[slot],
                         self.atv_output,
                         slew_output,
+                        sample_hold_output,
                     )
                 }
                 129 => {
@@ -521,6 +611,7 @@ impl MainInstrument {
                         outputs[slot],
                         self.atv_output,
                         slew_output,
+                        sample_hold_output,
                     )
                 }
                 137 => {
@@ -529,6 +620,7 @@ impl MainInstrument {
                         outputs[slot],
                         self.atv_output,
                         slew_output,
+                        sample_hold_output,
                     )
                 }
                 _ => {}
@@ -1056,5 +1148,62 @@ mod tests {
         assert!(main.slew_status(1) < risen && main.slew_status(1) > 0.5);
         assert!(!main.set_slew_parameter(3, -1.0));
         assert!(!main.set_slew_parameter(3, 17.0));
+    }
+
+    #[test]
+    fn main_sample_hold_tracks_trigger_edges_and_routes_both_polarities() {
+        let mut main = MainInstrument::new(8_000.0, 128);
+        assert!(main.set_atv_parameter(0, 0.0));
+        assert!(main.set_atv_parameter(1, 0.75));
+        assert!(main.set_sample_hold_parameter(1, 16.0)); // ATV OUT
+        assert!(main.set_sample_hold_parameter(2, 4.0)); // manual trigger
+        assert!(main.set_modulation_route(0, 6.0)); // Sample Hold OUT
+        assert!(main.set_modulation_route(1, 129.0)); // FX1 mix
+        assert!(main.set_modulation_route(2, 1.0));
+        assert!(main.set_modulation_route(4, 1.0)); // Replace
+        assert!(main.set_modulation_route(5, 1.0));
+        let silence = [0.0; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        let mut tick = |main: &mut MainInstrument| {
+            main.process([&silence, &silence], [&mut left, &mut right]);
+        };
+        tick(&mut main);
+        assert_eq!(main.sample_hold_status(2), 0.0);
+        assert!(main.set_sample_hold_parameter(3, 1.0));
+        tick(&mut main);
+        assert_eq!(main.sample_hold_status(2), 0.75);
+        assert_eq!(main.lfo_status(7), 0.875);
+        assert!(main.set_atv_parameter(1, -0.4));
+        tick(&mut main);
+        assert_eq!(main.sample_hold_status(0), -0.4);
+        assert_eq!(main.sample_hold_status(2), 0.75);
+        assert!(main.set_sample_hold_parameter(3, 0.0));
+        tick(&mut main);
+        assert!(main.set_sample_hold_parameter(3, 1.0));
+        tick(&mut main);
+        assert_eq!(main.sample_hold_status(2), -0.4);
+        assert!((main.lfo_status(7) - 0.3).abs() < 1e-6);
+        assert!(main.set_modulation_route(0, 7.0)); // INV
+        tick(&mut main);
+        assert!((main.lfo_status(7) - 0.7).abs() < 1e-6);
+        assert!(main.set_sample_hold_parameter(0, 1.0)); // Track while high
+        assert!(main.set_atv_parameter(1, 0.2));
+        tick(&mut main);
+        assert_eq!(main.sample_hold_status(2), 0.2);
+        assert!(main.set_sample_hold_parameter(0, 2.0)); // stepped on next edge
+        assert!(main.set_sample_hold_parameter(3, 0.0));
+        tick(&mut main);
+        assert!(main.set_atv_parameter(1, 0.6));
+        assert!(main.set_sample_hold_parameter(3, 1.0));
+        tick(&mut main);
+        assert!((main.sample_hold_status(2) - 2.0 / 3.0).abs() < 1e-6);
+        assert!(main.set_sample_hold_parameter(4, 0.25));
+        assert!(main.set_sample_hold_parameter(5, 1.0));
+        tick(&mut main);
+        assert_eq!(main.sample_hold_status(2), 0.25);
+        assert_eq!(main.sample_hold_status(4), 1.0);
+        assert!(!main.set_sample_hold_parameter(1, 18.0));
+        assert!(!main.set_sample_hold_parameter(2, 5.0));
     }
 }

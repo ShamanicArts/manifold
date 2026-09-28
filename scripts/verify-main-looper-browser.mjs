@@ -157,6 +157,30 @@ try {
   await page.locator('.rack-slew').screenshot({ path: new URL('../web/public/main-slew-module.png', import.meta.url).pathname });
   await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = 650; });
   await page.screenshot({ path: new URL('../web/public/main-slew-rack.png', import.meta.url).pathname, fullPage: true });
+  const holdPanel = await page.locator('.rack-sample-hold').boundingBox();
+  assert.equal(Math.round(holdPanel.x - lfoPanel.x), 708);
+  assert.equal(Math.round(holdPanel.width), 236);
+  await page.locator('#sample-hold-source').selectOption('16');
+  await page.locator('#sample-hold-trigger-source').selectOption('4');
+  assert.equal(await page.locator('#sample-hold-manual-gate').isEnabled(), true);
+  await page.locator('#sample-hold-mode').click();
+  assert.equal(await page.locator('.rack-sample-hold .project-dropdown-overlay').isVisible(), true);
+  await page.locator('#sample-hold-mode').focus();
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await page.locator('#sample-hold-mode').getAttribute('data-value'), '1');
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await page.locator('#sample-hold-mode').getAttribute('data-value'), '2');
+  await page.keyboard.press('Home');
+  assert.equal(await page.locator('#sample-hold-mode').getAttribute('data-value'), '0');
+  await page.locator('#sample-hold-manual-gate').check();
+  await page.waitForFunction(() => document.querySelector('#sample-hold-trigger-meter').textContent === 'Trigger high');
+  const heldText = await page.locator('#sample-hold-values').textContent();
+  assert.match(heldText, /Hold [+-]\d+\.\d+/);
+  await page.locator('#mod-source').selectOption('6');
+  assert.equal(await page.locator('.rack-route').first().locator('h2').textContent(), 'Sample Hold → target');
+  await page.locator('.rack-sample-hold').screenshot({ path: new URL('../web/public/main-sample-hold-module.png', import.meta.url).pathname });
+  await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = element.scrollHeight; });
+  await page.screenshot({ path: new URL('../web/public/main-sample-hold-rack.png', import.meta.url).pathname, fullPage: true });
   await page.locator('#add-lfo').click();
   assert.equal(await page.locator('.rack-lfo').count(), 2);
   await page.locator('#lfo-shape-slot-1').selectOption('3');
@@ -252,7 +276,7 @@ try {
   const download = await downloadPromise;
   const bundle = JSON.parse(await readFile(await download.path(), 'utf8'));
   assert.equal(bundle.id, 'manifold.main-looper');
-  assert.equal(bundle.version, 6);
+  assert.equal(bundle.version, 7);
   assert.ok(bundle.sample.frames > 0 && bundle.sample.pcmF32Base64.length > 0);
   assert.equal(bundle.rack.source.waveform, 1);
   assert.equal(bundle.rack.fx2.selected, 5);
@@ -260,12 +284,18 @@ try {
   assert.deepEqual(bundle.rack.lfos.map(lfo => lfo.slot), [0, 1]);
   assert.equal(bundle.rack.lfos[0].shape, 3);
   assert.equal(bundle.rack.lfos[0].route.target, 22);
-  assert.equal(bundle.rack.lfos[0].route.source, 5);
+  assert.equal(bundle.rack.lfos[0].route.source, 6);
   assert.equal(bundle.rack.lfos[1].route.target, 129);
   assert.equal(bundle.rack.lfos[1].route.source, 4);
   assert.equal(bundle.rack.lfos[1].route.enabled, true);
   assert.deepEqual(bundle.rack.atv, { amount: -1, bias: 0, slot: 0, port: 1 });
   assert.deepEqual(bundle.rack.slew, { riseMs: 2000, fallMs: 0, shape: 0, source: 16 });
+  assert.equal(bundle.rack.sampleHold.mode, 0);
+  assert.equal(bundle.rack.sampleHold.source, 16);
+  assert.equal(bundle.rack.sampleHold.triggerSource, 4);
+  assert.equal(bundle.rack.sampleHold.manualGate, true);
+  assert.equal(bundle.rack.sampleHold.triggerHigh, true);
+  assert.ok(Math.abs(bundle.rack.sampleHold.held) <= 1);
   assert.ok(bundle.layers[0].frames > 0 && bundle.layers[1].frames > 0);
   await page.locator('#audio-button').click();
   await page.locator('#audio-button').click();
@@ -298,6 +328,10 @@ try {
   assert.equal(await page.locator('#atv-port').inputValue(), '1');
   assert.equal(await page.locator('#slew-rise').getAttribute('aria-valuenow'), '2000');
   assert.equal(await page.locator('#slew-source').inputValue(), '16');
+  assert.equal(await page.locator('#sample-hold-source').inputValue(), '16');
+  assert.equal(await page.locator('#sample-hold-trigger-source').inputValue(), '4');
+  assert.equal(await page.locator('#sample-hold-manual-gate').isChecked(), true);
+  assert.match(await page.locator('#sample-hold-values').textContent(), /Hold [+-]\d+\.\d+/);
   await page.waitForFunction(() => {
     const match = document.querySelector('#mod-effective').textContent.match(/cutoff (\d+)/i);
     return match && Number(match[1]) < 16000;
@@ -320,8 +354,18 @@ try {
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(duplicateSlot)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Invalid Main LFO module'));
   assert.equal(await page.locator('.rack-lfo').count(), 1);
-  const v5 = { ...bundle, version: 5, rack: { ...bundle.rack,
-    lfos: bundle.rack.lfos.map((lfo, index) => index ? lfo : { ...lfo, route: { ...lfo.route, source: 4 } }) } };
+  const v6 = { ...bundle, version: 6, rack: { ...bundle.rack,
+    lfos: bundle.rack.lfos.map((lfo, index) => index ? lfo : { ...lfo, route: { ...lfo.route, source: 5 } }) } };
+  delete v6.rack.sampleHold;
+  await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 6 import'; });
+  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v6.json',
+    mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v6)) });
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
+  assert.equal(await page.locator('#sample-hold-source').inputValue(), '0');
+  assert.equal(await page.locator('#sample-hold-trigger-source').inputValue(), '0');
+  assert.equal(await page.locator('#sample-hold-manual-gate').isChecked(), false);
+  const v5 = { ...v6, version: 5, rack: { ...v6.rack,
+    lfos: v6.rack.lfos.map((lfo, index) => index ? lfo : { ...lfo, route: { ...lfo.route, source: 4 } }) } };
   delete v5.rack.slew;
   await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 5 import'; });
   await page.locator('#open-session').setInputFiles({ name: 'main-looper-v5.json',
@@ -418,5 +462,10 @@ try {
   await directSlew.waitForFunction(() => !document.querySelector('#midisynth-panel').hidden
     && document.querySelector('#rack-scroll').scrollTop >= 470);
   assert.equal(await directSlew.locator('.rack-slew').isVisible(), true);
-  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth rack, two live LFO routes, original ATV / Bias and Slew panels and typed input/output, four-slot add/remove limit, duplicate-slot rejection, Live/L1 Retro and Free Sample, traditional arm/fire, reverse scrub, v1–v6 session reopen, decoded file and Rust synth capture passed`);
+  const directHold = await browser.newPage({ viewport: { width: 1440, height: 950 } });
+  await directHold.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html#sample-hold`);
+  await directHold.waitForFunction(() => !document.querySelector('#midisynth-panel').hidden
+    && document.querySelector('#rack-scroll').scrollTop >= 690);
+  assert.equal(await directHold.locator('.rack-sample-hold').isVisible(), true);
+  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth rack, two live LFO routes, original ATV / Bias, Slew and Sample Hold panels with typed routing, four-slot add/remove limit, duplicate-slot rejection, Live/L1 Retro and Free Sample, traditional arm/fire, reverse scrub, v1–v7 session reopen, decoded file and Rust synth capture passed`);
 } finally { await browser.close(); }

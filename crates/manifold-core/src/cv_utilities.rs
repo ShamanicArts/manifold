@@ -77,6 +77,19 @@ impl SampleHold {
         self.trigger_high = false;
     }
 
+    pub fn restore(&mut self, output: f32, trigger_high: bool) -> bool {
+        if !output.is_finite() {
+            return false;
+        }
+        self.output = bipolar(output);
+        self.trigger_high = trigger_high;
+        true
+    }
+
+    pub fn trigger_high(&self) -> bool {
+        self.trigger_high
+    }
+
     pub fn process_sample(&mut self, input: f32, trigger: f32) -> f32 {
         let input = bipolar(input);
         let high = trigger.is_finite() && trigger > 0.5;

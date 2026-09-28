@@ -500,7 +500,7 @@ body {
 .midisynth-panel { position: relative; width: 1280px; height: 504px; background: #0f1726; }
 .midisynth-panel[hidden], .layers[hidden] { display: none; }
 .rack-scroll { position: relative; height: 452px; overflow-y: auto; overflow-x: hidden; scrollbar-color: #334155 #0f1726; }
-.rack-scroll-content { position: relative; width: 1280px; height: 929px; }
+.rack-scroll-content { position: relative; width: 1280px; height: 1161px; }
 #patch-jump { position: absolute; top: 2px; right: 36px; z-index: 4; height: 23px; padding: 0 9px; border: 1px solid #38bdf8; background: #1e293b; color: #bae6fd; font-size: 10px; cursor: pointer; }
 .rack-row { display: flex; height: 452px; padding-top: 25px; }
 .rack-adsr, .rack-source, .rack-filter { position: relative; flex: none; height: 220px; background: #121a2f; border: 1px solid #1f2b4d; }
@@ -604,6 +604,22 @@ body {
 .rack-slew-patch p { color: #94a3b8; line-height: 1.4; }
 .rack-slew-patch label { display: block; margin-top: 9px; color: #94a3b8; }
 .rack-slew-patch select { display: block; width: 100%; height: 23px; margin-top: 3px; background: #112417; border: 1px solid #1f3b2d; color: #ccfbf1; font-size: 10px; }
+.rack-sample-hold { position: absolute; left: 708px; top: 929px; width: 236px; height: 220px; background: #23170f; border: 1px solid #5b3412; border-radius: 10px; }
+.sample-hold-title, .sample-hold-status, .sample-hold-values, .sample-hold-inv { position: absolute; left: 12px; width: 212px; }
+.sample-hold-title { top: 10px; color: #f59e0b; font-size: 11px; }
+.sample-hold-status { top: 28px; color: #94a3b8; font-size: 8px; }
+#sample-hold-preview { position: absolute; left: 12px; top: 44px; width: 212px; height: 54px; background: #1f160f; border: 1px solid #4b2a10; border-radius: 6px; }
+#sample-hold-mode { position: absolute; left: 12px; top: 106px; width: 96px; height: 18px; cursor: pointer; }
+#sample-hold-mode canvas { display: block; width: 100%; height: 100%; }
+.sample-hold-values { top: 132px; color: #fde68a; font-size: 8px; }
+.sample-hold-inv { top: 150px; color: #fde68a; font-size: 8px; }
+.rack-sample-hold-patch { position: absolute; left: 944px; top: 929px; width: 236px; height: 220px; padding: 12px; background: #121a2f; border: 1px solid #1f2b4d; font-size: 10px; }
+.rack-sample-hold-patch strong { color: #f59e0b; font-size: 11px; }
+.rack-sample-hold-patch p { color: #94a3b8; line-height: 1.4; }
+.rack-sample-hold-patch label { display: block; margin-top: 7px; color: #94a3b8; }
+.rack-sample-hold-patch select { display: block; width: 100%; height: 23px; margin-top: 3px; background: #1f160f; border: 1px solid #5b3412; color: #fde68a; font-size: 10px; }
+.rack-sample-hold-patch .sample-hold-gate { display: flex; align-items: center; gap: 6px; color: #fde68a; }
+#sample-hold-trigger-meter { display: block; margin-top: 8px; color: #fbbf24; font-size: 9px; }
 .eq-head::before { background: #22d3ee; }
 .eq-module { position: relative; width: 236px; height: 208px; }
 #eq-graph { position: absolute; left: 10px; top: 10px; width: 216px; height: 108px; background: #0a0a1a; border: 1px solid #1f2b4d; cursor: crosshair; touch-action: none; }

@@ -4,7 +4,7 @@ import { LABELS } from '../widgets/fx-slot-data.js';
 const validNumber = (value, min, max) => Number.isFinite(value) && value >= min && value <= max;
 const validInteger = (value, min, max) => Number.isInteger(value) && value >= min && value <= max;
 
-export function validateMainRackState(rack, requireLfo = true, modulation = null, requireMulti = false, requireAtv = false, requireSlew = false) {
+export function validateMainRackState(rack, requireLfo = true, modulation = null, requireMulti = false, requireAtv = false, requireSlew = false, requireSampleHold = false) {
   const source = rack?.source, adsr = rack?.adsr, filter = rack?.filter;
   const eq = rack?.eq;
   const sourceRanges = {
@@ -50,7 +50,7 @@ export function validateMainRackState(rack, requireLfo = true, modulation = null
     return lfo && validInteger(lfo.shape, 0, 5) && validNumber(lfo.rate, .01, 20)
       && validNumber(lfo.depth, 0, 1) && validNumber(lfo.phase, 0, 360)
       && validInteger(lfo.retrig, 0, 1) && route
-      && validInteger(route.source, 0, requireSlew ? 5 : requireAtv ? 4 : 3)
+      && validInteger(route.source, 0, requireSampleHold ? 7 : requireSlew ? 5 : requireAtv ? 4 : 3)
       && (modulation ? Object.values(modulation.targets) : [0, 22, 23]).includes(route.target)
       && validNumber(route.amount, -1, 1) && validNumber(route.bias, -1, 1)
       && validInteger(route.mode, 0, 1) && typeof route.enabled === 'boolean';
@@ -82,6 +82,15 @@ export function validateMainRackState(rack, requireLfo = true, modulation = null
     if (!slew || !validInteger(slew.riseMs, 0, 2000) || !validInteger(slew.fallMs, 0, 2000)
       || !validInteger(slew.shape, 0, 2) || !validInteger(slew.source, 0, 16)) {
       throw new Error('Invalid Main Slew module state.');
+    }
+  }
+  if (requireSampleHold || rack.sampleHold !== undefined) {
+    const hold = rack.sampleHold;
+    if (!hold || !validInteger(hold.mode, 0, 2) || !validInteger(hold.source, 0, 17)
+      || !validInteger(hold.triggerSource, 0, 4)
+      || typeof hold.manualGate !== 'boolean' || !validNumber(hold.held, -1, 1)
+      || typeof hold.triggerHigh !== 'boolean') {
+      throw new Error('Invalid Main Sample Hold module state.');
     }
   }
   return rack;
