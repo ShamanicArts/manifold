@@ -65,7 +65,7 @@ fn rounded(value: f32, lo: f32, hi: f32) -> u8 {
     (value.clamp(lo, hi) + 0.5).floor() as u8
 }
 
-fn quantize(note: u8, root: u8, scale: u8, direction: u8) -> u8 {
+pub(crate) fn quantize(note: u8, root: u8, scale: u8, direction: u8) -> u8 {
     let intervals = match scale {
         1 => MAJOR,
         2 => MINOR,

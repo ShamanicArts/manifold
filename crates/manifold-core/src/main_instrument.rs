@@ -559,6 +559,14 @@ impl MainInstrument {
         }
     }
 
+    pub fn set_scale_quantizer_parameter(&mut self, id: u32, value: f32) -> bool {
+        self.synth.set_scale_quantizer_parameter(id, value)
+    }
+
+    pub fn scale_quantizer_status(&self, id: u32) -> f32 {
+        self.synth.scale_quantizer_status(id)
+    }
+
     pub fn lfo_slot_status(&self, slot: usize, id: u32) -> f32 {
         if !self.lfo_active.get(slot).copied().unwrap_or(false) {
             return 0.0;

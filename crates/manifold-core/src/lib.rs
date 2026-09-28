@@ -30,6 +30,7 @@ pub mod main_looper;
 pub mod main_pitch;
 pub mod main_range_mapper;
 pub mod main_sample_capture;
+pub mod main_scale_quantizer;
 pub mod main_voice_allocator;
 pub mod main_voice_bank;
 pub mod midi_arpeggiator;

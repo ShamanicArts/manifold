@@ -253,6 +253,25 @@ try {
   await page.locator('.rack-range').screenshot({ path: new URL('../web/public/main-range-module.png', import.meta.url).pathname });
   await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = element.scrollHeight; });
   await page.screenshot({ path: new URL('../web/public/main-range-rack.png', import.meta.url).pathname, fullPage: true });
+  const scalePanel = await page.locator('.rack-scale-quantizer').boundingBox();
+  assert.equal(Math.round(scalePanel.x - lfoPanel.x), 0);
+  assert.equal(Math.round(scalePanel.width), 236);
+  await page.locator('#scale-quantizer-root').focus();
+  await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowDown');
+  await page.locator('#scale-quantizer-scale').focus(); await page.keyboard.press('ArrowDown');
+  await page.locator('#scale-quantizer-direction').focus(); await page.keyboard.press('ArrowDown');
+  assert.equal(await page.locator('#scale-quantizer-root').getAttribute('data-value'), '2');
+  assert.equal(await page.locator('#scale-quantizer-scale').getAttribute('data-value'), '1');
+  assert.equal(await page.locator('#scale-quantizer-direction').getAttribute('data-value'), '1');
+  await page.locator('#scale-quantizer-connected').check();
+  await page.locator('[aria-label="Play C♯4"]').focus();
+  await page.keyboard.down('Space');
+  await page.waitForFunction(() => document.querySelector('#scale-quantizer-values').textContent.includes('C#4 → D4'));
+  assert.equal(await page.locator('#scale-quantizer-meter').textContent(), '1 active voice');
+  await page.locator('.rack-scale-quantizer').screenshot({ path: new URL('../web/public/main-scale-quantizer-module.png', import.meta.url).pathname });
+  await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = element.scrollHeight; });
+  await page.screenshot({ path: new URL('../web/public/main-scale-quantizer-rack.png', import.meta.url).pathname, fullPage: true });
+  await page.keyboard.up('Space');
   await page.locator('#add-lfo').click();
   assert.equal(await page.locator('.rack-lfo').count(), 2);
   await page.locator('#lfo-shape-slot-1').selectOption('3');
@@ -348,7 +367,7 @@ try {
   const download = await downloadPromise;
   const bundle = JSON.parse(await readFile(await download.path(), 'utf8'));
   assert.equal(bundle.id, 'manifold.main-looper');
-  assert.equal(bundle.version, 10);
+  assert.equal(bundle.version, 11);
   assert.ok(bundle.sample.frames > 0 && bundle.sample.pcmF32Base64.length > 0);
   assert.equal(bundle.rack.source.waveform, 1);
   assert.equal(bundle.rack.fx2.selected, 5);
@@ -376,6 +395,7 @@ try {
   assert.ok(Math.abs(bundle.rack.range.max - .7) < 1e-9);
   assert.equal(bundle.rack.range.mode, 1);
   assert.equal(bundle.rack.range.source, 22);
+  assert.deepEqual(bundle.rack.scaleQuantizer, { root: 2, scale: 2, direction: 2, connected: true });
   assert.ok(bundle.layers[0].frames > 0 && bundle.layers[1].frames > 0);
   await page.locator('#audio-button').click();
   await page.locator('#audio-button').click();
@@ -419,6 +439,9 @@ try {
   assert.equal(await page.locator('#cv-mix-source4').inputValue(), '19');
   assert.equal(await page.locator('#range-source').inputValue(), '22');
   assert.equal(await page.locator('#range-mode').getAttribute('data-value'), '1');
+  assert.equal(await page.locator('#scale-quantizer-root').getAttribute('data-value'), '2');
+  assert.equal(await page.locator('#scale-quantizer-direction').getAttribute('data-value'), '1');
+  assert.equal(await page.locator('#scale-quantizer-connected').isChecked(), true);
   assert.equal(await page.locator('#mod-source').inputValue(), '12');
   await page.waitForFunction(() => document.querySelector('#compare-meter').textContent.includes('Gate high'));
   assert.notEqual(await page.locator('#sample-length').textContent(), '0ms');
@@ -439,7 +462,14 @@ try {
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(duplicateSlot)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Invalid Main LFO module'));
   assert.equal(await page.locator('.rack-lfo').count(), 1);
-  const v9 = { ...bundle, version: 9, rack: { ...bundle.rack,
+  const v10 = { ...bundle, version: 10, rack: { ...bundle.rack } };
+  delete v10.rack.scaleQuantizer;
+  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v10.json',
+    mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v10)) });
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
+  assert.equal(await page.locator('#scale-quantizer-connected').isChecked(), false);
+  assert.equal(await page.locator('#scale-quantizer-root').getAttribute('data-value'), '0');
+  const v9 = { ...v10, version: 9, rack: { ...v10.rack,
     lfos: bundle.rack.lfos.map((lfo, index) => index ? lfo : { ...lfo, route: { ...lfo.route, source: 10 } }) } };
   delete v9.rack.range;
   await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 9 import'; });
@@ -596,5 +626,10 @@ try {
   await directRange.waitForFunction(() => !document.querySelector('#midisynth-panel').hidden
     && document.querySelector('#rack-scroll').scrollTop >= 1370);
   assert.equal(await directRange.locator('.rack-range').isVisible(), true);
-  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth rack, two live LFO routes, original ATV / Bias, Slew, Sample Hold, Compare, CV Mix and Range panels with typed routing, four-slot add/remove limit, duplicate-slot rejection, Live/L1 Retro and Free Sample, traditional arm/fire, reverse scrub, v1–v10 session reopen, decoded file and Rust synth capture passed`);
+  const directScale = await browser.newPage({ viewport: { width: 1440, height: 950 } });
+  await directScale.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html#scale-quantizer`);
+  await directScale.waitForFunction(() => !document.querySelector('#midisynth-panel').hidden
+    && document.querySelector('#rack-scroll').scrollTop >= 1370);
+  assert.equal(await directScale.locator('.rack-scale-quantizer').isVisible(), true);
+  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth rack, two live LFO routes, original ATV / Bias, Slew, Sample Hold, Compare, CV Mix, Range and Scale Quantizer faces with typed routing, four-slot add/remove limit, duplicate-slot rejection, Live/L1 Retro and Free Sample, traditional arm/fire, reverse scrub, v1–v11 session reopen, decoded file and Rust synth capture passed`);
 } finally { await browser.close(); }

@@ -6,6 +6,7 @@ use crate::envelope_follower::EnvelopeFollower;
 use crate::events::EventKind;
 use crate::main_directional::MainDirectionalMotion;
 use crate::main_pitch::route_main_pitch;
+use crate::main_scale_quantizer::MainScaleQuantizer;
 use crate::main_voice_allocator::{EnvelopePhase, MAIN_VOICE_COUNT, MainVoiceAllocator};
 use crate::oscillator::Oscillator;
 use crate::phase_vocoder::PhaseVocoder;
@@ -62,6 +63,7 @@ struct MainVoice {
 
 pub struct MainVoiceBank {
     allocator: MainVoiceAllocator,
+    scale_quantizer: MainScaleQuantizer,
     voices: [MainVoice; MAIN_VOICE_COUNT],
     raw_left: Vec<f32>,
     raw_right: Vec<f32>,
@@ -131,6 +133,7 @@ impl MainVoiceBank {
         });
         Self {
             allocator: MainVoiceAllocator::default(),
+            scale_quantizer: MainScaleQuantizer::new(),
             voices,
             raw_left: vec![0.0; max_frames],
             raw_right: vec![0.0; max_frames],
@@ -363,6 +366,14 @@ impl MainVoiceBank {
         true
     }
 
+    pub fn set_scale_quantizer_parameter(&mut self, id: u32, value: f32) -> bool {
+        self.scale_quantizer.set_parameter(id, value)
+    }
+
+    pub fn scale_quantizer_status(&self, id: u32) -> f32 {
+        self.scale_quantizer.status(id)
+    }
+
     pub fn event(&mut self, event: EventKind) {
         match event {
             EventKind::NoteOn {
@@ -384,7 +395,9 @@ impl MainVoiceBank {
                         )
                     });
                 let voice = &mut self.voices[index];
-                let frequency = (440.0_f64 * 2.0_f64.powf((note as f64 - 69.0) / 12.0)) as f32;
+                let pitched_note = self.scale_quantizer.note(note);
+                let frequency =
+                    (440.0_f64 * 2.0_f64.powf((pitched_note as f64 - 69.0) / 12.0)) as f32;
                 voice.envelope.reset();
                 voice.wave_add.reset();
                 voice.wave_add_oscillator.reset_phase();
@@ -503,14 +516,17 @@ impl MainVoiceBank {
         let t = (self.blend + 1.0) * 0.5;
         let wave_gain = (std::f32::consts::FRAC_PI_2 * t).cos();
         let sample_gain = (std::f32::consts::FRAC_PI_2 * t).sin();
+        self.scale_quantizer.begin_block();
         for index in 0..MAIN_VOICE_COUNT {
-            let slot = self.allocator.slots()[index];
-            if !slot.active {
+            let source_voice = self.allocator.slots()[index];
+            if !source_voice.active {
                 continue;
             }
+            let slot = self.scale_quantizer.voice(index, source_voice);
             let voice = &mut self.voices[index];
             let note_frequency =
                 (440.0_f64 * 2.0_f64.powf((slot.note as f64 - 69.0) / 12.0)) as f32;
+            voice.motion.set_parameter(1, note_frequency);
             let pitch = route_main_pitch(
                 note_frequency,
                 self.root_note,
@@ -768,6 +784,57 @@ impl MainVoiceBank {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scale_quantizer_retones_held_voices_and_releases_by_source_note() {
+        let mut bank = MainVoiceBank::new(8_000.0, 128, 9);
+        assert!(bank.set_scale_quantizer_parameter(3, 1.0));
+        for note in [61, 63] {
+            bank.event(EventKind::NoteOn {
+                channel: 0,
+                note,
+                velocity: 100,
+            });
+        }
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        bank.process_planar([&mut left, &mut right]);
+        assert_eq!(bank.scale_quantizer_status(0), 2.0);
+        assert_eq!(
+            [
+                bank.scale_quantizer_status(2),
+                bank.scale_quantizer_status(4)
+            ],
+            [60.0, 62.0]
+        );
+        assert_eq!(
+            [
+                bank.allocator.slots()[0].note,
+                bank.allocator.slots()[1].note
+            ],
+            [61, 63]
+        );
+        assert!(bank.set_scale_quantizer_parameter(2, 2.0));
+        bank.process_planar([&mut left, &mut right]);
+        assert_eq!(
+            [
+                bank.scale_quantizer_status(2),
+                bank.scale_quantizer_status(4)
+            ],
+            [62.0, 64.0]
+        );
+        bank.event(EventKind::NoteOff {
+            channel: 0,
+            note: 61,
+        });
+        assert!(!bank.allocator.slots()[0].gate);
+        assert!(bank.allocator.slots()[1].gate);
+        bank.process_planar([&mut left, &mut right]);
+        assert_eq!(bank.scale_quantizer_status(0), 2.0); // released voice still has an envelope
+        bank.event(EventKind::AllNotesOff);
+        bank.process_planar([&mut left, &mut right]);
+        assert_eq!(bank.scale_quantizer_status(0), 0.0);
+    }
 
     #[test]
     fn reset_silences_held_main_voice_and_retains_wave_controls() {

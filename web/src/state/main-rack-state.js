@@ -4,7 +4,7 @@ import { LABELS } from '../widgets/fx-slot-data.js';
 const validNumber = (value, min, max) => Number.isFinite(value) && value >= min && value <= max;
 const validInteger = (value, min, max) => Number.isInteger(value) && value >= min && value <= max;
 
-export function validateMainRackState(rack, requireLfo = true, modulation = null, requireMulti = false, requireAtv = false, requireSlew = false, requireSampleHold = false, requireCompare = false, requireCvMix = false, requireRange = false) {
+export function validateMainRackState(rack, requireLfo = true, modulation = null, requireMulti = false, requireAtv = false, requireSlew = false, requireSampleHold = false, requireCompare = false, requireCvMix = false, requireRange = false, requireScaleQuantizer = false) {
   const source = rack?.source, adsr = rack?.adsr, filter = rack?.filter;
   const eq = rack?.eq;
   const sourceRanges = {
@@ -115,6 +115,13 @@ export function validateMainRackState(rack, requireLfo = true, modulation = null
     if (!range || !validNumber(range.min, 0, 1) || !validNumber(range.max, 0, 1)
       || !validInteger(range.mode, 0, 1) || !validInteger(range.source, 0, 23)) {
       throw new Error('Invalid Main Range Mapper module state.');
+    }
+  }
+  if (requireScaleQuantizer || rack.scaleQuantizer !== undefined) {
+    const scale = rack.scaleQuantizer;
+    if (!scale || !validInteger(scale.root, 0, 11) || !validInteger(scale.scale, 1, 6)
+      || !validInteger(scale.direction, 1, 3) || typeof scale.connected !== 'boolean') {
+      throw new Error('Invalid Main Scale Quantizer module state.');
     }
   }
   return rack;

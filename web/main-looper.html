@@ -166,6 +166,20 @@
             <p>Clamp or remap a selected control, including CV Mix OUT or INV. Range OUT can drive the existing Filter or FX routes.</p>
             <label>IN source<select id="range-source" aria-label="Range Mapper input source"></select></label>
           </section>
+          <section id="scale-quantizer" class="rack-scale-quantizer" aria-label="Main Scale Quantizer module">
+            <div class="scale-quantizer-title">SCALE QUANTIZER</div><div id="scale-quantizer-status" class="scale-quantizer-status">C Major  •  Nearest</div>
+            <canvas id="scale-quantizer-preview" width="424" height="100" aria-label="Scale degrees and active voice input and output notes"></canvas>
+            <div id="scale-quantizer-root" aria-label="Scale Quantizer root"></div>
+            <div id="scale-quantizer-scale" aria-label="Scale Quantizer scale"></div>
+            <div id="scale-quantizer-direction" aria-label="Scale Quantizer direction"></div>
+            <div id="scale-quantizer-values" class="scale-quantizer-values">Preview: — → —</div>
+          </section>
+          <section class="rack-scale-quantizer-patch" aria-label="Scale Quantizer voice connection">
+            <strong>VOICE IN → VOICE OUT</strong>
+            <p>Map each active MidiSynth voice note to the selected scale. The original note still owns its gate and release.</p>
+            <label><input id="scale-quantizer-connected" type="checkbox"> Connect MidiSynth voices</label>
+            <output id="scale-quantizer-meter">No connected voices</output>
+          </section>
           <button id="add-lfo" type="button">+ LFO</button>
           </div></div>
           <button id="patch-jump" type="button" aria-label="Show Main modulation rack row">PATCH ↓</button>

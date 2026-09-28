@@ -440,6 +440,43 @@ block(0);
 assert.ok(Math.abs(e.manifold_looper_range_status(1) - .8) < 1e-6);
 assert.equal(e.manifold_looper_range_parameter(range.source, 24), 0);
 console.log(`Main Range route: Remap 0.45 → Clamp 0.70, sounding energy ${rangeRemapEnergy.toFixed(2)} → ${rangeClampEnergy.toFixed(2)}.`);
+const { instance: scaleInstance } = await WebAssembly.instantiate(wasm, {});
+const scaleEngine = scaleInstance.exports;
+assert.equal(scaleEngine.manifold_looper_prepare(8_000, 128), 1);
+const scaleInput = new Float32Array(scaleEngine.memory.buffer, scaleEngine.manifold_looper_input_ptr(), 256);
+const scaleOutput = new Float32Array(scaleEngine.memory.buffer, scaleEngine.manifold_looper_output_ptr(), 256);
+scaleInput.fill(0);
+assert.equal(scaleEngine.manifold_looper_synth_parameter(ids.waveform, 0), 1);
+assert.equal(scaleEngine.manifold_looper_synth_parameter(ids.blend, -1), 1);
+const scaleIds = contract.modulation.scaleQuantizerParameters;
+assert.equal(scaleEngine.manifold_looper_scale_quantizer_parameter(scaleIds.connected, 1), 1);
+assert.equal(scaleEngine.manifold_looper_synth_note(0, 61, 100), 1);
+function scaleCrossings() {
+  let crossings = 0, previous = 0;
+  for (let blockIndex = 0; blockIndex < 90; blockIndex++) {
+    assert.equal(scaleEngine.manifold_looper_process(128), 1);
+    for (let frame = 0; frame < 128; frame++) {
+      const sample = scaleOutput[frame];
+      if (blockIndex >= 10 && previous <= 0 && sample > 0) crossings++;
+      previous = sample;
+    }
+  }
+  return crossings;
+}
+const nearestCrossings = scaleCrossings();
+assert.equal(scaleEngine.manifold_looper_scale_quantizer_status(0), 1);
+assert.equal(scaleEngine.manifold_looper_scale_quantizer_status(1), 61);
+assert.equal(scaleEngine.manifold_looper_scale_quantizer_status(2), 60);
+assert.equal(scaleEngine.manifold_looper_scale_quantizer_parameter(scaleIds.direction, 2), 1);
+const upwardCrossings = scaleCrossings();
+assert.equal(scaleEngine.manifold_looper_scale_quantizer_status(2), 62);
+assert.ok(upwardCrossings > nearestCrossings * 1.07,
+  `held-note output pitch must rise with Up direction: ${nearestCrossings} → ${upwardCrossings} crossings`);
+assert.equal(scaleEngine.manifold_looper_synth_note(1, 61, 0), 1);
+for (let i = 0; i < 30; i++) assert.equal(scaleEngine.manifold_looper_process(128), 1);
+assert.equal(scaleEngine.manifold_looper_scale_quantizer_status(0), 0);
+assert.equal(scaleEngine.manifold_looper_scale_quantizer_parameter(scaleIds.scale, Number.NaN), 0);
+console.log(`Main Scale Quantizer: held C#4 changes from C4 to D4, sounding crossings ${nearestCrossings} → ${upwardCrossings}; source C#4 note-off releases it.`);
 const { instance: transientInstance } = await WebAssembly.instantiate(wasm, {});
 const transient = transientInstance.exports;
 assert.equal(transient.manifold_looper_prepare(8_000, 128), 1);
@@ -454,4 +491,4 @@ const transientBins = captureStripBins(contract.segments, 4, 16_000, 240_000, 81
 const transientPeaks = transientBins.map(bin => bin ? transient.manifold_looper_peak(0, 1, ...bin) : 0);
 assert.ok(transientPeaks[63] > .89 && transientPeaks[62] === 0,
   `one-frame transient should remain in the older 1-bar strip's right-side bin: ${transientPeaks}`);
-console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias, Slew, Sample Hold, Compare, CV Mix and Range routing passed');
+console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias, Slew, Sample Hold, Compare, CV Mix, Range and per-voice Scale Quantizer routing passed');
