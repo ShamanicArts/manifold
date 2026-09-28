@@ -333,6 +333,29 @@ impl MainInstrument {
         }
     }
 
+    /// Restore an FX type's saved controls on the host control thread. The
+    /// selected type's active kernel is set through `set_synth_parameter`.
+    pub fn restore_fx_type_params(
+        &mut self,
+        slot: usize,
+        effect_type: u32,
+        values: [f32; 5],
+    ) -> bool {
+        match slot {
+            0 => self.fx1.restore_stored_params(effect_type, values),
+            1 => self.fx2.restore_stored_params(effect_type, values),
+            _ => false,
+        }
+    }
+
+    pub fn fx_type_params(&self, slot: usize, effect_type: u32) -> Option<[f32; 5]> {
+        match slot {
+            0 => self.fx1.params_for_type(effect_type),
+            1 => self.fx2.params_for_type(effect_type),
+            _ => None,
+        }
+    }
+
     pub fn set_lfo_parameter(&mut self, id: u32, value: f32) -> bool {
         self.set_lfo_slot_parameter(0, id, value)
     }

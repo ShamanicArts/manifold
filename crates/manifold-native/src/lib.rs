@@ -13,6 +13,7 @@ pub mod host_buffers;
 pub mod host_transport;
 pub mod host_values;
 pub mod main_instrument;
+pub mod main_session;
 pub mod parameters;
 pub mod project;
 
