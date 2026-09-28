@@ -10,6 +10,7 @@ const cvProject = JSON.parse(readFileSync(new URL('../projects/main-looper/lfo-f
 
 function buildInsert(e, graph) {
   assert.equal(e.manifold_graph_begin(graph.nodes.length, graph.connections.length), 1);
+  assert.equal(e.manifold_graph_patchable(1), 1);
   for (const node of graph.nodes) {
     assert.equal(e.manifold_graph_node(node.id, NODE_TYPES[node.type].code, node.a ?? 0, node.b ?? 0), 1);
   }
@@ -23,7 +24,7 @@ function buildInsert(e, graph) {
   }
 }
 
-async function render(project) {
+async function render(project, exerciseRoute = false) {
   const { instance } = await WebAssembly.instantiate(wasm);
   const e = instance.exports;
   const graph = project.signal;
@@ -43,16 +44,36 @@ async function render(project) {
       for (const sample of output) energy += Math.abs(sample);
     }
   }
+  const capture = e.manifold_looper_peak(0, 1, 8_000, 12_000);
+  let liveRoute;
+  if (exerciseRoute) {
+    assert.equal(e.manifold_looper_set_rack_route(6, 0, 9), 0, 'reverse EQ-to-Filter route is invalid');
+    assert.equal(e.manifold_looper_set_rack_route(7, 0, 1), 1, 'Source bypasses Filter into FX1');
+    let bypassEnergy = 0;
+    for (let block = 0; block < 120; block++) {
+      assert.equal(e.manifold_looper_process(128), 1);
+      if (block >= 40) for (const sample of new Float32Array(e.memory.buffer, outputPtr, 128)) bypassEnergy += Math.abs(sample);
+    }
+    assert.equal(e.manifold_looper_set_rack_route(7, 0, 6), 1, 'Filter reconnects to FX1');
+    let restoredEnergy = 0;
+    for (let block = 0; block < 120; block++) {
+      assert.equal(e.manifold_looper_process(128), 1);
+      if (block >= 40) for (const sample of new Float32Array(e.memory.buffer, outputPtr, 128)) restoredEnergy += Math.abs(sample);
+    }
+    liveRoute = { bypassEnergy, restoredEnergy };
+    assert.ok(bypassEnergy > energy * 3, `bypass ${bypassEnergy}, filtered ${energy}`);
+    assert.ok(restoredEnergy < bypassEnergy / 3, `restored ${restoredEnergy}, bypass ${bypassEnergy}`);
+  }
   buildInsert(e, graph);
   // Preparation is deliberately startup-only; never compile and replace from
   // the running AudioWorklet message handler.
   assert.equal(e.manifold_looper_prepare_rack_insert(), 0);
-  return { energy, capture: e.manifold_looper_peak(0, 1, 8_000, 12_000),
+  return { energy, capture, liveRoute,
     wasmMiBBeforeInsert: bytesBeforeInsert / 1048576,
     wasmMiBAfterInsert: bytesAfterInsert / 1048576 };
 }
 
-const normal = await render(defaultProject);
+const normal = await render(defaultProject, true);
 const cv = await render(cvProject);
 assert.ok(Math.abs(normal.energy - 29.995070) < 0.03, `Wasm Main default ${normal.energy}`);
 assert.ok(Math.abs(cv.energy - 265.247223) < 0.27, `Wasm Main CV ${cv.energy}`);

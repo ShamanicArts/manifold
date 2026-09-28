@@ -147,16 +147,15 @@ pub extern "C" fn manifold_looper_prepare_rack_insert() -> u32 {
         let mut slot = slot.borrow_mut();
         match slot.take() {
             Some(builder)
-                if !builder.patchable
-                    && builder.description.nodes.len() == builder.expected_nodes
+                if builder.description.nodes.len() == builder.expected_nodes
                     && builder.description.connections.len() == builder.expected_connections =>
             {
-                Some(builder.description)
+                Some((builder.description, builder.patchable))
             }
             _ => None,
         }
     });
-    let Some(description) = description else {
+    let Some((description, patchable)) = description else {
         return 0;
     };
     LOOPER.with(|slot| {
@@ -167,7 +166,12 @@ pub extern "C" fn manifold_looper_prepare_rack_insert() -> u32 {
         if engine.started {
             return 0;
         }
-        let Ok(mut plan) = description.compile(engine.sample_rate, engine.capacity) else {
+        let compiled = if patchable {
+            description.compile_patchable(engine.sample_rate, engine.capacity)
+        } else {
+            description.compile(engine.sample_rate, engine.capacity)
+        };
+        let Ok(mut plan) = compiled else {
             return 0;
         };
         engine.instrument.prepare_rack_insert_controls(&mut plan);
@@ -179,6 +183,28 @@ pub extern "C" fn manifold_looper_prepare_rack_insert() -> u32 {
         )
     })
 }
+
+/// Patch a prepared Main insert between blocks; source zero disconnects.
+/// Only preallocated nodes can be routed. The graph enforces signal kind and
+/// forward order, and keeps untouched kernel state alive.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_looper_set_rack_route(target: u32, port: u32, source: u32) -> u32 {
+    LOOPER.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(
+                engine
+                    .instrument
+                    .set_rack_route(
+                        target.into(),
+                        port as usize,
+                        (source != 0).then_some(source.into()),
+                    )
+                    .is_ok(),
+            )
+        })
+    })
+}
+
 /// Main voice bank events use the same prepared Rust instrument as the looper.
 /// 0 = note on, 1 = note off, 2 = all notes off.
 #[unsafe(no_mangle)]

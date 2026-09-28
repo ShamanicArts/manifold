@@ -37,6 +37,7 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           if (!graph || this.engine.manifold_graph_begin(graph.nodes.length, graph.connections.length) !== 1) {
             throw new Error('Main rack graph is missing or too large');
           }
+          if (this.engine.manifold_graph_patchable(1) !== 1) throw new Error('Main rack routing is unavailable');
           for (const node of graph.nodes) {
             if (this.engine.manifold_graph_node(node.id, node.kind, node.a, node.b) !== 1) {
               throw new Error(`Invalid Main rack node ${node.id}`);
@@ -59,6 +60,8 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_looper_input_ptr(), this.capacity * 2);
           this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_looper_output_ptr(), this.capacity * 2);
           this.port.postMessage({ type: 'ready' });
+        } else if (data.type === 'rack-route' && this.transferJob) {
+          this.port.postMessage({ type: 'rack-route-applied', requestId: data.requestId, accepted: false });
         } else if (this.transferJob && ['control', 'layer-control', 'command', 'synth-note', 'synth-parameter',
           'lfo-slot-active', 'lfo-parameter', 'lfo-gate', 'modulation-route', 'atv-parameter', 'slew-parameter', 'sample-hold-parameter', 'compare-parameter', 'cv-mix-parameter', 'range-parameter', 'scale-quantizer-parameter', 'transpose-parameter', 'note-filter-parameter', 'velocity-mapper-parameter'].includes(data.type)) {
           this.port.postMessage({ type: 'rejected', action: data });
@@ -248,6 +251,9 @@ class MainLooperProcessor extends AudioWorkletProcessor {
         } else if (data.type === 'synth-parameter' && this.engine) {
           const accepted = this.engine.manifold_looper_synth_parameter(data.id, data.value) === 1;
           if (!accepted) this.port.postMessage({ type: 'rejected', action: data });
+        } else if (data.type === 'rack-route' && this.engine) {
+          const accepted = this.engine.manifold_looper_set_rack_route(data.to, data.port, data.from ?? 0) === 1;
+          this.port.postMessage({ type: 'rack-route-applied', requestId: data.requestId, accepted });
         } else if (data.type === 'lfo-slot-active' && this.engine) {
           if (this.engine.manifold_looper_lfo_slot_active(data.slot, Number(data.active)) !== 1)
             this.port.postMessage({ type: 'rejected', action: data });

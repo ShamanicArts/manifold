@@ -367,6 +367,20 @@ impl MainInstrument {
         self.rack_insert.is_some()
     }
 
+    /// Change one route of a prepared rack insert between processing blocks.
+    /// The graph validates port types and forward order without allocating.
+    pub fn set_rack_route(
+        &mut self,
+        target: u64,
+        port: usize,
+        source: Option<u64>,
+    ) -> Result<(), GraphError> {
+        self.rack_insert
+            .as_mut()
+            .ok_or(GraphError::RouteChangeUnavailable)?
+            .set_route(target, port, source)
+    }
+
     pub fn set_synth_parameter(&mut self, id: u32, value: f32) -> bool {
         let accepted = match id {
             21 => self.filter.set_parameter(0, value),
