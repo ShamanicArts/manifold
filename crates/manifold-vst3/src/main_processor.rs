@@ -1,13 +1,15 @@
 //! VST3 audio component for the assembled Main instrument.
 
+use std::ffi::{CStr, c_void};
 use std::ptr::null_mut;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use manifold_core::events::EventKind;
 use manifold_native::main_host::{MainAudioRuntime, MainControl};
 use manifold_native::main_host_buffers::{MainHostBuffers, RawMainHostBlock};
+use manifold_native::main_host_parameters::MAIN_HOST_ID_CAPACITY;
 use manifold_native::main_instrument::{MainHostAudioBlock, MainHostEvent, MainHostEventKind};
 use manifold_native::main_session::{default_main_session, prepare_main_session};
 use vst3::{Class, ComRef, Steinberg::Vst::*, Steinberg::*, uid};
@@ -36,6 +38,9 @@ pub(crate) struct MainProcessor {
     state: Mutex<Option<Vec<u8>>>,
     active: AtomicBool,
     processing: AtomicBool,
+    blocks_processed: AtomicU64,
+    pending_values: [AtomicU64; MAIN_HOST_ID_CAPACITY],
+    pending_dirty: AtomicBool,
 }
 
 // VST3 serializes process calls on one component. The control endpoint uses
@@ -53,6 +58,9 @@ impl MainProcessor {
             state: Mutex::new(None),
             active: AtomicBool::new(false),
             processing: AtomicBool::new(false),
+            blocks_processed: AtomicU64::new(0),
+            pending_values: std::array::from_fn(|_| AtomicU64::new(u64::MAX)),
+            pending_dirty: AtomicBool::new(false),
         }
     }
 
@@ -81,19 +89,37 @@ impl MainProcessor {
             .is_ok()
     }
 
+    fn initial_state(&self) -> Option<Vec<u8>> {
+        self.state
+            .lock()
+            .ok()
+            .and_then(|state| state.clone())
+            .or_else(|| {
+                let rate = self
+                    .configuration
+                    .lock()
+                    .ok()
+                    .and_then(|setup| *setup)
+                    .map_or(48_000.0, |(rate, _)| rate);
+                default_main_session(rate)
+                    .ok()
+                    .and_then(|value| serde_json::to_vec(&value).ok())
+            })
+    }
+
     fn snapshot(&self) -> Option<Vec<u8>> {
         let pointer = self.runtime.load(Ordering::Acquire);
         if pointer.is_null() {
-            return self
-                .state
-                .lock()
-                .ok()
-                .and_then(|state| state.clone())
-                .or_else(|| {
-                    default_main_session(48_000.0)
-                        .ok()
-                        .and_then(|value| serde_json::to_vec(&value).ok())
-                });
+            return self.initial_state();
+        }
+        // Some hosts mark the component processing before delivering its first
+        // audio block, then immediately request state while inserting it. No
+        // edits can have reached the audio runtime yet, so the prepared state
+        // is already the exact snapshot; waiting for a block would stall UI.
+        if self.processing.load(Ordering::Acquire)
+            && self.blocks_processed.load(Ordering::Acquire) == 0
+        {
+            return self.initial_state();
         }
         let offline = !self.processing.load(Ordering::Acquire);
         let mut control = self.control.lock().ok()?;
@@ -130,7 +156,62 @@ impl Drop for MainProcessor {
 }
 
 impl Class for MainProcessor {
-    type Interfaces = (IComponent, IAudioProcessor, IProcessContextRequirements);
+    type Interfaces = (
+        IComponent,
+        IAudioProcessor,
+        IProcessContextRequirements,
+        IConnectionPoint,
+    );
+}
+
+impl IConnectionPointTrait for MainProcessor {
+    unsafe fn connect(&self, other: *mut IConnectionPoint) -> tresult {
+        if other.is_null() {
+            kInvalidArgument
+        } else {
+            kResultOk
+        }
+    }
+    unsafe fn disconnect(&self, _other: *mut IConnectionPoint) -> tresult {
+        kResultOk
+    }
+    unsafe fn notify(&self, message: *mut IMessage) -> tresult {
+        let Some(message) = (unsafe { ComRef::from_raw(message) }) else {
+            return kInvalidArgument;
+        };
+        let id = unsafe { message.getMessageID() };
+        if id.is_null() || unsafe { CStr::from_ptr(id) }.to_bytes() != b"manifold.main.params.v1" {
+            return kResultFalse;
+        }
+        let Some(attributes) = (unsafe { ComRef::from_raw(message.getAttributes()) }) else {
+            return kResultFalse;
+        };
+        let mut data: *const c_void = std::ptr::null();
+        let mut size = 0;
+        if unsafe { attributes.getBinary(c"values".as_ptr(), &mut data, &mut size) } != kResultOk
+            || data.is_null()
+            || size <= 0
+            || size as usize > MAIN_HOST_ID_CAPACITY * 12
+            || size % 12 != 0
+        {
+            return kResultFalse;
+        }
+        let bytes = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), size as usize) };
+        for chunk in bytes.chunks_exact(12) {
+            let id = u32::from_le_bytes(chunk[..4].try_into().unwrap());
+            let normalized = f64::from_le_bytes(chunk[4..].try_into().unwrap());
+            if normalized_to_plain(id, normalized).is_none() {
+                return kResultFalse;
+            }
+        }
+        for chunk in bytes.chunks_exact(12) {
+            let id = u32::from_le_bytes(chunk[..4].try_into().unwrap());
+            let normalized = f64::from_le_bytes(chunk[4..].try_into().unwrap());
+            self.pending_values[id as usize].store(normalized.to_bits(), Ordering::Release);
+        }
+        self.pending_dirty.store(true, Ordering::Release);
+        kResultOk
+    }
 }
 
 impl IPluginBaseTrait for MainProcessor {
@@ -279,6 +360,7 @@ impl IComponentTrait for MainProcessor {
         }
         self.runtime
             .store(Box::into_raw(runtime), Ordering::Release);
+        self.blocks_processed.store(0, Ordering::Release);
         self.active.store(true, Ordering::Release);
         kResultOk
     }
@@ -412,7 +494,15 @@ impl IAudioProcessorTrait for MainProcessor {
         }
         let runtime = unsafe { &mut *pointer };
         let frames = data.numSamples as usize;
-        if !unsafe { collect_actions(data, frames, runtime) } {
+        if !unsafe {
+            collect_actions(
+                data,
+                frames,
+                runtime,
+                &self.pending_values,
+                &self.pending_dirty,
+            )
+        } {
             return kResultFalse;
         }
         let Some(input) = (unsafe { channels(data.inputs, data.numInputs) }) else {
@@ -441,6 +531,7 @@ impl IAudioProcessorTrait for MainProcessor {
                 (*data.outputs).silenceFlags = 0;
             }
         }
+        self.blocks_processed.fetch_add(1, Ordering::Release);
         kResultOk
     }
     unsafe fn getTailSamples(&self) -> u32 {
@@ -472,9 +563,36 @@ unsafe fn channels(buses: *mut AudioBusBuffers, count: i32) -> Option<[*mut f32;
     Some(unsafe { [*channels, *channels.add(1)] })
 }
 
-unsafe fn collect_actions(data: &ProcessData, frames: usize, runtime: &mut Runtime) -> bool {
+unsafe fn collect_actions(
+    data: &ProcessData,
+    frames: usize,
+    runtime: &mut Runtime,
+    pending: &[AtomicU64; MAIN_HOST_ID_CAPACITY],
+    dirty: &AtomicBool,
+) -> bool {
     runtime.tagged.clear();
     runtime.actions.clear();
+    if dirty.swap(false, Ordering::AcqRel) {
+        for (id, value) in pending.iter().enumerate() {
+            let bits = value.swap(u64::MAX, Ordering::AcqRel);
+            if bits == u64::MAX {
+                continue;
+            }
+            let Some(plain) = normalized_to_plain(id as u32, f64::from_bits(bits)) else {
+                return false;
+            };
+            runtime.tagged.push((
+                runtime.tagged.len(),
+                MainHostEvent {
+                    offset: 0,
+                    kind: MainHostEventKind::Parameter {
+                        id: id as u32,
+                        value: plain,
+                    },
+                },
+            ));
+        }
+    }
     if let Some(changes) = unsafe { ComRef::from_raw(data.inputParameterChanges) } {
         let count = unsafe { changes.getParameterCount() };
         if count < 0 || count as usize > MAX_EVENTS {

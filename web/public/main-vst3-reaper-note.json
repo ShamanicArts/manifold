@@ -1,0 +1,18 @@
+{
+  "host": "REAPER Linux VST3",
+  "class": "Manifold Main",
+  "sampleRate": 48000,
+  "frames": 48000,
+  "hostParameterCount": 207,
+  "midiNote": 60,
+  "sourceOutputIndex": 38,
+  "sourceOutputSavedAndReopened": 0.10000000149012,
+  "defaultNotePeak": 0.039409518241882324,
+  "editedToDefaultPeakRatio": 0.21793091765958542,
+  "noteStartSeconds": 0.125,
+  "noteEndSeconds": 0.5,
+  "beforeNotePeak": 0.0,
+  "notePeak": 0.008588552474975586,
+  "noteRms": 0.005069017961962343,
+  "render": "main-vst3-reaper-note.wav"
+}

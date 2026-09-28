@@ -539,6 +539,9 @@ mod tests {
         };
         assert_eq!(unsafe { component.setupProcessing(&mut setup) }, kResultOk);
         assert_eq!(unsafe { component.setActive(1) }, kResultOk);
+        // REAPER can request state after setProcessing(true) but before its
+        // first audio block. That request must return the prepared session.
+        assert_eq!(unsafe { component.setProcessing(1) }, kResultOk);
 
         let (outgoing, data) = stream(Vec::new());
         assert_eq!(unsafe { component.getState(outgoing.as_ptr()) }, kResultOk);
@@ -554,7 +557,32 @@ mod tests {
             saved["sample"]["pcmF32Base64"],
             original["sample"]["pcmF32Base64"]
         );
+        assert_eq!(unsafe { component.setProcessing(0) }, kResultOk);
         assert_eq!(unsafe { component.setActive(0) }, kResultOk);
+    }
+
+    #[test]
+    fn main_controller_state_preserves_host_edit_after_component_state() {
+        use manifold_native::main_host_parameters::SYNTH_BASE;
+        let source_output = SYNTH_BASE + 15;
+        let original = main_controller::MainController::new();
+        assert_eq!(
+            unsafe { original.setParamNormalized(source_output, 0.1) },
+            kResultOk
+        );
+        let (output, saved) = stream(Vec::new());
+        assert_eq!(unsafe { original.getState(output.as_ptr()) }, kResultOk);
+        let bytes = saved.lock().unwrap().bytes.clone();
+        let reopened = main_controller::MainController::new();
+        let fixture = include_bytes!("../../../web/public/main-native-saved-session.json");
+        let (component, _) = stream(fixture.to_vec());
+        assert_eq!(
+            unsafe { reopened.setComponentState(component.as_ptr()) },
+            kResultOk
+        );
+        let (input, _) = stream(bytes);
+        assert_eq!(unsafe { reopened.setState(input.as_ptr()) }, kResultOk);
+        assert_eq!(unsafe { reopened.getParamNormalized(source_output) }, 0.1);
     }
 
     #[test]

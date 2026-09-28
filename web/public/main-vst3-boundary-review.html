@@ -24,9 +24,9 @@
 <body><main>
   <header>
     <div class="eyebrow">Manifold v2 / Main instrument / VST3 checkpoint</div>
-    <h1>Main now has its own<br>VST3 audio and state path.</h1>
+    <h1>Main plays in REAPER<br>through its own VST3 class.</h1>
     <p>The packaged Main class is a separate VST3 instrument around the same Rust runtime used by the browser and CLAP. Its processor handles stereo audio, timed MIDI and automation, and portable Main sessions. The controller presents the 204 real Main parameter IDs to the host.</p>
-    <div class="actions"><a href="/main-clap-host-review.html">Review the running Main CLAP host →</a><a href="/main-clap-session-files-review.html">Review portable Main state</a></div>
+    <div class="actions"><a href="/main-vst3-reaper-note.wav">Listen to the REAPER render →</a><a href="/main-vst3-reaper-note.json">Open measured host results</a><a href="/main-clap-session-files-review.html">Review original Main CLAP editor</a></div>
   </header>
   <section>
     <h2>Current proof and next gates</h2>
@@ -35,8 +35,9 @@
       <tr><td>Processor and controller</td><td>Registered as their own VST3 pair. Native audio parity, a note at frame 64, invalid event handling, exact loop and Sample PCM import, and live state save pass Rust tests. The controller exposes 204 authored IDs and imports their values from portable state.</td></tr>
       <tr><td>Official validator</td><td><strong>1,611 passed, zero failed.</strong> The validator’s dense all-parameter automation revealed a bounded event capacity fault; the fixed workspace now covers it without allocating in the callback.</td></tr>
       <tr><td>Original editor</td><td>The original Main HTML is bundled. The VST3 view, Main commands, Sample capture, and session file transfer still need wiring before this is an interactive Main plugin.</td></tr>
-      <tr><td>DAW proof</td><td>An isolated REAPER render probe is prepared. Its first headless display run did not finish REAPER setup; discovery, render, and save/reopen in REAPER remain unverified.</td></tr>
+      <tr><td>REAPER audio and state</td><td>Main is discovered with 207 reported controls (204 from the plugin). Source Output saves and reopens at normalized 0.1. A fresh one-second host render hears MIDI note 60 at 0.125 s, with zero peak before the note. Its peak is <strong>0.218× the saved default render</strong>, proving the controller edit reached the audio processor. <a href="/main-vst3-reaper-note.json">Read the exact measurements</a>.</td></tr>
     </tbody></table>
   </section>
+  <section><h2>Hear the real host output</h2><p>This file was rendered offline by REAPER from the saved Main VST3 project. Playback here is only for review; the audio came from the native Rust plugin.</p><audio controls preload="none" src="/main-vst3-reaper-note.wav" style="width:min(100%,640px)"></audio></section>
 </main></body>
 </html>

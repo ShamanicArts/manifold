@@ -1,9 +1,9 @@
 //! Fixed Main VST3 parameter surface. The original Main editor view will use
 //! this same controller state once its VST3 message bridge is complete.
 
-use std::ffi::c_char;
+use std::ffi::{c_char, c_void};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use manifold_native::main_host_parameters::{MAIN_HOST_ID_CAPACITY, MainParameter, parameter_name};
 use manifold_native::main_host_state::values_from_session;
@@ -12,15 +12,20 @@ use manifold_native::main_session_export::save_template;
 use vst3::{Class, ComPtr, ComRef, Steinberg::Vst::*, Steinberg::*, uid};
 
 use crate::main_values::{normalized_to_plain, plain_to_normalized, step_count};
-use crate::util::{copy_wstring, read_stream_limited, utf16_string};
+use crate::util::{copy_wstring, read_stream_limited, utf16_string, write_stream};
 
 const MAX_STATE: usize = 300 * 1024 * 1024;
+const CONTROLLER_MAGIC: &[u8; 8] = b"MNV3C001";
+const MAX_CONTROLLER_STATE: usize = 16 * 1024;
 
 pub(crate) struct MainController {
     ids: Vec<u32>,
     defaults: [f64; MAIN_HOST_ID_CAPACITY],
     normalized: [AtomicU64; MAIN_HOST_ID_CAPACITY],
     handler: Mutex<Option<ComPtr<IComponentHandler>>>,
+    host: Mutex<Option<ComPtr<IHostApplication>>>,
+    peer: Mutex<Option<ComPtr<IConnectionPoint>>>,
+    pending_sync: AtomicBool,
 }
 
 impl MainController {
@@ -47,24 +52,101 @@ impl MainController {
             defaults,
             normalized,
             handler: Mutex::new(None),
+            host: Mutex::new(None),
+            peer: Mutex::new(None),
+            pending_sync: AtomicBool::new(false),
         }
     }
 
     fn value(&self, id: u32) -> f64 {
         f64::from_bits(self.normalized[id as usize].load(Ordering::Acquire))
     }
+
+    fn send_values(&self, values: &[u8]) -> bool {
+        let host = self.host.lock().ok().and_then(|slot| slot.clone());
+        let peer = self.peer.lock().ok().and_then(|slot| slot.clone());
+        let (Some(host), Some(peer)) = (host, peer) else {
+            return false;
+        };
+        let mut cid = IMessage_iid;
+        let mut iid = IMessage_iid;
+        let mut raw: *mut c_void = std::ptr::null_mut();
+        if unsafe { host.createInstance(&mut cid, &mut iid, &mut raw) } != kResultOk {
+            return false;
+        }
+        let Some(message) = (unsafe { ComPtr::<IMessage>::from_raw(raw.cast()) }) else {
+            return false;
+        };
+        unsafe { message.setMessageID(c"manifold.main.params.v1".as_ptr()) };
+        let Some(attributes) = (unsafe { ComRef::from_raw(message.getAttributes()) }) else {
+            return false;
+        };
+        unsafe {
+            attributes.setBinary(
+                c"values".as_ptr(),
+                values.as_ptr().cast(),
+                values.len() as u32,
+            ) == kResultOk
+                && peer.notify(message.as_ptr()) == kResultOk
+        }
+    }
+
+    fn send_all(&self) -> bool {
+        let mut bytes = Vec::with_capacity(self.ids.len() * 12);
+        for &id in &self.ids {
+            bytes.extend_from_slice(&id.to_le_bytes());
+            bytes.extend_from_slice(&self.value(id).to_le_bytes());
+        }
+        self.send_values(&bytes)
+    }
 }
 
 impl Class for MainController {
-    type Interfaces = (IEditController,);
+    type Interfaces = (IEditController, IConnectionPoint);
 }
 
 impl IPluginBaseTrait for MainController {
-    unsafe fn initialize(&self, _context: *mut FUnknown) -> tresult {
+    unsafe fn initialize(&self, context: *mut FUnknown) -> tresult {
+        if let Ok(mut host) = self.host.lock() {
+            *host = unsafe { ComRef::from_raw(context) }
+                .and_then(|context| context.cast::<IHostApplication>());
+        }
         kResultOk
     }
     unsafe fn terminate(&self) -> tresult {
+        if let Ok(mut peer) = self.peer.lock() {
+            *peer = None;
+        }
+        if let Ok(mut host) = self.host.lock() {
+            *host = None;
+        }
         kResultOk
+    }
+}
+
+impl IConnectionPointTrait for MainController {
+    unsafe fn connect(&self, other: *mut IConnectionPoint) -> tresult {
+        let Some(other) = (unsafe { ComRef::from_raw(other) }) else {
+            return kInvalidArgument;
+        };
+        let Ok(mut peer) = self.peer.lock() else {
+            return kResultFalse;
+        };
+        *peer = Some(other.to_com_ptr());
+        drop(peer);
+        if self.pending_sync.swap(false, Ordering::AcqRel) && !self.send_all() {
+            self.pending_sync.store(true, Ordering::Release);
+        }
+        kResultOk
+    }
+    unsafe fn disconnect(&self, _other: *mut IConnectionPoint) -> tresult {
+        if let Ok(mut peer) = self.peer.lock() {
+            *peer = None;
+        }
+        kResultOk
+    }
+    unsafe fn notify(&self, _message: *mut IMessage) -> tresult {
+        kResultFalse
     }
 }
 
@@ -86,11 +168,47 @@ impl IEditControllerTrait for MainController {
         }
         kResultOk
     }
-    unsafe fn setState(&self, _stream: *mut IBStream) -> tresult {
+    unsafe fn setState(&self, stream: *mut IBStream) -> tresult {
+        let Some(bytes) = (unsafe { read_stream_limited(stream, MAX_CONTROLLER_STATE) }) else {
+            return kResultFalse;
+        };
+        if bytes.len() != 12 + self.ids.len() * 12 || !bytes.starts_with(CONTROLLER_MAGIC) {
+            return kResultFalse;
+        }
+        let count = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
+        if count != self.ids.len() {
+            return kResultFalse;
+        }
+        let mut values = Vec::with_capacity(count);
+        for (index, chunk) in bytes[12..].chunks_exact(12).enumerate() {
+            let id = u32::from_le_bytes(chunk[..4].try_into().unwrap());
+            let value = f64::from_le_bytes(chunk[4..].try_into().unwrap());
+            if self.ids[index] != id || normalized_to_plain(id, value).is_none() {
+                return kResultFalse;
+            }
+            values.push(value);
+        }
+        for (id, value) in self.ids.iter().zip(values) {
+            self.normalized[*id as usize].store(value.to_bits(), Ordering::Release);
+        }
+        if !self.send_all() {
+            self.pending_sync.store(true, Ordering::Release);
+        }
         kResultOk
     }
-    unsafe fn getState(&self, _stream: *mut IBStream) -> tresult {
-        kResultOk
+    unsafe fn getState(&self, stream: *mut IBStream) -> tresult {
+        let mut bytes = Vec::with_capacity(12 + self.ids.len() * 12);
+        bytes.extend_from_slice(CONTROLLER_MAGIC);
+        bytes.extend_from_slice(&(self.ids.len() as u32).to_le_bytes());
+        for &id in &self.ids {
+            bytes.extend_from_slice(&id.to_le_bytes());
+            bytes.extend_from_slice(&self.value(id).to_le_bytes());
+        }
+        if unsafe { write_stream(stream, &bytes) } {
+            kResultOk
+        } else {
+            kResultFalse
+        }
     }
     unsafe fn getParameterCount(&self) -> i32 {
         self.ids.len() as i32
@@ -174,6 +292,12 @@ impl IEditControllerTrait for MainController {
             return kInvalidArgument;
         }
         self.normalized[id as usize].store(value.to_bits(), Ordering::Release);
+        let mut bytes = [0_u8; 12];
+        bytes[..4].copy_from_slice(&id.to_le_bytes());
+        bytes[4..].copy_from_slice(&value.to_le_bytes());
+        if !self.send_values(&bytes) {
+            self.pending_sync.store(true, Ordering::Release);
+        }
         kResultOk
     }
     unsafe fn setComponentHandler(&self, handler: *mut IComponentHandler) -> tresult {
