@@ -48,7 +48,7 @@ try {
     mimeType: 'application/json', buffer: bytes });
   await page.waitForFunction(() => document.querySelector('.rack-filter')?.dataset.rackWidth === '1');
   await page.locator('#rack-view-switch').click();
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 8);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 9);
   assert.equal(await page.locator('.rack-filter').evaluate(element => element.style.width), '236px');
   await page.screenshot({ path: new URL('../web/public/main-filter-compact-patch.png', import.meta.url).pathname });
   await page.locator('#rack-view-switch').click();

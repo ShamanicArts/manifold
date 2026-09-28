@@ -7,7 +7,7 @@ const signed = value => `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
 const response = (shape, t) => shape === 0 ? t : shape === 1 ? 1 - (1 - t) ** 2 : t ** 2;
 
 // Face: Main/ui/components/slew.ui.lua. Curve: Main/lib/ui/dynamic_module_graphs.lua.
-export function mountMainSlew(get, post, ids) {
+export function mountMainSlew(get, post, ids, onInputState = () => {}) {
   const state = { ...DEFAULT };
   let input = 0, output = 0;
   const panel = get('slew-preview').closest('.rack-slew');
@@ -29,7 +29,10 @@ export function mountMainSlew(get, post, ids) {
     }
   }
   source.add(new Option('ATV / Bias OUT', '16'));
-  source.addEventListener('change', () => { state.source = Number(source.value); send(ids.source, state.source); });
+  source.addEventListener('change', () => {
+    state.source = Number(source.value); send(ids.source, state.source);
+    onInputState({ ...state });
+  });
 
   function paint() {
     const canvas = get('slew-preview'), ctx = canvas.getContext('2d');

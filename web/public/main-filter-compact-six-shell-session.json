@@ -82,8 +82,8 @@
     },
     "filter": {
       "mode": 0,
-      "cutoff": 3200,
-      "resonance": 0.75
+      "cutoff": 177,
+      "resonance": 1.62
     },
     "fx1": {
       "selected": 0,
@@ -457,7 +457,9 @@
         }
       ],
       "selected": -1,
-      "insertType": 0
+      "insertType": 0,
+      "output": 0,
+      "mix": 1
     },
     "lfos": [
       {
@@ -585,7 +587,7 @@
         "type": "filter",
         "row": 0,
         "col": 3,
-        "w": 2,
+        "w": 1,
         "h": 1
       },
       {
@@ -612,33 +614,6 @@
         "type": "eq",
         "row": 1,
         "col": 4,
-        "w": 1,
-        "h": 1
-      },
-      {
-        "id": "lfo1",
-        "nodeId": 11,
-        "type": "lfo",
-        "row": 2,
-        "col": 0,
-        "w": 1,
-        "h": 1
-      },
-      {
-        "id": "atv1",
-        "nodeId": 12,
-        "type": "atv",
-        "row": 2,
-        "col": 1,
-        "w": 1,
-        "h": 1
-      },
-      {
-        "id": "slew1",
-        "nodeId": 13,
-        "type": "slew",
-        "row": 2,
-        "col": 2,
         "w": 1,
         "h": 1
       }
@@ -719,28 +694,6 @@
         "to": {
           "moduleId": "__rackOutput",
           "portId": "main"
-        }
-      },
-      {
-        "id": "lfo1_to_atv1",
-        "from": {
-          "moduleId": "lfo1",
-          "portId": "out"
-        },
-        "to": {
-          "moduleId": "atv1",
-          "portId": "in"
-        }
-      },
-      {
-        "id": "lfo1_to_slew1",
-        "from": {
-          "moduleId": "lfo1",
-          "portId": "out"
-        },
-        "to": {
-          "moduleId": "slew1",
-          "portId": "in"
         }
       }
     ]

@@ -71,9 +71,10 @@ const rackPatch = mountMainAudioPatch({
     if (editorMode) return false;
     const previous = lfo.snapshot().find(item => item.slot === 0)?.route;
     if (!previous) return false;
-    const connected = moduleId === 'lfo1' || moduleId === 'atv1';
-    const next = { source: moduleId === 'atv1' ? 4 : 0,
-      target: connected ? 22 : 0, enabled: connected };
+    const binding = rackCatalog.preparedControlOutputs.find(item => item.from.moduleId === moduleId);
+    if (moduleId && !binding) return false;
+    const connected = Boolean(binding);
+    const next = { source: binding?.source ?? 0, target: binding?.target ?? 0, enabled: connected };
     if (!processor) { lfo.applyCableRoute(connected, next.source); return true; }
     const routes = [
       { slot: 0, id: project.modulation.routeParameters.source,
@@ -208,8 +209,12 @@ const fx1 = mountMainFxSlot($('fx1-module'), synthParameter, project.fxParameter
 const fx2 = mountMainFxSlot($('fx2-module'), synthParameter, project.fxParameters.fx2Base);
 const lfo = mountMainLfoRack($, post, project.modulation,
   route => { if (!editorMode) rackPatch.reflectControlRoute(route); });
-const atv = mountMainAtvBias($, post, state => { if (!editorMode) rackPatch.reflectAtvInputRoute(state); });
-const slew = mountMainSlew($, post, project.modulation.slewParameters);
+const atv = mountMainAtvBias($, post, state => {
+  if (!editorMode) rackPatch.reflectControlInputRoute('atv1', { atv: state });
+});
+const slew = mountMainSlew($, post, project.modulation.slewParameters, state => {
+  if (!editorMode) rackPatch.reflectControlInputRoute('slew1', { slew: state });
+});
 const sampleHold = mountMainSampleHold($, post, project.modulation.sampleHoldParameters);
 const compare = mountMainCompare($, post, project.modulation.compareParameters);
 const cvMix = mountMainCvMix($, post, project.modulation.cvMixParameters);
@@ -361,8 +366,9 @@ function restoreRack(state) {
   lfo.restore(state.lfos ?? state.lfo);
   if (!editorMode) rackPatch.reflectControlRoute(lfo.snapshot().find(item => item.slot === 0)?.route);
   atv.restore(state.atv ?? { amount: 1, bias: 0, slot: 0, port: 0 });
-  if (!editorMode) rackPatch.reflectAtvInputRoute(atv.snapshot());
+  if (!editorMode) rackPatch.reflectControlInputRoute('atv1', { atv: atv.snapshot() });
   slew.restore(state.slew ?? { riseMs: 0, fallMs: 0, shape: 1, source: 0 });
+  if (!editorMode) rackPatch.reflectControlInputRoute('slew1', { slew: slew.snapshot() });
   sampleHold.restore(state.sampleHold ?? {
     mode: 0, source: 0, triggerSource: 0, manualGate: false, held: 0, triggerHigh: false,
   });
@@ -467,7 +473,7 @@ for (const tab of document.querySelectorAll('[data-main-tab]')) {
 }
 if (location.hash === '#slew') {
   document.querySelector('[data-main-tab="midisynth"]').click();
-  requestAnimationFrame(() => { $('rack-scroll').scrollTop = rackUtilityTop('.rack-slew', 217); slew.paint(); });
+  requestAnimationFrame(() => { $('rack-scroll').scrollTop = rackUtilityTop('.rack-slew', 13); slew.paint(); });
 }
 if (location.hash === '#sample-hold') {
   document.querySelector('[data-main-tab="midisynth"]').click();
@@ -809,7 +815,7 @@ $('save-session').onclick = () => {
   let rack;
   try {
     rack = validateMainRackState(rackSnapshot(), true, project.modulation, true, true, true, true, true, true, true, true, true, true, true);
-    validateMainRackControlRoute(rackPatch.document(), rack);
+    validateMainRackControlRoute(rackPatch.document(), rack, rackCatalog);
   }
   catch (error) { status(error.message); return; }
   transferJob = { kind: 'save', id, state: null, audio: null, layer: 0, offset: 0,
@@ -870,7 +876,7 @@ $('open-session').onchange = async () => {
     let sampleAudio = null;
     if (state.version >= 16) {
       state.rackDocument = validateMainRackInsertDocument(state.rackDocument, rackCatalog);
-      validateMainRackControlRoute(state.rackDocument, state.rack);
+      validateMainRackControlRoute(state.rackDocument, state.rack, rackCatalog);
     }
     if (state.version >= 2) {
       validateMainRackState(state.rack, state.version >= 3, project.modulation, state.version >= 4, state.version >= 5, state.version >= 6, state.version >= 7, state.version >= 8, state.version >= 9, state.version >= 10, state.version >= 11, state.version >= 12, state.version >= 13, state.version >= 14, state.version >= 15);

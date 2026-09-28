@@ -3,6 +3,7 @@
 // instead of appearing in the UI while silently leaving audio unchanged.
 import { NODE_TYPES, validateTopology } from '../graph/topology.js';
 import { addRackModule, validateRackDocument } from './rack-document.js';
+import { matchingBinding, matchesControlState } from './main-control-routes.js';
 
 const AUDIO_TYPES = { source: 'main-voice-bank', filter: 'svf', fx1: 'effect-slot-legacy',
   fx2: 'effect-slot-legacy', eq: 'eq8', lfo: 'lfo' };
@@ -10,6 +11,7 @@ const key = endpoint => `${endpoint.moduleId}:${endpoint.portId}`;
 
 export function compileMainRackAudio(rackDocument, catalog) {
   const rack = validateRackDocument(rackDocument, catalog);
+  const controlModules = new Set(catalog.preparedControlModules);
   const modules = new Map(rack.modules.map(module => [module.id, module]));
   const portKind = (endpoint, direction) => {
     const module = modules.get(endpoint.moduleId);
@@ -29,14 +31,15 @@ export function compileMainRackAudio(rackDocument, catalog) {
     throw new Error('Main voice rewiring needs a separate voice graph compiler.');
   }
   for (const module of rack.modules) {
-    if (module.id === 'adsr' || module.type === 'atv') continue;
+    if (module.id === 'adsr' || (controlModules.has(module.id) && module.type !== 'lfo')) continue;
     if (!AUDIO_TYPES[module.type]) throw new Error(`Main module ${module.id} is not compiled into audio yet.`);
   }
-  const atvInputs = rack.connections.filter(edge => edge.to.moduleId === 'atv1');
-  if (atvInputs.some(edge => edge.from.moduleId !== 'lfo1' || edge.from.portId !== 'out'
-    || edge.to.portId !== 'in')) throw new Error('This ATV input has no prepared route.');
+  const controlInputs = rack.connections.filter(edge => controlModules.has(edge.to.moduleId));
+  if (controlInputs.some(edge => !matchingBinding(catalog.preparedControlInputs, edge))) {
+    throw new Error('This Main control input has no prepared route.');
+  }
   const cvConnections = rack.connections.filter(edge => portKind(edge.from, 'outputs') === 'cv'
-    && edge.to.moduleId !== 'atv1');
+    && !controlModules.has(edge.to.moduleId));
   for (const edge of cvConnections) {
     if (modules.get(edge.from.moduleId)?.type !== 'lfo' || edge.from.portId !== 'out'
       || modules.get(edge.to.moduleId)?.type !== 'filter' || edge.to.portId !== 'cutoff') {
@@ -49,7 +52,8 @@ export function compileMainRackAudio(rackDocument, catalog) {
     { id: 1, type: 'input.raw' },
     { id: catalog.endpoints.__rackOutput.nodeId, type: 'output' },
     { id: catalog.endpoints.__midiInput.nodeId, type: 'midi-input' },
-    ...rack.modules.filter(module => module.id !== 'adsr' && module.type !== 'atv'
+    ...rack.modules.filter(module => module.id !== 'adsr'
+      && !(controlModules.has(module.id) && module.type !== 'lfo')
       && (module.type !== 'lfo' || cvConnections.some(edge => edge.from.moduleId === module.id)))
       .map(module => {
       const type = module.type === 'filter' && cvFilters.has(module.id)
@@ -61,7 +65,7 @@ export function compileMainRackAudio(rackDocument, catalog) {
     to: modules.get('oscillator').nodeId, inputPort: 0 }];
   for (const edge of rack.connections) {
     if (expectedVoice.some(([from, to]) => key(edge.from) === from && key(edge.to) === to)) continue;
-    if (atvInputs.includes(edge)) continue;
+    if (controlInputs.includes(edge)) continue;
     if (cvConnections.includes(edge)) {
       connections.push({ from: modules.get(edge.from.moduleId).nodeId,
         to: modules.get(edge.to.moduleId).nodeId, inputPort: 1 });
@@ -91,20 +95,17 @@ export function compileMainRackInsert(rackDocument, catalog) {
   // The rack's LFO shell names that prepared control source; compiling it as
   // another graph LFO would silently create a second oscillator.
   const rack = validateRackDocument(rackDocument, catalog);
-  if (rack.connections.some(edge => (['lfo1', 'atv1'].includes(edge.from.moduleId)
-    || ['lfo1', 'atv1'].includes(edge.to.moduleId)) && !(
-    edge.from.moduleId === 'lfo1' && edge.from.portId === 'out'
-      && ((edge.to.moduleId === 'filter' && edge.to.portId === 'cutoff')
-        || (edge.to.moduleId === 'atv1' && edge.to.portId === 'in'))
-    || edge.from.moduleId === 'atv1' && edge.from.portId === 'out'
-      && edge.to.moduleId === 'filter' && edge.to.portId === 'cutoff'))) {
+  const controlModules = new Set(catalog.preparedControlModules);
+  if (rack.connections.some(edge => (controlModules.has(edge.from.moduleId)
+    || controlModules.has(edge.to.moduleId))
+    && !matchingBinding(catalog.preparedControlOutputs, edge)
+    && !matchingBinding(catalog.preparedControlInputs, edge))) {
     throw new Error('This Main control cable has no prepared route.');
   }
   const audioRack = { ...rack,
-    modules: rack.modules.filter(module => module.type !== 'lfo' && module.type !== 'atv'),
+    modules: rack.modules.filter(module => !controlModules.has(module.id)),
     connections: rack.connections.filter(edge =>
-      !['lfo1', 'atv1'].includes(edge.from.moduleId)
-        && !['lfo1', 'atv1'].includes(edge.to.moduleId)),
+      !controlModules.has(edge.from.moduleId) && !controlModules.has(edge.to.moduleId)),
   };
   const full = compileMainRackAudio(audioRack, catalog);
   const voiceNodeId = rack.modules.find(module => module.id === 'oscillator').nodeId;
@@ -117,11 +118,12 @@ export function compileMainRackInsert(rackDocument, catalog) {
   });
 }
 
-// Main sessions keep six prepared audio/voice shells and up to two control shells.
+// Main sessions keep six prepared audio/voice shells and optional control shells.
 // Filter has its original compact width; other module sizes await their faces.
 export function validateMainRackInsertDocument(document, catalog) {
   const rack = validateRackDocument(document, catalog);
-  if (rack.modules.length < catalog.initial.modules.length - 2
+  const controlModules = new Set(catalog.preparedControlModules);
+  if (rack.modules.length < catalog.initial.modules.length - controlModules.size
     || rack.modules.length > catalog.initial.modules.length ||
     rack.modules.some(module => {
       const original = catalog.initial.modules.find(item => item.id === module.id);
@@ -129,7 +131,7 @@ export function validateMainRackInsertDocument(document, catalog) {
         .some(key => module[key] !== original[key])
         || (module.id === 'filter' ? !((module.w === 1 || module.w === 2) && module.h === 1)
           : module.w !== original.w || module.h !== original.h);
-    }) || catalog.initial.modules.some(module => !['lfo1', 'atv1'].includes(module.id)
+    }) || catalog.initial.modules.some(module => !controlModules.has(module.id)
       && !rack.modules.some(item => item.id === module.id))) {
     throw new Error('This Main session uses modules or sizes that the current rack cannot display.');
   }
@@ -142,48 +144,39 @@ export function validateMainRackInsertDocument(document, catalog) {
   return rack;
 }
 
-export function withMainLfoShell(document, catalog) {
-  const rack = validateMainRackInsertDocument(document, catalog);
-  if (rack.modules.some(module => module.id === 'lfo1')) return rack;
-  const shell = catalog.initial.modules.find(module => module.id === 'lfo1');
-  for (let row = shell.row; row < catalog.grid.maxRows; row++) {
-    for (let col = 0; col < catalog.grid.columns; col++) {
-      try {
-        return validateMainRackInsertDocument(addRackModule(rack, { ...shell, row, col }, catalog), catalog);
-      } catch { /* Look for an unoccupied grid cell. */ }
-    }
-  }
-  throw new Error('The saved Main rack has no cell for its LFO shell.');
-}
-
 export function withMainControlShells(document, catalog) {
-  let rack = withMainLfoShell(document, catalog);
-  if (rack.modules.some(module => module.id === 'atv1')) return rack;
-  const shell = catalog.initial.modules.find(module => module.id === 'atv1');
-  for (let row = shell.row; row < catalog.grid.maxRows; row++) {
-    for (let col = 0; col < catalog.grid.columns; col++) {
-      try {
-        rack = validateMainRackInsertDocument(addRackModule(rack, { ...shell, row, col }, catalog), catalog);
-        return rack;
-      } catch { /* Look for an unoccupied grid cell. */ }
+  let rack = validateMainRackInsertDocument(document, catalog);
+  for (const id of catalog.preparedControlModules) {
+    if (rack.modules.some(module => module.id === id)) continue;
+    const shell = catalog.initial.modules.find(module => module.id === id);
+    let placed = false;
+    for (let row = shell.row; row < catalog.grid.maxRows && !placed; row++) {
+      for (let col = 0; col < catalog.grid.columns; col++) {
+        try {
+          rack = validateMainRackInsertDocument(addRackModule(rack, { ...shell, row, col }, catalog), catalog);
+          placed = true;
+          break;
+        } catch { /* Look for an unoccupied grid cell. */ }
+      }
     }
+    if (!placed) throw new Error(`The saved Main rack has no cell for ${id}.`);
   }
-  throw new Error('The saved Main rack has no cell for its ATV shell.');
+  return rack;
 }
 
-export function validateMainRackControlRoute(document, rackState) {
-  const cable = document.connections.find(edge => edge.to.moduleId === 'filter'
-    && edge.to.portId === 'cutoff' && ['lfo1', 'atv1'].includes(edge.from.moduleId));
-  if (cable) {
-    const route = rackState?.lfos?.find(lfo => lfo.slot === 0)?.route;
-    if (route?.source !== (cable.from.moduleId === 'atv1' ? 4 : 0)
-      || route?.target !== 22 || route?.enabled !== true) {
-      throw new Error('The saved control cable and Rust modulation route disagree.');
+export function validateMainRackControlRoute(document, rackState, catalog) {
+  for (const edge of document.connections) {
+    const output = matchingBinding(catalog.preparedControlOutputs, edge);
+    if (output) {
+      const route = rackState?.lfos?.find(lfo => lfo.slot === output.slot)?.route;
+      if (route?.source !== output.source || route?.target !== output.target || route?.enabled !== true) {
+        throw new Error('The saved control cable and Rust modulation route disagree.');
+      }
     }
-  }
-  if (document.connections.some(edge => edge.from.moduleId === 'lfo1'
-    && edge.to.moduleId === 'atv1') && (rackState?.atv?.slot !== 0 || rackState?.atv?.port !== 0)) {
-    throw new Error('The saved ATV input cable and Rust source selector disagree.');
+    const input = matchingBinding(catalog.preparedControlInputs, edge);
+    if (input && !matchesControlState(input, rackState)) {
+      throw new Error('The saved control input cable and Rust source selector disagree.');
+    }
   }
   return document;
 }

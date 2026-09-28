@@ -23,14 +23,14 @@ try {
   await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = 360; });
   await page.screenshot({ path: new URL('../web/public/main-atv-rack-face.png', import.meta.url).pathname });
   await page.locator('#rack-view-switch').click();
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 8);
-  assert.equal(await page.locator('.main-rack-wire').count(), 8);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 9);
+  assert.equal(await page.locator('.main-rack-wire').count(), 9);
   const output = page.locator('.rack-atv-primary .main-patch-port[data-port="out"][data-direction="output"]');
   const cutoff = page.locator('.rack-filter .main-patch-port[data-port="cutoff"][data-direction="input"]');
   assert.equal(await output.isEnabled(), true);
   await output.click();
   await cutoff.click();
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 9);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 10);
   assert.equal(await page.locator('#mod-source').inputValue(), '4');
   assert.equal(await page.locator('#mod-target').inputValue(), '22');
   assert.equal(await page.locator('#mod-enabled').isChecked(), true);
@@ -42,7 +42,7 @@ try {
   const saved = await download;
   const bytes = await readFile(await saved.path());
   const session = JSON.parse(bytes);
-  assert.equal(session.rackDocument.modules.length, 8);
+  assert.equal(session.rackDocument.modules.length, 9);
   assert.ok(session.rackDocument.connections.some(edge => edge.from.moduleId === 'atv1'
     && edge.to.moduleId === 'filter' && edge.to.portId === 'cutoff'));
   assert.ok(session.rackDocument.connections.some(edge => edge.from.moduleId === 'lfo1'
@@ -51,21 +51,21 @@ try {
     session.rack.lfos[0].route.enabled], [4, 22, true]);
   await writeFile(new URL('../web/public/main-atv-rack-saved-session.json', import.meta.url), bytes);
   await cutoff.click({ button: 'right' });
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 8);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 9);
   await page.locator('#open-session').setInputFiles({ name: 'atv-rack.json',
     mimeType: 'application/json', buffer: bytes });
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 9);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 10);
   assert.equal(await page.locator('#mod-source').inputValue(), '4');
   await page.locator('#atv-port').selectOption('1');
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 8);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 9);
   const inverseDownload = page.waitForEvent('download', { timeout: 10000 });
   await page.locator('#save-session').click();
   const inverse = JSON.parse(await readFile(await (await inverseDownload).path()));
   assert.equal(inverse.rack.atv.port, 1);
   assert.ok(inverse.rackDocument.connections.every(edge => edge.to.moduleId !== 'atv1'));
   await page.locator('#atv-port').selectOption('0');
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 9);
-  const older = await readFile(new URL('../web/public/main-filter-compact-saved-session.json', import.meta.url));
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 10);
+  const older = await readFile(new URL('../web/public/main-filter-compact-six-shell-session.json', import.meta.url));
   await page.locator('#open-session').setInputFiles({ name: 'older-six-shells.json',
     mimeType: 'application/json', buffer: older });
   await page.waitForFunction(() => document.querySelector('.rack-filter')?.dataset.rackWidth === '1'
@@ -84,9 +84,10 @@ try {
   await page.waitForFunction(() => document.querySelector('.rack-atv-primary')?.style.left === '0px'
     && document.querySelector('.rack-lfo-primary')?.style.left === '236px');
   await page.locator('#rack-view-switch').click();
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 8);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 9);
   await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = 430; });
-  assert.match(await page.locator('.main-rack-wire-cv').getAttribute('d'), / L /);
+  assert.ok((await page.locator('.main-rack-wire-cv').evaluateAll(elements => elements.map(element => element.getAttribute('d'))))
+    .some(path => / L /.test(path)));
   await page.screenshot({ path: new URL('../web/public/main-atv-rack-reflow.png', import.meta.url).pathname });
   const movedDownload = page.waitForEvent('download', { timeout: 10000 });
   await page.locator('#save-session').click();

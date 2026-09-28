@@ -1421,6 +1421,19 @@ mod tests {
     }
 
     #[test]
+    fn browser_slew_rack_state_reopens_in_main_clap() {
+        let browser = include_bytes!("../../../web/public/main-slew-rack-saved-session.json");
+        let instance = Instance::new(null(), null());
+        assert!(instance.load_bytes(browser.to_vec()));
+        let saved: serde_json::Value =
+            serde_json::from_slice(&instance.save_bytes().unwrap()).unwrap();
+        let original: serde_json::Value = serde_json::from_slice(browser).unwrap();
+        assert_eq!(saved["rackDocument"], original["rackDocument"]);
+        assert_eq!(saved["rack"]["lfos"][0]["route"]["source"], 5);
+        assert_eq!(saved["rack"]["slew"]["source"], 16);
+    }
+
+    #[test]
     fn bounded_editor_status_reflects_audio_thread_record_commands() {
         let instance = Instance::new(null(), null());
         assert!(instance.activate(48_000.0, 128));

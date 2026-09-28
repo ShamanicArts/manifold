@@ -67,14 +67,14 @@ try {
   assert.deepEqual(Object.fromEntries(session.rackDocument.modules.map(module =>
     [module.id, [module.row, module.col]])), {
     adsr: [0, 0], oscillator: [0, 3], filter: [1, 0],
-    fx1: [0, 1], fx2: [1, 2], eq: [1, 4], lfo1: [2, 0], atv1: [2, 1],
+    fx1: [0, 1], fx2: [1, 2], eq: [1, 4], lfo1: [2, 0], atv1: [2, 1], slew1: [2, 2],
   });
   await writeFile(new URL('../web/public/main-rack-reflow-saved-session.json', import.meta.url), bytes);
 
   await dragHeader('.rack-fx1', '.rack-filter', async () => {
     assert.equal(await page.locator('.rack-fx2').evaluate(element => element.style.top), '465px');
     assert.equal(await page.locator('.rack-scroll-content').evaluate(element =>
-      element.style.getPropertyValue('--rack-utility-shift')), '220px');
+      element.style.getPropertyValue('--rack-utility-shift')), '440px');
   });
   await page.waitForFunction(() => document.querySelector('.rack-fx2')?.style.top === '465px');
   const geometry = await page.locator('.rack-scroll-content').evaluate(content => {
@@ -86,8 +86,8 @@ try {
       route: box('.rack-route'), atv: box('.rack-atv'), height: content.offsetHeight,
       shift: getComputedStyle(content).getPropertyValue('--rack-utility-shift').trim() };
   });
-  assert.equal(geometry.shift, '220px');
-  assert.equal(geometry.height, 2773);
+  assert.equal(geometry.shift, '440px');
+  assert.equal(geometry.height, 2993);
   assert.ok(geometry.lfo.left >= geometry.eq.right - 1,
     'the rack LFO reflows beside EQ rather than overlapping it');
   for (const utility of [geometry.route]) {
@@ -100,22 +100,22 @@ try {
     return element.closest('.rack-lfo').getBoundingClientRect().top
       - content.getBoundingClientRect().top;
   });
-  assert.ok(Math.abs(extraLfo - 917) < 1);
+  assert.ok(Math.abs(extraLfo - 1137) < 1);
   await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = 450; });
   await page.screenshot({ path: new URL('../web/public/main-rack-reflow-lower.png', import.meta.url).pathname });
   await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = 0; });
   await page.locator('#patch-jump').click();
-  await page.waitForFunction(() => Math.abs(document.querySelector('#rack-scroll').scrollTop - 672) < 2);
+  await page.waitForFunction(() => Math.abs(document.querySelector('#rack-scroll').scrollTop - 892) < 2);
   await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = 0; });
   await page.locator('#open-session').setInputFiles({ name: 'moved-main.json',
     mimeType: 'application/json', buffer: bytes });
   await page.waitForFunction(() => document.querySelector('.rack-fx1')?.style.top === '25px');
   assert.match(await page.locator('#status').textContent(), /Opened the four-layer Main session/);
   await page.locator('#rack-view-switch').click();
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 8);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 9);
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ midpointDrops: 2, reflowedShells: 3, savedPlacement: true, reopenedPlacement: true,
-    patchWiresRemain: 8, pageErrors: 0 }));
+    patchWiresRemain: 9, pageErrors: 0 }));
 } finally {
   await browser.close();
 }

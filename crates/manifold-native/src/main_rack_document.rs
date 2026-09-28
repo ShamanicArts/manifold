@@ -1,5 +1,5 @@
 //! The saved Main rack is validated and compiled on the host control thread.
-//! The six prepared audio/voice shells and the first two control shells share a grid.
+//! Six prepared audio/voice shells and three control shells share a grid.
 
 use std::collections::BTreeSet;
 
@@ -30,12 +30,30 @@ fn endpoint(value: &Value) -> Result<(&str, &str), MainSessionError> {
     Ok((name(&value["moduleId"])?, name(&value["portId"])?))
 }
 
+pub(crate) fn prepared_control_catalog() -> Result<Value, MainSessionError> {
+    serde_json::from_str(include_str!("../../../projects/main-looper/rack.json"))
+        .map_err(MainSessionError::Json)
+}
+
+pub(crate) fn binding_matches(connection: &Value, binding: &Value) -> bool {
+    connection["from"] == binding["from"] && connection["to"] == binding["to"]
+}
+
+pub(crate) fn state_matches(binding: &Value, rack: &Value) -> bool {
+    binding["when"].as_array().is_some_and(|conditions| {
+        conditions.iter().all(|condition| {
+            condition["pointer"]
+                .as_str()
+                .and_then(|pointer| rack.pointer(pointer))
+                == condition.get("value")
+        })
+    })
+}
+
 /// Return the post-voice insert's graph connections after checking every
 /// saved identity, port, layout cell, and edge against the authored catalog.
 fn audio_connections(document: &Value) -> Result<Vec<Value>, MainSessionError> {
-    let catalog: Value =
-        serde_json::from_str(include_str!("../../../projects/main-looper/rack.json"))
-            .map_err(MainSessionError::Json)?;
+    let catalog = prepared_control_catalog()?;
     if document["schemaVersion"] != 1
         || document["projectId"] != "manifold.main-looper"
         || !matches!(document["viewMode"].as_str(), Some("rack" | "patch"))
@@ -46,7 +64,13 @@ fn audio_connections(document: &Value) -> Result<Vec<Value>, MainSessionError> {
     let original = catalog["initial"]["modules"]
         .as_array()
         .ok_or_else(invalid)?;
-    if modules.len() < original.len() - 2 || modules.len() > original.len() {
+    let control_modules: BTreeSet<_> = catalog["preparedControlModules"]
+        .as_array()
+        .ok_or_else(invalid)?
+        .iter()
+        .map(name)
+        .collect::<Result<_, _>>()?;
+    if modules.len() < original.len() - control_modules.len() || modules.len() > original.len() {
         return Err(invalid());
     }
     let mut identities = BTreeSet::new();
@@ -93,7 +117,7 @@ fn audio_connections(document: &Value) -> Result<Vec<Value>, MainSessionError> {
     }
     for module in original {
         let id = name(&module["id"])?;
-        if id != "lfo1" && id != "atv1" && !identities.contains(id) {
+        if !control_modules.contains(id) && !identities.contains(id) {
             return Err(invalid());
         }
     }
@@ -119,16 +143,12 @@ fn audio_connections(document: &Value) -> Result<Vec<Value>, MainSessionError> {
         {
             continue;
         }
-        if (from, to) == (("lfo1", "out"), ("filter", "cutoff")) && identities.contains("lfo1") {
-            continue;
-        }
-        if (from, to) == (("lfo1", "out"), ("atv1", "in"))
-            && identities.contains("lfo1")
-            && identities.contains("atv1")
-        {
-            continue;
-        }
-        if (from, to) == (("atv1", "out"), ("filter", "cutoff")) && identities.contains("atv1") {
+        let prepared = ["preparedControlOutputs", "preparedControlInputs"]
+            .iter()
+            .filter_map(|key| catalog[*key].as_array())
+            .flatten()
+            .any(|binding| binding_matches(connection, binding));
+        if prepared && identities.contains(from.0) && identities.contains(to.0) {
             continue;
         }
         let source = match from {
@@ -176,38 +196,38 @@ pub(crate) fn validate_control_route(
     document: &Value,
     rack: &Value,
 ) -> Result<(), MainSessionError> {
-    let cable = document["connections"]
+    let catalog = prepared_control_catalog()?;
+    let outputs = catalog["preparedControlOutputs"]
         .as_array()
-        .ok_or_else(invalid)?
-        .iter()
-        .find(|edge| {
-            edge["to"]["moduleId"] == "filter"
-                && edge["to"]["portId"] == "cutoff"
-                && matches!(edge["from"]["moduleId"].as_str(), Some("lfo1" | "atv1"))
-        });
-    if let Some(cable) = cable {
-        let lfo = rack["lfos"]
-            .as_array()
-            .and_then(|lfos| lfos.iter().find(|lfo| lfo["slot"] == 0))
-            .ok_or_else(invalid)?;
-        let route = &lfo["route"];
-        let source = if cable["from"]["moduleId"] == "atv1" {
-            4
-        } else {
-            0
-        };
-        if route["source"] != source || route["target"] != 22 || route["enabled"] != true {
-            return Err(invalid());
+        .ok_or_else(invalid)?;
+    let inputs = catalog["preparedControlInputs"]
+        .as_array()
+        .ok_or_else(invalid)?;
+    for edge in document["connections"].as_array().ok_or_else(invalid)? {
+        if let Some(binding) = outputs
+            .iter()
+            .find(|binding| binding_matches(edge, binding))
+        {
+            let slot = binding["slot"].as_u64().ok_or_else(invalid)?;
+            let lfo = rack["lfos"]
+                .as_array()
+                .ok_or_else(invalid)?
+                .iter()
+                .find(|lfo| lfo["slot"] == slot)
+                .ok_or_else(invalid)?;
+            let route = &lfo["route"];
+            if route["source"] != binding["source"]
+                || route["target"] != binding["target"]
+                || route["enabled"] != true
+            {
+                return Err(invalid());
+            }
         }
-    }
-    if document["connections"]
-        .as_array()
-        .ok_or_else(invalid)?
-        .iter()
-        .any(|edge| edge["from"]["moduleId"] == "lfo1" && edge["to"]["moduleId"] == "atv1")
-        && (rack["atv"]["slot"] != 0 || rack["atv"]["port"] != 0)
-    {
-        return Err(invalid());
+        if let Some(binding) = inputs.iter().find(|binding| binding_matches(edge, binding)) {
+            if !state_matches(binding, rack) {
+                return Err(invalid());
+            }
+        }
     }
     Ok(())
 }
@@ -514,6 +534,69 @@ mod tests {
                 128
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn browser_slew_cable_reopens_and_drives_the_native_filter() {
+        let browser: Value = serde_json::from_slice(include_bytes!(
+            "../../../web/public/main-slew-rack-saved-session.json"
+        ))
+        .unwrap();
+        validate_control_route(&browser["rackDocument"], &browser["rack"]).unwrap();
+        assert_eq!(
+            audio_connections(&browser["rackDocument"]).unwrap().len(),
+            5
+        );
+        let exported =
+            crate::main_session_export::save_template(&serde_json::to_vec(&browser).unwrap())
+                .unwrap();
+        assert_eq!(exported["rackDocument"], browser["rackDocument"]);
+
+        fn energy(state: &Value) -> f32 {
+            let bytes = serde_json::to_vec(state).unwrap();
+            let mut processor =
+                crate::main_session::prepare_main_session(&bytes, 48_000.0, 128).unwrap();
+            let instrument = processor.instrument_control_mut();
+            instrument.synth_event(EventKind::NoteOn {
+                channel: 0,
+                note: 96,
+                velocity: 120,
+            });
+            let dry = [0.0; 128];
+            let mut left = [0.0; 128];
+            let mut right = [0.0; 128];
+            let mut energy = 0.0;
+            for block in 0..120 {
+                instrument.process([&dry, &dry], [&mut left, &mut right]);
+                if block >= 40 {
+                    energy += left.iter().map(|sample| sample.abs()).sum::<f32>();
+                }
+            }
+            energy
+        }
+
+        let mut connected = browser.clone();
+        connected["rack"]["filter"]["cutoff"] = json!(800.0);
+        connected["rack"]["lfos"][0]["shape"] = json!(3);
+        connected["rack"]["lfos"][0]["route"]["amount"] = json!(0.5);
+        let live = energy(&connected);
+        let mut disconnected = connected.clone();
+        disconnected["rack"]["lfos"][0]["route"]["enabled"] = json!(false);
+        disconnected["rackDocument"]["connections"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|edge| edge["to"]["portId"] != "cutoff");
+        let plain = energy(&disconnected);
+        assert!(
+            (live - plain).abs() > plain * 0.1,
+            "Slew cable {live}, disconnected {plain}"
+        );
+        assert!(validate_control_route(&connected["rackDocument"], &disconnected["rack"]).is_err());
+        let mut wrong_input = connected.clone();
+        wrong_input["rack"]["slew"]["source"] = json!(0);
+        assert!(
+            validate_control_route(&wrong_input["rackDocument"], &wrong_input["rack"]).is_err()
         );
     }
 }

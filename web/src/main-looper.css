@@ -521,6 +521,7 @@ body {
 .main-rack-patch-active .rack-eq > .eq-module { visibility: hidden; }
 .main-rack-patch-active .rack-lfo-primary > :not(.rack-shell-head):not(.main-patch-face) { visibility: hidden; }
 .main-rack-patch-active .rack-atv-primary > :not(.rack-shell-head):not(.main-patch-face) { visibility: hidden; }
+.main-rack-patch-active .rack-slew-primary > :not(.rack-shell-head):not(.main-patch-face) { visibility: hidden; }
 .main-patch-column { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .main-patch-column > strong { height: 15px; color: #64748b; font: 9px/15px system-ui, sans-serif; letter-spacing: .11em; }
 .main-patch-outputs > strong { text-align: right; }
@@ -651,6 +652,9 @@ body {
 .rack-atv-patch label { display: block; margin-top: 9px; color: #94a3b8; }
 .rack-atv-patch select { display: block; width: 100%; height: 23px; margin-top: 3px; background: #112417; border: 1px solid #1f3b2d; color: #dcfce7; font-size: 10px; }
 .rack-slew { position: absolute; left: 708px; top: 697px; width: 236px; height: 220px; background: #0f1f17; border: 1px solid #1f3b2d; border-radius: 10px; }
+.slew-head::before { background: #2dd4bf; }
+.rack-slew-primary .slew-title { top: 15px; }
+.rack-slew-primary .slew-status { top: 31px; }
 .slew-title, .slew-status, .slew-values { position: absolute; left: 12px; width: 212px; }
 .slew-title { top: 10px; color: #2dd4bf; font-size: 11px; }
 .slew-status { top: 28px; color: #94a3b8; font-size: 8px; }

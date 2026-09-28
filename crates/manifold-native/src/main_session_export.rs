@@ -4,6 +4,7 @@
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 
 use crate::main_host_parameters::{
     ARPEGGIATOR_BASE, ATV_BASE, COMPARE_BASE, CV_MIX_BASE, LFO_BASE, LFO_STRIDE, NOTE_FILTER_BASE,
@@ -271,39 +272,73 @@ fn apply_rack(rack: &mut Value, snapshot: &MainPcmSnapshot) -> Result<(), MainEx
 }
 
 fn reconcile_control_cables(state: &mut Value) -> Result<(), MainExportError> {
-    let modules = state["rackDocument"]["modules"]
+    let catalog = crate::main_rack_document::prepared_control_catalog()
+        .map_err(|_| MainExportError::InvalidTemplate("control catalog"))?;
+    let modules: BTreeSet<_> = state["rackDocument"]["modules"]
         .as_array()
-        .ok_or(MainExportError::InvalidTemplate("rackDocument modules"))?;
-    let has_lfo = modules.iter().any(|module| module["id"] == "lfo1");
-    let has_atv = modules.iter().any(|module| module["id"] == "atv1");
-    if !has_lfo {
-        return Ok(());
-    }
-    let route = state["rack"]["lfos"]
+        .ok_or(MainExportError::InvalidTemplate("rackDocument modules"))?
+        .iter()
+        .filter_map(|module| module["id"].as_str())
+        .collect();
+    let rack = state["rack"].clone();
+    let route = rack["lfos"]
         .as_array()
         .and_then(|lfos| lfos.iter().find(|lfo| lfo["slot"] == 0))
         .ok_or(MainExportError::InvalidTemplate("LFO 1 route"))?["route"]
         .clone();
-    let desired_source = if route["target"] == 22 && route["enabled"] == true {
-        match route["source"].as_u64() {
-            Some(0) => Some("lfo1"),
-            Some(4) if has_atv => Some("atv1"),
-            _ => None,
+    let outputs = catalog["preparedControlOutputs"]
+        .as_array()
+        .ok_or(MainExportError::InvalidTemplate("control outputs"))?;
+    let inputs = catalog["preparedControlInputs"]
+        .as_array()
+        .ok_or(MainExportError::InvalidTemplate("control inputs"))?;
+    let output_target = outputs
+        .first()
+        .ok_or(MainExportError::InvalidTemplate("control target"))?["to"]
+        .clone();
+    let desired_output = outputs
+        .iter()
+        .find(|binding| {
+            route["enabled"] == true
+                && route["source"] == binding["source"]
+                && route["target"] == binding["target"]
+                && binding["from"]["moduleId"]
+                    .as_str()
+                    .is_some_and(|id| modules.contains(id))
+        })
+        .map(|binding| binding["from"].clone());
+    let mut input_targets = Vec::new();
+    let mut seen = BTreeSet::new();
+    for binding in inputs {
+        let to = &binding["to"];
+        let Some(module_id) = to["moduleId"].as_str() else {
+            continue;
+        };
+        let Some(port_id) = to["portId"].as_str() else {
+            continue;
+        };
+        if !modules.contains(module_id) || !seen.insert((module_id, port_id)) {
+            continue;
         }
-    } else {
-        None
-    };
-    let atv_input =
-        has_atv && state["rack"]["atv"]["slot"] == 0 && state["rack"]["atv"]["port"] == 0;
+        let source = inputs
+            .iter()
+            .find(|candidate| {
+                candidate["to"] == *to
+                    && candidate["from"]["moduleId"]
+                        .as_str()
+                        .is_some_and(|id| modules.contains(id))
+                    && crate::main_rack_document::state_matches(candidate, &rack)
+            })
+            .map(|candidate| candidate["from"].clone());
+        input_targets.push((to.clone(), source));
+    }
     let connections = state["rackDocument"]["connections"]
         .as_array_mut()
         .ok_or(MainExportError::InvalidTemplate("rackDocument connections"))?;
-    fn ensure(connections: &mut Vec<Value>, from: Option<&str>, to_module: &str, to_port: &str) {
-        let existing = connections.iter().position(|edge| {
-            edge["to"]["moduleId"] == to_module && edge["to"]["portId"] == to_port
-        });
+    fn ensure(connections: &mut Vec<Value>, from: Option<&Value>, to: &Value) {
+        let existing = connections.iter().position(|edge| edge["to"] == *to);
         match (existing, from) {
-            (Some(index), Some(source)) => connections[index]["from"]["moduleId"] = json!(source),
+            (Some(index), Some(source)) => connections[index]["from"] = source.clone(),
             (Some(index), None) => {
                 connections.remove(index);
             }
@@ -317,16 +352,16 @@ fn reconcile_control_cables(state: &mut Value) -> Result<(), MainExportError> {
                 }
                 connections.push(json!({
                     "id": format!("connection_{index}"),
-                    "from": { "moduleId": source, "portId": "out" },
-                    "to": { "moduleId": to_module, "portId": to_port },
+                    "from": source,
+                    "to": to,
                 }));
             }
             (None, None) => {}
         }
     }
-    ensure(connections, desired_source, "filter", "cutoff");
-    if has_atv {
-        ensure(connections, atv_input.then_some("lfo1"), "atv1", "in");
+    ensure(connections, desired_output.as_ref(), &output_target);
+    for (to, from) in &input_targets {
+        ensure(connections, from.as_ref(), to);
     }
     Ok(())
 }
@@ -514,6 +549,35 @@ mod tests {
                 .filter(|edge| edge["to"]["moduleId"] == "atv1")
                 .count(),
             1
+        );
+        crate::main_rack_document::validate_control_route(&state["rackDocument"], &state["rack"])
+            .unwrap();
+    }
+
+    #[test]
+    fn native_slew_selector_reconciles_its_input_and_output_cables() {
+        let mut state: Value = serde_json::from_slice(include_bytes!(
+            "../../../web/public/main-slew-rack-saved-session.json"
+        ))
+        .unwrap();
+        state["rack"]["slew"]["source"] = json!(0);
+        reconcile_control_cables(&mut state).unwrap();
+        assert!(state["rackDocument"]["connections"]
+            .as_array().unwrap().iter().any(|edge|
+                edge["from"]["moduleId"] == "lfo1" && edge["to"]["moduleId"] == "slew1"));
+        state["rack"]["slew"]["source"] = json!(16);
+        reconcile_control_cables(&mut state).unwrap();
+        assert!(state["rackDocument"]["connections"]
+            .as_array().unwrap().iter().any(|edge|
+                edge["from"]["moduleId"] == "atv1" && edge["to"]["moduleId"] == "slew1"));
+        state["rack"]["lfos"][0]["route"]["enabled"] = json!(false);
+        reconcile_control_cables(&mut state).unwrap();
+        assert!(
+            state["rackDocument"]["connections"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|edge| edge["to"]["portId"] != "cutoff")
         );
         crate::main_rack_document::validate_control_route(&state["rackDocument"], &state["rack"])
             .unwrap();

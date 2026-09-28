@@ -27,7 +27,7 @@ try {
   assert.equal(await cutoff.isEnabled(), true);
   await lfoOut.click();
   await cutoff.click();
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 9);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 10);
   assert.equal(await page.locator('#mod-target').inputValue(), '22');
   assert.equal(await page.locator('#mod-enabled').isChecked(), true);
   await page.screenshot({ path: new URL('../web/public/main-lfo-rack-filter-port.png', import.meta.url).pathname });
@@ -40,7 +40,7 @@ try {
   const bytes = await readFile(await saved.path());
   const session = JSON.parse(bytes);
   assert.equal(session.version, 16);
-  assert.equal(session.rackDocument.modules.length, 8);
+  assert.equal(session.rackDocument.modules.length, 9);
   assert.ok(session.rackDocument.connections.some(edge => edge.from.moduleId === 'lfo1'
     && edge.from.portId === 'out' && edge.to.moduleId === 'filter' && edge.to.portId === 'cutoff'));
   const route = session.rack.lfos.find(lfo => lfo.slot === 0).route;
@@ -53,19 +53,19 @@ try {
   await page.locator('#rack-view-switch').click();
 
   await cutoff.click({ button: 'right' });
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 8);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 9);
   assert.equal(await page.locator('#mod-target').inputValue(), '0');
   await page.locator('#mod-target').selectOption('22');
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 9);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 10);
   await page.locator('#mod-target').selectOption('0');
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 8);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 9);
   await page.locator('#open-session').setInputFiles({ name: 'lfo-rack.json',
     mimeType: 'application/json', buffer: bytes });
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 9);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 10);
   assert.equal(await page.locator('#mod-target').inputValue(), '22');
   assert.equal(await page.locator('#mod-enabled').isChecked(), true);
   assert.match(await page.locator('#status').textContent(), /Opened the four-layer Main session/);
-  const older = await readFile(new URL('../web/public/main-filter-compact-saved-session.json', import.meta.url));
+  const older = await readFile(new URL('../web/public/main-filter-compact-six-shell-session.json', import.meta.url));
   assert.equal(JSON.parse(older).rackDocument.modules.length, 6);
   await page.locator('#open-session').setInputFiles({ name: 'older-six-shells.json',
     mimeType: 'application/json', buffer: older });
@@ -73,7 +73,7 @@ try {
     && document.querySelector('#status')?.textContent.includes('Opened the four-layer Main session'));
   assert.equal(await page.locator('.rack-lfo-primary .main-patch-face').count(), 1);
   await page.locator('#rack-view-switch').click();
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 8);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 9);
   assert.match(await page.locator('#status').textContent(), /Opened the four-layer Main session/);
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ liveCvCable: true, routeSelectorSync: true, savedRoute: true, reopenedCable: true,
