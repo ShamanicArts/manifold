@@ -53,6 +53,21 @@ test('occupied drops insert into legacy row flow; free drops keep sparse slots',
   });
 });
 
+test('dropping an earlier shell on the next shell midpoint visibly reflows the row', () => {
+  const rack = initialRackDocument(catalog);
+  const positions = document => Object.fromEntries(document.modules.map(({ id, row, col }) =>
+    [id, `${row},${col}`]));
+  assert.deepEqual(positions(moveRackModule(rack, 'adsr', 0, 1, catalog, 472)), {
+    adsr: '0,2', oscillator: '0,0', filter: '0,3',
+    fx1: '1,0', fx2: '1,2', eq: '1,4',
+  });
+  assert.deepEqual(positions(moveRackModule(rack, 'oscillator', 0, 3, catalog, 944)), {
+    adsr: '0,0', oscillator: '0,3', filter: '0,1',
+    fx1: '1,0', fx2: '1,2', eq: '1,4',
+  });
+  assert.deepEqual(rack, initialRackDocument(catalog));
+});
+
 test('Filter width toggles through an occupied cell and preserves module identities', () => {
   const rack = initialRackDocument(catalog);
   const compact = resizeRackModuleWithFlow(rack, 'filter', 1, 1, catalog);

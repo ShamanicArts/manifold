@@ -17,8 +17,6 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html`);
   await page.locator('[data-main-tab="midisynth"]').click();
-  await page.locator('#audio-button').click();
-  await page.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Running'));
 
   async function dragHeader(from, to, preview) {
     const first = await page.locator(`${from} .rack-shell-head`).boundingBox();
@@ -29,6 +27,22 @@ try {
     if (preview) await preview();
     await page.mouse.up();
   }
+  await dragHeader('.rack-adsr', '.rack-source', async () => {
+    assert.equal(await page.locator('.rack-source').evaluate(element => element.style.left), '0px');
+  });
+  await page.waitForFunction(() => document.querySelector('.rack-adsr')?.style.left === '472px');
+  await page.reload();
+  await page.locator('[data-main-tab="midisynth"]').click();
+  await dragHeader('.rack-source', '.rack-filter', async () => {
+    assert.equal(await page.locator('.rack-filter').evaluate(element => element.style.left), '236px');
+  });
+  await page.waitForFunction(() => document.querySelector('.rack-source')?.style.left === '708px');
+  await page.screenshot({ path: new URL('../web/public/main-rack-midpoint-reflow.png', import.meta.url).pathname,
+    clip: { x: 110, y: 430, width: 1280, height: 460 } });
+  await page.reload();
+  await page.locator('[data-main-tab="midisynth"]').click();
+  await page.locator('#audio-button').click();
+  await page.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Running'));
   await dragHeader('.rack-fx1', '.rack-source', async () => {
     assert.equal(await page.locator('.rack-source').evaluate(element => element.style.left), '708px');
     assert.equal(await page.locator('.rack-filter').evaluate(element => element.style.top), '245px');
@@ -98,7 +112,7 @@ try {
   await page.locator('#rack-view-switch').click();
   await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 7);
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ reflowedShells: 3, savedPlacement: true, reopenedPlacement: true,
+  console.log(JSON.stringify({ midpointDrops: 2, reflowedShells: 3, savedPlacement: true, reopenedPlacement: true,
     patchWiresRemain: 7, pageErrors: 0 }));
 } finally {
   await browser.close();

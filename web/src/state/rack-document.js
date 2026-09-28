@@ -131,8 +131,15 @@ export function moveRackModule(document, id, row, col, catalog, dropX) {
     const centerX = Number.isFinite(dropX) ? dropX
       : (targetCol + moving.w / 2) * catalog.grid.cellWidth;
     const earlierRows = others.filter(module => module.row < row).length;
-    const earlierInRow = others.filter(module => module.row === row
-      && (module.col + module.w / 2) * catalog.grid.cellWidth < centerX).length;
+    const movingBefore = module => moving.row < module.row
+      || (moving.row === module.row && moving.col < module.col);
+    const earlierInRow = others.filter(module => {
+      if (module.row !== row) return false;
+      const midpoint = (module.col + module.w / 2) * catalog.grid.cellWidth;
+      // A drop exactly on a shell's midpoint must advance a module dragged
+      // from its left; otherwise moving to the next shell can be a no-op.
+      return midpoint < centerX || (Math.abs(midpoint - centerX) < 1 && movingBefore(module));
+    }).length;
     const flow = [...others];
     flow.splice(earlierRows + earlierInRow, 0, moving);
     const placed = [];
