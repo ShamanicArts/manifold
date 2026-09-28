@@ -1,15 +1,15 @@
 /** Main looper adapter: device buffers and messages only; Rust owns audio/state. */
 // Vite serves this AudioWorklet module as an asset, so it must be self-contained.
-// Strips progress from the rightmost short range toward older ranges on the left.
-// Within each strip, a sound enters at the left edge and travels to the right.
-export function captureStripBins(bars, index, samplesPerBar, captureFrames, capturedFrames, count = 64) {
+// The nine strips form one timeline: older audio is left, newest audio is right.
+// Peak queries use samples ago, so reverse the age bins inside every strip.
+export function captureStripBins(bars, index, samplesPerBar, captureFrames, capturedFrames, count = 128) {
   const older = Math.min(captureFrames, Math.floor(bars[index] * samplesPerBar));
   const newer = Math.min(captureFrames, Math.floor((bars[index + 1] ?? 0) * samplesPerBar));
   const span = Math.max(0, older - newer);
   if (!span || capturedFrames <= newer) return Array(count).fill(null);
   return Array.from({ length: count }, (_, bin) => {
-    const start = Math.floor(newer + span * bin / count);
-    const end = Math.floor(newer + span * (bin + 1) / count);
+    const start = Math.floor(newer + span * (count - bin - 1) / count);
+    const end = Math.floor(newer + span * (count - bin) / count);
     return start < capturedFrames && end > start ? [start, Math.min(end, capturedFrames)] : null;
   });
 }

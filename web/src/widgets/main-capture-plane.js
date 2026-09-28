@@ -1,5 +1,5 @@
-// Main's nine capture strips follow the fixed geometry in
-// Main/ui/components/shared_capture_plane.ui.lua.
+// Main's nine capture strips follow the fixed geometry and paint style in
+// Main/ui/components/shared_capture_plane.ui.lua and its Lua behavior.
 function drawStrip(canvas, peaks) {
   const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
   ctx.fillStyle = '#0f1b2d'; ctx.fillRect(0, 0, w, h);
@@ -8,7 +8,7 @@ function drawStrip(canvas, peaks) {
   ctx.strokeStyle = '#22d3ee';
   for (let bin = 0; bin < peaks.length; bin++) {
     if (peaks[bin] <= 0) continue;
-    const x = 2 + bin * (w - 4) / peaks.length;
+    const x = Math.floor(2 + bin * (w - 4) / peaks.length);
     const height = Math.max(1, peaks[bin] * h * .45);
     ctx.beginPath(); ctx.moveTo(x, h / 2 - height); ctx.lineTo(x, h / 2 + height); ctx.stroke();
   }

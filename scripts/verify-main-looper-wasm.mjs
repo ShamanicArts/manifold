@@ -19,21 +19,21 @@ const { captureStripBins } = await import('../web/src/audio/main-looper-processo
 for (let i = 0; i < 4; i++) block(.8);
 for (let i = 0; i < 4; i++) block(0);
 const captureBins = captureStripBins(contract.segments, 8, 16_000, 240_000,
-  e.manifold_looper_status(contract.status.capturedFrames, 0));
+  e.manifold_looper_status(contract.status.capturedFrames, 0), 64);
 const capturePeaks = captureBins.map(bin => bin ? e.manifold_looper_peak(0, 1, ...bin) : 0);
-assert.ok(capturePeaks[0] < .001 && capturePeaks.at(-1) > .79,
-  `the newest strip must enter at its left edge and age toward the right: ${capturePeaks}`);
+assert.ok(capturePeaks[0] > .79 && capturePeaks.at(-1) < .001,
+  `the newest strip must enter at its right edge and age toward the left: ${capturePeaks}`);
 const nextStripBins = captureStripBins(contract.segments, 7, 16_000, 240_000,
-  e.manifold_looper_status(contract.status.capturedFrames, 0));
+  e.manifold_looper_status(contract.status.capturedFrames, 0), 64);
 const nextStripPeaks = nextStripBins.map(bin => bin ? e.manifold_looper_peak(0, 1, ...bin) : 0);
-assert.ok(nextStripPeaks[0] > .79 && nextStripPeaks.at(-1) < .001,
-  `audio crossing into an older strip must start at its left edge: ${nextStripPeaks}`);
+assert.ok(nextStripPeaks[0] < .001 && nextStripPeaks.at(-1) > .79,
+  `audio crossing into an older strip must start at its right edge: ${nextStripPeaks}`);
 for (let i = 0; i < 4; i++) block(0);
 const progressedBins = captureStripBins(contract.segments, 7, 16_000, 240_000,
-  e.manifold_looper_status(contract.status.capturedFrames, 0));
+  e.manifold_looper_status(contract.status.capturedFrames, 0), 64);
 const progressedPeaks = progressedBins.map(bin => bin ? e.manifold_looper_peak(0, 1, ...bin) : 0);
-assert.ok(progressedPeaks[0] < .001 && progressedPeaks[2] > .79,
-  `the same audio must travel right within its strip as it ages: ${progressedPeaks}`);
+assert.ok(progressedPeaks[0] < .001 && progressedPeaks[32] > .79 && progressedPeaks.at(-1) < .001,
+  `the same audio must travel left within its strip as it ages: ${progressedPeaks}`);
 assert.equal(e.manifold_looper_command(0, 0), 1);
 for (let i = 0; i < 125; i++) block(.25);
 assert.equal(e.manifold_looper_command(1, 0), 1);
@@ -616,8 +616,8 @@ assert.equal(transient.manifold_looper_process(128), 1);
 assert.ok(transient.manifold_looper_peak(0, 1, 0, 4096) > .89);
 transientInput.fill(0);
 for (let index = 0; index < 63; index++) assert.equal(transient.manifold_looper_process(128), 1);
-const transientBins = captureStripBins(contract.segments, 4, 16_000, 240_000, 8192);
+const transientBins = captureStripBins(contract.segments, 4, 16_000, 240_000, 8192, 64);
 const transientPeaks = transientBins.map(bin => bin ? transient.manifold_looper_peak(0, 1, ...bin) : 0);
-assert.ok(transientPeaks[0] > .89 && transientPeaks[1] === 0,
-  `one-frame transient should enter the older 1-bar strip's left-side bin: ${transientPeaks}`);
+assert.ok(transientPeaks.at(-1) > .89 && transientPeaks.at(-2) === 0,
+  `one-frame transient should enter the older 1-bar strip's right-side bin: ${transientPeaks}`);
 console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias, Slew, Sample Hold, Compare, CV Mix, Range, Scale Quantizer, Transpose, Note Filter, Velocity Mapper and Arpeggiator voice routing passed');

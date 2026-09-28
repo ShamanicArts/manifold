@@ -26,7 +26,7 @@ function feed(value, total) {
 feed(.8, 500);
 feed(.1, 500);
 const samplesPerBar = e.manifold_looper_status(project.status.samplesPerBar, 0);
-const bins = captureStripBins(project.segments, 8, samplesPerBar, 8_000 * project.captureSeconds, 1_000);
+const bins = captureStripBins(project.segments, 8, samplesPerBar, 8_000 * project.captureSeconds, 1_000, 64);
 const peaks = bins.map(([start, end]) => e.manifold_looper_peak(0, 1, start, end));
 assert.equal(peaks.length, 64);
 assert.ok(peaks.slice(0, 28).every(value => Math.abs(value - .8) < .0001), `older bins: ${peaks}`);
@@ -40,7 +40,7 @@ assert.ok(loopPeaks.slice(0, 9).every(value => Math.abs(value - .8) < .0001), `l
 assert.ok(loopPeaks.slice(11).every(value => Math.abs(value - .1) < .0001), `loop tail: ${loopPeaks}`);
 feed(.05, 250);
 const olderBins = captureStripBins(project.segments, 7, samplesPerBar,
-  8_000 * project.captureSeconds, 1_378);
+  8_000 * project.captureSeconds, 1_378, 64);
 assert.ok(olderBins.slice(0, 39).every(bin => bin === null));
 assert.ok(olderBins.slice(39).every(bin => bin && Math.abs(e.manifold_looper_peak(0, 1, bin[0], bin[1]) - .8) < .0001));
 console.log('Main capture plane: chronological PCM, right-edge entry into older strip, and matching committed loop');

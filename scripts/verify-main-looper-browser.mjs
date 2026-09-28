@@ -32,7 +32,10 @@ try {
   assert.equal(Math.round(firstCaptureStrip.x - captureBounds.x), 0);
   assert.equal(Math.round(firstCaptureStrip.y - captureBounds.y), 4);
   assert.equal(Math.round(firstCaptureStrip.width), 142);
+  assert.equal(Math.round(firstCaptureStrip.height), 122);
   assert.equal(Math.round(lastCaptureStrip.x - captureBounds.x), 1136);
+  assert.equal(await page.locator('.segment').last().locator('span').textContent(), '1/16');
+  assert.equal(await page.locator('.segment').first().locator('canvas').evaluate(canvas => canvas.width), 142);
   assert.equal(await page.locator('.segment').first().evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(15, 27, 45)');
   await page.locator('.segment').nth(6).hover();
   const hoverRange = await page.locator('.capture-range.hover').boundingBox();
@@ -353,6 +356,9 @@ try {
   await page.waitForFunction(() => document.querySelector('#arp-status').textContent.includes('Held 0'));
   await page.locator('#add-lfo').click();
   assert.equal(await page.locator('.rack-lfo').count(), 2);
+  assert.ok(await page.locator('.rack-scroll-content').evaluate(element => element.offsetHeight) >= 2553);
+  await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = element.scrollHeight; });
+  assert.equal(await page.locator('.rack-arpeggiator').isVisible(), true);
   await page.locator('#lfo-shape-slot-1').selectOption('3');
   await page.locator('#mod-target-slot-1').selectOption('129');
   await page.locator('#mod-source-slot-1').selectOption('4');
