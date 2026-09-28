@@ -5,6 +5,7 @@ use crate::cv_utilities::AttenuverterBias;
 use crate::effect_slot::{self, EffectSlot};
 use crate::eq8::{self, Eq8};
 use crate::events::EventKind;
+use crate::main_control_slew::MainControlSlew;
 use crate::main_lfo::{LfoOutputs, MainLfo};
 use crate::main_looper::LAYERS;
 use crate::main_looper::MainLooper;
@@ -26,6 +27,8 @@ pub struct MainInstrument {
     atv_source_port: u32,
     atv_input: f32,
     atv_output: f32,
+    slew: MainControlSlew,
+    slew_source: MainControlSource,
     filter_cutoff_base: f32,
     filter_resonance_base: f32,
     filter_cutoff_effective: f32,
@@ -56,7 +59,43 @@ pub struct MainInstrument {
     monitor_right: Vec<f32>,
 }
 
-/// One typed scalar connection from a Main LFO output to a continuous
+/// A control input is either one of four ports on a prepared LFO or the
+/// prepared ATV output. This acyclic order permits LFO -> ATV -> Slew.
+#[derive(Clone, Copy)]
+enum MainControlSource {
+    Lfo { slot: usize, port: u32 },
+    Atv,
+}
+
+impl MainControlSource {
+    fn from_id(id: u32) -> Option<Self> {
+        match id {
+            0..=15 => Some(Self::Lfo {
+                slot: (id / 4) as usize,
+                port: id % 4,
+            }),
+            16 => Some(Self::Atv),
+            _ => None,
+        }
+    }
+
+    fn sample(self, outputs: &[LfoOutputs; MAIN_LFO_SLOTS], atv: f32) -> f32 {
+        match self {
+            Self::Lfo { slot, port } => {
+                let source = outputs[slot];
+                match port {
+                    0 => source.out,
+                    1 => source.inv,
+                    2 => source.uni,
+                    _ => source.eoc,
+                }
+            }
+            Self::Atv => atv,
+        }
+    }
+}
+
+/// One typed scalar connection from a Main control output to a continuous
 /// Filter or FX mix parameter, addressed by the stable Main parameter IDs.
 #[derive(Clone, Copy)]
 struct MainModulationRoute {
@@ -87,7 +126,7 @@ impl MainModulationRoute {
             return false;
         }
         match id {
-            0 if (0.0..=4.0).contains(&value) && value.fract() == 0.0 => self.source = value as u32,
+            0 if (0.0..=5.0).contains(&value) && value.fract() == 0.0 => self.source = value as u32,
             1 if [0.0, 22.0, 23.0, 129.0, 137.0].contains(&value) => self.target = value as u32,
             2 if (-1.0..=1.0).contains(&value) => self.amount = value,
             3 if (-1.0..=1.0).contains(&value) => self.bias = value,
@@ -98,7 +137,7 @@ impl MainModulationRoute {
         true
     }
 
-    fn effective(self, base: f32, outputs: LfoOutputs, atv_output: f32) -> f32 {
+    fn effective(self, base: f32, outputs: LfoOutputs, atv_output: f32, slew_output: f32) -> f32 {
         if !self.enabled || self.target == 0 {
             return base;
         }
@@ -107,7 +146,8 @@ impl MainModulationRoute {
             1 => ((outputs.inv + 1.0) * 0.5, 0.5),
             2 => (outputs.uni, 0.0),
             3 => (outputs.eoc, 0.0),
-            _ => ((atv_output + 1.0) * 0.5, 0.5),
+            4 => ((atv_output + 1.0) * 0.5, 0.5),
+            _ => ((slew_output + 1.0) * 0.5, 0.5),
         };
         let (min, max): (f32, f32) = match self.target {
             22 => (80.0, 16_000.0),
@@ -142,6 +182,8 @@ impl MainInstrument {
             atv_source_port: 0,
             atv_input: 0.0,
             atv_output: 0.0,
+            slew: MainControlSlew::new(),
+            slew_source: MainControlSource::Lfo { slot: 0, port: 0 },
             filter_cutoff_base: 3200.0,
             filter_resonance_base: 0.75,
             filter_cutoff_effective: 3200.0,
@@ -296,6 +338,31 @@ impl MainInstrument {
         }
     }
 
+    pub fn set_slew_parameter(&mut self, id: u32, value: f32) -> bool {
+        if !value.is_finite() {
+            return false;
+        }
+        match id {
+            0..=2 => self.slew.set_parameter(id, value),
+            3 if value.fract() == 0.0 && (0.0..=16.0).contains(&value) => {
+                let Some(source) = MainControlSource::from_id(value as u32) else {
+                    return false;
+                };
+                self.slew_source = source;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn slew_status(&self, id: u32) -> f32 {
+        match id {
+            0 => self.slew.input(),
+            1 => self.slew.output(),
+            _ => 0.0,
+        }
+    }
+
     pub fn lfo_slot_status(&self, slot: usize, id: u32) -> f32 {
         if !self.lfo_active.get(slot).copied().unwrap_or(false) {
             return 0.0;
@@ -414,14 +481,16 @@ impl MainInstrument {
                 outputs[slot] = self.lfos[slot].advance(frames);
             }
         }
-        let source = outputs[self.atv_source_slot];
-        self.atv_input = match self.atv_source_port {
-            0 => source.out,
-            1 => source.inv,
-            2 => source.uni,
-            _ => source.eoc,
-        };
+        self.atv_input = MainControlSource::Lfo {
+            slot: self.atv_source_slot,
+            port: self.atv_source_port,
+        }
+        .sample(&outputs, 0.0);
         self.atv_output = self.atv.process_sample(self.atv_input);
+        let slew_input = self.slew_source.sample(&outputs, self.atv_output);
+        let slew_output = self
+            .slew
+            .process(slew_input, frames as f32 / self.sample_rate);
         // Stable slot order defines composition: Add applies to the current
         // value; a later Replace supersedes earlier routes to that target.
         for slot in 0..MAIN_LFO_SLOTS {
@@ -435,6 +504,7 @@ impl MainInstrument {
                         self.filter_cutoff_effective,
                         outputs[slot],
                         self.atv_output,
+                        slew_output,
                     )
                 }
                 23 => {
@@ -442,15 +512,24 @@ impl MainInstrument {
                         self.filter_resonance_effective,
                         outputs[slot],
                         self.atv_output,
+                        slew_output,
                     )
                 }
                 129 => {
-                    self.fx1_mix_effective =
-                        route.effective(self.fx1_mix_effective, outputs[slot], self.atv_output)
+                    self.fx1_mix_effective = route.effective(
+                        self.fx1_mix_effective,
+                        outputs[slot],
+                        self.atv_output,
+                        slew_output,
+                    )
                 }
                 137 => {
-                    self.fx2_mix_effective =
-                        route.effective(self.fx2_mix_effective, outputs[slot], self.atv_output)
+                    self.fx2_mix_effective = route.effective(
+                        self.fx2_mix_effective,
+                        outputs[slot],
+                        self.atv_output,
+                        slew_output,
+                    )
                 }
                 _ => {}
             }
@@ -943,5 +1022,39 @@ mod tests {
         assert_eq!(main.lfo_status(7), 0.875);
         assert!(!main.set_atv_parameter(2, 4.0));
         assert!(!main.set_atv_parameter(3, 4.0));
+    }
+
+    #[test]
+    fn main_slew_smooths_atv_output_before_a_typed_fx_route() {
+        let mut main = MainInstrument::new(8_000.0, 128);
+        assert!(main.set_atv_parameter(0, 0.0));
+        assert!(main.set_atv_parameter(1, 1.0));
+        assert!(main.set_slew_parameter(0, 1000.0));
+        assert!(main.set_slew_parameter(1, 1000.0));
+        assert!(main.set_slew_parameter(2, 0.0)); // Linear
+        assert!(main.set_slew_parameter(3, 16.0)); // ATV OUT
+        assert!(main.set_modulation_route(0, 5.0)); // Slew OUT
+        assert!(main.set_modulation_route(1, 129.0)); // FX1 mix
+        assert!(main.set_modulation_route(2, 1.0));
+        assert!(main.set_modulation_route(4, 1.0)); // Replace
+        assert!(main.set_modulation_route(5, 1.0));
+        let silence = [0.0; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        main.process([&silence, &silence], [&mut left, &mut right]);
+        assert_eq!(main.slew_status(0), 1.0);
+        assert!((main.slew_status(1) - 0.016).abs() < 1e-6);
+        assert!((main.lfo_status(7) - 0.508).abs() < 1e-6);
+        for _ in 0..63 {
+            main.process([&silence, &silence], [&mut left, &mut right]);
+        }
+        let risen = main.slew_status(1);
+        assert!(risen > 0.6 && risen < 0.7);
+        assert!(main.set_atv_parameter(1, -1.0));
+        main.process([&silence, &silence], [&mut left, &mut right]);
+        assert_eq!(main.slew_status(0), -1.0);
+        assert!(main.slew_status(1) < risen && main.slew_status(1) > 0.5);
+        assert!(!main.set_slew_parameter(3, -1.0));
+        assert!(!main.set_slew_parameter(3, 17.0));
     }
 }

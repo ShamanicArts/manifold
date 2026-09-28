@@ -9,6 +9,7 @@ import { mountMainEq } from './widgets/main-eq.js';
 import { mountMainFxSlot } from './widgets/main-fx-slot.js';
 import { mountMainLfoRack } from './widgets/main-lfo-rack.js';
 import { mountMainAtvBias } from './widgets/main-atv-bias.js';
+import { mountMainSlew } from './widgets/main-slew.js';
 import { mountMainCapturePlane } from './widgets/main-capture-plane.js';
 import { drawMainLayerKnob } from './widgets/main-layer-knob.js';
 
@@ -43,6 +44,7 @@ const fx1 = mountMainFxSlot($('fx1-module'), synthParameter, project.fxParameter
 const fx2 = mountMainFxSlot($('fx2-module'), synthParameter, project.fxParameters.fx2Base);
 const lfo = mountMainLfoRack($, post, project.modulation);
 const atv = mountMainAtvBias($, post);
+const slew = mountMainSlew($, post, project.modulation.slewParameters);
 const selectedSegment = id => Number($(id).querySelector('[aria-pressed="true"]').dataset.value);
 function wireSegments(id, change) {
   const group = $(id);
@@ -172,7 +174,8 @@ function restoreSource(state) {
 }
 function rackSnapshot() {
   return { source: sourceSnapshot(), adsr: adsr.snapshot(), filter: filter.snapshot(),
-    fx1: fx1.snapshot(), fx2: fx2.snapshot(), eq: eq.snapshot(), lfos: lfo.snapshot(), atv: atv.snapshot() };
+    fx1: fx1.snapshot(), fx2: fx2.snapshot(), eq: eq.snapshot(), lfos: lfo.snapshot(),
+    atv: atv.snapshot(), slew: slew.snapshot() };
 }
 function restoreRack(state) {
   restoreSource(state.source);
@@ -180,6 +183,7 @@ function restoreRack(state) {
   fx1.restore(state.fx1); fx2.restore(state.fx2); eq.restore(state.eq);
   lfo.restore(state.lfos ?? state.lfo);
   atv.restore(state.atv ?? { amount: 1, bias: 0, slot: 0, port: 0 });
+  slew.restore(state.slew ?? { riseMs: 0, fallMs: 0, shape: 1, source: 0 });
 }
 drawSourceGraph();
 function resetSampleCaptureUI() {
@@ -255,8 +259,12 @@ for (const tab of document.querySelectorAll('[data-main-tab]')) {
       button.classList.toggle('active', selected);
       button.setAttribute('aria-selected', String(selected));
     }
-    requestAnimationFrame(() => { sizeInstrument(); if (synth) { paintSampleSliders(); adsr.paint(); filter.paint(); fx1.paint(); fx2.paint(); eq.paint(); lfo.paint(); } });
+    requestAnimationFrame(() => { sizeInstrument(); if (synth) { paintSampleSliders(); adsr.paint(); filter.paint(); fx1.paint(); fx2.paint(); eq.paint(); lfo.paint(); atv.paint(); slew.paint(); } });
   });
+}
+if (location.hash === '#slew') {
+  document.querySelector('[data-main-tab="midisynth"]').click();
+  requestAnimationFrame(() => { $('rack-scroll').scrollTop = 480; slew.paint(); });
 }
 
 const noteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B', 'C'];
@@ -416,6 +424,7 @@ function render(data) {
   latest = data;
   if (data.lfos) lfo.setStatus(data.lfos);
   if (data.atv) atv.setStatus(data.atv);
+  if (data.slew) slew.setStatus(data.slew);
   latestSamplePeaks = data.samplePeaks ?? [];
   eq.setResponse(data.eqResponse);
   drawSourceGraph();
@@ -538,7 +547,7 @@ $('save-session').onclick = () => {
   if (transferJob || sampleJob || freeSource !== null) return;
   const id = nextRequest++;
   let rack;
-  try { rack = validateMainRackState(rackSnapshot(), true, project.modulation, true, true); }
+  try { rack = validateMainRackState(rackSnapshot(), true, project.modulation, true, true, true); }
   catch (error) { status(error.message); return; }
   transferJob = { kind: 'save', id, state: null, audio: null, layer: 0, offset: 0,
     sampleOffset: 0, sampleAudio: null, rack };
@@ -552,7 +561,7 @@ $('open-session').onchange = async () => {
   if (!file) return;
   try {
     const state = JSON.parse(await file.text());
-    if (state.format !== project.format || ![1, 2, 3, 4, project.sessionVersion].includes(state.version) || state.id !== project.id
+    if (state.format !== project.format || ![1, 2, 3, 4, 5, project.sessionVersion].includes(state.version) || state.id !== project.id
       || state.sampleRate !== context.sampleRate || !Array.isArray(state.layers) || state.layers.length !== project.layers
       || !Number.isFinite(state.tempo) || !Number.isFinite(state.targetBpm)
       || !Number.isInteger(state.activeLayer) || state.activeLayer < 0 || state.activeLayer >= project.layers
@@ -569,7 +578,7 @@ $('open-session').onchange = async () => {
     });
     let sampleAudio = null;
     if (state.version >= 2) {
-      validateMainRackState(state.rack, state.version >= 3, project.modulation, state.version >= 4, state.version >= 5);
+      validateMainRackState(state.rack, state.version >= 3, project.modulation, state.version >= 4, state.version >= 5, state.version >= 6);
       if (!state.sample || !Number.isInteger(state.sample.frames)
         || state.sample.frames < 0 || state.sample.frames > Math.min(1_440_000, context.sampleRate * project.captureSeconds)
         || (state.sample.frames === 0 && state.sample.pcmF32Base64 !== '')) {
@@ -646,6 +655,7 @@ async function start() {
     eq.sendState();
     lfo.sendState();
     atv.sendState();
+    slew.sendState();
     if (sourceKind === 'microphone') {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
       sourceNode = context.createMediaStreamSource(stream);

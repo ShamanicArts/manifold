@@ -13,7 +13,8 @@ export function mountMainLfo(get, post, contract, slot = 0) {
   const shape = get('lfo-shape');
   const routeHeading = get('mod-source').closest('.rack-route').querySelector('h2');
   const paintRouteHeading = () => {
-    routeHeading.textContent = state.route.source === 4 ? 'ATV / Bias → target' : `LFO ${slot + 1} → target`;
+    routeHeading.textContent = state.route.source === 4 ? 'ATV / Bias → target'
+      : state.route.source === 5 ? 'Slew → target' : `LFO ${slot + 1} → target`;
   };
   let phaseNow = 0, outputNow = 0;
   const seededStep = index => {

@@ -137,6 +137,26 @@ try {
   assert.equal(await page.locator('#atv-amount').getAttribute('aria-valuenow'), '-1');
   await page.locator('#atv-port').selectOption('1');
   await page.locator('.rack-atv').screenshot({ path: new URL('../web/public/main-atv-bias-module.png', import.meta.url).pathname });
+  const slewPanel = await page.locator('.rack-slew').boundingBox();
+  assert.equal(Math.round(slewPanel.x - lfoPanel.x), 708);
+  assert.equal(Math.round(slewPanel.width), 236);
+  await page.locator('#slew-source').selectOption('16');
+  await page.locator('#slew-shape').click();
+  assert.equal(await page.locator('.rack-slew .project-dropdown-overlay').isVisible(), true);
+  const shapeMenu = await page.locator('.rack-slew .project-dropdown-overlay').boundingBox();
+  await page.mouse.click(shapeMenu.x + 35, shapeMenu.y + 2 + 2 * 30 + 15);
+  assert.equal(await page.locator('#slew-shape').getAttribute('data-value'), '2');
+  await page.locator('#slew-shape').focus();
+  await page.keyboard.press('Home');
+  assert.equal(await page.locator('#slew-shape').getAttribute('data-value'), '0');
+  await page.locator('#slew-rise').focus();
+  await page.keyboard.press('End');
+  assert.equal(await page.locator('#slew-rise').getAttribute('aria-valuenow'), '2000');
+  await page.locator('#mod-source').selectOption('5');
+  assert.equal(await page.locator('.rack-route').first().locator('h2').textContent(), 'Slew → target');
+  await page.locator('.rack-slew').screenshot({ path: new URL('../web/public/main-slew-module.png', import.meta.url).pathname });
+  await page.locator('#rack-scroll').evaluate(element => { element.scrollTop = 650; });
+  await page.screenshot({ path: new URL('../web/public/main-slew-rack.png', import.meta.url).pathname, fullPage: true });
   await page.locator('#add-lfo').click();
   assert.equal(await page.locator('.rack-lfo').count(), 2);
   await page.locator('#lfo-shape-slot-1').selectOption('3');
@@ -232,7 +252,7 @@ try {
   const download = await downloadPromise;
   const bundle = JSON.parse(await readFile(await download.path(), 'utf8'));
   assert.equal(bundle.id, 'manifold.main-looper');
-  assert.equal(bundle.version, 5);
+  assert.equal(bundle.version, 6);
   assert.ok(bundle.sample.frames > 0 && bundle.sample.pcmF32Base64.length > 0);
   assert.equal(bundle.rack.source.waveform, 1);
   assert.equal(bundle.rack.fx2.selected, 5);
@@ -240,10 +260,12 @@ try {
   assert.deepEqual(bundle.rack.lfos.map(lfo => lfo.slot), [0, 1]);
   assert.equal(bundle.rack.lfos[0].shape, 3);
   assert.equal(bundle.rack.lfos[0].route.target, 22);
+  assert.equal(bundle.rack.lfos[0].route.source, 5);
   assert.equal(bundle.rack.lfos[1].route.target, 129);
   assert.equal(bundle.rack.lfos[1].route.source, 4);
   assert.equal(bundle.rack.lfos[1].route.enabled, true);
   assert.deepEqual(bundle.rack.atv, { amount: -1, bias: 0, slot: 0, port: 1 });
+  assert.deepEqual(bundle.rack.slew, { riseMs: 2000, fallMs: 0, shape: 0, source: 16 });
   assert.ok(bundle.layers[0].frames > 0 && bundle.layers[1].frames > 0);
   await page.locator('#audio-button').click();
   await page.locator('#audio-button').click();
@@ -274,6 +296,8 @@ try {
   assert.equal(await page.locator('#mod-source-slot-1').inputValue(), '4');
   assert.equal(await page.locator('#atv-amount').getAttribute('aria-valuenow'), '-1');
   assert.equal(await page.locator('#atv-port').inputValue(), '1');
+  assert.equal(await page.locator('#slew-rise').getAttribute('aria-valuenow'), '2000');
+  assert.equal(await page.locator('#slew-source').inputValue(), '16');
   await page.waitForFunction(() => {
     const match = document.querySelector('#mod-effective').textContent.match(/cutoff (\d+)/i);
     return match && Number(match[1]) < 16000;
@@ -296,7 +320,16 @@ try {
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(duplicateSlot)) });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Invalid Main LFO module'));
   assert.equal(await page.locator('.rack-lfo').count(), 1);
-  const v4 = { ...bundle, version: 4, rack: { ...bundle.rack,
+  const v5 = { ...bundle, version: 5, rack: { ...bundle.rack,
+    lfos: bundle.rack.lfos.map((lfo, index) => index ? lfo : { ...lfo, route: { ...lfo.route, source: 4 } }) } };
+  delete v5.rack.slew;
+  await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 5 import'; });
+  await page.locator('#open-session').setInputFiles({ name: 'main-looper-v5.json',
+    mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v5)) });
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
+  assert.equal(await page.locator('#slew-rise').getAttribute('aria-valuenow'), '0');
+  assert.equal(await page.locator('#slew-source').inputValue(), '0');
+  const v4 = { ...v5, version: 4, rack: { ...v5.rack,
     lfos: bundle.rack.lfos.map(lfo => ({ ...lfo, route: { ...lfo.route, source: 0 } })) } };
   delete v4.rack.atv;
   await page.locator('#status').evaluate(element => { element.textContent = 'Testing version 4 import'; });
@@ -305,7 +338,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
   assert.equal(await page.locator('#atv-amount').getAttribute('aria-valuenow'), '1');
   assert.equal(await page.locator('#atv-port').inputValue(), '0');
-  const v3 = { ...bundle, version: 3, rack: { ...bundle.rack, lfo: { ...bundle.rack.lfos[0] } } };
+  const v3 = { ...v4, version: 3, rack: { ...v4.rack, lfo: { ...v4.rack.lfos[0] } } };
   delete v3.rack.atv;
   delete v3.rack.lfos;
   delete v3.rack.lfo.slot;
@@ -380,5 +413,10 @@ try {
   assert.ok(lastSegment.x + lastSegment.width <= frame.x + frame.width + 1);
   assert.ok(await narrow.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await narrow.screenshot({ path: new URL('../web/public/main-looper-narrow.png', import.meta.url).pathname, fullPage: true });
-  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth rack, two live LFO routes, original ATV / Bias panel and typed input/output, four-slot add/remove limit, duplicate-slot rejection, Live/L1 Retro and Free Sample, traditional arm/fire, reverse scrub, v1–v5 session reopen, decoded file and Rust synth capture passed`);
+  const directSlew = await browser.newPage({ viewport: { width: 1440, height: 950 } });
+  await directSlew.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html#slew`);
+  await directSlew.waitForFunction(() => !document.querySelector('#midisynth-panel').hidden
+    && document.querySelector('#rack-scroll').scrollTop >= 470);
+  assert.equal(await directSlew.locator('.rack-slew').isVisible(), true);
+  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth rack, two live LFO routes, original ATV / Bias and Slew panels and typed input/output, four-slot add/remove limit, duplicate-slot rejection, Live/L1 Retro and Free Sample, traditional arm/fire, reverse scrub, v1–v6 session reopen, decoded file and Rust synth capture passed`);
 } finally { await browser.close(); }

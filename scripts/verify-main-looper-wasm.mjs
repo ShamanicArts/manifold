@@ -274,4 +274,33 @@ assert.equal(e.manifold_looper_lfo_status(7), 1);
 assert.ok(atvDryEnergy > atvWetEnergy * 2,
   `ATV → FX1 mix must change audio: ${atvDryEnergy} / ${atvWetEnergy}`);
 console.log(`Main ATV / Bias route: OUT -1 → +1, FX1 mix 0 → 1, sounding energy ${atvDryEnergy.toFixed(2)} → ${atvWetEnergy.toFixed(2)}.`);
-console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack and ATV / Bias routing passed');
+const slew = contract.modulation.slewParameters;
+assert.equal(e.manifold_looper_atv_parameter(contract.modulation.atvParameters.amount, 0), 1);
+assert.equal(e.manifold_looper_atv_parameter(contract.modulation.atvParameters.bias, 0), 1);
+assert.equal(e.manifold_looper_slew_parameter(slew.source, 16), 1);
+block(0); // zero the default instant Slew before measuring its rise
+assert.equal(e.manifold_looper_slew_status(1), 0);
+assert.equal(e.manifold_looper_atv_parameter(contract.modulation.atvParameters.bias, 1), 1);
+for (const [id, value] of [[slew.riseMs, 1000], [slew.fallMs, 1000], [slew.shape, 0], [slew.source, 16]]) {
+  assert.equal(e.manifold_looper_slew_parameter(id, value), 1);
+}
+assert.equal(e.manifold_looper_modulation_route(contract.modulation.routeParameters.source, 5), 1);
+block(0);
+assert.equal(e.manifold_looper_slew_status(0), 1);
+assert.ok(Math.abs(e.manifold_looper_slew_status(1) - .016) < 1e-6);
+assert.ok(Math.abs(e.manifold_looper_lfo_status(7) - .508) < 1e-6);
+const slewEarlyEnergy = sustainedLevel();
+for (let index = 0; index < 90; index++) block(0);
+const slewLateEnergy = sustainedLevel();
+assert.ok(e.manifold_looper_slew_status(1) > .8);
+assert.ok(slewEarlyEnergy > slewLateEnergy * 1.2,
+  `Slew → FX1 mix must change sounding audio over time: ${slewEarlyEnergy} / ${slewLateEnergy}`);
+assert.equal(e.manifold_looper_atv_parameter(contract.modulation.atvParameters.bias, -1), 1);
+const beforeFall = e.manifold_looper_slew_status(1);
+block(0);
+assert.equal(e.manifold_looper_slew_status(0), -1);
+assert.ok(e.manifold_looper_slew_status(1) < beforeFall);
+assert.equal(e.manifold_looper_slew_parameter(slew.source, -1), 0);
+assert.equal(e.manifold_looper_slew_parameter(slew.source, 17), 0);
+console.log(`Main Slew route: OUT ${(.016).toFixed(3)} → ${beforeFall.toFixed(3)}, sounding energy ${slewEarlyEnergy.toFixed(2)} → ${slewLateEnergy.toFixed(2)}.`);
+console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias and Slew routing passed');

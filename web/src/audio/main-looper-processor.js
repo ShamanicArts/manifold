@@ -38,7 +38,7 @@ class MainLooperProcessor extends AudioWorkletProcessor {
           this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_looper_output_ptr(), this.capacity * 2);
           this.port.postMessage({ type: 'ready' });
         } else if (this.transferJob && ['control', 'layer-control', 'command', 'synth-note', 'synth-parameter',
-          'lfo-slot-active', 'lfo-parameter', 'lfo-gate', 'modulation-route', 'atv-parameter'].includes(data.type)) {
+          'lfo-slot-active', 'lfo-parameter', 'lfo-gate', 'modulation-route', 'atv-parameter', 'slew-parameter'].includes(data.type)) {
           this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'sample-capture' && this.engine && !this.sampleJob && !this.transferJob && this.freeSource === null) {
           const frames = this.engine.manifold_looper_sample_capture(data.source, data.bars);
@@ -238,6 +238,9 @@ class MainLooperProcessor extends AudioWorkletProcessor {
         } else if (data.type === 'atv-parameter' && this.engine) {
           if (this.engine.manifold_looper_atv_parameter(data.id, data.value) !== 1)
             this.port.postMessage({ type: 'rejected', action: data });
+        } else if (data.type === 'slew-parameter' && this.engine) {
+          if (this.engine.manifold_looper_slew_parameter(data.id, data.value) !== 1)
+            this.port.postMessage({ type: 'rejected', action: data });
         } else if (data.type === 'snapshot' && this.engine) {
           const e = this.engine;
           if (this.freeSource !== null) {
@@ -295,7 +298,8 @@ class MainLooperProcessor extends AudioWorkletProcessor {
             overdub: s(project.status.overdub) === 1, forwardBars: s(project.status.forwardBars),
             captured, sampleRate: s(project.status.sampleRate),
             layers, segments, sampleFrames, samplePeaks, eqResponse, lfos,
-            atv: { input: e.manifold_looper_atv_status(0), output: e.manifold_looper_atv_status(1) } });
+            atv: { input: e.manifold_looper_atv_status(0), output: e.manifold_looper_atv_status(1) },
+            slew: { input: e.manifold_looper_slew_status(0), output: e.manifold_looper_slew_status(1) } });
         }
       } catch (error) {
         if (this.sampleJob && this.engine) this.engine.manifold_looper_sample_cancel();
