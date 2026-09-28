@@ -294,7 +294,8 @@ $('patch-jump').onclick = () => {
   const scroll = $('rack-scroll');
   const bottom = scroll.scrollTop > 100;
   scroll.scrollTo({ top: bottom ? 0 : 452, behavior: 'smooth' });
-  $('patch-jump').textContent = bottom ? 'PATCH ↓' : 'RACK ↑';
+  $('patch-jump').textContent = bottom ? 'ROUTES ↓' : 'RACK ↑';
+  $('patch-jump').setAttribute('aria-label', bottom ? 'Scroll to Main modulation route controls' : 'Scroll back to Main rack controls');
   requestAnimationFrame(() => lfo.paint());
 };
 for (const tab of document.querySelectorAll('[data-main-tab]')) {
