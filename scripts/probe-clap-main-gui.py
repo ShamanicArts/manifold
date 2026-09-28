@@ -5,6 +5,7 @@ This never opens a window on the user's desktop or an audio device.
 """
 
 import argparse
+import base64
 import ctypes as c
 import importlib.util
 import json
@@ -12,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import struct
 import subprocess
 import tempfile
 import time
@@ -58,7 +60,10 @@ def main():
     parser.add_argument("--screenshot", type=Path, help="Capture the mounted editor from isolated Xwayland")
     parser.add_argument("--exercise-live", action="store_true", help="Record First Loop through in-memory host blocks")
     parser.add_argument("--exercise-sample", action="store_true", help="Click the original Source Cap and capture native Retro Live audio")
+    parser.add_argument("--exercise-free-sample", action="store_true", help="Use the original Free/STOP Source controls on native host input")
     args = parser.parse_args()
+    assert not (args.exercise_sample and args.exercise_free_sample)
+    sample_exercise = args.exercise_sample or args.exercise_free_sample
     module = args.module.resolve()
     with tempfile.TemporaryDirectory(prefix="manifold-headless-") as directory:
         os.chmod(directory, 0o700)
@@ -70,7 +75,7 @@ def main():
         try:
             weston, display_name = headless_display(directory, args.weston)
             sample_probe = Path(directory) / "main-sample-request"
-            if args.exercise_sample:
+            if sample_exercise:
                 os.environ["MANIFOLD_MAIN_SAMPLE_PROBE"] = str(sample_probe)
             os.environ["XDG_RUNTIME_DIR"] = directory
             os.environ["WAYLAND_DISPLAY"] = "manifold-headless"
@@ -114,8 +119,9 @@ def main():
                 plugin_ptr, c.byref(source))
             assert probe.fn(plugin.activate, c.c_bool, c.c_void_p, c.c_double, c.c_uint32, c.c_uint32)(
                 plugin_ptr, 48000., 1, 128)
-            if args.exercise_sample:
+            if sample_exercise:
                 assert probe.fn(plugin.start, c.c_bool, c.c_void_p)(plugin_ptr)
+            if args.exercise_sample:
                 for _ in range(800):
                     probe.render(plugin_ptr, plugin, input_value=0.4)
             gui_ptr = probe.fn(plugin.get_extension, c.c_void_p, c.c_void_p, c.c_char_p)(plugin_ptr, b"clap.gui")
@@ -137,24 +143,39 @@ def main():
                     break
                 time.sleep(0.05)
             assert callbacks[0] >= 2, "Main webview did not acknowledge the Rust presentation"
-            if args.exercise_sample:
-                sample_probe.write_text("retro")
+            if sample_exercise:
                 status_path = Path(f"{sample_probe}.status")
-                sample_status = None
-                deadline = time.monotonic() + 15
-                while time.monotonic() < deadline:
-                    probe.render(plugin_ptr, plugin, input_value=0.4)
-                    if callbacks[0] > handled:
-                        handled = callbacks[0]
-                        probe.fn(plugin.main, None, c.c_void_p)(plugin_ptr)
-                    if status_path.exists():
-                        try:
-                            sample_status = json.loads(status_path.read_text())
-                        except json.JSONDecodeError:
-                            pass  # the editor may be writing the next status
-                        if sample_status and sample_status.get("phase") in ("published", "rejected"):
-                            break
-                    time.sleep(0.002)
+                def wait_sample_phase(target, input_value):
+                    nonlocal handled
+                    observed = None
+                    deadline = time.monotonic() + 15
+                    while time.monotonic() < deadline:
+                        probe.render(plugin_ptr, plugin, input_value=input_value)
+                        if callbacks[0] > handled:
+                            handled = callbacks[0]
+                            probe.fn(plugin.main, None, c.c_void_p)(plugin_ptr)
+                        if status_path.exists():
+                            try:
+                                observed = json.loads(status_path.read_text())
+                            except json.JSONDecodeError:
+                                pass  # the editor may be writing the next status
+                            if observed and observed.get("phase") in (target, "rejected"):
+                                return observed
+                        time.sleep(0.002)
+                    return observed
+
+                if args.exercise_free_sample:
+                    sample_probe.write_text("free:start")
+                    started = wait_sample_phase("free-started", 0.4)
+                    assert started and started.get("phase") == "free-started", (
+                        f"Source Free did not arm: {started}")
+                    for _ in range(30):
+                        probe.render(plugin_ptr, plugin, input_value=0.7)
+                    sample_probe.write_text("free:stop")
+                    sample_status = wait_sample_phase("published", 0.7)
+                else:
+                    sample_probe.write_text("retro")
+                    sample_status = wait_sample_phase("published", 0.4)
                 assert sample_status and sample_status.get("phase") == "published", (
                     f"Source Cap did not publish a native Sample: {sample_status}")
                 probe.fn(plugin.stop, None, c.c_void_p)(plugin_ptr)
@@ -169,16 +190,23 @@ def main():
                 assert probe.fn(state.save, c.c_bool, c.c_void_p, c.POINTER(probe.Stream))(
                     plugin_ptr, c.byref(sink))
                 document = json.loads(saved)
-                assert document["sample"]["frames"] == 96000, (
-                    f"Source Cap saved {document['sample']['frames']} frames, expected one bar")
+                frames = document["sample"]["frames"]
+                if args.exercise_sample:
+                    assert frames == 96000, f"Source Cap saved {frames} frames, expected one bar"
+                else:
+                    assert 30 * 128 <= frames < 48000, f"Source Free saved {frames} frames"
                 assert document["sample"]["pcmF32Base64"], "Source Cap saved no PCM"
+                pcm = base64.b64decode(document["sample"]["pcmF32Base64"])
+                peak = max(abs(sample[0]) for sample in struct.iter_unpack("<f", pcm))
+                assert peak > (0.65 if args.exercise_free_sample else 0.35)
                 settle = time.monotonic() + 0.7
                 while time.monotonic() < settle:
                     if callbacks[0] > handled:
                         handled = callbacks[0]
                         probe.fn(plugin.main, None, c.c_void_p)(plugin_ptr)
                     time.sleep(0.02)
-                print(f"Original Source Cap published and saved {document['sample']['frames']} native frames.")
+                mode = "Free/STOP" if args.exercise_free_sample else "Retro Cap"
+                print(f"Original Source {mode} published and saved {frames} native frames.")
             if args.exercise_live:
                 assert probe.fn(plugin.start, c.c_bool, c.c_void_p)(plugin_ptr)
                 command_ptr = probe.fn(plugin.get_extension, c.c_void_p, c.c_void_p, c.c_char_p)(
