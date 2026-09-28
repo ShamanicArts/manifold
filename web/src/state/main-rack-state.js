@@ -4,7 +4,7 @@ import { LABELS } from '../widgets/fx-slot-data.js';
 const validNumber = (value, min, max) => Number.isFinite(value) && value >= min && value <= max;
 const validInteger = (value, min, max) => Number.isInteger(value) && value >= min && value <= max;
 
-export function validateMainRackState(rack, requireLfo = true, modulation = null, requireMulti = false, requireAtv = false, requireSlew = false, requireSampleHold = false, requireCompare = false, requireCvMix = false) {
+export function validateMainRackState(rack, requireLfo = true, modulation = null, requireMulti = false, requireAtv = false, requireSlew = false, requireSampleHold = false, requireCompare = false, requireCvMix = false, requireRange = false) {
   const source = rack?.source, adsr = rack?.adsr, filter = rack?.filter;
   const eq = rack?.eq;
   const sourceRanges = {
@@ -50,7 +50,7 @@ export function validateMainRackState(rack, requireLfo = true, modulation = null
     return lfo && validInteger(lfo.shape, 0, 5) && validNumber(lfo.rate, .01, 20)
       && validNumber(lfo.depth, 0, 1) && validNumber(lfo.phase, 0, 360)
       && validInteger(lfo.retrig, 0, 1) && route
-      && validInteger(route.source, 0, requireCvMix ? 11 : requireCompare ? 9 : requireSampleHold ? 7 : requireSlew ? 5 : requireAtv ? 4 : 3)
+      && validInteger(route.source, 0, requireRange ? 12 : requireCvMix ? 11 : requireCompare ? 9 : requireSampleHold ? 7 : requireSlew ? 5 : requireAtv ? 4 : 3)
       && (modulation ? Object.values(modulation.targets) : [0, 22, 23]).includes(route.target)
       && validNumber(route.amount, -1, 1) && validNumber(route.bias, -1, 1)
       && validInteger(route.mode, 0, 1) && typeof route.enabled === 'boolean';
@@ -108,6 +108,13 @@ export function validateMainRackState(rack, requireLfo = true, modulation = null
       || !validInteger(mix[`source${index}`], 0, 21))
       || !validNumber(mix.offset, -1, 1)) {
       throw new Error('Invalid Main CV Mix module state.');
+    }
+  }
+  if (requireRange || rack.range !== undefined) {
+    const range = rack.range;
+    if (!range || !validNumber(range.min, 0, 1) || !validNumber(range.max, 0, 1)
+      || !validInteger(range.mode, 0, 1) || !validInteger(range.source, 0, 23)) {
+      throw new Error('Invalid Main Range Mapper module state.');
     }
   }
   return rack;

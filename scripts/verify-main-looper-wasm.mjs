@@ -416,6 +416,30 @@ assert.ok(cvMixInvEnergy > cvMixOutEnergy * 1.3,
   `CV Mix OUT/INV → FX1 mix must change audio: ${cvMixOutEnergy} / ${cvMixInvEnergy}`);
 assert.equal(e.manifold_looper_cv_mix_parameter(cvMix.source4, 22), 0);
 console.log(`Main CV Mix route: OUT +0.50 / INV -0.50, FX1 mix 0.75 → 0.25, sounding energy ${cvMixOutEnergy.toFixed(2)} → ${cvMixInvEnergy.toFixed(2)}.`);
+const range = contract.modulation.rangeParameters;
+for (const [id, value] of [[range.min, .2], [range.max, .7], [range.mode, 1], [range.source, 22]]) {
+  assert.equal(e.manifold_looper_range_parameter(id, value), 1);
+}
+assert.equal(e.manifold_looper_modulation_route(contract.modulation.routeParameters.source, 12), 1);
+block(0);
+assert.ok(Math.abs(e.manifold_looper_range_status(0) - .5) < 1e-6);
+assert.ok(Math.abs(e.manifold_looper_range_status(1) - .45) < 1e-6);
+assert.ok(Math.abs(e.manifold_looper_lfo_status(7) - .45) < 1e-6);
+const rangeRemapEnergy = sustainedLevel();
+assert.equal(e.manifold_looper_range_parameter(range.mode, 0), 1);
+assert.equal(e.manifold_looper_cv_mix_parameter(cvMix.offset, .9), 1);
+block(0);
+assert.ok(Math.abs(e.manifold_looper_range_status(1) - .7) < 1e-6);
+assert.ok(Math.abs(e.manifold_looper_lfo_status(7) - .7) < 1e-6);
+const rangeClampEnergy = sustainedLevel();
+assert.ok(rangeRemapEnergy > rangeClampEnergy * 1.2,
+  `Range OUT → FX1 mix must change audio: ${rangeRemapEnergy} / ${rangeClampEnergy}`);
+assert.equal(e.manifold_looper_range_parameter(range.min, .8), 1);
+assert.equal(e.manifold_looper_range_parameter(range.max, .1), 1);
+block(0);
+assert.ok(Math.abs(e.manifold_looper_range_status(1) - .8) < 1e-6);
+assert.equal(e.manifold_looper_range_parameter(range.source, 24), 0);
+console.log(`Main Range route: Remap 0.45 → Clamp 0.70, sounding energy ${rangeRemapEnergy.toFixed(2)} → ${rangeClampEnergy.toFixed(2)}.`);
 const { instance: transientInstance } = await WebAssembly.instantiate(wasm, {});
 const transient = transientInstance.exports;
 assert.equal(transient.manifold_looper_prepare(8_000, 128), 1);
@@ -430,4 +454,4 @@ const transientBins = captureStripBins(contract.segments, 4, 16_000, 240_000, 81
 const transientPeaks = transientBins.map(bin => bin ? transient.manifold_looper_peak(0, 1, ...bin) : 0);
 assert.ok(transientPeaks[63] > .89 && transientPeaks[62] === 0,
   `one-frame transient should remain in the older 1-bar strip's right-side bin: ${transientPeaks}`);
-console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias, Slew, Sample Hold, Compare and CV Mix routing passed');
+console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, Retro/Free Sample voices, LFO rack, ATV / Bias, Slew, Sample Hold, Compare, CV Mix and Range routing passed');

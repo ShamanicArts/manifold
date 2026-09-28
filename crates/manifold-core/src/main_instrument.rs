@@ -10,6 +10,7 @@ use crate::main_control_slew::MainControlSlew;
 use crate::main_lfo::{LfoOutputs, MainLfo};
 use crate::main_looper::LAYERS;
 use crate::main_looper::MainLooper;
+use crate::main_range_mapper::MainRangeMapper;
 use crate::main_sample_capture::MainSampleCapture;
 use crate::main_voice_bank::MainVoiceBank;
 use crate::sample_region::ValidatedStereo;
@@ -42,6 +43,8 @@ pub struct MainInstrument {
     cv_mix: CvMix,
     cv_mix_sources: [MainControlSource; 4],
     cv_mix_inputs: [f32; 4],
+    range: MainRangeMapper,
+    range_source: MainControlSource,
     filter_cutoff_base: f32,
     filter_resonance_base: f32,
     filter_cutoff_effective: f32,
@@ -82,9 +85,10 @@ struct MainControlFrame {
     compare_gate: f32,
     compare_trigger: f32,
     cv_mix: f32,
+    range: f32,
 }
 
-/// The prepared chain is acyclic: LFO -> ATV -> Slew -> Sample Hold -> Compare -> CV Mix.
+/// The prepared chain is acyclic: LFO -> ATV -> Slew -> Sample Hold -> Compare -> CV Mix -> Range.
 #[derive(Clone, Copy)]
 enum MainControlSource {
     Lfo { slot: usize, port: u32 },
@@ -94,6 +98,8 @@ enum MainControlSource {
     SampleHoldInv,
     CompareGate,
     CompareTrigger,
+    CvMixOut,
+    CvMixInv,
 }
 
 impl MainControlSource {
@@ -109,6 +115,8 @@ impl MainControlSource {
             19 => Some(Self::SampleHoldInv),
             20 => Some(Self::CompareGate),
             21 => Some(Self::CompareTrigger),
+            22 => Some(Self::CvMixOut),
+            23 => Some(Self::CvMixInv),
             _ => None,
         }
     }
@@ -130,6 +138,8 @@ impl MainControlSource {
             Self::SampleHoldInv => -frame.hold,
             Self::CompareGate => frame.compare_gate,
             Self::CompareTrigger => frame.compare_trigger,
+            Self::CvMixOut => frame.cv_mix,
+            Self::CvMixInv => -frame.cv_mix,
         }
     }
 }
@@ -165,7 +175,7 @@ impl MainModulationRoute {
             return false;
         }
         match id {
-            0 if (0.0..=11.0).contains(&value) && value.fract() == 0.0 => {
+            0 if (0.0..=12.0).contains(&value) && value.fract() == 0.0 => {
                 self.source = value as u32
             }
             1 if [0.0, 22.0, 23.0, 129.0, 137.0].contains(&value) => self.target = value as u32,
@@ -194,7 +204,8 @@ impl MainModulationRoute {
             8 => (frame.compare_gate, 0.0),
             9 => (frame.compare_trigger, 0.0),
             10 => ((frame.cv_mix + 1.0) * 0.5, 0.5),
-            _ => ((1.0 - frame.cv_mix) * 0.5, 0.5),
+            11 => ((1.0 - frame.cv_mix) * 0.5, 0.5),
+            _ => (frame.range, 0.0),
         };
         let (min, max): (f32, f32) = match self.target {
             22 => (80.0, 16_000.0),
@@ -243,6 +254,8 @@ impl MainInstrument {
             cv_mix: CvMix::new([1.0, 0.0, 0.0, 0.0], 0.0),
             cv_mix_sources: [MainControlSource::Lfo { slot: 0, port: 0 }; 4],
             cv_mix_inputs: [0.0; 4],
+            range: MainRangeMapper::new(),
+            range_source: MainControlSource::Lfo { slot: 0, port: 0 },
             filter_cutoff_base: 3200.0,
             filter_resonance_base: 0.75,
             filter_cutoff_effective: 3200.0,
@@ -523,6 +536,29 @@ impl MainInstrument {
         }
     }
 
+    pub fn set_range_parameter(&mut self, id: u32, value: f32) -> bool {
+        if id == 3 {
+            if !value.is_finite() || value.fract() != 0.0 || !(0.0..=23.0).contains(&value) {
+                return false;
+            }
+            let Some(source) = MainControlSource::from_id(value as u32) else {
+                return false;
+            };
+            self.range_source = source;
+            true
+        } else {
+            self.range.set_parameter(id, value)
+        }
+    }
+
+    pub fn range_status(&self, id: u32) -> f32 {
+        match id {
+            0 => self.range.input(),
+            1 => self.range.output(),
+            _ => 0.0,
+        }
+    }
+
     pub fn lfo_slot_status(&self, slot: usize, id: u32) -> f32 {
         if !self.lfo_active.get(slot).copied().unwrap_or(false) {
             return 0.0;
@@ -671,6 +707,7 @@ impl MainInstrument {
             self.cv_mix_inputs[index] = self.cv_mix_sources[index].sample(&frame);
         }
         frame.cv_mix = self.cv_mix.process_sample(self.cv_mix_inputs);
+        frame.range = self.range.process(self.range_source.sample(&frame));
         // Stable slot order defines composition: Add applies to the current
         // value; a later Replace supersedes earlier routes to that target.
         for slot in 0..MAIN_LFO_SLOTS {
@@ -1366,5 +1403,41 @@ mod tests {
         assert!((main.lfo_status(7) - 0.25).abs() < 1e-6);
         assert!(!main.set_cv_mix_parameter(5, 22.0)); // no feedback to its own OUT
         assert!(!main.set_cv_mix_parameter(9, 1.0));
+    }
+
+    #[test]
+    fn main_range_remaps_cv_mix_output_into_fx_route() {
+        let mut main = MainInstrument::new(8_000.0, 128);
+        assert!(main.set_cv_mix_parameter(0, 0.0));
+        assert!(main.set_cv_mix_parameter(4, 0.5));
+        assert!(main.set_range_parameter(0, 0.2));
+        assert!(main.set_range_parameter(1, 0.7));
+        assert!(main.set_range_parameter(2, 1.0)); // Remap
+        assert!(main.set_range_parameter(3, 22.0)); // CV Mix OUT
+        assert!(main.set_modulation_route(0, 12.0)); // Range OUT, unipolar
+        assert!(main.set_modulation_route(1, 129.0)); // FX1 mix
+        assert!(main.set_modulation_route(2, 1.0));
+        assert!(main.set_modulation_route(4, 1.0)); // Replace
+        assert!(main.set_modulation_route(5, 1.0));
+        let silence = [0.0; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        let mut tick = |main: &mut MainInstrument| {
+            main.process([&silence, &silence], [&mut left, &mut right]);
+        };
+        tick(&mut main);
+        assert!((main.range_status(0) - 0.5).abs() < 1e-6);
+        assert!((main.range_status(1) - 0.45).abs() < 1e-6);
+        assert!((main.lfo_status(7) - 0.45).abs() < 1e-6);
+        assert!(main.set_range_parameter(2, 0.0)); // Clamp
+        assert!(main.set_cv_mix_parameter(4, 0.9));
+        tick(&mut main);
+        assert!((main.range_status(1) - 0.7).abs() < 1e-6);
+        assert!((main.lfo_status(7) - 0.7).abs() < 1e-6);
+        assert!(main.set_range_parameter(0, 0.8)); // Reverse limits swap
+        assert!(main.set_range_parameter(1, 0.1));
+        tick(&mut main);
+        assert!((main.range_status(1) - 0.8).abs() < 1e-6);
+        assert!(!main.set_range_parameter(3, 24.0));
     }
 }

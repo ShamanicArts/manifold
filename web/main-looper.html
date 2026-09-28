@@ -79,7 +79,7 @@
           <section class="rack-route" aria-label="Main modulation connection">
             <div class="rack-shell-head route-head">PATCH / SCALAR CONTROL</div>
             <div class="route-content"><h2>LFO → target</h2><p>A typed control route. Audio stays in the Rust engine; these controls set the route.</p>
-              <label>Output<select id="mod-source"><option value="0">OUT · bipolar</option><option value="1">INV · bipolar</option><option value="2">UNI · unipolar</option><option value="3">EOC · trigger</option><option value="4">ATV / Bias OUT</option><option value="5">Slew OUT</option><option value="6">Sample Hold OUT</option><option value="7">Sample Hold INV</option><option value="8">Compare GATE</option><option value="9">Compare TRIG</option><option value="10">CV Mix OUT</option><option value="11">CV Mix INV</option></select></label>
+              <label>Output<select id="mod-source"><option value="0">OUT · bipolar</option><option value="1">INV · bipolar</option><option value="2">UNI · unipolar</option><option value="3">EOC · trigger</option><option value="4">ATV / Bias OUT</option><option value="5">Slew OUT</option><option value="6">Sample Hold OUT</option><option value="7">Sample Hold INV</option><option value="8">Compare GATE</option><option value="9">Compare TRIG</option><option value="10">CV Mix OUT</option><option value="11">CV Mix INV</option><option value="12">Range OUT · unipolar</option></select></label>
               <label>Target<select id="mod-target"><option value="0">Disconnected</option><option value="22">Filter cutoff</option><option value="23">Filter resonance</option><option value="129">FX1 mix</option><option value="137">FX2 mix</option></select></label>
               <label>Apply<select id="mod-mode"><option value="0">Add to base</option><option value="1">Replace base</option></select></label>
               <div id="mod-amount" class="route-slider"></div><div id="mod-bias" class="route-slider"></div>
@@ -153,6 +153,18 @@
             <label>IN 2<select id="cv-mix-source2" aria-label="CV Mix input 2 source"></select></label>
             <label>IN 3<select id="cv-mix-source3" aria-label="CV Mix input 3 source"></select></label>
             <label>IN 4<select id="cv-mix-source4" aria-label="CV Mix input 4 source"></select></label>
+          </section>
+          <section id="range" class="rack-range" aria-label="Main Range Mapper module">
+            <div class="range-title">RANGE</div><div id="range-status" class="range-status">Clamp  •  0% → 100%</div>
+            <canvas id="range-preview" width="424" height="108" aria-label="Range Mapper input and output curve"></canvas>
+            <div id="range-mode" aria-label="Range Mapper mode"></div>
+            <div id="range-min"></div><div id="range-max"></div>
+            <div id="range-values" class="range-values">Preview: —</div>
+          </section>
+          <section class="rack-range-patch" aria-label="Range Mapper input connection">
+            <strong>CONTROL IN → RANGE OUT</strong>
+            <p>Clamp or remap a selected control, including CV Mix OUT or INV. Range OUT can drive the existing Filter or FX routes.</p>
+            <label>IN source<select id="range-source" aria-label="Range Mapper input source"></select></label>
           </section>
           <button id="add-lfo" type="button">+ LFO</button>
           </div></div>

@@ -13,6 +13,7 @@ import { mountMainSlew } from './widgets/main-slew.js';
 import { mountMainSampleHold } from './widgets/main-sample-hold.js';
 import { mountMainCompare } from './widgets/main-compare.js';
 import { mountMainCvMix } from './widgets/main-cv-mix.js';
+import { mountMainRange } from './widgets/main-range.js';
 import { mountMainCapturePlane } from './widgets/main-capture-plane.js';
 import { drawMainLayerKnob } from './widgets/main-layer-knob.js';
 
@@ -51,6 +52,7 @@ const slew = mountMainSlew($, post, project.modulation.slewParameters);
 const sampleHold = mountMainSampleHold($, post, project.modulation.sampleHoldParameters);
 const compare = mountMainCompare($, post, project.modulation.compareParameters);
 const cvMix = mountMainCvMix($, post, project.modulation.cvMixParameters);
+const range = mountMainRange($, post, project.modulation.rangeParameters);
 const selectedSegment = id => Number($(id).querySelector('[aria-pressed="true"]').dataset.value);
 function wireSegments(id, change) {
   const group = $(id);
@@ -182,7 +184,7 @@ function rackSnapshot() {
   return { source: sourceSnapshot(), adsr: adsr.snapshot(), filter: filter.snapshot(),
     fx1: fx1.snapshot(), fx2: fx2.snapshot(), eq: eq.snapshot(), lfos: lfo.snapshot(),
     atv: atv.snapshot(), slew: slew.snapshot(), sampleHold: sampleHold.snapshot(),
-    compare: compare.snapshot(), cvMix: cvMix.snapshot() };
+    compare: compare.snapshot(), cvMix: cvMix.snapshot(), range: range.snapshot() };
 }
 function restoreRack(state) {
   restoreSource(state.source);
@@ -201,6 +203,7 @@ function restoreRack(state) {
     level1: 1, level2: 0, level3: 0, level4: 0, offset: 0,
     source1: 0, source2: 0, source3: 0, source4: 0,
   });
+  range.restore(state.range ?? { min: 0, max: 1, mode: 0, source: 0 });
 }
 drawSourceGraph();
 function resetSampleCaptureUI() {
@@ -276,7 +279,7 @@ for (const tab of document.querySelectorAll('[data-main-tab]')) {
       button.classList.toggle('active', selected);
       button.setAttribute('aria-selected', String(selected));
     }
-    requestAnimationFrame(() => { sizeInstrument(); if (synth) { paintSampleSliders(); adsr.paint(); filter.paint(); fx1.paint(); fx2.paint(); eq.paint(); lfo.paint(); atv.paint(); slew.paint(); sampleHold.paint(); compare.paint(); cvMix.paint(); } });
+    requestAnimationFrame(() => { sizeInstrument(); if (synth) { paintSampleSliders(); adsr.paint(); filter.paint(); fx1.paint(); fx2.paint(); eq.paint(); lfo.paint(); atv.paint(); slew.paint(); sampleHold.paint(); compare.paint(); cvMix.paint(); range.paint(); } });
   });
 }
 if (location.hash === '#slew') {
@@ -294,6 +297,10 @@ if (location.hash === '#compare') {
 if (location.hash === '#cv-mix') {
   document.querySelector('[data-main-tab="midisynth"]').click();
   requestAnimationFrame(() => { $('rack-scroll').scrollTop = 1176; cvMix.paint(); });
+}
+if (location.hash === '#range') {
+  document.querySelector('[data-main-tab="midisynth"]').click();
+  requestAnimationFrame(() => { $('rack-scroll').scrollTop = 1408; range.paint(); });
 }
 
 const noteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B', 'C'];
@@ -457,6 +464,7 @@ function render(data) {
   if (data.sampleHold) sampleHold.setStatus(data.sampleHold);
   if (data.compare) compare.setStatus(data.compare);
   if (data.cvMix) cvMix.setStatus(data.cvMix);
+  if (data.range) range.setStatus(data.range);
   latestSamplePeaks = data.samplePeaks ?? [];
   eq.setResponse(data.eqResponse);
   drawSourceGraph();
@@ -581,7 +589,7 @@ $('save-session').onclick = () => {
   if (transferJob || sampleJob || freeSource !== null) return;
   const id = nextRequest++;
   let rack;
-  try { rack = validateMainRackState(rackSnapshot(), true, project.modulation, true, true, true, true, true, true); }
+  try { rack = validateMainRackState(rackSnapshot(), true, project.modulation, true, true, true, true, true, true, true); }
   catch (error) { status(error.message); return; }
   transferJob = { kind: 'save', id, state: null, audio: null, layer: 0, offset: 0,
     sampleOffset: 0, sampleAudio: null, rack };
@@ -595,7 +603,7 @@ $('open-session').onchange = async () => {
   if (!file) return;
   try {
     const state = JSON.parse(await file.text());
-    if (state.format !== project.format || ![1, 2, 3, 4, 5, 6, 7, 8, project.sessionVersion].includes(state.version) || state.id !== project.id
+    if (state.format !== project.format || ![1, 2, 3, 4, 5, 6, 7, 8, 9, project.sessionVersion].includes(state.version) || state.id !== project.id
       || state.sampleRate !== context.sampleRate || !Array.isArray(state.layers) || state.layers.length !== project.layers
       || !Number.isFinite(state.tempo) || !Number.isFinite(state.targetBpm)
       || !Number.isInteger(state.activeLayer) || state.activeLayer < 0 || state.activeLayer >= project.layers
@@ -612,7 +620,7 @@ $('open-session').onchange = async () => {
     });
     let sampleAudio = null;
     if (state.version >= 2) {
-      validateMainRackState(state.rack, state.version >= 3, project.modulation, state.version >= 4, state.version >= 5, state.version >= 6, state.version >= 7, state.version >= 8, state.version >= 9);
+      validateMainRackState(state.rack, state.version >= 3, project.modulation, state.version >= 4, state.version >= 5, state.version >= 6, state.version >= 7, state.version >= 8, state.version >= 9, state.version >= 10);
       if (!state.sample || !Number.isInteger(state.sample.frames)
         || state.sample.frames < 0 || state.sample.frames > Math.min(1_440_000, context.sampleRate * project.captureSeconds)
         || (state.sample.frames === 0 && state.sample.pcmF32Base64 !== '')) {
@@ -693,6 +701,7 @@ async function start() {
     sampleHold.sendState();
     compare.sendState();
     cvMix.sendState();
+    range.sendState();
     if (sourceKind === 'microphone') {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
       sourceNode = context.createMediaStreamSource(stream);
