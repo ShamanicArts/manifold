@@ -63,9 +63,14 @@ try {
   await page.waitForFunction(() => document.querySelector('#status')?.textContent.includes('rejected this rack layout'));
   assert.equal(await page.locator('.rack-source').evaluate(element => element.style.left), '708px');
   assert.equal(await page.evaluate(() => window.layoutActions.length), 4);
+  await page.evaluate(() => { window.acceptLayout = true; });
+  await page.locator('.rack-filter .rack-width-toggle').click();
+  await page.waitForFunction(() => document.querySelector('.rack-filter')?.dataset.rackWidth === '1');
+  assert.equal(await page.evaluate(() => window.layoutActions.at(-1).document.modules
+    .find(module => module.id === 'filter').w), 1);
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ acceptedPlacement: true, stalePresentationIgnored: true,
-    rejectedPlacementRollsBack: true,
+    rejectedPlacementRollsBack: true, acceptedCompactFilter: true,
     audioContextOpened: false, pageErrors: 0 }));
 } finally {
   await browser.close();

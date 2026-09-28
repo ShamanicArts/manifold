@@ -92,14 +92,16 @@ export function compileMainRackInsert(rackDocument, catalog) {
 }
 
 // Main sessions save the prepared six-module audio topology and its grid layout.
-// Module insertion and resizing still need matching host and browser behavior.
+// Filter has its original compact width; other module sizes await their faces.
 export function validateMainRackInsertDocument(document, catalog) {
   const rack = validateRackDocument(document, catalog);
   if (rack.modules.length !== catalog.initial.modules.length ||
     rack.modules.some(module => {
       const original = catalog.initial.modules.find(item => item.id === module.id);
-      return !original || ['nodeId', 'type', 'w', 'h']
-        .some(key => module[key] !== original[key]);
+      return !original || ['nodeId', 'type']
+        .some(key => module[key] !== original[key])
+        || (module.id === 'filter' ? !((module.w === 1 || module.w === 2) && module.h === 1)
+          : module.w !== original.w || module.h !== original.h);
     })) throw new Error('This Main session uses modules or sizes that the current rack cannot display.');
   const stage = { oscillator: 0, filter: 1, fx1: 2, fx2: 3, eq: 4, __rackOutput: 5 };
   if (rack.connections.some(edge => edge.from.moduleId in stage && edge.to.moduleId in stage

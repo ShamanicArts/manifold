@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import catalog from '../../../projects/main-looper/rack.json' with { type: 'json' };
 import { initialRackDocument, validateRackDocument, setRackViewMode, placeRackModule,
-  moveRackModule, resizeRackModule, addRackModule, removeRackModule, connectRackPorts, replaceRackInput,
+  moveRackModule, resizeRackModule, resizeRackModuleWithFlow, addRackModule, removeRackModule,
+  connectRackPorts, replaceRackInput,
   disconnectRackInput } from './rack-document.js';
 
 test('legacy Main default chain is a validated typed rack document', () => {
@@ -50,6 +51,21 @@ test('occupied drops insert into legacy row flow; free drops keep sparse slots',
   assert.deepEqual(positions(moveRackModule(rack, 'eq', 2, 0, catalog)), {
     adsr: '0,0', oscillator: '0,1', filter: '0,3', fx1: '1,0', fx2: '1,2', eq: '2,0',
   });
+});
+
+test('Filter width toggles through an occupied cell and preserves module identities', () => {
+  const rack = initialRackDocument(catalog);
+  const compact = resizeRackModuleWithFlow(rack, 'filter', 1, 1, catalog);
+  assert.deepEqual(compact.modules.find(module => module.id === 'filter'),
+    { ...rack.modules.find(module => module.id === 'filter'), w: 1 });
+  const withEq = placeRackModule(compact, 'eq', 0, 4, catalog);
+  const wide = resizeRackModuleWithFlow(withEq, 'filter', 2, 1, catalog);
+  assert.equal(wide.modules.find(module => module.id === 'filter').w, 2);
+  assert.notDeepEqual(wide.modules.find(module => module.id === 'eq'),
+    withEq.modules.find(module => module.id === 'eq'));
+  assert.deepEqual(wide.connections, rack.connections);
+  assert.deepEqual(new Set(wide.modules.map(module => module.id)),
+    new Set(rack.modules.map(module => module.id)));
 });
 
 test('typed CV connection can be added and unpatched without altering audio chain', () => {

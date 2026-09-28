@@ -68,9 +68,11 @@ def main():
     parser.add_argument("--exercise-export", action="store_true", help="Click the original Download control and save native Main JSON")
     parser.add_argument("--exercise-layout", action="store_true", help="Toggle Main Rack/Patch through the actual child editor and save host state")
     parser.add_argument("--exercise-drag", action="store_true", help="Drag Source onto Filter in the actual child editor and save host state")
+    parser.add_argument("--exercise-width", action="store_true", help="Click Filter compact width in the actual child editor and save host state")
     args = parser.parse_args()
     assert not (args.exercise_sample and args.exercise_free_sample)
     assert not args.exercise_drag or args.exercise_layout
+    assert not args.exercise_width or args.exercise_drag
     assert not args.import_while_processing or args.import_session
     assert not (args.import_while_processing and (args.exercise_sample or args.exercise_free_sample))
     sample_exercise = args.exercise_sample or args.exercise_free_sample
@@ -250,6 +252,37 @@ def main():
                     assert dragged["connections"] == original_document["connections"]
                     assert dragged["viewMode"] == saved_document["viewMode"]
                     print("Actual child Source header drag swapped saved Source/Filter cells in packaged CLAP state.")
+                    if args.exercise_width:
+                        result_path.unlink()
+                        xtest.fake_input(x11, X.MotionNotify, root=root_id, x=1168 - ox, y=288 - oy)
+                        x11.sync()
+                        time.sleep(.08)
+                        xtest.fake_input(x11, X.ButtonPress, 1, root=root_id)
+                        x11.sync()
+                        xtest.fake_input(x11, X.ButtonRelease, 1, root=root_id)
+                        x11.sync()
+                        result = None
+                        deadline = time.monotonic() + 15
+                        while time.monotonic() < deadline:
+                            if callbacks[0] > handled:
+                                handled = callbacks[0]
+                                probe.fn(plugin.main, None, c.c_void_p)(plugin_ptr)
+                            if result_path.exists():
+                                try:
+                                    result = json.loads(result_path.read_text())
+                                    break
+                                except json.JSONDecodeError:
+                                    pass
+                            time.sleep(0.02)
+                        assert result and result["ok"], f"Main child Filter width click failed: {result}"
+                        saved_layout.clear()
+                        assert probe.fn(state.save, c.c_bool, c.c_void_p, c.POINTER(probe.Stream))(
+                            plugin_ptr, c.byref(sink))
+                        compact = json.loads(saved_layout)["rackDocument"]
+                        compact_filter = next(item for item in compact["modules"] if item["id"] == "filter")
+                        assert compact_filter["w"] == 1 and compact_filter["h"] == 1
+                        assert compact["connections"] == dragged["connections"]
+                        print("Actual child Filter width click saved its compact face in packaged CLAP state.")
             if args.exercise_export:
                 deadline = time.monotonic() + 15
                 exported = None

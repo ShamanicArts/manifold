@@ -196,6 +196,17 @@ export function resizeRackModule(document, id, w, h, catalog) {
     module.id === id ? { ...module, w, h } : module) }, catalog);
 }
 
+// Resizing may consume an occupied cell. Start at the module's current cell,
+// then fit or flow displaced modules using the same placement rule as a drag.
+export function resizeRackModuleWithFlow(document, id, w, h, catalog) {
+  const module = document.modules.find(item => item.id === id);
+  if (!module) fail(`missing module ${id}`);
+  const resized = { ...document, modules: document.modules.map(item =>
+    item.id === id ? { ...item, w, h } : item) };
+  return moveRackModule(resized, id, module.row, module.col, catalog,
+    (module.col + .5) * catalog.grid.cellWidth);
+}
+
 export function addRackModule(document, module, catalog) {
   return validateRackDocument({ ...document, modules: [...document.modules, module] }, catalog);
 }

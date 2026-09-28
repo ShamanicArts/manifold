@@ -42,7 +42,11 @@ export function mountMainFilter(get, parameter, ids) {
   });
 
   function paint() {
-    const width = 226, height = 188, dbRange = 14;
+    const width = canvas.clientWidth || 226, height = canvas.clientHeight || 188, dbRange = 14;
+    if (canvas.width !== width * 2 || canvas.height !== height * 2) {
+      canvas.width = width * 2;
+      canvas.height = height * 2;
+    }
     ctx.setTransform(2, 0, 0, 2, 0, 0);
     ctx.fillStyle = '#0d1420'; ctx.fillRect(0, 0, width, height);
     for (const freq of [100, 500, 1000, 5000, 10_000]) {
@@ -97,6 +101,7 @@ export function mountMainFilter(get, parameter, ids) {
   canvas.addEventListener('pointermove', event => { if (dragging) dragTo(event); });
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(type, () => { dragging = false; });
 
+  new ResizeObserver(paint).observe(canvas);
   paint();
   return {
     paint() { paint(); cutoffSlider.paint(); resonanceSlider.paint(); },

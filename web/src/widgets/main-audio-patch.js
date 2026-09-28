@@ -1,5 +1,6 @@
 import { compileMainRackInsert, validateMainRackInsertDocument } from '../state/main-rack-graph.js';
-import { initialRackDocument, moveRackModule, replaceRackInput, disconnectRackInput,
+import { initialRackDocument, moveRackModule, resizeRackModuleWithFlow,
+  replaceRackInput, disconnectRackInput,
   setRackViewMode } from '../state/rack-document.js';
 
 const SHELLS = {
@@ -89,6 +90,26 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
     shells.set(module.id, shell);
     const header = shell.querySelector('.rack-shell-head');
     if (header) {
+      if (module.id === 'filter') {
+        const resize = document.createElement('button');
+        resize.type = 'button';
+        resize.className = 'rack-width-toggle';
+        resize.title = 'Toggle Filter between compact and wide';
+        resize.setAttribute('aria-label', resize.title);
+        resize.addEventListener('pointerdown', event => event.stopPropagation());
+        resize.addEventListener('pointerup', event => event.stopPropagation());
+        resize.addEventListener('click', event => {
+          event.stopPropagation();
+          if (pending) return;
+          try {
+            const current = rack.modules.find(item => item.id === module.id);
+            const next = validateMainRackInsertDocument(resizeRackModuleWithFlow(rack,
+              module.id, current.w === 1 ? 2 : 1, 1, catalog), catalog);
+            void commitLayout(next, true);
+          } catch (error) { onError(error.message); }
+        });
+        header.append(resize);
+      }
       header.title = `Drag ${catalog.catalog[module.type].name} to another rack cell`;
       header.addEventListener('pointerdown', event => {
         if (event.button !== 0 || pending) return;
@@ -181,6 +202,11 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
       shell.style.position = 'absolute';
       shell.style.left = `${module.col * catalog.grid.cellWidth}px`;
       shell.style.top = `${25 + module.row * catalog.grid.cellHeight}px`;
+      shell.style.width = `${module.w * catalog.grid.cellWidth}px`;
+      shell.dataset.rackWidth = String(module.w);
+      const resize = shell.querySelector('.rack-width-toggle');
+      if (resize) resize.setAttribute('aria-label',
+        module.w === 1 ? 'Expand Filter to two rack cells' : 'Collapse Filter to one rack cell');
     }
     requestAnimationFrame(paintWires);
   }

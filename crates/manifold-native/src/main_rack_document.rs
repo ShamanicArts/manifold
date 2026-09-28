@@ -67,7 +67,9 @@ fn audio_connections(document: &Value) -> Result<Vec<Value>, MainSessionError> {
         let col = module["col"].as_u64().ok_or_else(invalid)?;
         let width = module["w"].as_u64().ok_or_else(invalid)?;
         let height = module["h"].as_u64().ok_or_else(invalid)?;
-        if ["w", "h"].iter().any(|key| module[*key] != reference[*key]) {
+        if (id == "filter" && (height != 1 || !matches!(width, 1 | 2)))
+            || (id != "filter" && ["w", "h"].iter().any(|key| module[*key] != reference[*key]))
+        {
             return Err(invalid());
         }
         let sizes = catalog["catalog"][module["type"].as_str().ok_or_else(invalid)?]["sizes"]
@@ -287,6 +289,22 @@ mod tests {
     }
 
     #[test]
+    fn compact_filter_keeps_audio_route_and_other_faces_retain_supported_sizes() {
+        let catalog: Value =
+            serde_json::from_str(include_str!("../../../projects/main-looper/rack.json")).unwrap();
+        let mut document = catalog["initial"].clone();
+        document["schemaVersion"] = json!(1);
+        document["projectId"] = json!("manifold.main-looper");
+        let baseline = audio_connections(&document).unwrap();
+        let mut compact = document.clone();
+        compact["modules"][2]["w"] = json!(1);
+        assert_eq!(audio_connections(&compact).unwrap(), baseline);
+        assert!(validate_layout_update(&document, &compact).is_ok());
+        compact["modules"][3]["w"] = json!(1);
+        assert!(audio_connections(&compact).is_err());
+    }
+
+    #[test]
     fn browser_exported_layout_prepares_and_survives_native_save_template() {
         let bytes = include_bytes!("../../../web/public/main-rack-layout-saved-session.json");
         let browser: Value = serde_json::from_slice(bytes).unwrap();
@@ -295,5 +313,17 @@ mod tests {
         let native = crate::main_session_export::save_template(bytes).unwrap();
         assert_eq!(native["rackDocument"], browser["rackDocument"]);
         assert_eq!(native["rackDocument"]["modules"][1]["col"], 3);
+    }
+
+    #[test]
+    fn browser_compact_filter_session_prepares_and_reopens_in_native_main() {
+        let bytes = include_bytes!("../../../web/public/main-filter-compact-saved-session.json");
+        let browser: Value = serde_json::from_slice(bytes).unwrap();
+        let mut prepared = crate::main_session::prepare_main_session(bytes, 48_000.0, 128).unwrap();
+        assert!(prepared.instrument_control_mut().has_rack_insert());
+        let native = crate::main_session_export::save_template(bytes).unwrap();
+        assert_eq!(native["rackDocument"], browser["rackDocument"]);
+        assert_eq!(native["rackDocument"]["modules"][2]["w"], 1);
+        assert_eq!(native["rack"]["filter"], browser["rack"]["filter"]);
     }
 }

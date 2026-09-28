@@ -525,6 +525,7 @@ mod tests {
         .unwrap();
         let mut moved = browser["rackDocument"].clone();
         moved["viewMode"] = serde_json::json!("patch");
+        moved["modules"][2]["w"] = serde_json::json!(1);
         let message = serde_json::json!({"version":1,"kind":"rack-layout", "requestId":7,
             "document":moved});
         receive(&instance, Cursor::new(format!("{message}\n")));

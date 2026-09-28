@@ -4,7 +4,7 @@ import catalog from '../../../projects/main-looper/rack.json' with { type: 'json
 import fixture from '../../../projects/main-looper/default-rack-graph.json' with { type: 'json' };
 import insertFixture from '../../../projects/main-looper/default-rack-insert.json' with { type: 'json' };
 import { initialRackDocument, addRackModule, connectRackPorts, disconnectRackInput,
-  moveRackModule, replaceRackInput } from './rack-document.js';
+  moveRackModule, resizeRackModuleWithFlow, replaceRackInput } from './rack-document.js';
 import { compileMainRackAudio, compileMainRackInsert,
   validateMainRackInsertDocument } from './main-rack-graph.js';
 
@@ -20,9 +20,9 @@ test('Main v16 audio document accepts saved bypass but rejects backward prepared
   assert.throws(() => validateMainRackInsertDocument(backward, catalog), /prepared signal order/);
 });
 
-test('Main rack moves swap equal shells and reflow occupied cells without changing DSP edges', () => {
+test('Main rack insertion and reflow leave DSP edges unchanged', () => {
   const original = initialRackDocument(catalog);
-  const swapped = moveRackModule(original, 'oscillator', 0, 3, catalog);
+  const swapped = moveRackModule(original, 'oscillator', 0, 3, catalog, 1050);
   assert.deepEqual(swapped.modules.find(module => module.id === 'oscillator'),
     { ...original.modules.find(module => module.id === 'oscillator'), col: 3 });
   assert.equal(swapped.modules.find(module => module.id === 'filter').col, 1);
@@ -31,8 +31,20 @@ test('Main rack moves swap equal shells and reflow occupied cells without changi
   const reflowed = moveRackModule(original, 'eq', 0, 1, catalog);
   assert.ok(reflowed.modules.some(module => module.row > 1));
   assert.deepEqual(validateMainRackInsertDocument(reflowed, catalog), reflowed);
-  assert.throws(() => moveRackModule(original, 'oscillator', 0, 4, catalog), /position/);
+  assert.equal(moveRackModule(original, 'oscillator', 0, 4, catalog, 1050).modules
+    .find(module => module.id === 'oscillator').col, 3);
+  assert.throws(() => moveRackModule(original, 'oscillator', 32, 0, catalog), /position/);
   assert.deepEqual(original, initialRackDocument(catalog));
+});
+
+test('compact Filter remains the same audible Main insert and reopens as a valid shell', () => {
+  const original = initialRackDocument(catalog);
+  const compact = resizeRackModuleWithFlow(original, 'filter', 1, 1, catalog);
+  assert.deepEqual(validateMainRackInsertDocument(compact, catalog), compact);
+  assert.deepEqual(compileMainRackInsert(compact, catalog), compileMainRackInsert(original, catalog));
+  const wrongSize = structuredClone(original);
+  wrongSize.modules.find(module => module.id === 'fx1').w = 1;
+  assert.throws(() => validateMainRackInsertDocument(wrongSize, catalog), /modules or sizes/);
 });
 
 test('authored Main default compiles to the portable Graph host fixture', () => {
