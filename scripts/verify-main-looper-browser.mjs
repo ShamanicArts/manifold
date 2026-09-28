@@ -28,6 +28,13 @@ try {
   assert.equal(Math.round(firstCaptureStrip.y - captureBounds.y), 4);
   assert.equal(Math.round(firstCaptureStrip.width), 142);
   assert.equal(Math.round(lastCaptureStrip.x - captureBounds.x), 1136);
+  await page.locator('.segment').nth(6).hover();
+  const hoverRange = await page.locator('.capture-range.hover').boundingBox();
+  assert.equal(Math.round(hoverRange.x - captureBounds.x), 852);
+  assert.equal(Math.round(hoverRange.width), 426);
+  assert.equal(await page.locator('.capture-range.hover span').textContent(), '1/4 bars');
+  await page.mouse.move(0, 0);
+  assert.equal(await page.locator('.capture-range.hover').isVisible(), false);
   await page.locator('#source').selectOption('oscillator');
   await page.locator('#audio-button').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Running'), { timeout: 25000 });
@@ -190,6 +197,10 @@ try {
   await page.locator('#mode').selectOption('2');
   await page.locator('.segment').nth(7).click();
   await page.waitForFunction(() => !document.querySelector('#fire').hidden);
+  const armedRange = await page.locator('.capture-range.armed').boundingBox();
+  const captureAtArm = await page.locator('#capture').boundingBox();
+  assert.equal(Math.round(armedRange.x - captureAtArm.x), 994);
+  assert.equal(Math.round(armedRange.width), 284);
   await page.locator('#fire').click();
   await page.waitForFunction(() => document.querySelector('#fire').hidden);
   await page.waitForFunction(() => document.querySelector('.layer[data-layer="1"] .state').textContent === 'Playing');

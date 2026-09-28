@@ -1,24 +1,16 @@
 /** Main looper adapter: device buffers and messages only; Rust owns audio/state. */
 // Vite serves this AudioWorklet module as an asset, so it must be self-contained.
-// The newest strip starts at its left edge. As audio ages out of that strip,
-// it enters the right edge of the adjacent, older strip and travels left.
-// Each bin is a fixed age range once its strip is full.
+// Each strip runs from its newest age at the left edge to its oldest age at
+// the right edge. A sound enters at the left of 1/16, then enters at the left
+// of each older strip as it crosses that strip's age boundary.
 export function captureStripBins(bars, index, samplesPerBar, captureFrames, capturedFrames, count = 64) {
   const older = Math.min(captureFrames, Math.floor(bars[index] * samplesPerBar));
   const newer = Math.min(captureFrames, Math.floor((bars[index + 1] ?? 0) * samplesPerBar));
   const span = Math.max(0, older - newer);
-  const available = Math.max(0, Math.min(span, capturedFrames - newer));
-  if (!span || !available) return Array(count).fill(null);
-  if (index === bars.length - 1 && available < span) {
-    const filled = Math.min(count, Math.ceil(count * available / span));
-    return Array.from({ length: count }, (_, bin) => bin < filled ? [
-      Math.floor(newer + available - available * (bin + 1) / filled),
-      Math.floor(newer + available - available * bin / filled),
-    ] : null);
-  }
+  if (!span || capturedFrames <= newer) return Array(count).fill(null);
   return Array.from({ length: count }, (_, bin) => {
-    const start = Math.floor(older - span * (bin + 1) / count);
-    const end = Math.floor(older - span * bin / count);
+    const start = Math.floor(newer + span * bin / count);
+    const end = Math.floor(newer + span * (bin + 1) / count);
     return start < capturedFrames && end > start ? [start, Math.min(end, capturedFrames)] : null;
   });
 }

@@ -21,8 +21,19 @@ for (let i = 0; i < 4; i++) block(0);
 const captureBins = captureStripBins(contract.segments, 8, 16_000, 240_000,
   e.manifold_looper_status(contract.status.capturedFrames, 0));
 const capturePeaks = captureBins.map(bin => bin ? e.manifold_looper_peak(0, 1, ...bin) : 0);
-assert.ok(capturePeaks[0] > .79 && capturePeaks.at(-1) < .001,
-  `capture display must run from earlier loud input to later silence: ${capturePeaks}`);
+assert.ok(capturePeaks[0] < .001 && capturePeaks.at(-1) > .79,
+  `the newest strip must run from newest silence on the left to older audio on the right: ${capturePeaks}`);
+const nextStripBins = captureStripBins(contract.segments, 7, 16_000, 240_000,
+  e.manifold_looper_status(contract.status.capturedFrames, 0));
+const nextStripPeaks = nextStripBins.map(bin => bin ? e.manifold_looper_peak(0, 1, ...bin) : 0);
+assert.ok(nextStripPeaks[0] > .79 && nextStripPeaks.at(-1) < .001,
+  `audio crossing into an older strip must start at its left edge: ${nextStripPeaks}`);
+for (let i = 0; i < 4; i++) block(0);
+const progressedBins = captureStripBins(contract.segments, 7, 16_000, 240_000,
+  e.manifold_looper_status(contract.status.capturedFrames, 0));
+const progressedPeaks = progressedBins.map(bin => bin ? e.manifold_looper_peak(0, 1, ...bin) : 0);
+assert.ok(progressedPeaks[0] < .001 && progressedPeaks[2] > .79,
+  `the same audio must travel right within its strip as it ages: ${progressedPeaks}`);
 assert.equal(e.manifold_looper_command(0, 0), 1);
 for (let i = 0; i < 125; i++) block(.25);
 assert.equal(e.manifold_looper_command(1, 0), 1);
