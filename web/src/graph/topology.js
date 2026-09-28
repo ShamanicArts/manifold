@@ -32,6 +32,13 @@ export const NODE_TYPES = {
     parameters: [{ id: 0, label: 'Mode', choices: ['Low pass', 'Band pass', 'High pass', 'Notch'], default: 0 },
       { id: 1, label: 'Cutoff', min: 20, max: 20000, default: 3200 },
       { id: 2, label: 'Resonance', min: .1, max: 1, default: .75 }] },
+  'modulated-svf': { label: 'CV filter', code: 16, output: 'audio', inputs: ['audio', 'control'],
+    args: { a: 2000 }, parameters: [
+      { id: 0, label: 'Mode', choices: ['Low pass', 'Band pass', 'High pass', 'Notch'], default: 0 },
+      { id: 1, label: 'Cutoff', min: 20, max: 20000, default: 3200 },
+      { id: 2, label: 'Resonance', min: .1, max: 1, default: .75 },
+      { id: 3, label: 'CV depth Hz', min: 0, max: 20000, default: 2000 },
+    ] },
   'effect-slot-legacy': { label: 'Main FX slot', code: 52, output: 'audio', inputs: ['audio'],
     args: { a: 0, b: 0 }, parameters: [
       { id: 0, label: 'Effect', choices: VISUAL_NAMES, default: 0 },

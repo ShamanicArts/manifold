@@ -27,13 +27,32 @@ test('audio rewiring changes the compiled signal and keeps parked module state',
   assert.ok(original.connections.some(edge => edge.from.moduleId === 'eq' && edge.to.moduleId === '__rackOutput'));
 });
 
-test('unsupported voice and CV edits fail before publication', () => {
+test('LFO OUT to Filter Cutoff creates an audible control edge', () => {
+  let rack = addRackModule(initialRackDocument(catalog),
+    { id: 'lfo1', nodeId: 11, type: 'lfo', row: 2, col: 0, w: 1, h: 1 }, catalog);
+  rack = connectRackPorts(rack, { moduleId: 'lfo1', portId: 'out' },
+    { moduleId: 'filter', portId: 'cutoff' }, catalog);
+  const signal = compileMainRackAudio(rack, catalog);
+  assert.ok(signal.nodes.some(node => node.id === 6 && node.type === 'modulated-svf'));
+  assert.ok(signal.nodes.some(node => node.id === 11 && node.type === 'lfo'));
+  assert.ok(signal.connections.some(edge => edge.from === 11 && edge.to === 6 && edge.inputPort === 1));
+  assert.equal(signal.initialParameters.find(parameter => parameter.nodeId === 11 && parameter.id === 1).value, 1);
+});
+
+test('unsupported voice and control ports fail before publication', () => {
   const original = initialRackDocument(catalog);
   const noVoice = disconnectRackInput(original, { moduleId: 'oscillator', portId: 'voice' }, catalog);
   assert.throws(() => compileMainRackAudio(noVoice, catalog), /voice rewiring/);
-  let withLfo = addRackModule(original,
+  const withLfo = addRackModule(original,
     { id: 'lfo1', nodeId: 11, type: 'lfo', row: 2, col: 0, w: 1, h: 1 }, catalog);
-  withLfo = connectRackPorts(withLfo, { moduleId: 'lfo1', portId: 'out' },
+  const inverse = connectRackPorts(withLfo, { moduleId: 'lfo1', portId: 'inv' },
     { moduleId: 'filter', portId: 'cutoff' }, catalog);
-  assert.throws(() => compileMainRackAudio(withLfo, catalog), /not compiled into audio yet/);
+  assert.throws(() => compileMainRackAudio(inverse, catalog), /no DSP mapping/);
+  const resonance = connectRackPorts(withLfo, { moduleId: 'lfo1', portId: 'out' },
+    { moduleId: 'filter', portId: 'resonance' }, catalog);
+  assert.throws(() => compileMainRackAudio(resonance, catalog), /no DSP mapping/);
+  const noFx1Audio = disconnectRackInput(original, { moduleId: 'fx1', portId: 'in' }, catalog);
+  const auxiliary = connectRackPorts(noFx1Audio, { moduleId: 'filter', portId: 'send' },
+    { moduleId: 'fx1', portId: 'recv' }, catalog);
+  assert.throws(() => compileMainRackAudio(auxiliary, catalog), /no audio compiler/);
 });

@@ -399,6 +399,12 @@ fn parameter_range(kind: &str, id: u32) -> Option<(f32, f32, bool)> {
             (0., 1., false),
         ],
         "svf" => &[(0., 3., true), (20., 20_000., false), (0.1, 1., false)],
+        "modulated-svf" => &[
+            (0., 3., true),
+            (20., 20_000., false),
+            (0.1, 1., false),
+            (0., 20_000., false),
+        ],
         "loop-capture" => &[
             (0., 1., true),
             (0., 1., true),
@@ -834,6 +840,7 @@ impl NativeProject {
                 | "noise"
                 | "lfo"
                 | "modulated-gain"
+                | "modulated-svf"
                 | "effect-slot-legacy" => {
                     let a = float(
                         entry
@@ -865,6 +872,11 @@ impl NativeProject {
                         NodeKind::MainVoiceBank {
                             fft_order: a as u32,
                         }
+                    } else if kind == "modulated-svf" {
+                        if entry.len() != 3 || a != 2000.0 {
+                            return Err(ProjectError::Invalid("modulated filter arguments"));
+                        }
+                        NodeKind::ModulatedSvf { depth_hz: a }
                     } else if kind == "midi-transpose" || kind == "lfo" {
                         if entry.len() != 3 || a != if kind == "lfo" { 2.0 } else { 0.0 } {
                             return Err(ProjectError::Invalid("node arguments"));
@@ -1495,6 +1507,35 @@ mod tests {
             "../../../projects/graph-workspace/sidechain-sampler.json"
         ))
         .unwrap()
+    }
+
+    #[test]
+    fn authored_main_cv_cable_roundtrips_through_native_state() {
+        let bundle = include_bytes!("../../../projects/main-looper/lfo-filter-rack-graph.json");
+        let mut prepared = NativeProject::parse(bundle)
+            .unwrap()
+            .prepare_with_state(48_000., 128)
+            .unwrap();
+        let saved = prepared.save_state().unwrap();
+        let restored: Value = serde_json::from_slice(&saved).unwrap();
+        assert!(
+            restored["signal"]["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|node| node["id"] == 6 && node["type"] == "modulated-svf")
+        );
+        assert!(
+            restored["signal"]["connections"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|edge| edge["from"] == 11 && edge["to"] == 6 && edge["inputPort"] == 1)
+        );
+        NativeProject::parse(&saved)
+            .unwrap()
+            .prepare(48_000., 128)
+            .unwrap();
     }
 
     #[test]

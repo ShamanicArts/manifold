@@ -12,6 +12,12 @@ test('legacy Main default chain is a validated typed rack document', () => {
     'midi_in_to_adsr', 'adsr_to_oscillator', 'oscillator_to_filter', 'filter_to_fx1',
     'fx1_to_fx2', 'fx2_to_eq', 'eq_to_output',
   ]);
+  assert.ok(catalog.catalog.adsr.ports.outputs.some(port => port.id === 'env' && port.kind === 'cv'));
+  assert.ok(catalog.catalog.source.ports.outputs.some(port => port.id === 'sub' && port.kind === 'audio'));
+  assert.ok(catalog.catalog.filter.ports.inputs.some(port => port.id === 'env' && port.kind === 'cv'));
+  assert.ok(catalog.catalog.filter.ports.outputs.some(port => port.id === 'cutoff' && port.parameter));
+  assert.ok(catalog.catalog.fx1.ports.inputs.some(port => port.id === 'recv'));
+  assert.ok(!catalog.catalog.fx2.ports.inputs.some(port => port.id === 'recv'));
   const patch = setRackViewMode(rack, 'patch', catalog);
   assert.equal(patch.viewMode, 'patch');
   assert.deepEqual(patch.connections, rack.connections);

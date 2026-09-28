@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 const requireFromWeb = createRequire(new URL('../web/package.json', import.meta.url));
 const { chromium } = requireFromWeb('playwright-core');
 const project = JSON.parse(readFileSync(new URL('../web/public/main-rack-audio-project.json', import.meta.url)));
+const cvProject = JSON.parse(readFileSync(new URL('../web/public/main-rack-cv-project.json', import.meta.url)));
 const browser = await chromium.launch({
   executablePath: process.env.MANIFOLD_CHROMIUM ?? '/usr/bin/chromium',
   headless: true,
@@ -31,9 +32,32 @@ try {
   await page.locator('#audio-toggle').click();
   await page.waitForTimeout(1500);
   assert.match(await page.locator('#status').textContent(), /Audio running/);
+  await page.locator('#audio-toggle').click();
+  await page.locator('#graph-project-file').setInputFiles([{
+    name: 'main-rack-cv-project.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(cvProject)),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status')?.textContent.startsWith('Opened'));
+  assert.equal(await page.locator('.graph-node').count(), 9);
+  assert.equal(await page.locator('select[data-to="6"][data-port="1"]').inputValue(), '11');
+  await page.locator('#audio-toggle').click();
+  await page.waitForTimeout(1500);
+  assert.match(await page.locator('#status').textContent(), /Audio running/);
+  await page.locator('#audio-toggle').click();
+  const download = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const saved = JSON.parse(readFileSync(await (await download).path()));
+  assert.ok(saved.signal.connections.some(edge => edge.from === 11 && edge.to === 6 && edge.inputPort === 1));
+  await page.locator('#graph-project-file').setInputFiles([{
+    name: 'saved-main-rack-cv.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(saved)),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status')?.textContent.startsWith('Opened'));
+  assert.equal(await page.locator('select[data-to="6"][data-port="1"]').inputValue(), '11');
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ importedNodes: 8, importedEdges: project.signal.connections.length,
-    browserAudio: 'running in muted isolated Chromium', pageErrors: errors.length }));
+  console.log(JSON.stringify({ importedNodes: [8, 9], importedEdges: [project.signal.connections.length,
+    cvProject.signal.connections.length],
+    browserAudio: 'running in muted isolated Chromium', cvSaveReopen: true, pageErrors: errors.length }));
 } finally {
   await browser.close();
 }
