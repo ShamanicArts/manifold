@@ -9,6 +9,7 @@
   "captureSeconds": 30,
   "segments": [16, 8, 4, 2, 1, 0.5, 0.25, 0.125, 0.0625],
   "controls": { "activeLayer": 0, "mode": 1, "tempo": 2, "targetBpm": 3, "overdub": 4, "overdubLengthPolicy": 5 },
+  "hostParameters": { "transportBase": 0, "layerBase": 16, "layerStride": 8, "synthBase": 256, "lfoBase": 512, "lfoStride": 16, "atvBase": 640, "slewBase": 672, "sampleHoldBase": 704, "compareBase": 736, "cvMixBase": 768, "rangeBase": 800, "scaleQuantizerBase": 832, "transposeBase": 864, "noteFilterBase": 896, "velocityMapperBase": 928, "arpeggiatorBase": 960 },
   "layerControls": { "volume": 0, "speed": 1, "mute": 2, "play": 3, "seek": 4 },
   "commands": { "record": 0, "stopRecord": 1, "play": 2, "pause": 3, "stop": 4, "clearAll": 5, "commit": 6, "segment": 7, "fireForward": 8, "clearLayer": 9 },
   "synthParameters": { "waveform": 0, "blend": 1, "sampleRoot": 2, "keytrack": 3, "samplePitch": 4, "pitchMode": 5, "blendMode": 6, "blendDepth": 7, "attack": 11, "decay": 12, "sustain": 13, "release": 14, "output": 15, "timeStretch": 16, "addWave": 19, "sampleXfade": 20, "filterMode": 21, "filterCutoff": 22, "filterResonance": 23 },

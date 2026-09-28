@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
 use crossbeam_queue::ArrayQueue;
 
 use crate::NativeError;
-use crate::main_instrument::{MainAudioBlock, MainNativeProcessor};
+use crate::main_instrument::{MainAudioBlock, MainHostAudioBlock, MainNativeProcessor};
 use crate::main_session::{MainSessionError, prepare_main_session};
 
 struct Prepared {
@@ -92,6 +92,12 @@ impl MainAudioRuntime {
     /// A rejected block does not publish a waiting session.
     pub fn process(&mut self, block: MainAudioBlock<'_>) -> Result<(), NativeError> {
         self.current.processor.process(block)?;
+        self.publish_pending();
+        Ok(())
+    }
+
+    pub fn process_host(&mut self, block: MainHostAudioBlock<'_>) -> Result<(), NativeError> {
+        self.current.processor.process_host(block)?;
         self.publish_pending();
         Ok(())
     }
