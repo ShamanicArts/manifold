@@ -106,8 +106,23 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
         if (shellDrag?.id !== event.pointerId || shellDrag.moduleId !== module.id) return;
         const scale = content.getBoundingClientRect().width / content.offsetWidth;
         shell.style.transform = `translate(${(event.clientX - shellDrag.startX) / scale}px, ${(event.clientY - shellDrag.startY) / scale}px)`;
+        if (Math.hypot(event.clientX - shellDrag.startX, event.clientY - shellDrag.startY) > 4) {
+          try { placeShells(projectDrop(event, shellDrag), shellDrag.moduleId); }
+          catch { placeShells(rack, shellDrag.moduleId); }
+        }
         paintWires();
       });
+      function projectDrop(event, current) {
+        const bounds = content.getBoundingClientRect();
+        const scale = bounds.width / content.offsetWidth;
+        const left = (event.clientX - bounds.left) / scale - current.offsetX;
+        const top = (event.clientY - bounds.top) / scale - current.offsetY;
+        const nextRow = Math.max(0, Math.round((top - 25) / catalog.grid.cellHeight));
+        const nextCol = Math.max(0, Math.round(left / catalog.grid.cellWidth));
+        const dropX = (event.clientX - bounds.left) / scale;
+        return validateMainRackInsertDocument(moveRackModule(rack, module.id,
+          nextRow, nextCol, catalog, dropX), catalog);
+      }
       const finishDrag = async (event, commit) => {
         if (shellDrag?.id !== event.pointerId || shellDrag.moduleId !== module.id) return;
         const current = shellDrag;
@@ -115,18 +130,11 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
         shell.style.transform = '';
         shell.classList.remove('rack-shell-moving');
         if (commit && Math.hypot(event.clientX - current.startX, event.clientY - current.startY) > 4) {
-          const bounds = content.getBoundingClientRect();
-          const scale = bounds.width / content.offsetWidth;
-          const left = (event.clientX - bounds.left) / scale - current.offsetX;
-          const top = (event.clientY - bounds.top) / scale - current.offsetY;
-          const nextRow = Math.max(0, Math.round((top - 12) / catalog.grid.cellHeight));
-          const nextCol = Math.max(0, Math.round(left / catalog.grid.cellWidth));
           try {
-            const next = validateMainRackInsertDocument(moveRackModule(rack, module.id,
-              nextRow, nextCol, catalog), catalog);
-            await commitLayout(next);
-          } catch (error) { onError(error.message); }
-        }
+            const next = projectDrop(event, current);
+            await commitLayout(next, true);
+          } catch (error) { placeShells(); onError(error.message); }
+        } else placeShells();
         requestAnimationFrame(paintWires);
       };
       header.addEventListener('pointerup', event => finishDrag(event, true));
@@ -158,18 +166,21 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
   makePort('__midiInput', { id: 'voice', kind: 'voice' }, 'output', midiRail);
   content.append(midiRail);
 
-  function placeShells() {
-    const height = Math.max(460, ...rack.modules.map(module =>
-      12 + (module.row + module.h) * catalog.grid.cellHeight));
-    content.style.height = `${Math.max(2553, height)}px`;
+  function placeShells(document = rack, movingId = null) {
+    const height = Math.max(460, ...document.modules.map(module =>
+      25 + (module.row + module.h) * catalog.grid.cellHeight));
+    const utilityShift = Math.max(0, height - 465);
+    content.style.setProperty('--rack-utility-shift', `${utilityShift}px`);
+    content.style.height = `${Math.max(2553 + utilityShift, height)}px`;
     svg.style.height = `${height}px`;
     svg.setAttribute('viewBox', `0 0 1280 ${height}`);
-    for (const module of rack.modules) {
+    for (const module of document.modules) {
       const shell = shells.get(module.id);
       if (!shell) continue;
+      if (module.id === movingId) continue;
       shell.style.position = 'absolute';
       shell.style.left = `${module.col * catalog.grid.cellWidth}px`;
-      shell.style.top = `${module.row === 0 ? 25 : 12 + module.row * catalog.grid.cellHeight}px`;
+      shell.style.top = `${25 + module.row * catalog.grid.cellHeight}px`;
     }
     requestAnimationFrame(paintWires);
   }
@@ -241,15 +252,16 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
     source = null; drag = null;
     requestAnimationFrame(paintWires);
   }
-  async function commitLayout(next) {
+  async function commitLayout(next, optimistic = false) {
     if (pending) return;
     pending = true;
     try {
+      if (optimistic) placeShells(next);
       if (!await onLayout(next)) throw new Error('The native host rejected this rack layout.');
       rack = next;
       placeShells();
       showMode();
-    } catch (error) { onError(error.message); }
+    } catch (error) { placeShells(); onError(error.message); }
     finally { pending = false; }
   }
   const audioTargets = ['filter', 'fx1', 'fx2', 'eq', '__rackOutput'];

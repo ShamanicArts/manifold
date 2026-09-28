@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import catalog from '../../../projects/main-looper/rack.json' with { type: 'json' };
 import { initialRackDocument, validateRackDocument, setRackViewMode, placeRackModule,
-  resizeRackModule, addRackModule, removeRackModule, connectRackPorts, replaceRackInput,
+  moveRackModule, resizeRackModule, addRackModule, removeRackModule, connectRackPorts, replaceRackInput,
   disconnectRackInput } from './rack-document.js';
 
 test('legacy Main default chain is a validated typed rack document', () => {
@@ -35,6 +35,21 @@ test('module edits retain identity and reject collisions', () => {
   assert.throws(() => placeRackModule(rack, 'eq', 0, 1, catalog), /overlapping/);
   assert.throws(() => resizeRackModule(rack, 'adsr', 2, 1, catalog), /overlapping/);
   assert.throws(() => placeRackModule(rack, 'missing', 2, 0, catalog), /missing module/);
+});
+
+test('occupied drops insert into legacy row flow; free drops keep sparse slots', () => {
+  const rack = initialRackDocument(catalog);
+  const positions = document => Object.fromEntries(document.modules.map(({ id, row, col }) =>
+    [id, `${row},${col}`]));
+  assert.deepEqual(positions(moveRackModule(rack, 'fx1', 0, 1, catalog, 400)), {
+    adsr: '0,0', oscillator: '0,3', filter: '1,0', fx1: '0,1', fx2: '1,2', eq: '1,4',
+  });
+  assert.deepEqual(positions(moveRackModule(rack, 'oscillator', 0, 3, catalog, 1050)), {
+    adsr: '0,0', oscillator: '0,3', filter: '0,1', fx1: '1,0', fx2: '1,2', eq: '1,4',
+  });
+  assert.deepEqual(positions(moveRackModule(rack, 'eq', 2, 0, catalog)), {
+    adsr: '0,0', oscillator: '0,1', filter: '0,3', fx1: '1,0', fx2: '1,2', eq: '2,0',
+  });
 });
 
 test('typed CV connection can be added and unpatched without altering audio chain', () => {

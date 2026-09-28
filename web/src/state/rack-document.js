@@ -110,46 +110,84 @@ export function placeRackModule(document, id, row, col, catalog) {
     module.id === id ? { ...module, row, col } : module) }, catalog);
 }
 
-// A drop swaps equal-sized neighbours or moves displaced modules to the next
-// free grid cells. The validated result is published as one layout transaction.
-export function moveRackModule(document, id, row, col, catalog) {
+// Occupied drops insert into Main's constrained row flow. Free drops preserve
+// sparse slots and fit later modules forward, as the old rack did.
+export function moveRackModule(document, id, row, col, catalog, dropX) {
   const moving = document.modules.find(module => module.id === id);
   if (!moving) fail(`missing module ${id}`);
   if (!isGridInt(row, 0) || !isGridInt(col, 0)
-    || row + moving.h > catalog.grid.maxRows
-    || col + moving.w > catalog.grid.columns) fail(`position for ${id}`);
+    || row + moving.h > catalog.grid.maxRows) fail(`position for ${id}`);
+  const columns = catalog.grid.columns;
+  const maxRows = catalog.grid.maxRows;
+  const targetCol = Math.min(col, columns - moving.w);
   const overlaps = (a, b) => a.row < b.row + b.h && b.row < a.row + a.h
     && a.col < b.col + b.w && b.col < a.col + a.w;
-  const target = { ...moving, row, col };
-  const other = document.modules.filter(module => module.id !== id);
-  const touched = other.filter(module => overlaps(module, target));
-  if (touched.length === 1 && touched[0].w === moving.w && touched[0].h === moving.h
-    && !overlaps(target, { ...touched[0], row: moving.row, col: moving.col })) {
-    return validateRackDocument({ ...document, modules: document.modules.map(module =>
-      module.id === id ? target : module.id === touched[0].id
-        ? { ...module, row: moving.row, col: moving.col } : module) }, catalog);
-  }
-  const placed = [target];
-  const next = [target];
-  for (const module of other) {
-    let candidate = module;
-    if (placed.some(item => overlaps(item, candidate))) {
-      const start = module.row * catalog.grid.columns + module.col;
-      let found = false;
-      for (let cell = start; cell < catalog.grid.maxRows * catalog.grid.columns; cell++) {
-        candidate = { ...module, row: Math.floor(cell / catalog.grid.columns),
-          col: cell % catalog.grid.columns };
-        if (candidate.col + candidate.w <= catalog.grid.columns
-          && candidate.row + candidate.h <= catalog.grid.maxRows
-          && !placed.some(item => overlaps(item, candidate))) { found = true; break; }
+  const order = (a, b) => a.row - b.row || a.col - b.col || a.id.localeCompare(b.id);
+  const others = document.modules.filter(module => module.id !== id).sort(order);
+  const target = { ...moving, row, col: targetCol };
+  if (others.some(module => overlaps(module, target))) {
+    // Occupied drops use the original rack's constrained row flow. The
+    // pointer's position relative to each module midpoint selects insertion.
+    const centerX = Number.isFinite(dropX) ? dropX
+      : (targetCol + moving.w / 2) * catalog.grid.cellWidth;
+    const earlierRows = others.filter(module => module.row < row).length;
+    const earlierInRow = others.filter(module => module.row === row
+      && (module.col + module.w / 2) * catalog.grid.cellWidth < centerX).length;
+    const flow = [...others];
+    flow.splice(earlierRows + earlierInRow, 0, moving);
+    const placed = [];
+    let flowRow = 0, cursor = 0;
+    for (const module of flow) {
+      const minRow = module.id === id ? row : module.row;
+      if (flowRow < minRow) { flowRow = minRow; cursor = 0; }
+      if (cursor > 0 && cursor + module.w > columns) {
+        flowRow = Math.max(flowRow + 1, minRow);
+        cursor = 0;
       }
-      if (!found) fail('rack has no free placement');
+      if (flowRow + module.h > maxRows) fail('rack has no free placement');
+      placed.push({ ...module, row: flowRow, col: cursor });
+      cursor += module.w;
     }
-    placed.push(candidate);
-    next.push(candidate);
+    const positions = new Map(placed.map(module => [module.id, module]));
+    return validateRackDocument({ ...document,
+      modules: document.modules.map(module => positions.get(module.id)) }, catalog);
   }
-  return validateRackDocument({ ...document, modules: document.modules.map(module =>
-    next.find(item => item.id === module.id)) }, catalog);
+  const fits = (module, atRow, atCol, placed) => atCol + module.w <= columns
+    && atRow + module.h <= maxRows
+    && !placed.some(item => overlaps(item, { ...module, row: atRow, col: atCol }));
+  function firstFit(module, startRow, startCol, placed) {
+    let atRow = startRow, atCol = startCol;
+    if (atCol + module.w > columns) { atRow++; atCol = 0; }
+    for (; atRow < maxRows; atRow++, atCol = 0) {
+      for (; atCol + module.w <= columns; atCol++) {
+        if (fits(module, atRow, atCol, placed)) return { ...module, row: atRow, col: atCol };
+      }
+    }
+    fail('rack has no free placement');
+  }
+  function after(module) {
+    const nextCol = module.col + module.w;
+    return nextCol >= columns ? { row: module.row + Math.floor(nextCol / columns),
+      col: nextCol % columns } : { row: module.row, col: nextCol };
+  }
+  const before = others.filter(module => module.row < row
+    || (module.row === row && module.col + module.w <= targetCol));
+  const suffix = others.filter(module => !before.includes(module));
+  const placed = [...before];
+  const moved = firstFit(moving, row, targetCol, placed);
+  placed.push(moved);
+  let cursor = after(moved);
+  for (const module of suffix) {
+    const earliest = module.row > cursor.row
+      || (module.row === cursor.row && module.col > cursor.col)
+      ? { row: module.row, col: module.col } : cursor;
+    const next = firstFit(module, earliest.row, earliest.col, placed);
+    placed.push(next);
+    cursor = after(next);
+  }
+  const positions = new Map(placed.map(module => [module.id, module]));
+  return validateRackDocument({ ...document,
+    modules: document.modules.map(module => positions.get(module.id)) }, catalog);
 }
 
 export function resizeRackModule(document, id, w, h, catalog) {

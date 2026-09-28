@@ -39,15 +39,15 @@ try {
     window.injectStalePresentation = true;
   }, session);
   await page.locator('[data-main-tab="midisynth"]').click();
-  async function swap() {
-    const from = await page.locator('.rack-source .rack-shell-head').boundingBox();
-    const to = await page.locator('.rack-filter .rack-shell-head').boundingBox();
+  async function drag(fromModule, toModule) {
+    const from = await page.locator(`${fromModule} .rack-shell-head`).boundingBox();
+    const to = await page.locator(`${toModule} .rack-shell-head`).boundingBox();
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
     await page.mouse.down();
     await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 10 });
     await page.mouse.up();
   }
-  await swap();
+  await drag('.rack-fx1', '.rack-source');
   await page.waitForFunction(() => document.querySelector('.rack-source')?.style.left === '708px');
   assert.equal(await page.evaluate(() => window.layoutActions.at(-1).document.modules
     .find(module => module.id === 'oscillator').col), 3);
@@ -59,7 +59,7 @@ try {
   await page.locator('#rack-view-switch').click();
   await page.waitForFunction(() => document.querySelector('#rack-view-switch')?.getAttribute('aria-pressed') === 'false');
   await page.evaluate(() => { window.acceptLayout = false; });
-  await swap();
+  await drag('.rack-fx1', '.rack-filter');
   await page.waitForFunction(() => document.querySelector('#status')?.textContent.includes('rejected this rack layout'));
   assert.equal(await page.locator('.rack-source').evaluate(element => element.style.left), '708px');
   assert.equal(await page.evaluate(() => window.layoutActions.length), 4);

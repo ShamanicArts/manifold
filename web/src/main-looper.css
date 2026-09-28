@@ -510,6 +510,7 @@ body {
 .midisynth-panel[hidden], .layers[hidden] { display: none; }
 .rack-scroll { position: relative; height: 452px; overflow-y: auto; overflow-x: hidden; scrollbar-color: #334155 #0f1726; }
 .rack-scroll-content { position: relative; width: 1280px; height: 2553px; }
+.rack-scroll-content > .rack-utility { transform: translateY(var(--rack-utility-shift, 0px)); }
 #rack-view-switch { position: absolute; top: 2px; right: 123px; z-index: 8; height: 23px; min-width: 105px; padding: 0 8px; border: 1px solid #b87333; background: #261a14; color: #e8a87c; font-size: 10px; cursor: pointer; }
 #rack-view-switch:disabled { opacity: .5; cursor: wait; }
 #rack-view-switch[aria-pressed="true"] { background: #3b2317; color: #fff; }

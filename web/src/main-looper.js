@@ -409,10 +409,16 @@ function sizeInstrument() {
 }
 new ResizeObserver(sizeInstrument).observe($('instrument-frame'));
 sizeInstrument();
+function rackUtilityTop(selector, inset = 0) {
+  const content = document.querySelector('.rack-scroll-content');
+  const bounds = content.getBoundingClientRect();
+  const target = content.querySelector(selector).getBoundingClientRect();
+  return Math.max(0, (target.top - bounds.top) / (bounds.width / content.offsetWidth) - inset);
+}
 $('patch-jump').onclick = () => {
   const scroll = $('rack-scroll');
   const bottom = scroll.scrollTop > 100;
-  scroll.scrollTo({ top: bottom ? 0 : 452, behavior: 'smooth' });
+  scroll.scrollTo({ top: bottom ? 0 : rackUtilityTop('.rack-lfo', 13), behavior: 'smooth' });
   $('patch-jump').textContent = bottom ? 'ROUTES ↓' : 'RACK ↑';
   $('patch-jump').setAttribute('aria-label', bottom ? 'Scroll to Main modulation route controls' : 'Scroll back to Main rack controls');
   requestAnimationFrame(() => lfo.paint());
@@ -432,43 +438,43 @@ for (const tab of document.querySelectorAll('[data-main-tab]')) {
 }
 if (location.hash === '#slew') {
   document.querySelector('[data-main-tab="midisynth"]').click();
-  requestAnimationFrame(() => { $('rack-scroll').scrollTop = 480; slew.paint(); });
+  requestAnimationFrame(() => { $('rack-scroll').scrollTop = rackUtilityTop('.rack-slew', 217); slew.paint(); });
 }
 if (location.hash === '#sample-hold') {
   document.querySelector('[data-main-tab="midisynth"]').click();
-  requestAnimationFrame(() => { $('rack-scroll').scrollTop = 712; sampleHold.paint(); });
+  requestAnimationFrame(() => { $('rack-scroll').scrollTop = rackUtilityTop('.rack-sample-hold', 217); sampleHold.paint(); });
 }
 if (location.hash === '#compare') {
   document.querySelector('[data-main-tab="midisynth"]').click();
-  requestAnimationFrame(() => { $('rack-scroll').scrollTop = 944; compare.paint(); });
+  requestAnimationFrame(() => { $('rack-scroll').scrollTop = rackUtilityTop('.rack-compare', 217); compare.paint(); });
 }
 if (location.hash === '#cv-mix') {
   document.querySelector('[data-main-tab="midisynth"]').click();
-  requestAnimationFrame(() => { $('rack-scroll').scrollTop = 1176; cvMix.paint(); });
+  requestAnimationFrame(() => { $('rack-scroll').scrollTop = rackUtilityTop('.rack-cv-mix', 217); cvMix.paint(); });
 }
 if (location.hash === '#range') {
   document.querySelector('[data-main-tab="midisynth"]').click();
-  requestAnimationFrame(() => { $('rack-scroll').scrollTop = 1408; range.paint(); });
+  requestAnimationFrame(() => { $('rack-scroll').scrollTop = rackUtilityTop('.rack-range', 217); range.paint(); });
 }
 if (location.hash === '#scale-quantizer') {
   document.querySelector('[data-main-tab="midisynth"]').click();
-  requestAnimationFrame(() => { $('rack-scroll').scrollTop = 1408; scaleQuantizer.paint(); });
+  requestAnimationFrame(() => { $('rack-scroll').scrollTop = rackUtilityTop('.rack-scale-quantizer', 217); scaleQuantizer.paint(); });
 }
 if (location.hash === '#transpose') {
   document.querySelector('[data-main-tab="midisynth"]').click();
-  requestAnimationFrame(() => { $('rack-scroll').scrollTop = 1640; transpose.paint(); });
+  requestAnimationFrame(() => { $('rack-scroll').scrollTop = rackUtilityTop('.rack-transpose', 217); transpose.paint(); });
 }
 if (location.hash === '#note-filter') {
   document.querySelector('[data-main-tab="midisynth"]').click();
-  requestAnimationFrame(() => { $('rack-scroll').scrollTop = 1640; noteFilter.paint(); });
+  requestAnimationFrame(() => { $('rack-scroll').scrollTop = rackUtilityTop('.rack-note-filter', 217); noteFilter.paint(); });
 }
 if (location.hash === '#velocity-mapper') {
   document.querySelector('[data-main-tab="midisynth"]').click();
-  requestAnimationFrame(() => { $('rack-scroll').scrollTop = 1872; velocityMapper.paint(); });
+  requestAnimationFrame(() => { $('rack-scroll').scrollTop = rackUtilityTop('.rack-velocity-mapper', 217); velocityMapper.paint(); });
 }
 if (location.hash === '#arpeggiator') {
   document.querySelector('[data-main-tab="midisynth"]').click();
-  requestAnimationFrame(() => { $('rack-scroll').scrollTop = 2100; arpeggiator.paint(); });
+  requestAnimationFrame(() => { $('rack-scroll').scrollTop = rackUtilityTop('.rack-arpeggiator', 221); arpeggiator.paint(); });
 }
 
 const noteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B', 'C'];

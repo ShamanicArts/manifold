@@ -17,8 +17,6 @@ export function mountMainLfoRack(get, post, contract) {
   }
 
   function refreshHeight() {
-    const last = slots.findLastIndex(Boolean);
-    content.style.height = `${Math.max(2553, 697 + Math.max(0, last) * 232)}px`;
     get('add-lfo').disabled = slots.every(Boolean);
   }
 

@@ -1,0 +1,10 @@
+{
+  "host": "REAPER VST3",
+  "audioSink": "private PipeWire null sink",
+  "editorAction": "Rack/Patch toggle",
+  "viewMode": "patch",
+  "modulePositionsPreserved": true,
+  "cablesPreserved": true,
+  "loopAndSamplePcmPreserved": true,
+  "savedAndReopened": true
+}

@@ -74,7 +74,7 @@
               <label class="eq-field eq-q" for="eq-q">Q<input id="eq-q" type="number" min="0.1" max="24" step="0.05" aria-label="EQ band Q"></label>
             </div>
           </section>
-          <section class="rack-lfo" aria-label="Main LFO module">
+          <section class="rack-lfo rack-utility" aria-label="Main LFO module">
             <div class="lfo-title">LFO</div><div id="lfo-status" class="lfo-status">Sine  •  1.00 Hz</div>
             <canvas id="lfo-preview" width="424" height="108" aria-label="LFO waveform and current phase"></canvas>
             <select id="lfo-shape" aria-label="LFO shape"><option value="0">Sine</option><option value="1">Triangle</option><option value="2">Saw</option><option value="3">Square</option><option value="4">S&amp;H</option><option value="5">Noise</option></select>
@@ -82,7 +82,7 @@
             <div id="lfo-depth" class="lfo-slider"></div><div id="lfo-phase" class="lfo-slider"></div>
             <div id="lfo-output" class="lfo-output">Out +0.00  •  Uni 0.50  •  Φ 0.00</div>
           </section>
-          <section class="rack-route" aria-label="Main modulation connection">
+          <section class="rack-route rack-utility" aria-label="Main modulation connection">
             <div class="rack-shell-head route-head">SCALAR ROUTES</div>
             <div class="route-content"><h2>LFO → target</h2><p>A typed control route. Audio stays in the Rust engine; these controls set the route.</p>
               <label>Output<select id="mod-source"><option value="0">OUT · bipolar</option><option value="1">INV · bipolar</option><option value="2">UNI · unipolar</option><option value="3">EOC · trigger</option><option value="4">ATV / Bias OUT</option><option value="5">Slew OUT</option><option value="6">Sample Hold OUT</option><option value="7">Sample Hold INV</option><option value="8">Compare GATE</option><option value="9">Compare TRIG</option><option value="10">CV Mix OUT</option><option value="11">CV Mix INV</option><option value="12">Range OUT · unipolar</option></select></label>
@@ -94,38 +94,38 @@
               <output id="mod-effective">Filter cutoff 3200 Hz · Reso 0.75</output>
             </div>
           </section>
-          <section class="rack-atv" aria-label="Main ATV Bias module">
+          <section class="rack-atv rack-utility" aria-label="Main ATV Bias module">
             <div class="atv-title">ATV / BIAS</div><div id="atv-status" class="atv-status">In +0.00  •  Out +0.00</div>
             <canvas id="atv-preview" width="424" height="108" aria-label="ATV Bias input output transfer graph"></canvas>
             <div id="atv-amount" class="atv-slider"></div><div id="atv-bias" class="atv-slider"></div>
             <div id="atv-values" class="atv-values">Amt +1.00  •  Bias +0.00</div>
           </section>
-          <section class="rack-atv-patch" aria-label="ATV Bias input connection">
+          <section class="rack-atv-patch rack-utility" aria-label="ATV Bias input connection">
             <strong>CONTROL IN → OUT</strong>
             <p>The selected LFO port feeds the original ATV / Bias module. Choose ATV / Bias OUT in a route to hear its result.</p>
             <label>LFO module<select id="atv-slot"><option value="0">LFO 1</option><option value="1">LFO 2</option><option value="2">LFO 3</option><option value="3">LFO 4</option></select></label>
             <label>Input port<select id="atv-port"><option value="0">OUT</option><option value="1">INV</option><option value="2">UNI</option><option value="3">EOC</option></select></label>
           </section>
-          <section class="rack-slew" aria-label="Main Slew module">
+          <section class="rack-slew rack-utility" aria-label="Main Slew module">
             <div class="slew-title">SLEW</div><div id="slew-status" class="slew-status">Log  •  ↑ 0 ms  ↓ 0 ms</div>
             <canvas id="slew-preview" width="424" height="108" aria-label="Slew response and live input output"></canvas>
             <div id="slew-shape" aria-label="Slew shape"></div>
             <div id="slew-rise" class="slew-slider"></div><div id="slew-fall" class="slew-slider"></div>
             <div id="slew-values" class="slew-values">In 0.00  •  Out 0.00</div>
           </section>
-          <section class="rack-slew-patch" aria-label="Slew input connection">
+          <section class="rack-slew-patch rack-utility" aria-label="Slew input connection">
             <strong>CONTROL IN → SLEW OUT</strong>
             <p>Select an LFO control port or ATV / Bias OUT. Slew OUT can then drive a Filter or FX mix route.</p>
             <label>Input source<select id="slew-source" aria-label="Slew input source"></select></label>
           </section>
-          <section id="sample-hold" class="rack-sample-hold" aria-label="Main Sample Hold module">
+          <section id="sample-hold" class="rack-sample-hold rack-utility" aria-label="Main Sample Hold module">
             <div class="sample-hold-title">SAMPLE HOLD</div><div id="sample-hold-status" class="sample-hold-status">Sample  •  Hold 0.00</div>
             <canvas id="sample-hold-preview" width="424" height="108" aria-label="Sample Hold input trigger and held output"></canvas>
             <div id="sample-hold-mode" aria-label="Sample Hold mode"></div>
             <div id="sample-hold-values" class="sample-hold-values">In 0.00  •  Hold 0.00</div>
             <div id="sample-hold-inv" class="sample-hold-inv">Inv 0.00</div>
           </section>
-          <section class="rack-sample-hold-patch" aria-label="Sample Hold input and trigger connections">
+          <section class="rack-sample-hold-patch rack-utility" aria-label="Sample Hold input and trigger connections">
             <strong>IN / TRIG → OUT / INV</strong>
             <p>Choose a control input and an LFO end-of-cycle trigger. OUT and INV can drive the existing routes.</p>
             <label>IN source<select id="sample-hold-source" aria-label="Sample Hold input source"></select></label>
@@ -133,26 +133,26 @@
             <label class="sample-hold-gate"><input id="sample-hold-manual-gate" type="checkbox"> Manual gate</label>
             <output id="sample-hold-trigger-meter">Trigger low</output>
           </section>
-          <section id="compare" class="rack-compare" aria-label="Main Compare module">
+          <section id="compare" class="rack-compare rack-utility" aria-label="Main Compare module">
             <div class="compare-title">COMPARE</div><div id="compare-status" class="compare-status">Rising  •  Th 0.00  •  Hy 0.05</div>
             <canvas id="compare-preview" width="424" height="108" aria-label="Compare input threshold gate and trigger"></canvas>
             <div id="compare-direction" aria-label="Compare direction"></div>
             <div id="compare-threshold"></div><div id="compare-hysteresis"></div>
             <div id="compare-values" class="compare-values">In 0.00  •  Gate 0  •  Trig 0</div>
           </section>
-          <section class="rack-compare-patch" aria-label="Compare input connection">
+          <section class="rack-compare-patch rack-utility" aria-label="Compare input connection">
             <strong>CONTROL IN → GATE / TRIG</strong>
             <p>Choose a control input. Compare GATE and TRIG can drive the existing Filter or FX routes.</p>
             <label>IN source<select id="compare-source" aria-label="Compare input source"></select></label>
             <output id="compare-meter">Gate low  •  Trigger low</output>
           </section>
-          <section id="cv-mix" class="rack-cv-mix" aria-label="Main CV Mix module">
+          <section id="cv-mix" class="rack-cv-mix rack-utility" aria-label="Main CV Mix module">
             <div class="cv-mix-title">CV MIX</div><div id="cv-mix-status" class="cv-mix-status">Levels 100 / 0 / 0 / 0</div>
             <canvas id="cv-mix-preview" width="424" height="92" aria-label="CV Mix four inputs and output"></canvas>
             <div id="cv-mix-level1"></div><div id="cv-mix-level2"></div><div id="cv-mix-level3"></div><div id="cv-mix-level4"></div>
             <div id="cv-mix-offset"></div><div id="cv-mix-values" class="cv-mix-values">Out 0.00  •  Inv 0.00</div>
           </section>
-          <section class="rack-cv-mix-patch" aria-label="CV Mix four input connections">
+          <section class="rack-cv-mix-patch rack-utility" aria-label="CV Mix four input connections">
             <strong>IN 1–4 → OUT / INV</strong>
             <p>Mix four chosen controls with the original levels and offset.</p>
             <label>IN 1<select id="cv-mix-source1" aria-label="CV Mix input 1 source"></select></label>
@@ -160,19 +160,19 @@
             <label>IN 3<select id="cv-mix-source3" aria-label="CV Mix input 3 source"></select></label>
             <label>IN 4<select id="cv-mix-source4" aria-label="CV Mix input 4 source"></select></label>
           </section>
-          <section id="range" class="rack-range" aria-label="Main Range Mapper module">
+          <section id="range" class="rack-range rack-utility" aria-label="Main Range Mapper module">
             <div class="range-title">RANGE</div><div id="range-status" class="range-status">Clamp  •  0% → 100%</div>
             <canvas id="range-preview" width="424" height="108" aria-label="Range Mapper input and output curve"></canvas>
             <div id="range-mode" aria-label="Range Mapper mode"></div>
             <div id="range-min"></div><div id="range-max"></div>
             <div id="range-values" class="range-values">Preview: —</div>
           </section>
-          <section class="rack-range-patch" aria-label="Range Mapper input connection">
+          <section class="rack-range-patch rack-utility" aria-label="Range Mapper input connection">
             <strong>CONTROL IN → RANGE OUT</strong>
             <p>Clamp or remap a selected control, including CV Mix OUT or INV. Range OUT can drive the existing Filter or FX routes.</p>
             <label>IN source<select id="range-source" aria-label="Range Mapper input source"></select></label>
           </section>
-          <section id="scale-quantizer" class="rack-scale-quantizer" aria-label="Main Scale Quantizer module">
+          <section id="scale-quantizer" class="rack-scale-quantizer rack-utility" aria-label="Main Scale Quantizer module">
             <div class="scale-quantizer-title">SCALE QUANTIZER</div><div id="scale-quantizer-status" class="scale-quantizer-status">C Major  •  Nearest</div>
             <canvas id="scale-quantizer-preview" width="424" height="100" aria-label="Scale degrees and active voice input and output notes"></canvas>
             <div id="scale-quantizer-root" aria-label="Scale Quantizer root"></div>
@@ -180,68 +180,68 @@
             <div id="scale-quantizer-direction" aria-label="Scale Quantizer direction"></div>
             <div id="scale-quantizer-values" class="scale-quantizer-values">Preview: — → —</div>
           </section>
-          <section class="rack-scale-quantizer-patch" aria-label="Scale Quantizer voice connection">
+          <section class="rack-scale-quantizer-patch rack-utility" aria-label="Scale Quantizer voice connection">
             <strong>VOICE IN → VOICE OUT</strong>
             <p>Map each active MidiSynth voice note to the selected scale. The original note still owns its gate and release.</p>
             <label><input id="scale-quantizer-connected" type="checkbox"> Connect MidiSynth voices</label>
             <output id="scale-quantizer-meter">No connected voices</output>
           </section>
-          <section id="transpose" class="rack-transpose" aria-label="Main Transpose module">
+          <section id="transpose" class="rack-transpose rack-utility" aria-label="Main Transpose module">
             <div class="transpose-title">TRANSPOSE</div><div id="transpose-status" class="transpose-status">Shift ±0 st</div>
             <canvas id="transpose-preview" width="424" height="108" aria-label="Transpose input and output voice pitches"></canvas>
             <div id="transpose-semitones"></div>
             <div class="transpose-range">Range: -24 .. +24 st</div>
             <div id="transpose-values" class="transpose-values">Preview: — → —</div>
           </section>
-          <section class="rack-transpose-patch" aria-label="Transpose voice connection">
+          <section class="rack-transpose-patch rack-utility" aria-label="Transpose voice connection">
             <strong>VOICE IN → VOICE OUT</strong>
             <p>Choose a typed voice source. When connected, Transpose output feeds MidiSynth while the original note still controls release.</p>
             <label>IN source<select id="transpose-source" aria-label="Transpose voice source"><option value="0">Raw MidiSynth voices</option><option value="1">Scale Quantizer voice</option></select></label>
             <label class="transpose-connect"><input id="transpose-connected" type="checkbox"> Route Transpose to synth</label>
             <output id="transpose-meter">No connected voices</output>
           </section>
-          <section id="note-filter" class="rack-note-filter" aria-label="Main Note Filter module">
+          <section id="note-filter" class="rack-note-filter rack-utility" aria-label="Main Note Filter module">
             <div class="note-filter-title">NOTE FILTER</div><div id="note-filter-status" class="note-filter-status">Inside  •  C2 .. C7</div>
             <canvas id="note-filter-preview" width="424" height="100" aria-label="Note Filter pitch window and active voice pass states"></canvas>
             <div id="note-filter-mode" aria-label="Note Filter mode"></div>
             <div id="note-filter-low"></div><div id="note-filter-high"></div>
             <div id="note-filter-values" class="note-filter-values">Preview: —</div>
           </section>
-          <section class="rack-note-filter-patch" aria-label="Note Filter voice connection">
+          <section class="rack-note-filter-patch rack-utility" aria-label="Note Filter voice connection">
             <strong>VOICE IN → VOICE OUT</strong>
             <p>Pass or block each selected voice note. The original note keeps release ownership, even while its output is muted.</p>
             <label>IN source<select id="note-filter-source" aria-label="Note Filter voice source"><option value="0">Raw MidiSynth voices</option><option value="1">Scale Quantizer voice</option><option value="2">Transpose voice</option></select></label>
             <label class="note-filter-connect"><input id="note-filter-connected" type="checkbox"> Route Note Filter to synth</label>
             <output id="note-filter-meter">No connected voices</output>
           </section>
-          <section id="velocity-mapper" class="rack-velocity-mapper" aria-label="Main Velocity Mapper module">
+          <section id="velocity-mapper" class="rack-velocity-mapper rack-utility" aria-label="Main Velocity Mapper module">
             <div class="velocity-mapper-title">VELOCITY</div><div id="velocity-mapper-status" class="velocity-mapper-status">Linear  •  Amt 100%  •  Off 0%</div>
             <canvas id="velocity-mapper-preview" width="424" height="108" aria-label="Velocity Mapper input and output amplitude curve"></canvas>
             <div id="velocity-mapper-curve" aria-label="Velocity Mapper curve"></div>
             <div id="velocity-mapper-amount"></div><div id="velocity-mapper-offset"></div>
             <div id="velocity-mapper-values" class="velocity-mapper-values">Preview: —</div>
           </section>
-          <section class="rack-velocity-mapper-patch" aria-label="Velocity Mapper voice connection">
+          <section class="rack-velocity-mapper-patch rack-utility" aria-label="Velocity Mapper voice connection">
             <strong>VOICE IN → VOICE OUT</strong>
             <p>Shape the selected voice amplitude. Current route follows connected pitch and gate stages.</p>
             <label>IN source<select id="velocity-mapper-source" aria-label="Velocity Mapper voice source"><option value="4">Current routed voice</option><option value="0">Raw MidiSynth voices</option><option value="1">Scale Quantizer voice</option><option value="2">Transpose voice</option><option value="3">Note Filter voice</option></select></label>
             <label class="velocity-mapper-connect"><input id="velocity-mapper-connected" type="checkbox"> Route Velocity Mapper to synth</label>
             <output id="velocity-mapper-meter">No connected voices</output>
           </section>
-          <section id="arpeggiator" class="rack-arpeggiator" aria-label="Main Arpeggiator module">
+          <section id="arpeggiator" class="rack-arpeggiator rack-utility" aria-label="Main Arpeggiator module">
             <div class="arp-title">ARPEGGIATOR</div><div id="arp-status" class="arp-status">Up  •  Held 0  •  Gate Off</div>
             <div id="arp-mode" aria-label="Arpeggiator mode"></div><div id="arp-hold"></div>
             <div id="arp-rate"></div><div id="arp-octaves"></div><div id="arp-gate"></div>
             <div id="arp-note" class="arp-note">Output: —</div>
           </section>
-          <section class="rack-arpeggiator-patch" aria-label="Arpeggiator voice connection">
+          <section class="rack-arpeggiator-patch rack-utility" aria-label="Arpeggiator voice connection">
             <strong>VOICE IN → VOICE OUT</strong>
             <p>Current routed voices feed eight timed output lanes. Play the keyboard to hear the sequence.</p>
             <label><input id="arp-connected" type="checkbox"> Route Arpeggiator to synth</label>
             <div class="arp-lanes" aria-label="Eight output lane gates"><i id="arp-lane-0"></i><i id="arp-lane-1"></i><i id="arp-lane-2"></i><i id="arp-lane-3"></i><i id="arp-lane-4"></i><i id="arp-lane-5"></i><i id="arp-lane-6"></i><i id="arp-lane-7"></i></div>
             <output id="arp-meter">Route disconnected</output>
           </section>
-          <button id="add-lfo" type="button">+ LFO</button>
+          <button id="add-lfo" class="rack-utility" type="button">+ LFO</button>
           </div></div>
           <button id="rack-view-switch" type="button" aria-pressed="false" aria-label="Switch the six prepared Main modules between controls and audio patch ports">AUDIO PATCH</button>
           <button id="patch-jump" type="button" aria-label="Scroll to Main modulation route controls">ROUTES ↓</button>

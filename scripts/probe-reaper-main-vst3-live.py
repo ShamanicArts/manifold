@@ -6,6 +6,7 @@ PipeWire/Pulse server supplies only auto_null; no user audio device is opened.
 """
 
 from array import array
+import argparse
 import base64
 import json
 import os
@@ -65,6 +66,10 @@ def pcm_peak(value: dict) -> float:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--exercise-layout", action="store_true",
+                        help="Click Rack/Patch in the actual VST3 editor and verify REAPER state")
+    args = parser.parse_args()
     assert os.environ.get("MANIFOLD_ISOLATED_DISPLAY") == "1"
     assert os.environ.get("DISPLAY") not in (None, ":0")
     assert BUNDLE.is_dir()
@@ -154,9 +159,12 @@ reaper.defer(poll)
 """)
             loop_probe = work / "main-loop-command"
             sample_probe = work / "main-sample-command"
+            layout_probe = work / "main-layout-command"
             env = {**audio_env, "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config"),
                    "GDK_BACKEND": "x11", "MANIFOLD_MAIN_LOOP_PROBE": str(loop_probe),
                    "MANIFOLD_MAIN_SAMPLE_PROBE": str(sample_probe)}
+            if args.exercise_layout:
+                env["MANIFOLD_MAIN_LAYOUT_PROBE"] = str(layout_probe)
 
             def command(value: str) -> str:
                 (work / "result.txt").unlink(missing_ok=True)
@@ -212,18 +220,83 @@ reaper.defer(poll)
                 sample_peak = pcm_peak(state["sample"])
                 assert loop_frames > 1000 and sample_frames > 1000
                 assert loop_peak > .01 and sample_peak > .01, (loop_peak, sample_peak)
+                if args.exercise_layout:
+                    before_rack = state["rackDocument"]
+                    layout_probe.write_text("toggle")
+                    layout_result = status(Path(f"{layout_probe}.result"),
+                                           lambda data: "ok" in data, 15)
+                    assert layout_result["ok"], layout_result
+                    deadline = time.monotonic() + 15
+                    while time.monotonic() < deadline:
+                        command("save")
+                        state = saved_main(project)
+                        if state["rackDocument"]["viewMode"] != before_rack["viewMode"]:
+                            break
+                        time.sleep(.2)
+                    else:
+                        raise AssertionError("REAPER did not save the VST3 editor's Rack/Patch change")
+                    assert state["rackDocument"]["modules"] == before_rack["modules"]
+                    assert state["rackDocument"]["connections"] == before_rack["connections"]
+                    print("REAPER VST3 child Rack/Patch click reached saved Main rack state.")
                 children = subprocess.check_output(["ps", "--ppid", str(process.pid),
                                                     "-o", "pid=,args="], text=True)
                 editor = next((line.strip() for line in children.splitlines()
                                if "ManifoldFX-editor" in line), None)
+                if args.exercise_layout:
+                    assert editor, "packaged VST3 child editor did not open"
                 if editor:
                     parent = int(editor.split()[2])
-                    screenshot = ROOT / "web/public/main-vst3-reaper-live.png"
+                    screenshot = ROOT / ("web/public/main-vst3-reaper-layout.png" if args.exercise_layout
+                                         else "web/public/main-vst3-reaper-live.png")
                     capture = subprocess.run(["ffmpeg", "-v", "error", "-f", "x11grab",
                         "-window_id", str(parent), "-video_size", "1280x780",
                         "-i", os.environ["DISPLAY"], "-frames:v", "1", "-y", str(screenshot)],
                         env=env, capture_output=True, text=True, timeout=15)
                     assert capture.returncode == 0 and screenshot.stat().st_size > 10_000, capture.stderr
+                if args.exercise_layout:
+                    os.killpg(process.pid, signal.SIGTERM)
+                    process.wait(timeout=5)
+                    process = None
+                    reopened_project = work / "main-layout-reopened.rpp"
+                    reopened_ready = work / "reopened-ready.txt"
+                    reopen_script = work / "reopen-layout.lua"
+                    reopen_script.write_text(f"""
+reaper.Main_openProject('{project}')
+local started=reaper.time_precise()
+local function poll()
+ local track=reaper.GetTrack(0,0)
+ if track and reaper.TrackFX_GetCount(track)>0 then
+  reaper.TrackFX_Show(track,0,3)
+  if reaper.time_precise()-started>1 then
+   reaper.Main_SaveProjectEx(0,'{reopened_project}',0)
+   local out=io.open('{reopened_ready}','w'); out:write('done'); out:close()
+   return
+  end
+ end
+ reaper.defer(poll)
+end
+reaper.defer(poll)
+""")
+                    with (work / "reopen.log").open("w") as log:
+                        process = subprocess.Popen(
+                            ["pw-jack", "reaper", "-cfgfile", str(config), "-newinst",
+                             "-nosplash", "-noactivate", str(reopen_script)],
+                            env=env, stdout=log, stderr=subprocess.STDOUT,
+                            start_new_session=True)
+                        wait_for(reopened_ready, timeout=25)
+                    reopened = saved_main(reopened_project)
+                    assert reopened["rackDocument"] == state["rackDocument"]
+                    assert reopened["layers"][0]["pcmF32Base64"] == state["layers"][0]["pcmF32Base64"]
+                    assert reopened["sample"]["pcmF32Base64"] == state["sample"]["pcmF32Base64"]
+                    report = {"host": "REAPER VST3", "audioSink": "private PipeWire null sink",
+                              "editorAction": "Rack/Patch toggle", "viewMode": reopened["rackDocument"]["viewMode"],
+                              "modulePositionsPreserved": True, "cablesPreserved": True,
+                              "loopAndSamplePcmPreserved": True, "savedAndReopened": True}
+                    (ROOT / "web/public/main-vst3-rack-layout.json").write_text(
+                        json.dumps(report, indent=2) + "\n")
+                    print(json.dumps(report))
+                    print(f"VST3 rack layout review screenshot: {screenshot}")
+                    return
                 loop_probe.write_text("play")
                 status(Path(f"{loop_probe}.status"),
                        lambda data: data["layers"][0]["length"] > 0
