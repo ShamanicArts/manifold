@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Main control utilities through native host controls · Manifold v2</title>
+  <style>
+    :root { font: 15px/1.55 system-ui, sans-serif; color: #1d3028; background: #f4f5f0; --line: #c9d6cd; --green: #28624c; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 1080px; margin: auto; padding: 36px 22px 90px; }
+    header { border-top: 3px solid var(--green); padding-top: 12px; }
+    .eyebrow { font: 11px ui-monospace, monospace; letter-spacing: .13em; text-transform: uppercase; color: #995d3c; }
+    h1, h2 { font-family: Georgia, serif; font-weight: 400; line-height: 1.12; }
+    h1 { font-size: clamp(38px, 6vw, 62px); margin: 12px 0 18px; }
+    h2 { font-size: 27px; margin: 0 0 10px; }
+    p { max-width: 72ch; color: #395346; }
+    a { color: var(--green); }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0 0; }
+    .actions a { display: inline-block; padding: 10px 14px; border: 1px solid var(--green); text-decoration: none; font-weight: 600; }
+    .actions a:first-child { background: var(--green); color: white; }
+    section { border-top: 1px solid var(--line); margin-top: 30px; padding-top: 20px; }
+    .faces { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+    figure { margin: 0; padding: 10px; border: 1px solid var(--line); background: white; }
+    figure img { display: block; width: 100%; height: auto; image-rendering: auto; }
+    figcaption { margin-top: 7px; font-size: 13px; color: #526458; }
+    table { border-collapse: collapse; width: 100%; background: white; }
+    th, td { padding: 10px 12px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: #eaf0e9; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+    code { font: 12px ui-monospace, monospace; }
+    @media (max-width: 760px) { .faces { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 490px) { .faces { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body><main>
+  <header>
+    <div class="eyebrow">Manifold v2 / Main native host / control utilities</div>
+    <h1>Six original utilities,<br>restored from native state.</h1>
+    <p>ATV / Bias, Slew, Sample Hold, Compare, CV Mix, and Range now accept their project-defined host IDs in the Rust Main processor. These are screenshots of the actual Main instrument after it opened a native-produced session.</p>
+    <div class="actions">
+      <a href="/main-looper.html">Open the actual Main looper →</a>
+      <a href="/main-native-saved-session.json" download>Download the native save</a>
+      <a href="/main-native-v3-upgraded-session.json" download>Download the upgraded v3 save</a>
+    </div>
+  </header>
+  <section>
+    <h2>The restored module faces</h2>
+    <div class="faces">
+      <figure><img src="/main-native-atv.png" alt="Original ATV Bias face with amount minus 0.65 and bias plus 0.20"><figcaption>ATV / Bias · −0.65 amount, +0.20 bias</figcaption></figure>
+      <figure><img src="/main-native-slew.png" alt="Original Slew face with logarithmic shape and 240 and 480 millisecond times"><figcaption>Slew · Log, 240 ms rise, 480 ms fall</figcaption></figure>
+      <figure><img src="/main-native-sample-hold.png" alt="Original Sample Hold face in Track mode"><figcaption>Sample Hold · Track, manual gate set</figcaption></figure>
+      <figure><img src="/main-native-compare.png" alt="Original Compare face with falling direction, 0.35 threshold, and 0.12 hysteresis"><figcaption>Compare · Falling, +0.35 threshold, 0.12 hysteresis</figcaption></figure>
+      <figure><img src="/main-native-cv-mix.png" alt="Original CV Mix face showing input levels 75, 40, 0, and 0 percent"><figcaption>CV Mix · 75 / 40 / 0 / 0 input levels</figcaption></figure>
+      <figure><img src="/main-native-range.png" alt="Original Range face in Remap mode from 20 to 90 percent"><figcaption>Range · Remap, 20% → 90%</figcaption></figure>
+    </div>
+  </section>
+  <section>
+    <h2>State path proven</h2>
+    <table><thead><tr><th>Utility</th><th>Stable host IDs</th><th>Example edit saved</th></tr></thead><tbody>
+      <tr><td>ATV / Bias</td><td><code>640–643</code></td><td>Amount, bias, LFO slot and port</td></tr>
+      <tr><td>Slew</td><td><code>672–675</code></td><td>Rise, fall, shape and source</td></tr>
+      <tr><td>Sample Hold</td><td><code>704–709</code></td><td>Mode, sources and manual gate; live held state captured separately</td></tr>
+      <tr><td>Compare</td><td><code>736–741</code></td><td>Direction, threshold, hysteresis and source; live gate captured separately</td></tr>
+      <tr><td>CV Mix</td><td><code>768–776</code></td><td>Four levels, offset and source IDs</td></tr>
+      <tr><td>Range</td><td><code>800–803</code></td><td>Min, max, mode and source</td></tr>
+    </tbody></table>
+    <p>A native test applies all six edits at frame 64, saves the live session, and reimports it. The browser probe opens both the current v15 save and a native upgrade of a v3 session, checks these original faces, saves again, and compares loop and sample PCM byte for byte. Chromium runs muted for the probe.</p>
+  </section>
+  <section>
+    <h2>Next boundary</h2>
+    <p>Four LFO slots still need stable host automation with inactive-slot memory. The Main CLAP and VST3 product classes then need to expose this native runtime and session path to plugin hosts.</p>
+  </section>
+</main></body>
+</html>

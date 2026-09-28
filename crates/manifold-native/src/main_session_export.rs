@@ -6,7 +6,8 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 
 use crate::main_host_parameters::{
-    ARPEGGIATOR_BASE, NOTE_FILTER_BASE, SCALE_QUANTIZER_BASE, SYNTH_BASE, TRANSPOSE_BASE,
+    ARPEGGIATOR_BASE, ATV_BASE, COMPARE_BASE, CV_MIX_BASE, NOTE_FILTER_BASE, RANGE_BASE,
+    SAMPLE_HOLD_BASE, SCALE_QUANTIZER_BASE, SLEW_BASE, SYNTH_BASE, TRANSPOSE_BASE,
     VELOCITY_MAPPER_BASE,
 };
 use crate::main_session::{FX_CONTROL_COUNTS, default_main_session};
@@ -77,6 +78,34 @@ fn apply_rack(rack: &mut Value, snapshot: &MainPcmSnapshot) -> Result<(), MainEx
         set_host_field(rack, snapshot, SYNTH_BASE + id, module, key, scale, bias)?;
     }
     for (id, module, key) in [
+        (ATV_BASE, "atv", "amount"),
+        (ATV_BASE + 1, "atv", "bias"),
+        (ATV_BASE + 2, "atv", "slot"),
+        (ATV_BASE + 3, "atv", "port"),
+        (SLEW_BASE, "slew", "riseMs"),
+        (SLEW_BASE + 1, "slew", "fallMs"),
+        (SLEW_BASE + 2, "slew", "shape"),
+        (SLEW_BASE + 3, "slew", "source"),
+        (SAMPLE_HOLD_BASE, "sampleHold", "mode"),
+        (SAMPLE_HOLD_BASE + 1, "sampleHold", "source"),
+        (SAMPLE_HOLD_BASE + 2, "sampleHold", "triggerSource"),
+        (COMPARE_BASE, "compare", "direction"),
+        (COMPARE_BASE + 1, "compare", "threshold"),
+        (COMPARE_BASE + 2, "compare", "hysteresis"),
+        (COMPARE_BASE + 3, "compare", "source"),
+        (CV_MIX_BASE, "cvMix", "level1"),
+        (CV_MIX_BASE + 1, "cvMix", "level2"),
+        (CV_MIX_BASE + 2, "cvMix", "level3"),
+        (CV_MIX_BASE + 3, "cvMix", "level4"),
+        (CV_MIX_BASE + 4, "cvMix", "offset"),
+        (CV_MIX_BASE + 5, "cvMix", "source1"),
+        (CV_MIX_BASE + 6, "cvMix", "source2"),
+        (CV_MIX_BASE + 7, "cvMix", "source3"),
+        (CV_MIX_BASE + 8, "cvMix", "source4"),
+        (RANGE_BASE, "range", "min"),
+        (RANGE_BASE + 1, "range", "max"),
+        (RANGE_BASE + 2, "range", "mode"),
+        (RANGE_BASE + 3, "range", "source"),
         (SCALE_QUANTIZER_BASE, "scaleQuantizer", "root"),
         (SCALE_QUANTIZER_BASE + 1, "scaleQuantizer", "scale"),
         (SCALE_QUANTIZER_BASE + 2, "scaleQuantizer", "direction"),
@@ -94,13 +123,19 @@ fn apply_rack(rack: &mut Value, snapshot: &MainPcmSnapshot) -> Result<(), MainEx
         set_host_field(rack, snapshot, id, module, key, 1.0, 0.0)?;
     }
     for (id, module) in [
+        (SAMPLE_HOLD_BASE + 3, "sampleHold"),
         (SCALE_QUANTIZER_BASE + 3, "scaleQuantizer"),
         (TRANSPOSE_BASE + 2, "transpose"),
         (NOTE_FILTER_BASE + 4, "noteFilter"),
         (VELOCITY_MAPPER_BASE + 4, "velocityMapper"),
     ] {
         if let Some(value) = snapshot.host_values.get(id) {
-            rack_field(rack, module)?["connected"] = json!(value >= 0.5);
+            let key = if module == "sampleHold" {
+                "manualGate"
+            } else {
+                "connected"
+            };
+            rack_field(rack, module)?[key] = json!(value >= 0.5);
         }
     }
 

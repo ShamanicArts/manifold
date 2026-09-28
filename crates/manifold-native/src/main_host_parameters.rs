@@ -8,6 +8,12 @@ pub const LAYER_STRIDE: u32 = 8;
 pub const SYNTH_BASE: u32 = 256;
 pub const LFO_BASE: u32 = 512;
 pub const LFO_STRIDE: u32 = 16;
+pub const ATV_BASE: u32 = 640;
+pub const SLEW_BASE: u32 = 672;
+pub const SAMPLE_HOLD_BASE: u32 = 704;
+pub const COMPARE_BASE: u32 = 736;
+pub const CV_MIX_BASE: u32 = 768;
+pub const RANGE_BASE: u32 = 800;
 pub const SCALE_QUANTIZER_BASE: u32 = 832;
 pub const TRANSPOSE_BASE: u32 = 864;
 pub const NOTE_FILTER_BASE: u32 = 896;
@@ -63,6 +69,12 @@ pub enum MainParameterTarget {
     Transport(u32),
     Layer { layer: usize, local: u32 },
     Synth(u32),
+    Atv(u32),
+    Slew(u32),
+    SampleHold(u32),
+    Compare(u32),
+    CvMix(u32),
+    Range(u32),
     ScaleQuantizer(u32),
     Transpose(u32),
     NoteFilter(u32),
@@ -146,6 +158,70 @@ impl MainParameter {
                 _ => return Err(MainParameterError::UnknownId),
             };
             (MainParameterTarget::Synth(local), min, max, discrete, 1.0)
+        } else if (ATV_BASE..ATV_BASE + 4).contains(&id) {
+            let local = id - ATV_BASE;
+            let (min, max, discrete) = match local {
+                0 | 1 => (-1.0, 1.0, false),
+                2 | 3 => (0.0, 3.0, true),
+                _ => unreachable!(),
+            };
+            (MainParameterTarget::Atv(local), min, max, discrete, 1.0)
+        } else if (SLEW_BASE..SLEW_BASE + 4).contains(&id) {
+            let local = id - SLEW_BASE;
+            let (min, max) = match local {
+                0 | 1 => (0.0, 2_000.0),
+                2 => (0.0, 2.0),
+                3 => (0.0, 16.0),
+                _ => unreachable!(),
+            };
+            (MainParameterTarget::Slew(local), min, max, true, 1.0)
+        } else if (SAMPLE_HOLD_BASE..SAMPLE_HOLD_BASE + 6).contains(&id) {
+            let local = id - SAMPLE_HOLD_BASE;
+            let (min, max, discrete) = match local {
+                0 => (0.0, 2.0, true),
+                1 => (0.0, 17.0, true),
+                2 => (0.0, 4.0, true),
+                3 | 5 => (0.0, 1.0, true),
+                4 => (-1.0, 1.0, false),
+                _ => unreachable!(),
+            };
+            (
+                MainParameterTarget::SampleHold(local),
+                min,
+                max,
+                discrete,
+                1.0,
+            )
+        } else if (COMPARE_BASE..COMPARE_BASE + 6).contains(&id) {
+            let local = id - COMPARE_BASE;
+            let (min, max, discrete) = match local {
+                0 => (0.0, 2.0, true),
+                1 => (-1.0, 1.0, false),
+                2 => (0.0, 0.5, false),
+                3 => (0.0, 19.0, true),
+                4 => (0.0, 1.0, true),
+                5 => (0.0, 2.0, true),
+                _ => unreachable!(),
+            };
+            (MainParameterTarget::Compare(local), min, max, discrete, 1.0)
+        } else if (CV_MIX_BASE..CV_MIX_BASE + 9).contains(&id) {
+            let local = id - CV_MIX_BASE;
+            let (min, max, discrete) = match local {
+                0..=3 => (0.0, 1.0, false),
+                4 => (-1.0, 1.0, false),
+                5..=8 => (0.0, 21.0, true),
+                _ => unreachable!(),
+            };
+            (MainParameterTarget::CvMix(local), min, max, discrete, 1.0)
+        } else if (RANGE_BASE..RANGE_BASE + 4).contains(&id) {
+            let local = id - RANGE_BASE;
+            let (min, max, discrete) = match local {
+                0 | 1 => (0.0, 1.0, false),
+                2 => (0.0, 1.0, true),
+                3 => (0.0, 23.0, true),
+                _ => unreachable!(),
+            };
+            (MainParameterTarget::Range(local), min, max, discrete, 1.0)
         } else if (SCALE_QUANTIZER_BASE..SCALE_QUANTIZER_BASE + 4).contains(&id) {
             let local = id - SCALE_QUANTIZER_BASE;
             let (min, max) = match local {
@@ -234,6 +310,14 @@ impl MainParameter {
                 .looper_mut()
                 .set_layer_control(layer, local, self.value),
             MainParameterTarget::Synth(id) => instrument.set_synth_parameter(id, self.value),
+            MainParameterTarget::Atv(id) => instrument.set_atv_parameter(id, self.value),
+            MainParameterTarget::Slew(id) => instrument.set_slew_parameter(id, self.value),
+            MainParameterTarget::SampleHold(id) => {
+                instrument.set_sample_hold_parameter(id, self.value)
+            }
+            MainParameterTarget::Compare(id) => instrument.set_compare_parameter(id, self.value),
+            MainParameterTarget::CvMix(id) => instrument.set_cv_mix_parameter(id, self.value),
+            MainParameterTarget::Range(id) => instrument.set_range_parameter(id, self.value),
             MainParameterTarget::ScaleQuantizer(id) => {
                 instrument.set_scale_quantizer_parameter(id, self.value)
             }
@@ -270,6 +354,12 @@ mod tests {
         assert_eq!(host["synthBase"], SYNTH_BASE);
         assert_eq!(host["lfoBase"], LFO_BASE);
         assert_eq!(host["lfoStride"], LFO_STRIDE);
+        assert_eq!(host["atvBase"], ATV_BASE);
+        assert_eq!(host["slewBase"], SLEW_BASE);
+        assert_eq!(host["sampleHoldBase"], SAMPLE_HOLD_BASE);
+        assert_eq!(host["compareBase"], COMPARE_BASE);
+        assert_eq!(host["cvMixBase"], CV_MIX_BASE);
+        assert_eq!(host["rangeBase"], RANGE_BASE);
         assert_eq!(host["scaleQuantizerBase"], SCALE_QUANTIZER_BASE);
         assert_eq!(host["transposeBase"], TRANSPOSE_BASE);
         assert_eq!(host["noteFilterBase"], NOTE_FILTER_BASE);
@@ -374,6 +464,63 @@ mod tests {
                 MainParameter::decode(id, value),
                 Err(MainParameterError::InvalidValue),
                 "invalid voice stage host ID {id}"
+            );
+        }
+    }
+
+    #[test]
+    fn utility_ids_accept_authored_ranges_and_reject_invalid_connections() {
+        let mut main = MainInstrument::new(8_000.0, 128);
+        for (id, value) in [
+            (ATV_BASE, -1.0),
+            (ATV_BASE + 1, 0.2),
+            (ATV_BASE + 2, 0.0),
+            (ATV_BASE + 3, 1.0),
+            (SLEW_BASE, 500.0),
+            (SLEW_BASE + 1, 600.0),
+            (SLEW_BASE + 2, 2.0),
+            (SLEW_BASE + 3, 16.0),
+            (SAMPLE_HOLD_BASE, 1.0),
+            (SAMPLE_HOLD_BASE + 1, 16.0),
+            (SAMPLE_HOLD_BASE + 2, 4.0),
+            (SAMPLE_HOLD_BASE + 3, 1.0),
+            (SAMPLE_HOLD_BASE + 4, 0.4),
+            (SAMPLE_HOLD_BASE + 5, 1.0),
+            (COMPARE_BASE, 2.0),
+            (COMPARE_BASE + 1, 0.2),
+            (COMPARE_BASE + 2, 0.1),
+            (COMPARE_BASE + 3, 18.0),
+            (COMPARE_BASE + 4, 1.0),
+            (COMPARE_BASE + 5, 2.0),
+            (CV_MIX_BASE, 0.5),
+            (CV_MIX_BASE + 1, 0.25),
+            (CV_MIX_BASE + 2, 0.25),
+            (CV_MIX_BASE + 3, 0.25),
+            (CV_MIX_BASE + 4, 0.1),
+            (CV_MIX_BASE + 5, 16.0),
+            (CV_MIX_BASE + 6, 18.0),
+            (CV_MIX_BASE + 7, 20.0),
+            (CV_MIX_BASE + 8, 19.0),
+            (RANGE_BASE, 0.2),
+            (RANGE_BASE + 1, 0.8),
+            (RANGE_BASE + 2, 1.0),
+            (RANGE_BASE + 3, 22.0),
+        ] {
+            let parameter = MainParameter::decode(id, value).unwrap();
+            assert!(parameter.apply(&mut main), "utility host ID {id}");
+        }
+        for (id, value) in [
+            (ATV_BASE + 2, 0.5),
+            (SLEW_BASE, 500.5),
+            (SAMPLE_HOLD_BASE + 3, 0.5),
+            (COMPARE_BASE + 2, 0.6),
+            (CV_MIX_BASE + 5, 21.5),
+            (RANGE_BASE + 3, 24.0),
+        ] {
+            assert_eq!(
+                MainParameter::decode(id, value),
+                Err(MainParameterError::InvalidValue),
+                "invalid utility host ID {id}"
             );
         }
     }

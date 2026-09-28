@@ -48,9 +48,30 @@ try {
   assert.equal(await page.locator('#note-filter-connected').isChecked(), true);
   assert.equal(await page.locator('#velocity-mapper-curve').getAttribute('data-value'), '2');
   assert.equal(await page.locator('#velocity-mapper-connected').isChecked(), true);
+  assert.match(await page.locator('#atv-values').textContent(), /Amt -0\.65\s+•\s+Bias \+0\.20/);
+  assert.equal(await page.locator('#atv-slot').inputValue(), '2');
+  assert.match(await page.locator('#slew-status').textContent(), /Log\s+•\s+↑ 240 ms\s+↓ 480 ms/);
+  assert.equal(await page.locator('#slew-source').inputValue(), '2');
+  assert.match(await page.locator('#sample-hold-status').textContent(), /^Track/);
+  assert.equal(await page.locator('#sample-hold-manual-gate').isChecked(), true);
+  assert.match(await page.locator('#compare-status').textContent(), /Falling\s+•\s+Th \+0\.35\s+•\s+Hy 0\.12/);
+  assert.equal(await page.locator('#compare-source').inputValue(), '5');
+  assert.match(await page.locator('#cv-mix-status').textContent(), /Levels 75 \/ 40 \/ 0 \/ 0/);
+  assert.equal(await page.locator('#cv-mix-source1').inputValue(), '4');
+  assert.match(await page.locator('#range-status').textContent(), /Remap\s+•\s+20% → 90%/);
+  assert.equal(await page.locator('#range-source').inputValue(), '6');
   if (!process.argv[2]) {
     for (const name of ['scale-quantizer', 'transpose', 'note-filter', 'velocity-mapper']) {
       await page.locator(`#${name}`).screenshot({
+        path: new URL(`../web/public/main-native-${name}.png`, import.meta.url).pathname,
+      });
+    }
+    for (const [name, selector] of [
+      ['atv', '.rack-atv'], ['slew', '.rack-slew'],
+      ['sample-hold', '.rack-sample-hold'], ['compare', '.rack-compare'],
+      ['cv-mix', '.rack-cv-mix'], ['range', '.rack-range'],
+    ]) {
+      await page.locator(selector).screenshot({
         path: new URL(`../web/public/main-native-${name}.png`, import.meta.url).pathname,
       });
     }
@@ -72,6 +93,13 @@ try {
   assert.equal(browserSession.rack.transpose.semitones, 7);
   assert.equal(browserSession.rack.noteFilter.low, 68);
   assert.equal(browserSession.rack.velocityMapper.curve, 2);
+  assert.ok(Math.abs(browserSession.rack.atv.amount + 0.65) < 1e-5);
+  assert.equal(browserSession.rack.slew.riseMs, 240);
+  assert.equal(browserSession.rack.sampleHold.mode, 1);
+  assert.equal(browserSession.rack.sampleHold.manualGate, true);
+  assert.ok(Math.abs(browserSession.rack.compare.threshold - 0.35) < 1e-5);
+  assert.equal(browserSession.rack.cvMix.level1, 0.75);
+  assert.equal(browserSession.rack.range.mode, 1);
   assert.deepEqual(errors, []);
   console.log('Native Main v15 save opened and re-saved by the actual browser looper with identical loop/sample PCM and rack controls.');
 } finally {

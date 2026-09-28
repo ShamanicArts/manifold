@@ -291,7 +291,8 @@ impl Drop for MainControl {
 mod tests {
     use super::*;
     use crate::main_host_parameters::{
-        ARPEGGIATOR_BASE, NOTE_FILTER_BASE, SCALE_QUANTIZER_BASE, SYNTH_BASE, TRANSPOSE_BASE,
+        ARPEGGIATOR_BASE, ATV_BASE, COMPARE_BASE, CV_MIX_BASE, NOTE_FILTER_BASE, RANGE_BASE,
+        SAMPLE_HOLD_BASE, SCALE_QUANTIZER_BASE, SLEW_BASE, SYNTH_BASE, TRANSPOSE_BASE,
         VELOCITY_MAPPER_BASE,
     };
     use crate::main_instrument::{MainHostEvent, MainHostEventKind};
@@ -704,6 +705,30 @@ mod tests {
             (SYNTH_BASE + 105, 0.65),
             (SYNTH_BASE + 128, 7.0),
             (SYNTH_BASE + 130, 0.42),
+            (ATV_BASE, -0.65),
+            (ATV_BASE + 1, 0.2),
+            (ATV_BASE + 2, 2.0),
+            (ATV_BASE + 3, 1.0),
+            (SLEW_BASE, 240.0),
+            (SLEW_BASE + 1, 480.0),
+            (SLEW_BASE + 2, 1.0),
+            (SLEW_BASE + 3, 2.0),
+            (SAMPLE_HOLD_BASE, 1.0),
+            (SAMPLE_HOLD_BASE + 1, 3.0),
+            (SAMPLE_HOLD_BASE + 2, 1.0),
+            (SAMPLE_HOLD_BASE + 3, 1.0),
+            (COMPARE_BASE, 1.0),
+            (COMPARE_BASE + 1, 0.35),
+            (COMPARE_BASE + 2, 0.12),
+            (COMPARE_BASE + 3, 5.0),
+            (CV_MIX_BASE, 0.75),
+            (CV_MIX_BASE + 1, 0.4),
+            (CV_MIX_BASE + 4, -0.15),
+            (CV_MIX_BASE + 5, 4.0),
+            (RANGE_BASE, 0.2),
+            (RANGE_BASE + 1, 0.9),
+            (RANGE_BASE + 2, 1.0),
+            (RANGE_BASE + 3, 6.0),
             (SCALE_QUANTIZER_BASE, 2.0),
             (SCALE_QUANTIZER_BASE + 1, 2.0),
             (SCALE_QUANTIZER_BASE + 3, 1.0),
@@ -767,6 +792,18 @@ mod tests {
         assert!((saved["rack"]["eq"]["mix"].as_f64().unwrap() - 0.65).abs() < 1e-6);
         assert_eq!(saved["rack"]["arpeggiator"]["gate"], json!(45.0));
         assert_eq!(saved["rack"]["arpeggiator"]["connected"], true);
+        assert!((saved["rack"]["atv"]["amount"].as_f64().unwrap() + 0.65).abs() < 1e-6);
+        assert_eq!(saved["rack"]["atv"]["slot"], 2.0);
+        assert_eq!(saved["rack"]["slew"]["riseMs"], 240.0);
+        assert_eq!(saved["rack"]["slew"]["shape"], 1.0);
+        assert_eq!(saved["rack"]["sampleHold"]["mode"], 1.0);
+        assert_eq!(saved["rack"]["sampleHold"]["manualGate"], true);
+        assert!((saved["rack"]["compare"]["threshold"].as_f64().unwrap() - 0.35).abs() < 1e-6);
+        assert_eq!(saved["rack"]["compare"]["source"], 5.0);
+        assert_eq!(saved["rack"]["cvMix"]["level1"], 0.75);
+        assert_eq!(saved["rack"]["cvMix"]["source1"], 4.0);
+        assert!((saved["rack"]["range"]["min"].as_f64().unwrap() - 0.2).abs() < 1e-6);
+        assert_eq!(saved["rack"]["range"]["mode"], 1.0);
         assert_eq!(saved["rack"]["scaleQuantizer"]["root"], 2.0);
         assert_eq!(saved["rack"]["scaleQuantizer"]["connected"], true);
         assert_eq!(saved["rack"]["transpose"]["semitones"], 7.0);
