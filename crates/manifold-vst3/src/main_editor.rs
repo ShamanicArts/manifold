@@ -33,6 +33,7 @@ enum Action {
     Command(u32, f32),
     Note(u8, u8, u8),
     Sample(u8, u8, f32),
+    Layout(u64, serde_json::Value),
     ImportStart(usize),
     ImportChunk(Vec<u8>),
     ImportEnd,
@@ -270,6 +271,13 @@ impl State {
                             }
                         }
                     }
+                }
+                Action::Layout(request_id, document) => {
+                    let accepted = self.shared.set_rack_layout(&document);
+                    let result = serde_json::json!({
+                        "kind": "rack-layout-result", "requestId": request_id, "ok": accepted
+                    });
+                    let _ = self.send(&result.to_string());
                 }
                 Action::ImportStart(expected) => {
                     if let Ok(mut slot) = self.import.lock() {
@@ -599,6 +607,17 @@ impl IPlugViewTrait for View {
                             continue;
                         }
                         Action::Sample(action, source as u8, bars as f32)
+                    }
+                    Some("rack-layout") => {
+                        let Some(request_id) = value["requestId"].as_u64() else {
+                            continue;
+                        };
+                        let Some(document) =
+                            value.get("document").filter(|value| value.is_object())
+                        else {
+                            continue;
+                        };
+                        Action::Layout(request_id, document.clone())
                     }
                     Some("session-import-start") => {
                         let Some(expected) = value["size"]

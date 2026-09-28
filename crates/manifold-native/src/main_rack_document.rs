@@ -152,6 +152,16 @@ fn audio_connections(document: &Value) -> Result<Vec<Value>, MainSessionError> {
     Ok(compiled)
 }
 
+pub fn validate_layout_update(current: &Value, next: &Value) -> Result<(), MainSessionError> {
+    audio_connections(next)?;
+    // Layout gestures may not change audio routing through a control-only
+    // template edit. Cable changes require an acknowledged DSP route update.
+    if next["connections"] != current["connections"] {
+        return Err(invalid());
+    }
+    Ok(())
+}
+
 pub(crate) fn prepare_audio_insert(
     instrument: &mut MainInstrument,
     document: &Value,

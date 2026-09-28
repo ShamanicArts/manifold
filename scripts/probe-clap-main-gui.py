@@ -64,6 +64,7 @@ def main():
     parser.add_argument("--import-session", type=Path, help="Choose this Main JSON through the original embedded Open session input")
     parser.add_argument("--import-while-processing", action="store_true", help="Keep native host blocks running during the file import")
     parser.add_argument("--exercise-export", action="store_true", help="Click the original Download control and save native Main JSON")
+    parser.add_argument("--exercise-layout", action="store_true", help="Toggle Main Rack/Patch through the actual child editor and save host state")
     args = parser.parse_args()
     assert not (args.exercise_sample and args.exercise_free_sample)
     assert not args.import_while_processing or args.import_session
@@ -72,6 +73,7 @@ def main():
     module = args.module.resolve()
     with tempfile.TemporaryDirectory(prefix="manifold-headless-") as directory:
         os.chmod(directory, 0o700)
+        os.environ["PULSE_SERVER"] = "unix:/tmp/manifold-main-gui-probe-no-audio"
         weston = None
         plugin_ptr = None
         gui = None
@@ -89,6 +91,9 @@ def main():
             if args.exercise_export:
                 export_probe = Path(directory) / "main-export.json"
                 os.environ["MANIFOLD_MAIN_EXPORT_PROBE"] = str(export_probe)
+            if args.exercise_layout:
+                layout_probe = Path(directory) / "main-layout-request"
+                os.environ["MANIFOLD_MAIN_LAYOUT_PROBE"] = str(layout_probe)
             os.environ["XDG_RUNTIME_DIR"] = directory
             os.environ["WAYLAND_DISPLAY"] = "manifold-headless"
             os.environ["DISPLAY"] = display_name
@@ -157,6 +162,39 @@ def main():
                     break
                 time.sleep(0.05)
             assert callbacks[0] >= 2, "Main webview did not acknowledge the Rust presentation"
+            if args.exercise_layout:
+                layout_probe.write_text("toggle")
+                result_path = Path(f"{layout_probe}.result")
+                result = None
+                deadline = time.monotonic() + 15
+                while time.monotonic() < deadline:
+                    if callbacks[0] > handled:
+                        handled = callbacks[0]
+                        probe.fn(plugin.main, None, c.c_void_p)(plugin_ptr)
+                    if result_path.exists():
+                        try:
+                            result = json.loads(result_path.read_text())
+                            break
+                        except json.JSONDecodeError:
+                            pass
+                    time.sleep(0.02)
+                assert result and result["ok"], f"Main Rack/Patch editor gesture failed: {result}"
+                saved_layout = bytearray()
+
+                @c.CFUNCTYPE(c.c_int64, c.c_void_p, c.c_void_p, c.c_uint64)
+                def write_layout_state(_stream, data, size):
+                    saved_layout.extend(c.string_at(data, size))
+                    return size
+
+                sink = probe.Stream(None, c.cast(write_layout_state, c.c_void_p))
+                assert probe.fn(state.save, c.c_bool, c.c_void_p, c.POINTER(probe.Stream))(
+                    plugin_ptr, c.byref(sink))
+                saved_document = json.loads(saved_layout)["rackDocument"]
+                original_document = json.loads(args.session.read_bytes())["rackDocument"]
+                assert saved_document["viewMode"] != original_document["viewMode"]
+                assert saved_document["modules"] == original_document["modules"]
+                assert saved_document["connections"] == original_document["connections"]
+                print("Actual child Main Rack/Patch button updated packaged CLAP session state.")
             if args.exercise_export:
                 deadline = time.monotonic() + 15
                 exported = None

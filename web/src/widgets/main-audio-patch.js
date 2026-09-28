@@ -11,7 +11,8 @@ const AUDIO_OUTPUTS = new Set(['oscillator:out', 'filter:out', 'fx1:out', 'fx2:o
 const NS = 'http://www.w3.org/2000/svg';
 const endpointKey = endpoint => `${endpoint.moduleId}:${endpoint.portId}`;
 
-export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoutes, onError, readOnly = false }) {
+export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoutes, onLayout,
+  onError, readOnly = false }) {
   let rack = initialRackDocument(catalog);
   let pending = false;
   let source = null;
@@ -87,7 +88,7 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
     if (!shell) continue;
     shells.set(module.id, shell);
     const header = shell.querySelector('.rack-shell-head');
-    if (header && !readOnly) {
+    if (header) {
       header.title = `Drag ${catalog.catalog[module.type].name} to another rack cell`;
       header.addEventListener('pointerdown', event => {
         if (event.button !== 0 || pending) return;
@@ -107,7 +108,7 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
         shell.style.transform = `translate(${(event.clientX - shellDrag.startX) / scale}px, ${(event.clientY - shellDrag.startY) / scale}px)`;
         paintWires();
       });
-      const finishDrag = (event, commit) => {
+      const finishDrag = async (event, commit) => {
         if (shellDrag?.id !== event.pointerId || shellDrag.moduleId !== module.id) return;
         const current = shellDrag;
         shellDrag = null;
@@ -121,9 +122,9 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
           const nextRow = Math.max(0, Math.round((top - 12) / catalog.grid.cellHeight));
           const nextCol = Math.max(0, Math.round(left / catalog.grid.cellWidth));
           try {
-            rack = validateMainRackInsertDocument(moveRackModule(rack, module.id,
+            const next = validateMainRackInsertDocument(moveRackModule(rack, module.id,
               nextRow, nextCol, catalog), catalog);
-            placeShells();
+            await commitLayout(next);
           } catch (error) { onError(error.message); }
         }
         requestAnimationFrame(paintWires);
@@ -240,6 +241,17 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
     source = null; drag = null;
     requestAnimationFrame(paintWires);
   }
+  async function commitLayout(next) {
+    if (pending) return;
+    pending = true;
+    try {
+      if (!await onLayout(next)) throw new Error('The native host rejected this rack layout.');
+      rack = next;
+      placeShells();
+      showMode();
+    } catch (error) { onError(error.message); }
+    finally { pending = false; }
+  }
   const audioTargets = ['filter', 'fx1', 'fx2', 'eq', '__rackOutput'];
   function routeFor(document, moduleId) {
     const portId = moduleId === '__rackOutput' ? 'main' : 'in';
@@ -268,8 +280,7 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
   }
   toggle.addEventListener('click', () => {
     if (pending) return;
-    rack = setRackViewMode(rack, rack.viewMode === 'rack' ? 'patch' : 'rack', catalog);
-    showMode();
+    void commitLayout(setRackViewMode(rack, rack.viewMode === 'rack' ? 'patch' : 'rack', catalog));
   });
   content.closest('.rack-scroll')?.addEventListener('scroll', () => requestAnimationFrame(paintWires));
   window.addEventListener('resize', () => requestAnimationFrame(paintWires));

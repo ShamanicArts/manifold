@@ -42,6 +42,7 @@ let sampleJob = null, freeSource = null, sampleMode = 0;
 let applyingEditorState = false;
 const status = (message) => { $('status').textContent = message; };
 const pendingRackRoutes = new Map();
+const pendingRackLayouts = new Map();
 const rackPatch = mountMainAudioPatch({
   content: document.querySelector('.rack-scroll-content'), catalog: rackCatalog,
   toggle: $('rack-view-switch'), onError: status, readOnly: editorMode,
@@ -63,6 +64,16 @@ const rackPatch = mountMainAudioPatch({
       const timer = setTimeout(() => { pendingRackRoutes.delete(requestId); resolve(false); }, 5000);
       pendingRackRoutes.set(requestId, { resolve, timer });
       processor.port.postMessage({ type: 'rack-routes', requestId, routes });
+    });
+  },
+  onLayout: document => {
+    if (!editorMode) return Promise.resolve(true);
+    if (!window.ipc?.postMessage) return Promise.resolve(false);
+    const requestId = nextRequest++;
+    return new Promise(resolve => {
+      const timer = setTimeout(() => { pendingRackLayouts.delete(requestId); resolve(false); }, 5000);
+      pendingRackLayouts.set(requestId, { resolve, timer });
+      window.ipc.postMessage(JSON.stringify({ version: 1, kind: 'rack-layout', requestId, document }));
     });
   },
 });
@@ -1024,6 +1035,13 @@ function editorSnapshot(session) {
 }
 
 if (editorMode) {
+  window.manifoldEditorLayoutResult = result => {
+    const pending = pendingRackLayouts.get(result?.requestId);
+    if (!pending) return;
+    pendingRackLayouts.delete(result.requestId);
+    clearTimeout(pending.timer);
+    pending.resolve(result.ok === true);
+  };
   for (const id of ['audio-button']) {
     $(id).disabled = true;
   }

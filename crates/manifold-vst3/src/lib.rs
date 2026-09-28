@@ -594,6 +594,53 @@ mod tests {
     }
 
     #[test]
+    fn main_vst3_editor_layout_edit_updates_component_state() {
+        let browser: serde_json::Value = serde_json::from_slice(include_bytes!(
+            "../../../web/public/main-rack-layout-saved-session.json"
+        ))
+        .unwrap();
+        let mut moved = browser["rackDocument"].clone();
+        moved["viewMode"] = serde_json::json!("patch");
+        let component = main_processor::MainProcessor::new();
+        assert!(component.set_rack_layout(&moved));
+        let (outgoing, data) = stream(Vec::new());
+        assert_eq!(unsafe { component.getState(outgoing.as_ptr()) }, kResultOk);
+        let saved: serde_json::Value = serde_json::from_slice(&data.lock().unwrap().bytes).unwrap();
+        assert_eq!(saved["rackDocument"], moved);
+
+        let mut setup = ProcessSetup {
+            processMode: 0,
+            symbolicSampleSize: SymbolicSampleSizes_::kSample32 as i32,
+            maxSamplesPerBlock: 128,
+            sampleRate: 44_100.0,
+        };
+        assert_eq!(unsafe { component.setupProcessing(&mut setup) }, kResultOk);
+        assert_eq!(unsafe { component.setActive(1) }, kResultOk);
+        let original: serde_json::Value = serde_json::from_slice(include_bytes!(
+            "../../../projects/main-looper/default-session-v16.json"
+        ))
+        .unwrap();
+        assert!(component.set_rack_layout(&original["rackDocument"]));
+        let (outgoing, data) = stream(Vec::new());
+        assert_eq!(unsafe { component.getState(outgoing.as_ptr()) }, kResultOk);
+        let saved: serde_json::Value = serde_json::from_slice(&data.lock().unwrap().bytes).unwrap();
+        assert_eq!(saved["rackDocument"], original["rackDocument"]);
+        assert_eq!(saved["sampleRate"], 44_100.0);
+        assert_eq!(unsafe { component.setActive(0) }, kResultOk);
+
+        let fresh = main_processor::MainProcessor::new();
+        assert_eq!(unsafe { fresh.setupProcessing(&mut setup) }, kResultOk);
+        assert_eq!(unsafe { fresh.setActive(1) }, kResultOk);
+        assert!(fresh.set_rack_layout(&moved));
+        let (outgoing, data) = stream(Vec::new());
+        assert_eq!(unsafe { fresh.getState(outgoing.as_ptr()) }, kResultOk);
+        let saved: serde_json::Value = serde_json::from_slice(&data.lock().unwrap().bytes).unwrap();
+        assert_eq!(saved["sampleRate"], 44_100.0);
+        assert_eq!(saved["rackDocument"], moved);
+        assert_eq!(unsafe { fresh.setActive(0) }, kResultOk);
+    }
+
+    #[test]
     fn main_controller_state_preserves_host_edit_after_component_state() {
         use manifold_native::main_host_parameters::SYNTH_BASE;
         let source_output = SYNTH_BASE + 15;

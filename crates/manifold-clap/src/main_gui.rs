@@ -244,6 +244,16 @@ fn receive(instance: &Instance, reader: impl BufRead) {
                         .command(&sample_message(SampleUpdate::Rejected));
                 }
             }
+            Some("rack-layout") => {
+                let Some(request_id) = message["requestId"].as_u64() else {
+                    continue;
+                };
+                let accepted = instance.set_rack_layout(&message["document"]);
+                let result = serde_json::json!({
+                    "kind": "rack-layout-result", "requestId": request_id, "ok": accepted
+                });
+                let _ = instance.gui.command(&result.to_string());
+            }
             Some("session-import-start") => {
                 import = message["size"]
                     .as_u64()
@@ -501,6 +511,39 @@ mod tests {
         );
         receive(&instance, Cursor::new(messages));
         assert_eq!(instance.save_bytes().unwrap(), before);
+    }
+
+    #[test]
+    fn editor_layout_message_persists_while_inactive_and_active() {
+        let instance = Instance::new(null(), null());
+        let browser: serde_json::Value = serde_json::from_slice(include_bytes!(
+            "../../../web/public/main-rack-layout-saved-session.json"
+        ))
+        .unwrap();
+        let mut moved = browser["rackDocument"].clone();
+        moved["viewMode"] = serde_json::json!("patch");
+        let message = serde_json::json!({"version":1,"kind":"rack-layout", "requestId":7,
+            "document":moved});
+        receive(&instance, Cursor::new(format!("{message}\n")));
+        let saved: serde_json::Value =
+            serde_json::from_slice(&instance.save_bytes().unwrap()).unwrap();
+        assert_eq!(saved["rackDocument"], moved);
+        assert_eq!(instance.editor_document().unwrap()["rackDocument"], moved);
+
+        let plugin = &instance.plugin as *const clap_plugin;
+        assert!(unsafe { (instance.plugin.activate.unwrap())(plugin, 44_100.0, 1, 128) });
+        let original: serde_json::Value = serde_json::from_slice(include_bytes!(
+            "../../../projects/main-looper/default-session-v16.json"
+        ))
+        .unwrap();
+        let default = original["rackDocument"].clone();
+        let message = serde_json::json!({"version":1,"kind":"rack-layout", "requestId":8,
+            "document":default});
+        receive(&instance, Cursor::new(format!("{message}\n")));
+        let saved: serde_json::Value =
+            serde_json::from_slice(&instance.save_bytes().unwrap()).unwrap();
+        assert_eq!(saved["rackDocument"], default);
+        unsafe { (instance.plugin.deactivate.unwrap())(plugin) };
     }
 
     #[test]

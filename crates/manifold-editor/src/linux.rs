@@ -179,6 +179,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    let probe_layout = if surface == Surface::Main {
+        std::env::var("MANIFOLD_MAIN_LAYOUT_PROBE").ok()
+    } else {
+        None
+    };
     let probe_export = if surface == Surface::Main {
         std::env::var("MANIFOLD_MAIN_EXPORT_PROBE").ok()
     } else {
@@ -205,6 +210,17 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 if let Some(id) = id {
                     let _ = webview
                         .evaluate_script(&format!("document.getElementById('{id}')?.click();"));
+                }
+            }
+        }
+        if let Some(path) = probe_layout.as_deref() {
+            if Path::new(path).exists() {
+                let request = fs::read_to_string(path).unwrap_or_default();
+                let _ = fs::remove_file(path);
+                if request.trim() == "toggle" {
+                    let _ = webview.evaluate_script(
+                        "document.querySelector('[data-main-tab=\"midisynth\"]')?.click(); document.getElementById('rack-view-switch')?.click();"
+                    );
                 }
             }
         }
@@ -320,6 +336,18 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                             "window.manifoldEditorSampleUpdate?.({data});"
                         ));
                     }
+                }
+                Some("rack-layout-result") => {
+                    let result = serde_json::json!({
+                        "requestId": command["requestId"].as_u64(),
+                        "ok": command["ok"].as_bool().unwrap_or(false),
+                    });
+                    if let Some(path) = probe_layout.as_deref() {
+                        let _ = fs::write(format!("{path}.result"), result.to_string());
+                    }
+                    let _ = webview.evaluate_script(&format!(
+                        "window.manifoldEditorLayoutResult?.({result});"
+                    ));
                 }
                 Some("session-import-result") => {
                     let result = serde_json::json!({

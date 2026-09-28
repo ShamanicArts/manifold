@@ -81,6 +81,23 @@ impl MainShared {
         self.send_payload(c"manifold.main.params.v1", c"values", values)
     }
 
+    pub(crate) fn set_rack_layout(&self, document: &serde_json::Value) -> bool {
+        let Ok(bytes) = serde_json::to_vec(document) else {
+            return false;
+        };
+        if bytes.len() > 16 * 1024
+            || !self.send_payload(c"manifold.main.rack.layout.v1", c"document", &bytes)
+        {
+            return false;
+        }
+        if let Ok(mut presentation) = self.presentation.lock() {
+            if let Some(presentation) = presentation.as_mut() {
+                presentation["rackDocument"] = document.clone();
+            }
+        }
+        true
+    }
+
     pub(crate) fn send_payload(&self, kind: &CStr, key: &CStr, values: &[u8]) -> bool {
         let host = self.host.lock().ok().and_then(|slot| slot.clone());
         let peer = self.peer.lock().ok().and_then(|slot| slot.clone());

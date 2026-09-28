@@ -42,6 +42,7 @@ use manifold_native::main_instrument::{
     MainHostAudioBlock, MainHostEvent, MainHostEventKind, valid_main_command,
 };
 use manifold_native::main_presentation::compact_main_presentation;
+use manifold_native::main_rack_document::validate_layout_update;
 use manifold_native::main_sample_handoff::SampleUpdate;
 use manifold_native::main_session::{default_main_session, prepare_main_session};
 use manifold_native::main_session_export::save_template;
@@ -75,6 +76,7 @@ pub(crate) struct Instance {
     runtime: AtomicPtr<Runtime>,
     control: Mutex<Option<MainControl>>,
     state: Mutex<Option<Vec<u8>>>,
+    layout_overlay: Mutex<Option<serde_json::Value>>,
     presentation: Mutex<Option<serde_json::Value>>,
     pending_values: Mutex<Vec<MainHostEvent>>,
     commands: ArrayQueue<MainHostEvent>,
@@ -170,6 +172,62 @@ impl Instance {
 
     pub(crate) fn editor_document(&self) -> Option<serde_json::Value> {
         self.presentation.lock().ok()?.clone()
+    }
+
+    pub(crate) fn set_rack_layout(&self, document: &serde_json::Value) -> bool {
+        if serde_json::to_vec(document)
+            .ok()
+            .is_none_or(|bytes| bytes.len() > 16 * 1024)
+        {
+            return false;
+        }
+        let Ok(mut control_slot) = self.control.lock() else {
+            return false;
+        };
+        let Ok(mut state_slot) = self.state.lock() else {
+            return false;
+        };
+        let bytes = match state_slot.as_ref() {
+            Some(bytes) => bytes.clone(),
+            None => match default_main_session(48_000.0).and_then(|state| {
+                serde_json::to_vec(&state)
+                    .map_err(manifold_native::main_session::MainSessionError::Json)
+            }) {
+                Ok(bytes) => bytes,
+                Err(_) => return false,
+            },
+        };
+        let Ok(mut state) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+            return false;
+        };
+        if validate_layout_update(&state["rackDocument"], document).is_err() {
+            return false;
+        }
+        if let Some(control) = control_slot.as_mut() {
+            if control.set_rack_layout(document).is_err() {
+                return false;
+            }
+        }
+        if state_slot.is_none() && control_slot.is_none() {
+            // A fresh inactive plug-in has no host sample rate yet. Keep this
+            // visual edit separate from its future rate-specific default.
+            let Ok(mut overlay) = self.layout_overlay.lock() else {
+                return false;
+            };
+            *overlay = Some(document.clone());
+        } else {
+            state["rackDocument"] = document.clone();
+            let Ok(bytes) = serde_json::to_vec(&state) else {
+                return false;
+            };
+            *state_slot = Some(bytes);
+        }
+        if let Ok(mut presentation) = self.presentation.lock() {
+            if let Some(presentation) = presentation.as_mut() {
+                presentation["rackDocument"] = document.clone();
+            }
+        }
+        true
     }
 
     fn publish_status(&self, audio: &MainAudioRuntime) {
@@ -327,6 +385,7 @@ impl Instance {
             runtime: AtomicPtr::new(null_mut()),
             control: Mutex::new(None),
             state: Mutex::new(None),
+            layout_overlay: Mutex::new(None),
             presentation: Mutex::new(Some(presentation)),
             pending_values: Mutex::new(Vec::new()),
             commands: ArrayQueue::new(MAX_UI_COMMANDS),
@@ -367,9 +426,17 @@ impl Instance {
         let bytes = if let Some(bytes) = state.as_ref() {
             bytes.clone()
         } else {
-            let Ok(default) = default_main_session(rate as f32) else {
+            let Ok(mut default) = default_main_session(rate as f32) else {
                 return false;
             };
+            if let Some(layout) = self
+                .layout_overlay
+                .lock()
+                .ok()
+                .and_then(|slot| slot.clone())
+            {
+                default["rackDocument"] = layout;
+            }
             let Ok(bytes) = serde_json::to_vec(&default) else {
                 return false;
             };
@@ -443,6 +510,9 @@ impl Instance {
             }
         }
         *control_slot = Some(control);
+        if let Ok(mut overlay) = self.layout_overlay.lock() {
+            *overlay = None;
+        }
         self.runtime
             .store(Box::into_raw(runtime), Ordering::Release);
         self.active.store(true, Ordering::Release);
@@ -516,7 +586,11 @@ impl Instance {
             let bytes = if let Some(bytes) = state.as_ref() {
                 bytes.clone()
             } else {
-                serde_json::to_vec(&default_main_session(48_000.0).ok()?).ok()?
+                let mut default = default_main_session(48_000.0).ok()?;
+                if let Some(layout) = self.layout_overlay.lock().ok()?.as_ref() {
+                    default["rackDocument"] = layout.clone();
+                }
+                serde_json::to_vec(&default).ok()?
             };
             if pending.is_empty() {
                 return Some(bytes);
@@ -625,6 +699,9 @@ impl Instance {
             return false;
         };
         *state = Some(bytes);
+        if let Ok(mut overlay) = self.layout_overlay.lock() {
+            *overlay = None;
+        }
         if let Ok(mut presentation) = self.presentation.lock() {
             *presentation = compact_main_presentation(state.as_ref().unwrap()).ok();
         }

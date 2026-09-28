@@ -15,6 +15,7 @@ use crate::NativeError;
 use crate::main_instrument::{
     MainAudioBlock, MainHostAudioBlock, MainHostEventKind, MainNativeProcessor,
 };
+use crate::main_rack_document::validate_layout_update;
 use crate::main_sample_handoff::{self, SampleAudio, SampleControl, SampleUpdate};
 use crate::main_session::{MainSessionError, default_main_session, prepare_main_session};
 use crate::main_session_export::{MainExportError, export_main_session, save_template};
@@ -246,6 +247,24 @@ impl MainAudioRuntime {
 }
 
 impl MainControl {
+    /// Persist a validated visual grid edit on the control thread. The audio
+    /// processor and its generation remain untouched because cables are fixed.
+    pub fn set_rack_layout(
+        &mut self,
+        document: &serde_json::Value,
+    ) -> Result<(), MainSessionError> {
+        if !self.exchange.pending.load(Ordering::Acquire).is_null() {
+            return Err(MainSessionError::Invalid("pending session"));
+        }
+        let template = self
+            .templates
+            .get_mut(&self.published_generation())
+            .ok_or(MainSessionError::Invalid("save template"))?;
+        validate_layout_update(&template["rackDocument"], document)?;
+        template["rackDocument"] = document.clone();
+        Ok(())
+    }
+
     pub fn request_retro_sample(&mut self, source: usize, bars: f32) -> bool {
         self.exchange.pending.load(Ordering::Acquire).is_null()
             && self.sample.request_retro(source, bars)
@@ -455,6 +474,31 @@ mod tests {
             })
             .unwrap();
         left[0]
+    }
+
+    #[test]
+    fn control_side_layout_edit_saves_without_replacing_audio_generation() {
+        let (mut audio, mut control) = MainAudioRuntime::prepare(48_000.0, 128).unwrap();
+        let mut document = default_main_session(48_000.0).unwrap()["rackDocument"].clone();
+        document["modules"][1]["col"] = json!(3);
+        document["modules"][2]["col"] = json!(1);
+        control.set_rack_layout(&document).unwrap();
+        assert_eq!(audio.generation(), 0);
+        control.request_session_snapshot().unwrap();
+        let mut saved = None;
+        for _ in 0..8 {
+            render(&mut audio);
+            if let Some(bytes) = control.poll_session_snapshot().unwrap() {
+                saved = Some(bytes);
+                break;
+            }
+        }
+        let saved: Value = serde_json::from_slice(&saved.unwrap()).unwrap();
+        assert_eq!(saved["rackDocument"], document);
+        assert_eq!(audio.generation(), 0);
+        let mut invalid = document.clone();
+        invalid["connections"][2]["from"]["moduleId"] = json!("eq");
+        assert!(control.set_rack_layout(&invalid).is_err());
     }
 
     #[test]

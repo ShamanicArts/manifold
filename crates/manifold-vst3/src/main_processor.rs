@@ -14,6 +14,7 @@ use manifold_native::main_host_parameters::MAIN_HOST_ID_CAPACITY;
 use manifold_native::main_instrument::{
     MainHostAudioBlock, MainHostEvent, MainHostEventKind, valid_main_command,
 };
+use manifold_native::main_rack_document::validate_layout_update;
 use manifold_native::main_sample_handoff::SampleUpdate;
 use manifold_native::main_session::{default_main_session, prepare_main_session};
 use manifold_native::main_visual::MainVisualBank;
@@ -60,6 +61,7 @@ pub(crate) struct MainProcessor {
     control: Mutex<Option<MainControl>>,
     configuration: Mutex<Option<(f32, usize)>>,
     state: Mutex<Option<Vec<u8>>>,
+    layout_overlay: Mutex<Option<serde_json::Value>>,
     import: Mutex<Option<ImportAssembly>>,
     export: Mutex<Option<ExportState>>,
     active: AtomicBool,
@@ -88,6 +90,7 @@ impl MainProcessor {
             control: Mutex::new(None),
             configuration: Mutex::new(None),
             state: Mutex::new(None),
+            layout_overlay: Mutex::new(None),
             import: Mutex::new(None),
             export: Mutex::new(None),
             active: AtomicBool::new(false),
@@ -102,6 +105,57 @@ impl MainProcessor {
             sample_frames: AtomicU32::new(0),
             visual: MainVisualBank::new(),
         }
+    }
+
+    pub(crate) fn set_rack_layout(&self, document: &serde_json::Value) -> bool {
+        let Ok(mut control_slot) = self.control.lock() else {
+            return false;
+        };
+        let Ok(mut state_slot) = self.state.lock() else {
+            return false;
+        };
+        let bytes = match state_slot.as_ref() {
+            Some(bytes) => bytes.clone(),
+            None => {
+                let rate = self
+                    .configuration
+                    .lock()
+                    .ok()
+                    .and_then(|setup| *setup)
+                    .map_or(48_000.0, |(rate, _)| rate);
+                let Ok(default) = default_main_session(rate) else {
+                    return false;
+                };
+                let Ok(bytes) = serde_json::to_vec(&default) else {
+                    return false;
+                };
+                bytes
+            }
+        };
+        let Ok(mut state) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+            return false;
+        };
+        if validate_layout_update(&state["rackDocument"], document).is_err() {
+            return false;
+        }
+        if let Some(control) = control_slot.as_mut() {
+            if control.set_rack_layout(document).is_err() {
+                return false;
+            }
+        }
+        if state_slot.is_none() && control_slot.is_none() {
+            let Ok(mut overlay) = self.layout_overlay.lock() else {
+                return false;
+            };
+            *overlay = Some(document.clone());
+        } else {
+            state["rackDocument"] = document.clone();
+            let Ok(bytes) = serde_json::to_vec(&state) else {
+                return false;
+            };
+            *state_slot = Some(bytes);
+        }
+        true
     }
 
     fn deactivate(&self) {
@@ -138,21 +192,20 @@ impl MainProcessor {
     }
 
     fn initial_state(&self) -> Option<Vec<u8>> {
-        self.state
+        if let Some(bytes) = self.state.lock().ok()?.as_ref() {
+            return Some(bytes.clone());
+        }
+        let rate = self
+            .configuration
             .lock()
             .ok()
-            .and_then(|state| state.clone())
-            .or_else(|| {
-                let rate = self
-                    .configuration
-                    .lock()
-                    .ok()
-                    .and_then(|setup| *setup)
-                    .map_or(48_000.0, |(rate, _)| rate);
-                default_main_session(rate)
-                    .ok()
-                    .and_then(|value| serde_json::to_vec(&value).ok())
-            })
+            .and_then(|setup| *setup)
+            .map_or(48_000.0, |(rate, _)| rate);
+        let mut value = default_main_session(rate).ok()?;
+        if let Some(layout) = self.layout_overlay.lock().ok()?.as_ref() {
+            value["rackDocument"] = layout.clone();
+        }
+        serde_json::to_vec(&value).ok()
     }
 
     fn publish_status(&self, audio: &MainAudioRuntime) {
@@ -518,6 +571,27 @@ impl IConnectionPointTrait for MainProcessor {
         let Some(attributes) = (unsafe { ComRef::from_raw(message.getAttributes()) }) else {
             return kResultFalse;
         };
+        if kind == b"manifold.main.rack.layout.v1" {
+            let mut data: *const c_void = std::ptr::null();
+            let mut size = 0;
+            if unsafe { attributes.getBinary(c"document".as_ptr(), &mut data, &mut size) }
+                != kResultOk
+                || data.is_null()
+                || size <= 0
+                || size > 16 * 1024
+            {
+                return kResultFalse;
+            }
+            let bytes = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), size as usize) };
+            let Ok(document) = serde_json::from_slice(bytes) else {
+                return kResultFalse;
+            };
+            return if self.set_rack_layout(&document) {
+                kResultOk
+            } else {
+                kResultFalse
+            };
+        }
         if kind == b"manifold.main.import.start.v1" {
             let mut data: *const c_void = std::ptr::null();
             let mut size = 0;
@@ -857,7 +931,16 @@ impl IComponentTrait for MainProcessor {
         let Ok((mut audio, mut control)) = MainAudioRuntime::prepare(rate, frames) else {
             return kResultFalse;
         };
-        let state = self.state.lock().ok().and_then(|state| state.clone());
+        let state = if self
+            .layout_overlay
+            .lock()
+            .ok()
+            .is_some_and(|slot| slot.is_some())
+        {
+            self.initial_state()
+        } else {
+            self.state.lock().ok().and_then(|state| state.clone())
+        };
         if let Some(bytes) = state {
             if control.submit_session(&bytes).is_err() {
                 return kResultFalse;
@@ -875,6 +958,12 @@ impl IComponentTrait for MainProcessor {
                 return kResultFalse;
             }
             control.reclaim();
+            if let Ok(mut slot) = self.state.lock() {
+                *slot = Some(bytes);
+            }
+            if let Ok(mut overlay) = self.layout_overlay.lock() {
+                *overlay = None;
+            }
         }
         let runtime = Box::new(Runtime {
             audio,
@@ -923,6 +1012,9 @@ impl IComponentTrait for MainProcessor {
         }
         if let Ok(mut state) = self.state.lock() {
             *state = Some(bytes);
+            if let Ok(mut overlay) = self.layout_overlay.lock() {
+                *overlay = None;
+            }
             kResultOk
         } else {
             kResultFalse

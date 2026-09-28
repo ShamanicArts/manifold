@@ -5,12 +5,16 @@ import { createRequire } from 'node:module';
 const requireFromWeb = createRequire(new URL('../web/package.json', import.meta.url));
 const { chromium } = requireFromWeb('playwright-core');
 const session = JSON.parse(await readFile(new URL('../web/public/main-editor-presentation.json', import.meta.url)));
+const current = JSON.parse(await readFile(new URL('../projects/main-looper/default-session-v16.json', import.meta.url)));
+session.version = current.version;
+session.rackDocument = current.rackDocument;
 assert.equal(session.layers[0].pcmF32Base64, undefined);
 assert.equal(session.layers[0].peaks.length, 128);
 const browser = await chromium.launch({
   executablePath: process.env.MANIFOLD_CHROMIUM ?? '/usr/bin/chromium',
   headless: true,
   args: ['--no-sandbox', '--mute-audio'],
+  env: { ...process.env, PULSE_SERVER: 'unix:/tmp/manifold-editor-surface-no-audio' },
 });
 
 try {
@@ -28,7 +32,7 @@ try {
   await page.waitForFunction(() => window.__nativeActions?.some(action => action.kind === 'editor-ready'));
   await page.evaluate(document => window.manifoldEditorReceive(document), session);
   assert.ok((await page.evaluate(() => window.__nativeActions)).some(action => action.kind === 'state-applied'));
-  assert.match(await page.locator('#status').textContent(), /Main CLAP session/);
+  assert.match(await page.locator('#status').textContent(), /Main session · native audio engine/);
   assert.equal(await page.locator('.layer[data-layer="0"] .state').textContent(), 'Playing');
   assert.equal(await page.locator('#sample-length').textContent(), '125ms');
   await page.locator('[data-main-tab="midisynth"]').click();
