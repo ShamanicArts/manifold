@@ -8,6 +8,10 @@ pub const LAYER_STRIDE: u32 = 8;
 pub const SYNTH_BASE: u32 = 256;
 pub const LFO_BASE: u32 = 512;
 pub const LFO_STRIDE: u32 = 16;
+pub const SCALE_QUANTIZER_BASE: u32 = 832;
+pub const TRANSPOSE_BASE: u32 = 864;
+pub const NOTE_FILTER_BASE: u32 = 896;
+pub const VELOCITY_MAPPER_BASE: u32 = 928;
 pub const ARPEGGIATOR_BASE: u32 = 960;
 pub const MAIN_HOST_ID_CAPACITY: usize = 1024;
 
@@ -59,6 +63,10 @@ pub enum MainParameterTarget {
     Transport(u32),
     Layer { layer: usize, local: u32 },
     Synth(u32),
+    ScaleQuantizer(u32),
+    Transpose(u32),
+    NoteFilter(u32),
+    VelocityMapper(u32),
     Arpeggiator(u32),
 }
 
@@ -138,6 +146,56 @@ impl MainParameter {
                 _ => return Err(MainParameterError::UnknownId),
             };
             (MainParameterTarget::Synth(local), min, max, discrete, 1.0)
+        } else if (SCALE_QUANTIZER_BASE..SCALE_QUANTIZER_BASE + 4).contains(&id) {
+            let local = id - SCALE_QUANTIZER_BASE;
+            let (min, max) = match local {
+                0 => (0.0, 11.0),
+                1 => (1.0, 6.0),
+                2 => (1.0, 3.0),
+                3 => (0.0, 1.0),
+                _ => unreachable!(),
+            };
+            (
+                MainParameterTarget::ScaleQuantizer(local),
+                min,
+                max,
+                true,
+                1.0,
+            )
+        } else if (TRANSPOSE_BASE..TRANSPOSE_BASE + 3).contains(&id) {
+            let local = id - TRANSPOSE_BASE;
+            let (min, max) = match local {
+                0 => (-24.0, 24.0),
+                1 | 2 => (0.0, 1.0),
+                _ => unreachable!(),
+            };
+            (MainParameterTarget::Transpose(local), min, max, true, 1.0)
+        } else if (NOTE_FILTER_BASE..NOTE_FILTER_BASE + 5).contains(&id) {
+            let local = id - NOTE_FILTER_BASE;
+            let (min, max) = match local {
+                0 | 1 => (0.0, 127.0),
+                2 | 4 => (0.0, 1.0),
+                3 => (0.0, 2.0),
+                _ => unreachable!(),
+            };
+            (MainParameterTarget::NoteFilter(local), min, max, true, 1.0)
+        } else if (VELOCITY_MAPPER_BASE..VELOCITY_MAPPER_BASE + 5).contains(&id) {
+            let local = id - VELOCITY_MAPPER_BASE;
+            let (min, max, discrete) = match local {
+                0 => (0.0, 1.0, false),
+                1 => (0.0, 2.0, true),
+                2 => (-1.0, 1.0, false),
+                3 => (0.0, 4.0, true),
+                4 => (0.0, 1.0, true),
+                _ => unreachable!(),
+            };
+            (
+                MainParameterTarget::VelocityMapper(local),
+                min,
+                max,
+                discrete,
+                1.0,
+            )
         } else if (ARPEGGIATOR_BASE..ARPEGGIATOR_BASE + 6).contains(&id) {
             let local = id - ARPEGGIATOR_BASE;
             let (min, max, discrete, divisor) = match local {
@@ -176,6 +234,18 @@ impl MainParameter {
                 .looper_mut()
                 .set_layer_control(layer, local, self.value),
             MainParameterTarget::Synth(id) => instrument.set_synth_parameter(id, self.value),
+            MainParameterTarget::ScaleQuantizer(id) => {
+                instrument.set_scale_quantizer_parameter(id, self.value)
+            }
+            MainParameterTarget::Transpose(id) => {
+                instrument.set_transpose_parameter(id, self.value)
+            }
+            MainParameterTarget::NoteFilter(id) => {
+                instrument.set_note_filter_parameter(id, self.value)
+            }
+            MainParameterTarget::VelocityMapper(id) => {
+                instrument.set_velocity_mapper_parameter(id, self.value)
+            }
             MainParameterTarget::Arpeggiator(id) => {
                 instrument.set_arpeggiator_parameter(id, self.value)
             }
@@ -200,6 +270,10 @@ mod tests {
         assert_eq!(host["synthBase"], SYNTH_BASE);
         assert_eq!(host["lfoBase"], LFO_BASE);
         assert_eq!(host["lfoStride"], LFO_STRIDE);
+        assert_eq!(host["scaleQuantizerBase"], SCALE_QUANTIZER_BASE);
+        assert_eq!(host["transposeBase"], TRANSPOSE_BASE);
+        assert_eq!(host["noteFilterBase"], NOTE_FILTER_BASE);
+        assert_eq!(host["velocityMapperBase"], VELOCITY_MAPPER_BASE);
         assert_eq!(host["arpeggiatorBase"], ARPEGGIATOR_BASE);
     }
 
@@ -261,6 +335,46 @@ mod tests {
                 let parameter = MainParameter::decode(base + local, 0.5).unwrap();
                 assert!(parameter.apply(&mut main), "FX host ID {}", base + local);
             }
+        }
+    }
+
+    #[test]
+    fn voice_stage_ids_accept_authored_values_and_reject_fractional_enums() {
+        let mut main = MainInstrument::new(8_000.0, 128);
+        for (id, value) in [
+            (SCALE_QUANTIZER_BASE, 2.0),
+            (SCALE_QUANTIZER_BASE + 1, 3.0),
+            (SCALE_QUANTIZER_BASE + 2, 2.0),
+            (SCALE_QUANTIZER_BASE + 3, 1.0),
+            (TRANSPOSE_BASE, -7.0),
+            (TRANSPOSE_BASE + 1, 1.0),
+            (TRANSPOSE_BASE + 2, 1.0),
+            (NOTE_FILTER_BASE, 36.0),
+            (NOTE_FILTER_BASE + 1, 84.0),
+            (NOTE_FILTER_BASE + 2, 1.0),
+            (NOTE_FILTER_BASE + 3, 2.0),
+            (NOTE_FILTER_BASE + 4, 1.0),
+            (VELOCITY_MAPPER_BASE, 0.8),
+            (VELOCITY_MAPPER_BASE + 1, 2.0),
+            (VELOCITY_MAPPER_BASE + 2, -0.2),
+            (VELOCITY_MAPPER_BASE + 3, 4.0),
+            (VELOCITY_MAPPER_BASE + 4, 1.0),
+        ] {
+            let parameter = MainParameter::decode(id, value).unwrap();
+            assert!(parameter.apply(&mut main), "voice stage host ID {id}");
+        }
+        for (id, value) in [
+            (SCALE_QUANTIZER_BASE, 1.5),
+            (TRANSPOSE_BASE, 7.5),
+            (NOTE_FILTER_BASE + 3, 1.5),
+            (VELOCITY_MAPPER_BASE + 1, 1.5),
+            (VELOCITY_MAPPER_BASE + 2, 1.1),
+        ] {
+            assert_eq!(
+                MainParameter::decode(id, value),
+                Err(MainParameterError::InvalidValue),
+                "invalid voice stage host ID {id}"
+            );
         }
     }
 }

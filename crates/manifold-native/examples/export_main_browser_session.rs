@@ -6,7 +6,9 @@ use std::fs;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use manifold_native::main_host::MainAudioRuntime;
-use manifold_native::main_host_parameters::SYNTH_BASE;
+use manifold_native::main_host_parameters::{
+    NOTE_FILTER_BASE, SCALE_QUANTIZER_BASE, SYNTH_BASE, TRANSPOSE_BASE, VELOCITY_MAPPER_BASE,
+};
 use manifold_native::main_instrument::{
     MainAudioBlock, MainHostAudioBlock, MainHostEvent, MainHostEventKind,
 };
@@ -96,6 +98,21 @@ fn main() -> Result<(), Box<dyn Error>> {
         (SYNTH_BASE + 104, -2.0),
         (SYNTH_BASE + 105, 0.8),
         (SYNTH_BASE + 129, 0.25),
+        (SCALE_QUANTIZER_BASE, 2.0),
+        (SCALE_QUANTIZER_BASE + 1, 2.0),
+        (SCALE_QUANTIZER_BASE + 3, 1.0),
+        (TRANSPOSE_BASE, 7.0),
+        (TRANSPOSE_BASE + 1, 1.0),
+        (TRANSPOSE_BASE + 2, 1.0),
+        (NOTE_FILTER_BASE, 68.0),
+        (NOTE_FILTER_BASE + 1, 72.0),
+        (NOTE_FILTER_BASE + 3, 2.0),
+        (NOTE_FILTER_BASE + 4, 1.0),
+        (VELOCITY_MAPPER_BASE, 0.8),
+        (VELOCITY_MAPPER_BASE + 1, 2.0),
+        (VELOCITY_MAPPER_BASE + 2, 0.1),
+        (VELOCITY_MAPPER_BASE + 3, 4.0),
+        (VELOCITY_MAPPER_BASE + 4, 1.0),
     ]
     .map(|(id, value)| MainHostEvent {
         offset: 64,

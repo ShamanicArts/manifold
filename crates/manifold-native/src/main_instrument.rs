@@ -280,7 +280,7 @@ impl MainNativeProcessor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::main_host_parameters::{ARPEGGIATOR_BASE, LAYER_BASE, SYNTH_BASE};
+    use crate::main_host_parameters::{ARPEGGIATOR_BASE, LAYER_BASE, NOTE_FILTER_BASE, SYNTH_BASE};
 
     fn render_host(
         processor: &mut MainNativeProcessor,
@@ -442,6 +442,56 @@ mod tests {
                 .iter()
                 .zip(&arp_output[80..])
                 .any(|(a, b)| (a - b).abs() > 0.00001)
+        );
+    }
+
+    #[test]
+    fn timed_note_filter_automation_changes_voice_after_its_offset() {
+        let mut baseline = MainNativeProcessor::prepare(8_000.0, 128).unwrap();
+        let mut filtered = MainNativeProcessor::prepare(8_000.0, 128).unwrap();
+        let note = MainHostEvent {
+            offset: 0,
+            kind: MainHostEventKind::Midi(EventKind::NoteOn {
+                channel: 0,
+                note: 60,
+                velocity: 100,
+            }),
+        };
+        let plain = render_host(&mut baseline, None, &[note]);
+        let changed = render_host(
+            &mut filtered,
+            None,
+            &[
+                note,
+                MainHostEvent {
+                    offset: 64,
+                    kind: MainHostEventKind::Parameter {
+                        id: NOTE_FILTER_BASE,
+                        value: 68.0,
+                    },
+                },
+                MainHostEvent {
+                    offset: 64,
+                    kind: MainHostEventKind::Parameter {
+                        id: NOTE_FILTER_BASE + 1,
+                        value: 72.0,
+                    },
+                },
+                MainHostEvent {
+                    offset: 64,
+                    kind: MainHostEventKind::Parameter {
+                        id: NOTE_FILTER_BASE + 4,
+                        value: 1.0,
+                    },
+                },
+            ],
+        );
+        assert_eq!(&plain[..64], &changed[..64]);
+        assert!(
+            plain[80..]
+                .iter()
+                .zip(&changed[80..])
+                .any(|(a, b)| (a - b).abs() > 1e-5)
         );
     }
 

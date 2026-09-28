@@ -5,7 +5,10 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 
-use crate::main_host_parameters::{ARPEGGIATOR_BASE, SYNTH_BASE};
+use crate::main_host_parameters::{
+    ARPEGGIATOR_BASE, NOTE_FILTER_BASE, SCALE_QUANTIZER_BASE, SYNTH_BASE, TRANSPOSE_BASE,
+    VELOCITY_MAPPER_BASE,
+};
 use crate::main_session::{FX_CONTROL_COUNTS, default_main_session};
 use crate::main_snapshot::MainPcmSnapshot;
 
@@ -72,6 +75,33 @@ fn apply_rack(rack: &mut Value, snapshot: &MainPcmSnapshot) -> Result<(), MainEx
         (23, "filter", "resonance", 1.0, 0.0),
     ] {
         set_host_field(rack, snapshot, SYNTH_BASE + id, module, key, scale, bias)?;
+    }
+    for (id, module, key) in [
+        (SCALE_QUANTIZER_BASE, "scaleQuantizer", "root"),
+        (SCALE_QUANTIZER_BASE + 1, "scaleQuantizer", "scale"),
+        (SCALE_QUANTIZER_BASE + 2, "scaleQuantizer", "direction"),
+        (TRANSPOSE_BASE, "transpose", "semitones"),
+        (TRANSPOSE_BASE + 1, "transpose", "source"),
+        (NOTE_FILTER_BASE, "noteFilter", "low"),
+        (NOTE_FILTER_BASE + 1, "noteFilter", "high"),
+        (NOTE_FILTER_BASE + 2, "noteFilter", "mode"),
+        (NOTE_FILTER_BASE + 3, "noteFilter", "source"),
+        (VELOCITY_MAPPER_BASE, "velocityMapper", "amount"),
+        (VELOCITY_MAPPER_BASE + 1, "velocityMapper", "curve"),
+        (VELOCITY_MAPPER_BASE + 2, "velocityMapper", "offset"),
+        (VELOCITY_MAPPER_BASE + 3, "velocityMapper", "source"),
+    ] {
+        set_host_field(rack, snapshot, id, module, key, 1.0, 0.0)?;
+    }
+    for (id, module) in [
+        (SCALE_QUANTIZER_BASE + 3, "scaleQuantizer"),
+        (TRANSPOSE_BASE + 2, "transpose"),
+        (NOTE_FILTER_BASE + 4, "noteFilter"),
+        (VELOCITY_MAPPER_BASE + 4, "velocityMapper"),
+    ] {
+        if let Some(value) = snapshot.host_values.get(id) {
+            rack_field(rack, module)?["connected"] = json!(value >= 0.5);
+        }
     }
 
     for (slot, name) in ["fx1", "fx2"].into_iter().enumerate() {

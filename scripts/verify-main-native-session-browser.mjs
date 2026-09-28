@@ -40,6 +40,21 @@ try {
   assert.equal(await page.locator('#lfo-shape').inputValue(), String(nativeSession.rack.lfos[0].shape));
   assert.ok(Math.abs(Number(await page.locator('#source-output').getAttribute('aria-valuenow')) - 0.6) < 1e-5);
   assert.equal(await page.locator('#fx1-module-mix').getAttribute('aria-valuenow'), '0.25');
+  assert.equal(await page.locator('#scale-quantizer-root').getAttribute('data-value'), '2');
+  assert.equal(await page.locator('#scale-quantizer-connected').isChecked(), true);
+  assert.equal(await page.locator('#transpose-semitones').getAttribute('aria-valuenow'), '7');
+  assert.equal(await page.locator('#transpose-connected').isChecked(), true);
+  assert.equal(await page.locator('#note-filter-low').getAttribute('aria-valuenow'), '68');
+  assert.equal(await page.locator('#note-filter-connected').isChecked(), true);
+  assert.equal(await page.locator('#velocity-mapper-curve').getAttribute('data-value'), '2');
+  assert.equal(await page.locator('#velocity-mapper-connected').isChecked(), true);
+  if (!process.argv[2]) {
+    for (const name of ['scale-quantizer', 'transpose', 'note-filter', 'velocity-mapper']) {
+      await page.locator(`#${name}`).screenshot({
+        path: new URL(`../web/public/main-native-${name}.png`, import.meta.url).pathname,
+      });
+    }
+  }
   const downloadPromise = page.waitForEvent('download');
   await page.locator('#save-session').click();
   const download = await downloadPromise;
@@ -53,6 +68,10 @@ try {
   assert.ok(Math.abs(browserSession.rack.eq.output + 2) < 1e-5);
   assert.ok(Math.abs(browserSession.rack.eq.mix - 0.8) < 1e-5);
   assert.ok(Math.abs(browserSession.rack.fx1.parameters[0][3] - 0.6) < 1e-5);
+  assert.equal(browserSession.rack.scaleQuantizer.root, 2);
+  assert.equal(browserSession.rack.transpose.semitones, 7);
+  assert.equal(browserSession.rack.noteFilter.low, 68);
+  assert.equal(browserSession.rack.velocityMapper.curve, 2);
   assert.deepEqual(errors, []);
   console.log('Native Main v15 save opened and re-saved by the actual browser looper with identical loop/sample PCM and rack controls.');
 } finally {

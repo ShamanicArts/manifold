@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Main voice stages through native host controls · Manifold v2</title>
+  <style>
+    :root { font: 15px/1.55 system-ui, sans-serif; color: #1d3028; background: #f4f5f0; --line: #c9d6cd; --green: #28624c; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 1030px; margin: auto; padding: 36px 22px 90px; }
+    header { border-top: 3px solid var(--green); padding-top: 12px; }
+    .eyebrow { font: 11px ui-monospace, monospace; letter-spacing: .13em; text-transform: uppercase; color: #995d3c; }
+    h1, h2 { font-family: Georgia, serif; font-weight: 400; line-height: 1.12; }
+    h1 { font-size: clamp(38px, 6vw, 62px); margin: 12px 0 18px; }
+    h2 { font-size: 27px; margin: 0 0 10px; }
+    p { max-width: 72ch; color: #395346; }
+    a { color: var(--green); }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0 0; }
+    .actions a { display: inline-block; padding: 10px 14px; border: 1px solid var(--green); text-decoration: none; font-weight: 600; }
+    .actions a:first-child { background: var(--green); color: white; }
+    section { border-top: 1px solid var(--line); margin-top: 30px; padding-top: 20px; }
+    .faces { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+    figure { margin: 0; padding: 10px; border: 1px solid var(--line); background: white; }
+    figure img { display: block; width: 100%; height: auto; }
+    figcaption { margin-top: 7px; font-size: 13px; color: #526458; }
+    table { border-collapse: collapse; width: 100%; background: white; }
+    th, td { padding: 10px 12px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: #eaf0e9; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+    code { font: 12px ui-monospace, monospace; }
+    @media (max-width: 760px) { .faces { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 490px) { .faces { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body><main>
+  <header>
+    <div class="eyebrow">Manifold v2 / Main native host / voice stages</div>
+    <h1>Native automation reaches<br>the original voice modules.</h1>
+    <p>Scale Quantizer, Transpose, Note Filter, and Velocity Mapper now accept timed stable host IDs in the Rust Main processor. A native save carries those edits into the actual browser Main looper; the module faces below are screenshots from that reopened session.</p>
+    <div class="actions">
+      <a href="/main-looper.html">Open the actual Main looper →</a>
+      <a href="/main-native-saved-session.json" download>Download the native save</a>
+      <a href="/main-native-session-save-review.html">Full save round trip</a>
+    </div>
+  </header>
+  <section>
+    <h2>The restored faces</h2>
+    <div class="faces">
+      <figure><img src="/main-native-scale-quantizer.png" alt="Actual Main Scale Quantizer face restored with root D and Minor scale"><figcaption>Scale Quantizer · root D, Minor, connected</figcaption></figure>
+      <figure><img src="/main-native-transpose.png" alt="Actual Main Transpose face restored with plus seven semitones"><figcaption>Transpose · +7 semitones, connected</figcaption></figure>
+      <figure><img src="/main-native-note-filter.png" alt="Actual Main Note Filter face restored with a 68 to 72 note range"><figcaption>Note Filter · notes 68–72, connected</figcaption></figure>
+      <figure><img src="/main-native-velocity-mapper.png" alt="Actual Main Velocity Mapper face restored with Hard curve, amount 80 percent, offset 10 percent"><figcaption>Velocity Mapper · Hard, 80% amount, +10% offset</figcaption></figure>
+    </div>
+  </section>
+  <section>
+    <h2>One stable ID range per stage</h2>
+    <table><thead><tr><th>Stage</th><th>Host IDs</th><th>Saved fields</th></tr></thead><tbody>
+      <tr><td>Scale Quantizer</td><td><code>832–835</code></td><td>Root, scale, direction, connection</td></tr>
+      <tr><td>Transpose</td><td><code>864–866</code></td><td>Semitones, source, connection</td></tr>
+      <tr><td>Note Filter</td><td><code>896–900</code></td><td>Low/high note, mode, source, connection</td></tr>
+      <tr><td>Velocity Mapper</td><td><code>928–932</code></td><td>Amount, curve, offset, source, connection</td></tr>
+    </tbody></table>
+    <p>Every host value is validated before a block changes. A timed Note Filter edit preserves the first 64 audio frames and changes the voice after its exact offset. The audio thread freezes accepted values with loop and sample PCM; JSON is assembled on the control thread. Native tests reject fractional enum values and reimport the saved state. The muted browser probe opens and re-saves both the current and upgraded version-3 examples with identical PCM and the edited voice-stage controls.</p>
+  </section>
+  <section>
+    <h2>Next boundary</h2>
+    <p>Four LFO slots and the control utilities still have reserved host ID ranges to wire. Main CLAP and VST3 product classes still need to call the same native runtime and state path.</p>
+  </section>
+</main></body>
+</html>
