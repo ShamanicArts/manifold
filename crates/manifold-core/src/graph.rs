@@ -1463,6 +1463,12 @@ impl GraphDescription {
 }
 
 impl ExecutionPlan {
+    /// Preparation constraints for a host that embeds this plan in a larger
+    /// preallocated instrument. Read on the control side before publication.
+    pub fn preparation(&self) -> (f32, usize) {
+        (self.sample_rate, self.max_frames)
+    }
+
     /// Retain compatible retrospective rings when a host publishes a prepared
     /// replacement. This runs at a block boundary and moves only owned ring
     /// buffers and cursors; it never compiles or allocates.

@@ -1,0 +1,364 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "external",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 6,
+        "type": "svf"
+      },
+      {
+        "id": 7,
+        "type": "effect-slot-legacy",
+        "a": 0,
+        "b": 0
+      },
+      {
+        "id": 8,
+        "type": "effect-slot-legacy",
+        "a": 0,
+        "b": 0
+      },
+      {
+        "id": 9,
+        "type": "eq8"
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "to": 6,
+        "inputPort": 0
+      },
+      {
+        "from": 6,
+        "to": 7,
+        "inputPort": 0
+      },
+      {
+        "from": 7,
+        "to": 8,
+        "inputPort": 0
+      },
+      {
+        "from": 8,
+        "to": 9,
+        "inputPort": 0
+      },
+      {
+        "from": 9,
+        "to": 3,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 6,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 1,
+        "value": 3200
+      },
+      {
+        "nodeId": 6,
+        "id": 2,
+        "value": 0.75
+      },
+      {
+        "nodeId": 7,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 7,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 7,
+        "id": 2,
+        "value": 0.5
+      },
+      {
+        "nodeId": 7,
+        "id": 3,
+        "value": 0.5
+      },
+      {
+        "nodeId": 7,
+        "id": 4,
+        "value": 0.2
+      },
+      {
+        "nodeId": 7,
+        "id": 5,
+        "value": 0.6
+      },
+      {
+        "nodeId": 7,
+        "id": 6,
+        "value": 0.4
+      },
+      {
+        "nodeId": 8,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 8,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 8,
+        "id": 2,
+        "value": 0.5
+      },
+      {
+        "nodeId": 8,
+        "id": 3,
+        "value": 0.5
+      },
+      {
+        "nodeId": 8,
+        "id": 4,
+        "value": 0.2
+      },
+      {
+        "nodeId": 8,
+        "id": 5,
+        "value": 0.6
+      },
+      {
+        "nodeId": 8,
+        "id": 6,
+        "value": 0.4
+      },
+      {
+        "nodeId": 9,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 9,
+        "id": 2,
+        "value": 60
+      },
+      {
+        "nodeId": 9,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 4,
+        "value": 1
+      },
+      {
+        "nodeId": 9,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 7,
+        "value": 120
+      },
+      {
+        "nodeId": 9,
+        "id": 8,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 9,
+        "id": 10,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 12,
+        "value": 250
+      },
+      {
+        "nodeId": 9,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 14,
+        "value": 1
+      },
+      {
+        "nodeId": 9,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 17,
+        "value": 500
+      },
+      {
+        "nodeId": 9,
+        "id": 18,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 19,
+        "value": 1
+      },
+      {
+        "nodeId": 9,
+        "id": 20,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 21,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 22,
+        "value": 1000
+      },
+      {
+        "nodeId": 9,
+        "id": 23,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 24,
+        "value": 1
+      },
+      {
+        "nodeId": 9,
+        "id": 25,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 26,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 27,
+        "value": 2500
+      },
+      {
+        "nodeId": 9,
+        "id": 28,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 29,
+        "value": 1
+      },
+      {
+        "nodeId": 9,
+        "id": 30,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 31,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 32,
+        "value": 6000
+      },
+      {
+        "nodeId": 9,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 34,
+        "value": 1
+      },
+      {
+        "nodeId": 9,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 36,
+        "value": 2
+      },
+      {
+        "nodeId": 9,
+        "id": 37,
+        "value": 12000
+      },
+      {
+        "nodeId": 9,
+        "id": 38,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 39,
+        "value": 1
+      },
+      {
+        "nodeId": 9,
+        "id": 40,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 41,
+        "value": 1
+      }
+    ]
+  }
+}

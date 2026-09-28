@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import catalog from '../../../projects/main-looper/rack.json' with { type: 'json' };
 import fixture from '../../../projects/main-looper/default-rack-graph.json' with { type: 'json' };
+import insertFixture from '../../../projects/main-looper/default-rack-insert.json' with { type: 'json' };
 import { initialRackDocument, addRackModule, connectRackPorts, disconnectRackInput,
   replaceRackInput } from './rack-document.js';
-import { compileMainRackAudio } from './main-rack-graph.js';
+import { compileMainRackAudio, compileMainRackInsert } from './main-rack-graph.js';
 
 test('authored Main default compiles to the portable Graph host fixture', () => {
   const signal = compileMainRackAudio(initialRackDocument(catalog), catalog);
@@ -13,6 +14,17 @@ test('authored Main default compiles to the portable Graph host fixture', () => 
     [1, 'input.raw'], [3, 'output'], [4, 'midi-input'], [5, 'main-voice-bank'],
     [6, 'svf'], [7, 'effect-slot-legacy'], [8, 'effect-slot-legacy'], [9, 'eq8'],
   ]);
+});
+
+test('Main insert uses the existing voice bank as its sole audio source', () => {
+  const insert = compileMainRackInsert(initialRackDocument(catalog), catalog);
+  assert.deepEqual(insert, insertFixture.signal);
+  assert.deepEqual(insert.nodes.map(node => [node.id, node.type]), [
+    [1, 'input.raw'], [3, 'output'], [6, 'svf'], [7, 'effect-slot-legacy'],
+    [8, 'effect-slot-legacy'], [9, 'eq8'],
+  ]);
+  assert.ok(insert.connections.some(edge => edge.from === 1 && edge.to === 6));
+  assert.ok(!insert.nodes.some(node => node.type === 'main-voice-bank'));
 });
 
 test('audio rewiring changes the compiled signal and keeps parked module state', () => {
@@ -33,9 +45,12 @@ test('LFO OUT to Filter Cutoff creates an audible control edge', () => {
   rack = connectRackPorts(rack, { moduleId: 'lfo1', portId: 'out' },
     { moduleId: 'filter', portId: 'cutoff' }, catalog);
   const signal = compileMainRackAudio(rack, catalog);
+  const insert = compileMainRackInsert(rack, catalog);
   assert.ok(signal.nodes.some(node => node.id === 6 && node.type === 'modulated-svf'));
   assert.ok(signal.nodes.some(node => node.id === 11 && node.type === 'lfo'));
   assert.ok(signal.connections.some(edge => edge.from === 11 && edge.to === 6 && edge.inputPort === 1));
+  assert.ok(insert.connections.some(edge => edge.from === 11 && edge.to === 6 && edge.inputPort === 1));
+  assert.ok(insert.connections.some(edge => edge.from === 1 && edge.to === 6 && edge.inputPort === 0));
   assert.equal(signal.initialParameters.find(parameter => parameter.nodeId === 11 && parameter.id === 1).value, 1);
 });
 

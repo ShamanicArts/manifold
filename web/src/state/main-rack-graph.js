@@ -76,3 +76,17 @@ export function compileMainRackAudio(rackDocument, catalog) {
   return validateTopology({ inputs: 2, outputs: 2, inputSource: 'none',
     nodes, connections, initialParameters });
 }
+
+// MainInstrument already owns the voice bank, its sample assets, and the
+// looper. Its prepared insert graph receives that voice output as raw input.
+export function compileMainRackInsert(rackDocument, catalog) {
+  const full = compileMainRackAudio(rackDocument, catalog);
+  const voiceNodeId = rackDocument.modules.find(module => module.id === 'oscillator').nodeId;
+  const midiNodeId = catalog.endpoints.__midiInput.nodeId;
+  return validateTopology({ ...full, inputSource: 'external',
+    nodes: full.nodes.filter(node => node.id !== midiNodeId && node.id !== voiceNodeId),
+    connections: full.connections.filter(edge => edge.from !== midiNodeId && edge.to !== voiceNodeId)
+      .map(edge => edge.from === voiceNodeId ? { ...edge, from: 1 } : edge),
+    initialParameters: full.initialParameters.filter(parameter => parameter.nodeId !== voiceNodeId),
+  });
+}

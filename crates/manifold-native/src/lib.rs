@@ -69,6 +69,12 @@ pub struct NativeProcessor {
 }
 
 impl NativeProcessor {
+    /// Hand a prepared graph to an enclosing instrument on the control side.
+    /// Host buffers and parameter maps are discarded before audio publication.
+    pub fn into_plan(self) -> ExecutionPlan {
+        self.plan
+    }
+
     pub fn transfer_retrospective_history_from(&mut self, previous: &mut Self) -> usize {
         self.plan
             .transfer_retrospective_history_from(&mut previous.plan)

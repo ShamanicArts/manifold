@@ -5,6 +5,7 @@ use crate::cv_utilities::{AttenuverterBias, CvMix, SampleHold};
 use crate::effect_slot::{self, EffectSlot};
 use crate::eq8::{self, Eq8};
 use crate::events::EventKind;
+use crate::graph::{ExecutionPlan, GraphError};
 use crate::main_compare::MainCompare;
 use crate::main_control_slew::MainControlSlew;
 use crate::main_lfo::{LfoOutputs, MainLfo};
@@ -63,6 +64,7 @@ pub struct MainInstrument {
     fx1: EffectSlot,
     fx2: EffectSlot,
     eq: Eq8,
+    rack_insert: Option<ExecutionPlan>,
     sample_capture: MainSampleCapture,
     layer_taps: [Vec<f32>; LAYERS],
     sample_rate: f32,
@@ -286,6 +288,7 @@ impl MainInstrument {
                 effect_slot::DEFAULT_TYPE_PARAMETERS[0],
             ),
             eq: Eq8::new(sample_rate, eq8::defaults()),
+            rack_insert: None,
             sample_capture: MainSampleCapture::new(sample_rate),
             layer_taps: std::array::from_fn(|_| vec![0.0; max_frames * 2]),
             sample_rate,
@@ -314,8 +317,58 @@ impl MainInstrument {
         &mut self.looper
     }
 
+    /// Copy this instrument's control state into a prepared insert plan while
+    /// processing is suspended. A future live editor can use a control-side
+    /// snapshot instead; this method never runs in the audio callback.
+    pub fn prepare_rack_insert_controls(&self, plan: &mut ExecutionPlan) {
+        // The Main session remains the owner of control values. The topology
+        // bundle provides prepared kernels and cable routes.
+        plan.set_parameter(6, 0, self.filter.mode() as u32 as f32);
+        plan.set_parameter(6, 1, self.filter_cutoff_base);
+        plan.set_parameter(6, 2, self.filter_resonance_base);
+        for (node, slot) in [(7, &self.fx1), (8, &self.fx2)] {
+            for effect_type in 0..21 {
+                if let Some(params) = slot.params_for_type(effect_type) {
+                    plan.restore_effect_slot_params(node, effect_type, params);
+                }
+            }
+            plan.set_parameter(node, 0, slot.selected_type() as f32);
+            plan.set_parameter(node, 1, slot.target_mix());
+            if let Some(params) = slot.params_for_type(slot.selected_type()) {
+                for (index, value) in params.into_iter().enumerate() {
+                    plan.set_parameter(node, index as u32 + 2, value);
+                }
+            }
+        }
+        for (index, value) in self.eq.control_snapshot().into_iter().enumerate() {
+            plan.set_parameter(9, index as u32, value);
+        }
+    }
+
+    /// Replace the prepared post-voice insert while processing is suspended.
+    /// The voice bank, capture rings, and looper remain owned by this
+    /// instrument. Live hosts need a separate publication and retirement
+    /// handoff before calling this from an audio callback: a rejected plan
+    /// would otherwise be dropped on that callback.
+    pub fn replace_prepared_rack_insert(
+        &mut self,
+        replacement: Option<ExecutionPlan>,
+    ) -> Result<Option<ExecutionPlan>, GraphError> {
+        if let Some(plan) = &replacement {
+            let (rate, capacity) = plan.preparation();
+            if rate != self.sample_rate || capacity < self.synth_left.len() {
+                return Err(GraphError::InvalidPreparation);
+            }
+        }
+        Ok(std::mem::replace(&mut self.rack_insert, replacement))
+    }
+
+    pub fn has_rack_insert(&self) -> bool {
+        self.rack_insert.is_some()
+    }
+
     pub fn set_synth_parameter(&mut self, id: u32, value: f32) -> bool {
-        match id {
+        let accepted = match id {
             21 => self.filter.set_parameter(0, value),
             22 if value.is_finite() => {
                 self.filter_cutoff_base = value.clamp(80.0, 16_000.0);
@@ -337,7 +390,24 @@ impl MainInstrument {
             128..=134 => self.fx1.set_parameter(id - 128, value),
             136..=142 => self.fx2.set_parameter(id - 136, value),
             _ => self.synth.set_parameter(id, value),
+        };
+        if accepted {
+            if let Some(plan) = &mut self.rack_insert {
+                let routed = match id {
+                    21..=23 => Some((6u64, id - 21)),
+                    64..=105 => Some((9u64, id - 64)),
+                    128..=134 => Some((7u64, id - 128)),
+                    136..=142 => Some((8u64, id - 136)),
+                    _ => None,
+                };
+                if let Some((node, parameter)) = routed {
+                    // A disconnected insert node may be pruned; the authored
+                    // shadow values still save for a later reconnection.
+                    plan.set_parameter(node, parameter, value);
+                }
+            }
         }
+        accepted
     }
 
     /// Restore an FX type's saved controls on the host control thread. The
@@ -348,11 +418,17 @@ impl MainInstrument {
         effect_type: u32,
         values: [f32; 5],
     ) -> bool {
-        match slot {
+        let restored = match slot {
             0 => self.fx1.restore_stored_params(effect_type, values),
             1 => self.fx2.restore_stored_params(effect_type, values),
             _ => false,
+        };
+        if restored {
+            if let Some(plan) = &mut self.rack_insert {
+                plan.restore_effect_slot_params((slot as u32 + 7).into(), effect_type, values);
+            }
         }
+        restored
     }
 
     pub fn fx_type_params(&self, slot: usize, effect_type: u32) -> Option<[f32; 5]> {
@@ -868,31 +944,41 @@ impl MainInstrument {
             &mut self.synth_left[..frames],
             &mut self.synth_right[..frames],
         ]);
-        self.filter.process_planar(
-            [&self.synth_left[..frames], &self.synth_right[..frames]],
-            [
-                &mut self.filtered_left[..frames],
-                &mut self.filtered_right[..frames],
-            ],
-        );
-        self.fx1.process_planar(
-            [
-                &self.filtered_left[..frames],
-                &self.filtered_right[..frames],
-            ],
-            [&mut self.fx1_left[..frames], &mut self.fx1_right[..frames]],
-        );
-        self.fx2.process_planar(
-            [&self.fx1_left[..frames], &self.fx1_right[..frames]],
-            [&mut self.fx2_left[..frames], &mut self.fx2_right[..frames]],
-        );
-        self.eq.process_planar(
-            [&self.fx2_left[..frames], &self.fx2_right[..frames]],
-            [
-                &mut self.equalized_left[..frames],
-                &mut self.equalized_right[..frames],
-            ],
-        );
+        if let Some(insert) = &mut self.rack_insert {
+            insert.process(
+                [&self.synth_left[..frames], &self.synth_right[..frames]],
+                [
+                    &mut self.equalized_left[..frames],
+                    &mut self.equalized_right[..frames],
+                ],
+            );
+        } else {
+            self.filter.process_planar(
+                [&self.synth_left[..frames], &self.synth_right[..frames]],
+                [
+                    &mut self.filtered_left[..frames],
+                    &mut self.filtered_right[..frames],
+                ],
+            );
+            self.fx1.process_planar(
+                [
+                    &self.filtered_left[..frames],
+                    &self.filtered_right[..frames],
+                ],
+                [&mut self.fx1_left[..frames], &mut self.fx1_right[..frames]],
+            );
+            self.fx2.process_planar(
+                [&self.fx1_left[..frames], &self.fx1_right[..frames]],
+                [&mut self.fx2_left[..frames], &mut self.fx2_right[..frames]],
+            );
+            self.eq.process_planar(
+                [&self.fx2_left[..frames], &self.fx2_right[..frames]],
+                [
+                    &mut self.equalized_left[..frames],
+                    &mut self.equalized_right[..frames],
+                ],
+            );
+        }
         for frame in 0..frames {
             // Main/dsp/main.lua routes host input to the capture and monitor
             // branches. midisynth_integration.lua sends `spec` to every
