@@ -2,7 +2,7 @@
 // Vite serves this AudioWorklet module as an asset, so it must be self-contained.
 // The nine strips form one timeline: older audio is left, newest audio is right.
 // Peak queries use samples ago, so reverse the age bins inside every strip.
-export function captureStripBins(bars, index, samplesPerBar, captureFrames, capturedFrames, count = 128) {
+export function captureStripBins(bars, index, samplesPerBar, captureFrames, capturedFrames, count = 64) {
   const older = Math.min(captureFrames, Math.floor(bars[index] * samplesPerBar));
   const newer = Math.min(captureFrames, Math.floor((bars[index + 1] ?? 0) * samplesPerBar));
   const span = Math.max(0, older - newer);

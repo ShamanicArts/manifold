@@ -26,13 +26,15 @@ try {
   const captureBounds = await page.locator('#capture').boundingBox();
   const tabBounds = await page.locator('.tabs').boundingBox();
   assert.equal(Math.round(captureBounds.y - transportBounds.y), 52);
-  assert.equal(Math.round(tabBounds.y - transportBounds.y), 182);
+  assert.equal(Math.round(tabBounds.y - transportBounds.y), 188);
   const firstCaptureStrip = await page.locator('.segment').first().boundingBox();
   const lastCaptureStrip = await page.locator('.segment').last().boundingBox();
   assert.equal(Math.round(firstCaptureStrip.x - captureBounds.x), 0);
   assert.equal(Math.round(firstCaptureStrip.y - captureBounds.y), 4);
   assert.equal(Math.round(firstCaptureStrip.width), 142);
   assert.equal(Math.round(firstCaptureStrip.height), 122);
+  assert.equal(Math.round(captureBounds.height), 130);
+  assert.equal(Math.round(captureBounds.y + captureBounds.height - (firstCaptureStrip.y + firstCaptureStrip.height)), 4);
   assert.equal(Math.round(lastCaptureStrip.x - captureBounds.x), 1136);
   assert.equal(await page.locator('.segment').last().locator('span').textContent(), '1/16');
   assert.equal(await page.locator('.segment').first().locator('canvas').evaluate(canvas => canvas.width), 142);
@@ -587,6 +589,7 @@ try {
   delete v11.rack.transpose;
   await page.locator('#open-session').setInputFiles({ name: 'main-looper-v11.json',
     mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(v11)) });
+  await page.waitForFunction(() => !document.querySelector('#transpose-connected').checked, null, { timeout: 15_000 });
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Opened the four-layer'), { timeout: 15000 });
   assert.equal(await page.locator('#transpose-connected').isChecked(), false);
   assert.equal(await page.locator('#transpose-semitones').getAttribute('aria-valuenow'), '0');

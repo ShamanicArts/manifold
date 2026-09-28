@@ -6,7 +6,7 @@ const { captureStripBins } = await import('../web/src/audio/main-looper-processo
 
 const bars = [1, .5, .25];
 const bins = captured => captureStripBins(bars, 2, 1_000, 30_000, captured, 8);
-assert.equal(captureStripBins(bars, 2, 1_000, 30_000, 250).length, 128);
+assert.equal(captureStripBins(bars, 2, 1_000, 30_000, 250).length, 64);
 assert.deepEqual(bins(0), Array(8).fill(null));
 assert.deepEqual(bins(125), [null, null, null, null, [93, 125], [62, 93], [31, 62], [0, 31]]);
 assert.deepEqual(bins(250), [[218, 250], [187, 218], [156, 187], [125, 156],
