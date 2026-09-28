@@ -1,6 +1,12 @@
 # Main VST3 boundary
 
-This is the next host adapter for the existing `manifold.main-looper` product. The audio and state owner remains `manifold-native::MainAudioRuntime`; Main VST3 must not load the generic Graph class or implement a second instrument engine.
+This host adapter uses the existing `manifold.main-looper` product. The audio and state owner remains `manifold-native::MainAudioRuntime`; Main VST3 does not load the generic Graph class or implement a second instrument engine.
+
+## Current checkpoint
+
+The packaged VST3 factory exposes a distinct Main processor and controller. The controller advertises the 204 authored Main parameter IDs with physical to normalized conversion, including the sparse LFO route enum. The processor passes stereo input/output, offset MIDI and parameter events, portable version-15 loop and Sample PCM loading, and coherent state save while another thread processes audio. The shared native runtime is checked sample by sample against the VST3 adapter in unit tests. Dense host automation caused the first official SDK validator run to fail two tests because its 4,096 event workspace was too small; a 65,536-event workspace prepared on activation resolved this. The rebuilt bundle passes **1,611 validator tests, zero failures**. `cargo test --workspace`, `./scripts/build-wasm.sh`, and the VST3 release bundle build pass.
+
+The original Main HTML is included in the VST3 bundle, but `IPlugView` still needs the Main-specific controller/processor command bridge before the original editor can be opened. The isolated REAPER probe is prepared in `scripts/probe-reaper-main-vst3.py`; the first headless Weston run timed out during REAPER setup, so DAW discovery and render are still unverified. The validator gives independent host ABI and lifecycle coverage, not DAW UI proof.
 
 ## Decisions for the first class
 
@@ -15,4 +21,4 @@ This is the next host adapter for the existing `manifold.main-looper` product. T
 - A host probe tests timed MIDI and automation, First Loop record/stop, in-place audio buffers, state save/reopen with identical loop and Sample PCM, and invalid state rejection while processing.
 - The official VST3 validator and a real DAW run check host lifecycle and editor embedding. The DAW run opens the original Source and session controls, captures a Sample, saves and reopens it, and measures callback cost under repeated FX type changes.
 
-The first implementation should register the class only when its processor, controller, and state path are loadable. The original web editor is a separate completion gate for that class. The class category and support for hosts that restrict audio input on an instrument require direct DAW checks before declaring portable host behavior.
+The original web editor is a separate completion gate for this registered class. The class category and support for hosts that restrict audio input on an instrument require direct DAW checks before declaring portable host behavior.

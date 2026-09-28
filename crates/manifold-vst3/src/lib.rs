@@ -9,9 +9,8 @@ mod graph_controller;
 #[cfg(target_os = "linux")]
 mod graph_editor;
 mod graph_processor;
-// Prepared for the distinct Main processor/controller pair; this contract is
-// tested before either class is registered with a host.
-#[allow(dead_code)]
+mod main_controller;
+mod main_processor;
 mod main_values;
 mod preset;
 mod processor;
@@ -44,7 +43,7 @@ impl IPluginFactoryTrait for Factory {
     }
 
     unsafe fn countClasses(&self) -> i32 {
-        4
+        6
     }
 
     unsafe fn getClassInfo(&self, index: i32, info: *mut PClassInfo) -> tresult {
@@ -57,6 +56,8 @@ impl IPluginFactoryTrait for Factory {
             1 => controller::Controller::CID,
             2 => graph_processor::GraphProcessor::CID,
             3 => graph_controller::GraphController::CID,
+            4 => main_processor::MainProcessor::CID,
+            5 => main_controller::MainController::CID,
             _ => return kInvalidArgument,
         };
         info.cardinality = PClassInfo_::ClassCardinality_::kManyInstances as i32;
@@ -71,8 +72,10 @@ impl IPluginFactoryTrait for Factory {
         copy_cstring(
             if index < 2 {
                 "Manifold Standalone FX"
-            } else {
+            } else if index < 4 {
                 "Manifold Graph"
+            } else {
+                "Manifold Main"
             },
             &mut info.name,
         );
@@ -113,6 +116,18 @@ impl IPluginFactoryTrait for Factory {
                     .to_com_ptr::<FUnknown>()
                     .unwrap(),
             )
+        } else if cid == main_processor::MainProcessor::CID {
+            Some(
+                ComWrapper::new(main_processor::MainProcessor::new())
+                    .to_com_ptr::<FUnknown>()
+                    .unwrap(),
+            )
+        } else if cid == main_controller::MainController::CID {
+            Some(
+                ComWrapper::new(main_controller::MainController::new())
+                    .to_com_ptr::<FUnknown>()
+                    .unwrap(),
+            )
         } else {
             None
         };
@@ -135,6 +150,8 @@ impl IPluginFactory2Trait for Factory {
             1 => controller::Controller::CID,
             2 => graph_processor::GraphProcessor::CID,
             3 => graph_controller::GraphController::CID,
+            4 => main_processor::MainProcessor::CID,
+            5 => main_controller::MainController::CID,
             _ => return kInvalidArgument,
         };
         info.cardinality = PClassInfo_::ClassCardinality_::kManyInstances as i32;
@@ -149,14 +166,22 @@ impl IPluginFactory2Trait for Factory {
         copy_cstring(
             if index < 2 {
                 "Manifold Standalone FX"
-            } else {
+            } else if index < 4 {
                 "Manifold Graph"
+            } else {
+                "Manifold Main"
             },
             &mut info.name,
         );
         info.classFlags = 0;
         copy_cstring(
-            if index % 2 == 0 { "Fx" } else { "" },
+            if index == 4 {
+                "Instrument"
+            } else if index % 2 == 0 {
+                "Fx"
+            } else {
+                ""
+            },
             &mut info.subCategories,
         );
         copy_cstring("Shamanic Arts", &mut info.vendor);
@@ -295,12 +320,14 @@ mod tests {
     #[test]
     fn exported_factory_creates_processor_and_controller() {
         let factory = unsafe { ComPtr::from_raw(GetPluginFactory()) }.unwrap();
-        assert_eq!(unsafe { factory.countClasses() }, 4);
+        assert_eq!(unsafe { factory.countClasses() }, 6);
         for (cid, iid) in [
             (processor::Processor::CID, IComponent::IID),
             (controller::Controller::CID, IEditController::IID),
             (graph_processor::GraphProcessor::CID, IComponent::IID),
             (graph_controller::GraphController::CID, IEditController::IID),
+            (main_processor::MainProcessor::CID, IComponent::IID),
+            (main_controller::MainController::CID, IEditController::IID),
         ] {
             let mut object = null_mut();
             let result = unsafe {
@@ -490,5 +517,111 @@ mod tests {
         assert_eq!(rendered_left, side_left);
         assert_eq!(rendered_right, side_right);
         assert_eq!(unsafe { graph.setActive(0) }, kResultOk);
+    }
+
+    #[test]
+    fn main_vst3_component_and_controller_reopen_portable_loop_and_sample_pcm() {
+        let fixture = include_bytes!("../../../web/public/main-native-saved-session.json");
+        let component = main_processor::MainProcessor::new();
+        let controller = main_controller::MainController::new();
+        let (incoming, _) = stream(fixture.to_vec());
+        assert_eq!(unsafe { component.setState(incoming.as_ptr()) }, kResultOk);
+        let (controller_state, _) = stream(fixture.to_vec());
+        assert_eq!(
+            unsafe { controller.setComponentState(controller_state.as_ptr()) },
+            kResultOk
+        );
+        let mut setup = ProcessSetup {
+            processMode: 0,
+            symbolicSampleSize: SymbolicSampleSizes_::kSample32 as i32,
+            maxSamplesPerBlock: 128,
+            sampleRate: 48_000.0,
+        };
+        assert_eq!(unsafe { component.setupProcessing(&mut setup) }, kResultOk);
+        assert_eq!(unsafe { component.setActive(1) }, kResultOk);
+
+        let (outgoing, data) = stream(Vec::new());
+        assert_eq!(unsafe { component.getState(outgoing.as_ptr()) }, kResultOk);
+        let saved: serde_json::Value = serde_json::from_slice(&data.lock().unwrap().bytes).unwrap();
+        let original: serde_json::Value = serde_json::from_slice(fixture).unwrap();
+        for layer in 0..4 {
+            assert_eq!(
+                saved["layers"][layer]["pcmF32Base64"],
+                original["layers"][layer]["pcmF32Base64"]
+            );
+        }
+        assert_eq!(
+            saved["sample"]["pcmF32Base64"],
+            original["sample"]["pcmF32Base64"]
+        );
+        assert_eq!(unsafe { component.setActive(0) }, kResultOk);
+    }
+
+    #[test]
+    fn main_vst3_saves_a_live_session_while_host_blocks_continue() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let fixture = include_bytes!("../../../web/public/main-native-saved-session.json");
+        let component = Arc::new(main_processor::MainProcessor::new());
+        let (incoming, _) = stream(fixture.to_vec());
+        assert_eq!(unsafe { component.setState(incoming.as_ptr()) }, kResultOk);
+        let mut setup = ProcessSetup {
+            processMode: 0,
+            symbolicSampleSize: SymbolicSampleSizes_::kSample32 as i32,
+            maxSamplesPerBlock: 128,
+            sampleRate: 48_000.0,
+        };
+        assert_eq!(unsafe { component.setupProcessing(&mut setup) }, kResultOk);
+        assert_eq!(unsafe { component.setActive(1) }, kResultOk);
+        assert_eq!(unsafe { component.setProcessing(1) }, kResultOk);
+        let running = Arc::new(AtomicBool::new(true));
+        std::thread::scope(|scope| {
+            let worker_component = Arc::clone(&component);
+            let worker_running = Arc::clone(&running);
+            scope.spawn(move || {
+                let mut left = [0.0_f32; 128];
+                let mut right = [0.0_f32; 128];
+                let mut channels = [left.as_mut_ptr(), right.as_mut_ptr()];
+                let mut output = AudioBusBuffers {
+                    numChannels: 2,
+                    silenceFlags: 0,
+                    __field0: AudioBusBuffers__type0 {
+                        channelBuffers32: channels.as_mut_ptr(),
+                    },
+                };
+                let mut block = ProcessData {
+                    processMode: 0,
+                    symbolicSampleSize: SymbolicSampleSizes_::kSample32 as i32,
+                    numSamples: 128,
+                    numInputs: 0,
+                    numOutputs: 1,
+                    inputs: null_mut(),
+                    outputs: &mut output,
+                    inputParameterChanges: null_mut(),
+                    outputParameterChanges: null_mut(),
+                    inputEvents: null_mut(),
+                    outputEvents: null_mut(),
+                    processContext: null_mut(),
+                };
+                while worker_running.load(Ordering::Acquire) {
+                    assert_eq!(unsafe { worker_component.process(&mut block) }, kResultOk);
+                }
+            });
+            let (outgoing, data) = stream(Vec::new());
+            assert_eq!(unsafe { component.getState(outgoing.as_ptr()) }, kResultOk);
+            let saved: serde_json::Value =
+                serde_json::from_slice(&data.lock().unwrap().bytes).unwrap();
+            let original: serde_json::Value = serde_json::from_slice(fixture).unwrap();
+            assert_eq!(
+                saved["layers"][0]["pcmF32Base64"],
+                original["layers"][0]["pcmF32Base64"]
+            );
+            assert_eq!(
+                saved["sample"]["pcmF32Base64"],
+                original["sample"]["pcmF32Base64"]
+            );
+            running.store(false, Ordering::Release);
+        });
+        assert_eq!(unsafe { component.setProcessing(0) }, kResultOk);
+        assert_eq!(unsafe { component.setActive(0) }, kResultOk);
     }
 }

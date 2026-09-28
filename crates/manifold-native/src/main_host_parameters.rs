@@ -709,3 +709,149 @@ mod tests {
         }
     }
 }
+
+pub fn parameter_name(target: MainParameterTarget) -> (String, String) {
+    match target {
+        MainParameterTarget::Transport(local) => (
+            "Transport".into(),
+            [
+                "Active layer",
+                "Mode",
+                "Tempo",
+                "Target BPM",
+                "Overdub",
+                "Overdub length",
+            ][local as usize]
+                .into(),
+        ),
+        MainParameterTarget::Layer { layer, local } => (
+            format!("Loop layer {}", layer + 1),
+            ["Volume", "Speed", "Mute", "Playing", "Position"][local as usize].into(),
+        ),
+        MainParameterTarget::Synth(local) => {
+            if (64..=103).contains(&local) {
+                let band = (local - 64) / 5;
+                return (
+                    format!("EQ band {}", band + 1),
+                    ["Enabled", "Type", "Frequency", "Gain", "Q"][(local - 64) as usize % 5].into(),
+                );
+            }
+            if local == 104 || local == 105 {
+                return (
+                    "EQ".into(),
+                    if local == 104 { "Output" } else { "Mix" }.into(),
+                );
+            }
+            if (128..=142).contains(&local) {
+                let slot = if local < 136 { 1 } else { 2 };
+                let index = (local - if slot == 1 { 128 } else { 136 }) as usize;
+                let name = [
+                    "Effect type",
+                    "Mix",
+                    "Param 1",
+                    "Param 2",
+                    "Param 3",
+                    "Param 4",
+                    "Param 5",
+                ];
+                return (format!("FX {slot}"), name[index].into());
+            }
+            let (module, name) = match local {
+                0 => ("Source", "Waveform"),
+                1 => ("Source", "Sample blend"),
+                2 => ("Source", "Sample root"),
+                3 => ("Source", "Keytrack"),
+                4 => ("Source", "Sample pitch"),
+                5 => ("Source", "Pitch mode"),
+                6 => ("Source", "Blend mode"),
+                7 => ("Source", "Blend depth"),
+                11 => ("ADSR", "Attack"),
+                12 => ("ADSR", "Decay"),
+                13 => ("ADSR", "Sustain"),
+                14 => ("ADSR", "Release"),
+                15 => ("Source", "Output"),
+                16 => ("Source", "Sample stretch"),
+                19 => ("Source", "Wave render"),
+                20 => ("Source", "Sample crossfade"),
+                21 => ("Filter", "Mode"),
+                22 => ("Filter", "Cutoff"),
+                23 => ("Filter", "Resonance"),
+                _ => ("Main", "Control"),
+            };
+            (module.into(), name.into())
+        }
+        MainParameterTarget::LfoParameter { slot, local } => (
+            format!("LFO {}", slot + 1),
+            ["Shape", "Rate", "Depth", "Phase", "Retrigger"][local as usize].into(),
+        ),
+        MainParameterTarget::LfoRoute { slot, local } => (
+            format!("LFO {} route", slot + 1),
+            ["Source", "Target", "Amount", "Bias", "Mode", "Enabled"][local as usize].into(),
+        ),
+        MainParameterTarget::LfoActive { slot } => (format!("LFO {}", slot + 1), "Active".into()),
+        MainParameterTarget::Atv(local) => (
+            "ATV / Bias".into(),
+            ["Amount", "Bias", "LFO slot", "LFO port"][local as usize].into(),
+        ),
+        MainParameterTarget::Slew(local) => (
+            "Slew".into(),
+            ["Rise", "Fall", "Shape", "Source"][local as usize].into(),
+        ),
+        MainParameterTarget::SampleHold(local) => (
+            "Sample Hold".into(),
+            [
+                "Mode",
+                "Source",
+                "Trigger source",
+                "Manual gate",
+                "Held",
+                "Trigger high",
+            ][local as usize]
+                .into(),
+        ),
+        MainParameterTarget::Compare(local) => (
+            "Compare".into(),
+            [
+                "Direction",
+                "Threshold",
+                "Hysteresis",
+                "Source",
+                "Gate",
+                "Pulse remaining",
+            ][local as usize]
+                .into(),
+        ),
+        MainParameterTarget::CvMix(local) => (
+            "CV Mix".into(),
+            [
+                "Level 1", "Level 2", "Level 3", "Level 4", "Offset", "Source 1", "Source 2",
+                "Source 3", "Source 4",
+            ][local as usize]
+                .into(),
+        ),
+        MainParameterTarget::Range(local) => (
+            "Range".into(),
+            ["Min", "Max", "Mode", "Source"][local as usize].into(),
+        ),
+        MainParameterTarget::ScaleQuantizer(local) => (
+            "Scale Quantizer".into(),
+            ["Root", "Scale", "Direction", "Connected"][local as usize].into(),
+        ),
+        MainParameterTarget::Transpose(local) => (
+            "Transpose".into(),
+            ["Semitones", "Source", "Connected"][local as usize].into(),
+        ),
+        MainParameterTarget::NoteFilter(local) => (
+            "Note Filter".into(),
+            ["Low note", "High note", "Mode", "Source", "Connected"][local as usize].into(),
+        ),
+        MainParameterTarget::VelocityMapper(local) => (
+            "Velocity Mapper".into(),
+            ["Amount", "Curve", "Offset", "Source", "Connected"][local as usize].into(),
+        ),
+        MainParameterTarget::Arpeggiator(local) => (
+            "Arpeggiator".into(),
+            ["Rate", "Mode", "Octaves", "Gate", "Hold", "Connected"][local as usize].into(),
+        ),
+    }
+}

@@ -71,6 +71,10 @@ pub(crate) unsafe fn utf16_string(pointer: *const TChar, limit: usize) -> Option
 }
 
 pub(crate) unsafe fn read_stream(pointer: *mut IBStream) -> Option<Vec<u8>> {
+    unsafe { read_stream_limited(pointer, MAX_STATE_BYTES) }
+}
+
+pub(crate) unsafe fn read_stream_limited(pointer: *mut IBStream, limit: usize) -> Option<Vec<u8>> {
     let stream = unsafe { ComRef::from_raw(pointer) }?;
     let mut result = Vec::new();
     let mut chunk = [0_u8; 4096];
@@ -84,7 +88,7 @@ pub(crate) unsafe fn read_stream(pointer: *mut IBStream) -> Option<Vec<u8>> {
         if count == 0 {
             break;
         }
-        if result.len() + count as usize > MAX_STATE_BYTES {
+        if result.len() + count as usize > limit {
             return None;
         }
         result.extend_from_slice(&chunk[..count as usize]);

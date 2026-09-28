@@ -24,17 +24,18 @@
 <body><main>
   <header>
     <div class="eyebrow">Manifold v2 / Main instrument / VST3 checkpoint</div>
-    <h1>The Main VST3 host path<br>starts at the real parameter contract.</h1>
-    <p>The existing Graph and Standalone FX VST3 classes are separate products. Main needs its own processor and controller around the Rust Main runtime and the original web editor. The first code slice maps VST3’s normalized automation values to the stable Main IDs already used by browser and CLAP.</p>
+    <h1>Main now has its own<br>VST3 audio and state path.</h1>
+    <p>The packaged Main class is a separate VST3 instrument around the same Rust runtime used by the browser and CLAP. Its processor handles stereo audio, timed MIDI and automation, and portable Main sessions. The controller presents the 204 real Main parameter IDs to the host.</p>
     <div class="actions"><a href="/main-clap-host-review.html">Review the running Main CLAP host →</a><a href="/main-clap-session-files-review.html">Review portable Main state</a></div>
   </header>
   <section>
     <h2>Current proof and next gates</h2>
     <table><thead><tr><th>Area</th><th>Status</th></tr></thead><tbody>
       <tr><td>Fixed parameter IDs</td><td>VST3 conversion uses <code>MainParameter::spec</code>. Signed loop speed, continuous Source controls, discrete choices, and the sparse LFO route enum round trip. Every declared Main host ID decodes at normalized 0, 0.5, and 1.</td></tr>
-      <tr><td>Processor</td><td>Next: use the prepared <code>MainAudioRuntime</code> and host buffer adapter for stereo audio, timed notes, and automation. Session publication and retirement stay outside the callback.</td></tr>
-      <tr><td>Controller and editor</td><td>Next: enumerate those same fixed IDs, synchronize portable Main state, and embed the original Main page through the VST3 view and controller message bridge.</td></tr>
-      <tr><td>Host validation</td><td>Pending: VST3 class/factory probe, validator, DAW audio/state run, original Source capture and session controls in the editor, and real-device callback timing.</td></tr>
+      <tr><td>Processor and controller</td><td>Registered as their own VST3 pair. Native audio parity, a note at frame 64, invalid event handling, exact loop and Sample PCM import, and live state save pass Rust tests. The controller exposes 204 authored IDs and imports their values from portable state.</td></tr>
+      <tr><td>Official validator</td><td><strong>1,611 passed, zero failed.</strong> The validator’s dense all-parameter automation revealed a bounded event capacity fault; the fixed workspace now covers it without allocating in the callback.</td></tr>
+      <tr><td>Original editor</td><td>The original Main HTML is bundled. The VST3 view, Main commands, Sample capture, and session file transfer still need wiring before this is an interactive Main plugin.</td></tr>
+      <tr><td>DAW proof</td><td>An isolated REAPER render probe is prepared. Its first headless display run did not finish REAPER setup; discovery, render, and save/reopen in REAPER remain unverified.</td></tr>
     </tbody></table>
   </section>
 </main></body>
