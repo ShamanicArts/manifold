@@ -1,0 +1,16 @@
+{
+  "host": "REAPER VST3",
+  "audioSink": "private PipeWire null sink",
+  "editorActions": [
+    "First Loop REC",
+    "REC stop",
+    "Sample Retro Cap"
+  ],
+  "loopFrames": 56320,
+  "loopPeak": 0.125,
+  "sampleFrames": 112640,
+  "samplePeak": 0.125,
+  "savedAndReopened": true,
+  "freshRenderFrames": 384000,
+  "freshRenderPeak": 0.17677664756774902
+}

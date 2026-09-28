@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Main live host capture · Manifold v2</title>
+  <style>
+    :root { font:15px/1.55 system-ui,sans-serif; color:#1d3028; background:#f4f5f0; --line:#c9d6cd; --green:#28624c; }
+    * { box-sizing:border-box; } body { margin:0; } main { max-width:1080px; margin:auto; padding:36px 22px 90px; }
+    header { border-top:3px solid var(--green); padding-top:12px; }
+    .eyebrow { font:11px ui-monospace,monospace; letter-spacing:.13em; text-transform:uppercase; color:#995d3c; }
+    h1,h2 { font-family:Georgia,serif; font-weight:400; line-height:1.12; }
+    h1 { font-size:clamp(38px,6vw,62px); margin:12px 0 18px; } h2 { font-size:27px; margin:0 0 10px; }
+    p { max-width:78ch; color:#395346; } a { color:var(--green); }
+    .actions { display:flex; flex-wrap:wrap; gap:10px; margin:22px 0 0; }
+    .actions a { display:inline-block; padding:10px 14px; border:1px solid var(--green); text-decoration:none; font-weight:600; }
+    .actions a:first-child { background:var(--green); color:white; }
+    section { border-top:1px solid var(--line); margin-top:30px; padding-top:20px; }
+    table { border-collapse:collapse; width:100%; background:white; }
+    th,td { padding:10px 12px; border:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { background:#eaf0e9; font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
+    img { display:block; width:100%; height:auto; border:1px solid var(--line); }
+  </style>
+</head>
+<body><main>
+  <header>
+    <div class="eyebrow">Manifold v2 / Main instrument / live VST3 host proof</div>
+    <h1>Record and capture<br>through the original Main editor.</h1>
+    <p>REAPER played a generated stereo source into the Rust Main VST3. The original REC button started and stopped First Loop; the original Source Cap captured a retrospective Sample. REAPER saved both PCM buffers. A new offline REAPER render reopened the project with its input media muted and played audible loop output.</p>
+    <div class="actions"><a href="/main-vst3-reaper-live.png">Open host screenshot →</a><a href="/main-vst3-reaper-live-render.ogg">Listen to fresh render</a><a href="/main-vst3-reaper-live.json">Open measurements</a><a href="/main-vst3-boundary-review.html">VST3 boundary review</a></div>
+  </header>
+  <section>
+    <h2>Measured in the host</h2>
+    <table><thead><tr><th>Observation</th><th>Result</th></tr></thead><tbody>
+      <tr><td>First Loop</td><td>56,320 saved stereo frames; PCM peak 0.125. The live status reported a committed, playing layer.</td></tr>
+      <tr><td>Source Sample</td><td>112,640 saved stereo frames; PCM peak 0.125. The native capture endpoint reported <strong>published</strong>.</td></tr>
+      <tr><td>Fresh REAPER render</td><td>384,000 frames at 48 kHz after reopening the saved VST3 project. Input media was muted; output peak was <strong>0.177</strong>.</td></tr>
+      <tr><td>Audio isolation</td><td>The GUI host ran on headless Weston. REAPER connected through a private PipeWire JACK server exposing only a null sink. No user speaker output was used.</td></tr>
+    </tbody></table>
+    <p>The fresh render proves loop output after host recall. Separate note-triggered playback of the captured Sample is the next gate.</p>
+  </section>
+  <section><h2>Original widgets in REAPER</h2><p>This is the actual packaged Main editor after the Sample capture completed. The looper waveform and Sample waveform are both visible.</p><a href="/main-vst3-reaper-live.png"><img src="/main-vst3-reaper-live.png" alt="Original Main VST3 editor in REAPER after loop and Sample capture"></a></section>
+  <section><h2>Fresh host output</h2><p>REAPER rendered this saved project in a new process with its input item muted.</p><audio controls preload="none" src="/main-vst3-reaper-live-render.ogg" style="width:min(100%,640px)"></audio></section>
+</main></body>
+</html>

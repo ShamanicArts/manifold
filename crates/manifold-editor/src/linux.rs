@@ -174,6 +174,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    let probe_loop = if surface == Surface::Main {
+        std::env::var("MANIFOLD_MAIN_LOOP_PROBE").ok()
+    } else {
+        None
+    };
     let probe_export = if surface == Surface::Main {
         std::env::var("MANIFOLD_MAIN_EXPORT_PROBE").ok()
     } else {
@@ -187,6 +192,22 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut export = None::<ExportAssembly>;
     let mut probe_export_triggered = false;
     gtk::glib::timeout_add_local(Duration::from_millis(16), move || {
+        if let Some(path) = probe_loop.as_deref() {
+            if Path::new(path).exists() {
+                let request = fs::read_to_string(path).unwrap_or_default();
+                let _ = fs::remove_file(path);
+                let id = match request.trim() {
+                    "rec" => Some("rec"),
+                    "stop" => Some("stop"),
+                    "play" => Some("play"),
+                    _ => None,
+                };
+                if let Some(id) = id {
+                    let _ = webview
+                        .evaluate_script(&format!("document.getElementById('{id}')?.click();"));
+                }
+            }
+        }
         if let Some(path) = probe_sample.as_deref() {
             if Path::new(path).exists() {
                 let request = fs::read_to_string(path).unwrap_or_default();
@@ -282,6 +303,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 Some("live-status") => {
                     if let Some(data) = command.get("data") {
+                        if let Some(path) = probe_loop.as_deref() {
+                            let _ = fs::write(format!("{path}.status"), data.to_string());
+                        }
                         let _ = webview.evaluate_script(&format!(
                             "window.manifoldEditorLiveStatus?.({data});"
                         ));

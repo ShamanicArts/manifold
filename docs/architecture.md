@@ -120,7 +120,12 @@ controls stream bounded chunks through VST3 messages, with preparation and
 file assembly on the control side. Download polls the native snapshot from
 the editor timer so a host pause cannot hold that timer inside a long export
 call. A REAPER host run imported and exported
-matching loop PCM and Sample state through those original controls.
+matching loop PCM and Sample state through those original controls. The
+[live Main VST3 host proof](../web/public/main-vst3-live-review.html) drives
+First Loop and retrospective Sample capture through the original widgets
+while REAPER processes audio against a private null sink. Saved loop and
+Sample PCM survive the host state boundary; a fresh input-muted REAPER
+render plays the recalled loop.
 Main now exposes a private, bounded CLAP extension for its authored looper
 commands. It queues editor gestures at the next audio block start without
 turning momentary record/stop/clear actions into persistent parameter values.
