@@ -4,13 +4,14 @@
 use std::ffi::{CStr, c_char, c_void};
 use std::ptr::{null, null_mut};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
 use clap_sys::audio_buffer::clap_audio_buffer;
 use clap_sys::events::{
     CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_CHOKE, CLAP_EVENT_NOTE_OFF, CLAP_EVENT_NOTE_ON,
-    clap_event_header, clap_event_note, clap_input_events,
+    CLAP_EVENT_PARAM_VALUE, clap_event_header, clap_event_note, clap_event_param_value,
+    clap_input_events, clap_output_events,
 };
 use clap_sys::ext::audio_ports::{
     CLAP_AUDIO_PORT_IS_MAIN, CLAP_EXT_AUDIO_PORTS, CLAP_PORT_STEREO, clap_audio_port_info,
@@ -18,6 +19,10 @@ use clap_sys::ext::audio_ports::{
 };
 use clap_sys::ext::note_ports::{
     CLAP_EXT_NOTE_PORTS, CLAP_NOTE_DIALECT_CLAP, clap_note_port_info, clap_plugin_note_ports,
+};
+use clap_sys::ext::params::{
+    CLAP_EXT_PARAMS, CLAP_PARAM_IS_AUTOMATABLE, CLAP_PARAM_IS_STEPPED, clap_param_info,
+    clap_plugin_params,
 };
 use clap_sys::ext::state::{CLAP_EXT_STATE, clap_plugin_state};
 use clap_sys::host::clap_host;
@@ -29,10 +34,15 @@ use clap_sys::stream::{clap_istream, clap_ostream};
 use manifold_core::events::EventKind;
 use manifold_native::main_host::{MainAudioRuntime, MainControl};
 use manifold_native::main_host_buffers::{MainHostBuffers, RawMainHostBlock};
+use manifold_native::main_host_parameters::{
+    MAIN_HOST_ID_CAPACITY, MainParameter, MainParameterTarget,
+};
+use manifold_native::main_host_state::values_from_session;
 use manifold_native::main_instrument::{MainHostAudioBlock, MainHostEvent, MainHostEventKind};
 use manifold_native::main_session::{default_main_session, prepare_main_session};
+use manifold_native::main_session_export::save_template;
 
-const MAX_EVENTS: usize = 1024;
+const MAX_EVENTS: usize = 4096;
 const MAX_STATE: usize = 300 * 1024 * 1024;
 
 struct Runtime {
@@ -47,6 +57,10 @@ pub(crate) struct Instance {
     runtime: AtomicPtr<Runtime>,
     control: Mutex<Option<MainControl>>,
     state: Mutex<Option<Vec<u8>>>,
+    pending_values: Mutex<Vec<MainHostEvent>>,
+    parameter_ids: Vec<u32>,
+    defaults: [f32; MAIN_HOST_ID_CAPACITY],
+    values: [AtomicU32; MAIN_HOST_ID_CAPACITY],
     active: AtomicBool,
     processing: AtomicBool,
 }
@@ -61,6 +75,11 @@ impl Instance {
         host: *const clap_host,
         descriptor: *const clap_plugin_descriptor,
     ) -> Box<Self> {
+        let default = default_main_session(48_000.0).expect("authored Main default session");
+        let defaults = values_from_session(&default).expect("authored Main host controls");
+        let parameter_ids = (0..MAIN_HOST_ID_CAPACITY as u32)
+            .filter(|&id| MainParameter::spec(id).is_ok())
+            .collect();
         let mut instance = Box::new(Self {
             plugin: clap_plugin {
                 desc: descriptor,
@@ -80,6 +99,10 @@ impl Instance {
             runtime: AtomicPtr::new(null_mut()),
             control: Mutex::new(None),
             state: Mutex::new(None),
+            pending_values: Mutex::new(Vec::new()),
+            parameter_ids,
+            defaults,
+            values: std::array::from_fn(|id| AtomicU32::new(defaults[id].to_bits())),
             active: AtomicBool::new(false),
             processing: AtomicBool::new(false),
         });
@@ -113,6 +136,12 @@ impl Instance {
             };
             bytes
         };
+        let Ok(document) = save_template(&bytes) else {
+            return false;
+        };
+        let Some(initial_values) = values_from_session(&document) else {
+            return false;
+        };
         let Ok((mut audio, mut control)) =
             MainAudioRuntime::prepare(rate as f32, max_frames as usize)
         else {
@@ -135,12 +164,40 @@ impl Instance {
             return false;
         }
         control.reclaim();
+        let Ok(mut pending_values) = self.pending_values.lock() else {
+            return false;
+        };
+        if !pending_values.is_empty() {
+            pending_values.sort_by_key(|event| match event.kind {
+                MainHostEventKind::Parameter { id, .. } => id,
+                _ => u32::MAX,
+            });
+            if audio
+                .process_host(MainHostAudioBlock {
+                    input: None,
+                    output: [&mut left, &mut right],
+                    actions: &pending_values,
+                })
+                .is_err()
+            {
+                return false;
+            }
+            control.reclaim();
+        }
         let runtime = Box::new(Runtime {
             audio,
             buffers: MainHostBuffers::prepare(max_frames as usize),
             actions: Vec::with_capacity(MAX_EVENTS),
         });
         *state = Some(bytes);
+        for (id, value) in initial_values.into_iter().enumerate() {
+            self.values[id].store(value.to_bits(), Ordering::Release);
+        }
+        for event in pending_values.drain(..) {
+            if let MainHostEventKind::Parameter { id, value } = event.kind {
+                self.values[id as usize].store(value.to_bits(), Ordering::Release);
+            }
+        }
         *control_slot = Some(control);
         self.runtime
             .store(Box::into_raw(runtime), Ordering::Release);
@@ -204,12 +261,50 @@ impl Instance {
     fn save_bytes(&self) -> Option<Vec<u8>> {
         let runtime = self.runtime.load(Ordering::Acquire);
         if runtime.is_null() {
-            return self
-                .state
-                .lock()
-                .ok()?
-                .clone()
-                .or_else(|| serde_json::to_vec(&default_main_session(48_000.0).ok()?).ok());
+            let mut state = self.state.lock().ok()?;
+            let mut pending = self.pending_values.lock().ok()?;
+            let bytes = if let Some(bytes) = state.as_ref() {
+                bytes.clone()
+            } else {
+                serde_json::to_vec(&default_main_session(48_000.0).ok()?).ok()?
+            };
+            if pending.is_empty() {
+                return Some(bytes);
+            }
+            let document: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+            let rate = document["sampleRate"].as_f64()? as f32;
+            let (mut audio, mut control) = MainAudioRuntime::prepare(rate, 128).ok()?;
+            control.submit_session(&bytes).ok()?;
+            let mut left = [];
+            let mut right = [];
+            audio
+                .process_host(MainHostAudioBlock {
+                    input: None,
+                    output: [&mut left, &mut right],
+                    actions: &[],
+                })
+                .ok()?;
+            control.reclaim();
+            pending.sort_by_key(|event| match event.kind {
+                MainHostEventKind::Parameter { id, .. } => id,
+                _ => u32::MAX,
+            });
+            audio
+                .process_host(MainHostAudioBlock {
+                    input: None,
+                    output: [&mut left, &mut right],
+                    actions: &pending,
+                })
+                .ok()?;
+            let mut temporary = Runtime {
+                audio,
+                buffers: MainHostBuffers::prepare(128),
+                actions: Vec::with_capacity(MAX_EVENTS),
+            };
+            let saved = self.snapshot(&mut temporary, &mut control, true)?;
+            *state = Some(saved.clone());
+            pending.clear();
+            return Some(saved);
         }
         let mut control_slot = self.control.lock().ok()?;
         let control = control_slot.as_mut()?;
@@ -223,11 +318,17 @@ impl Instance {
         if bytes.len() > MAX_STATE {
             return false;
         }
+        let Ok(document) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+            return false;
+        };
+        let Ok(template) = save_template(&bytes) else {
+            return false;
+        };
+        let Some(initial_values) = values_from_session(&template) else {
+            return false;
+        };
         let runtime = self.runtime.load(Ordering::Acquire);
         if runtime.is_null() {
-            let Ok(document) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
-                return false;
-            };
             let Some(rate) = document["sampleRate"].as_f64() else {
                 return false;
             };
@@ -266,6 +367,12 @@ impl Instance {
             return false;
         };
         *state = Some(bytes);
+        if let Ok(mut pending) = self.pending_values.lock() {
+            pending.clear();
+        }
+        for (id, value) in initial_values.into_iter().enumerate() {
+            self.values[id].store(value.to_bits(), Ordering::Release);
+        }
         true
     }
 
@@ -410,6 +517,35 @@ unsafe fn collect(
         if (frames == 0 && offset != 0) || (frames > 0 && offset >= frames) {
             return false;
         }
+        if header.type_ == CLAP_EVENT_PARAM_VALUE {
+            if header.size < std::mem::size_of::<clap_event_param_value>() as u32 {
+                return false;
+            }
+            let event =
+                unsafe { &*(header as *const clap_event_header as *const clap_event_param_value) };
+            if event.note_id != -1
+                || event.port_index != -1
+                || event.channel != -1
+                || event.key != -1
+            {
+                continue;
+            }
+            let value = event.value as f32;
+            if MainParameter::decode(event.param_id, value).is_err() {
+                continue;
+            }
+            if actions.len() == MAX_EVENTS {
+                return false;
+            }
+            actions.push(MainHostEvent {
+                offset,
+                kind: MainHostEventKind::Parameter {
+                    id: event.param_id,
+                    value,
+                },
+            });
+            continue;
+        }
         if !matches!(
             header.type_,
             CLAP_EVENT_NOTE_ON | CLAP_EVENT_NOTE_OFF | CLAP_EVENT_NOTE_CHOKE
@@ -502,6 +638,11 @@ unsafe extern "C" fn process(
     {
         return CLAP_PROCESS_ERROR;
     }
+    for action in &runtime.actions {
+        if let MainHostEventKind::Parameter { id, value } = action.kind {
+            instance.values[id as usize].store(value.to_bits(), Ordering::Release);
+        }
+    }
     CLAP_PROCESS_CONTINUE
 }
 
@@ -514,6 +655,8 @@ unsafe extern "C" fn extension(_plugin: *const clap_plugin, id: *const c_char) -
         &AUDIO_PORTS as *const _ as *const c_void
     } else if id == CLAP_EXT_NOTE_PORTS {
         &NOTE_PORTS as *const _ as *const c_void
+    } else if id == CLAP_EXT_PARAMS {
+        &PARAMS as *const _ as *const c_void
     } else if id == CLAP_EXT_STATE {
         &STATE as *const _ as *const c_void
     } else {
@@ -577,6 +720,325 @@ static NOTE_PORTS: clap_plugin_note_ports = clap_plugin_note_ports {
     count: Some(note_count),
     get: Some(note_info),
 };
+
+fn parameter_name(target: MainParameterTarget) -> (String, String) {
+    match target {
+        MainParameterTarget::Transport(local) => (
+            "Transport".into(),
+            [
+                "Mode",
+                "Active layer",
+                "Tempo",
+                "Target BPM",
+                "Overdub",
+                "Overdub length",
+            ][local as usize]
+                .into(),
+        ),
+        MainParameterTarget::Layer { layer, local } => (
+            format!("Loop layer {}", layer + 1),
+            ["Volume", "Speed", "Mute", "Playing", "Position"][local as usize].into(),
+        ),
+        MainParameterTarget::Synth(local) => {
+            if (64..=103).contains(&local) {
+                let band = (local - 64) / 5;
+                return (
+                    format!("EQ band {}", band + 1),
+                    ["Enabled", "Type", "Frequency", "Gain", "Q"][(local - 64) as usize % 5].into(),
+                );
+            }
+            if local == 104 || local == 105 {
+                return (
+                    "EQ".into(),
+                    if local == 104 { "Output" } else { "Mix" }.into(),
+                );
+            }
+            if (128..=142).contains(&local) {
+                let slot = if local < 136 { 1 } else { 2 };
+                let index = (local - if slot == 1 { 128 } else { 136 }) as usize;
+                let name = [
+                    "Effect type",
+                    "Mix",
+                    "Param 1",
+                    "Param 2",
+                    "Param 3",
+                    "Param 4",
+                    "Param 5",
+                ];
+                return (format!("FX {slot}"), name[index].into());
+            }
+            let (module, name) = match local {
+                0 => ("Source", "Waveform"),
+                1 => ("Source", "Sample blend"),
+                2 => ("Source", "Sample root"),
+                3 => ("Source", "Keytrack"),
+                4 => ("Source", "Sample pitch"),
+                5 => ("Source", "Pitch mode"),
+                6 => ("Source", "Blend mode"),
+                7 => ("Source", "Blend depth"),
+                11 => ("ADSR", "Attack"),
+                12 => ("ADSR", "Decay"),
+                13 => ("ADSR", "Sustain"),
+                14 => ("ADSR", "Release"),
+                15 => ("Source", "Output"),
+                16 => ("Source", "Sample stretch"),
+                19 => ("Source", "Wave render"),
+                20 => ("Source", "Sample crossfade"),
+                21 => ("Filter", "Mode"),
+                22 => ("Filter", "Cutoff"),
+                23 => ("Filter", "Resonance"),
+                _ => ("Main", "Control"),
+            };
+            (module.into(), name.into())
+        }
+        MainParameterTarget::LfoParameter { slot, local } => (
+            format!("LFO {}", slot + 1),
+            ["Shape", "Rate", "Depth", "Phase", "Retrigger"][local as usize].into(),
+        ),
+        MainParameterTarget::LfoRoute { slot, local } => (
+            format!("LFO {} route", slot + 1),
+            ["Source", "Target", "Amount", "Bias", "Mode", "Enabled"][local as usize].into(),
+        ),
+        MainParameterTarget::LfoActive { slot } => (format!("LFO {}", slot + 1), "Active".into()),
+        MainParameterTarget::Atv(local) => (
+            "ATV / Bias".into(),
+            ["Amount", "Bias", "LFO slot", "LFO port"][local as usize].into(),
+        ),
+        MainParameterTarget::Slew(local) => (
+            "Slew".into(),
+            ["Rise", "Fall", "Shape", "Source"][local as usize].into(),
+        ),
+        MainParameterTarget::SampleHold(local) => (
+            "Sample Hold".into(),
+            [
+                "Mode",
+                "Source",
+                "Trigger source",
+                "Manual gate",
+                "Held",
+                "Trigger high",
+            ][local as usize]
+                .into(),
+        ),
+        MainParameterTarget::Compare(local) => (
+            "Compare".into(),
+            [
+                "Direction",
+                "Threshold",
+                "Hysteresis",
+                "Source",
+                "Gate",
+                "Pulse remaining",
+            ][local as usize]
+                .into(),
+        ),
+        MainParameterTarget::CvMix(local) => (
+            "CV Mix".into(),
+            [
+                "Level 1", "Level 2", "Level 3", "Level 4", "Offset", "Source 1", "Source 2",
+                "Source 3", "Source 4",
+            ][local as usize]
+                .into(),
+        ),
+        MainParameterTarget::Range(local) => (
+            "Range".into(),
+            ["Min", "Max", "Mode", "Source"][local as usize].into(),
+        ),
+        MainParameterTarget::ScaleQuantizer(local) => (
+            "Scale Quantizer".into(),
+            ["Root", "Scale", "Direction", "Connected"][local as usize].into(),
+        ),
+        MainParameterTarget::Transpose(local) => (
+            "Transpose".into(),
+            ["Semitones", "Source", "Connected"][local as usize].into(),
+        ),
+        MainParameterTarget::NoteFilter(local) => (
+            "Note Filter".into(),
+            ["Low note", "High note", "Mode", "Source", "Connected"][local as usize].into(),
+        ),
+        MainParameterTarget::VelocityMapper(local) => (
+            "Velocity Mapper".into(),
+            ["Amount", "Curve", "Offset", "Source", "Connected"][local as usize].into(),
+        ),
+        MainParameterTarget::Arpeggiator(local) => (
+            "Arpeggiator".into(),
+            ["Rate", "Mode", "Octaves", "Gate", "Hold", "Connected"][local as usize].into(),
+        ),
+    }
+}
+
+unsafe extern "C" fn param_count(plugin: *const clap_plugin) -> u32 {
+    unsafe { get(plugin) }.map_or(0, |instance| instance.parameter_ids.len() as u32)
+}
+unsafe extern "C" fn param_info(
+    plugin: *const clap_plugin,
+    index: u32,
+    info: *mut clap_param_info,
+) -> bool {
+    let Some(instance) = (unsafe { get(plugin) }) else {
+        return false;
+    };
+    let Some(&id) = instance.parameter_ids.get(index as usize) else {
+        return false;
+    };
+    if info.is_null() {
+        return false;
+    }
+    let spec = MainParameter::spec(id).expect("enumerated Main parameter");
+    let info = unsafe { &mut *info };
+    info.id = id;
+    info.flags = CLAP_PARAM_IS_AUTOMATABLE
+        | if spec.discrete {
+            CLAP_PARAM_IS_STEPPED
+        } else {
+            0
+        };
+    info.cookie = null_mut();
+    info.name.fill(0);
+    info.module.fill(0);
+    let (module, name) = parameter_name(spec.target);
+    for (destination, source) in info.name.iter_mut().zip(name.bytes()) {
+        *destination = source as c_char;
+    }
+    for (destination, source) in info.module.iter_mut().zip(module.bytes()) {
+        *destination = source as c_char;
+    }
+    info.min_value = spec.min as f64;
+    info.max_value = spec.max as f64;
+    info.default_value = instance.defaults[id as usize] as f64;
+    true
+}
+unsafe extern "C" fn param_value(plugin: *const clap_plugin, id: u32, output: *mut f64) -> bool {
+    let Some(instance) = (unsafe { get(plugin) }) else {
+        return false;
+    };
+    if output.is_null() || MainParameter::spec(id).is_err() {
+        return false;
+    }
+    unsafe {
+        *output = f32::from_bits(instance.values[id as usize].load(Ordering::Acquire)) as f64
+    };
+    true
+}
+unsafe extern "C" fn param_to_text(
+    _plugin: *const clap_plugin,
+    id: u32,
+    value: f64,
+    output: *mut c_char,
+    capacity: u32,
+) -> bool {
+    let Ok(spec) = MainParameter::spec(id) else {
+        return false;
+    };
+    if output.is_null() || !value.is_finite() || MainParameter::decode(id, value as f32).is_err() {
+        return false;
+    }
+    let text = if spec.discrete {
+        format!("{value:.0}")
+    } else {
+        format!("{value:.3}")
+    };
+    if text.len() + 1 > capacity as usize {
+        return false;
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(text.as_ptr(), output as *mut u8, text.len());
+        *output.add(text.len()) = 0;
+    }
+    true
+}
+unsafe extern "C" fn text_to_param(
+    _plugin: *const clap_plugin,
+    id: u32,
+    text: *const c_char,
+    output: *mut f64,
+) -> bool {
+    if text.is_null() || output.is_null() {
+        return false;
+    }
+    let Ok(value) = (unsafe { CStr::from_ptr(text) })
+        .to_str()
+        .unwrap_or("")
+        .parse::<f64>()
+    else {
+        return false;
+    };
+    if !value.is_finite() || MainParameter::decode(id, value as f32).is_err() {
+        return false;
+    }
+    unsafe { *output = value };
+    true
+}
+
+static PARAMS: clap_plugin_params = clap_plugin_params {
+    count: Some(param_count),
+    get_info: Some(param_info),
+    get_value: Some(param_value),
+    value_to_text: Some(param_to_text),
+    text_to_value: Some(text_to_param),
+    flush: Some(param_flush),
+};
+
+unsafe extern "C" fn param_flush(
+    plugin: *const clap_plugin,
+    events: *const clap_input_events,
+    _out: *const clap_output_events,
+) {
+    let Some(instance) = (unsafe { get(plugin) }) else {
+        return;
+    };
+    let runtime = instance.runtime.load(Ordering::Acquire);
+    if runtime.is_null() {
+        // CLAP invokes inactive flush on its host thread, away from audio.
+        let mut actions = Vec::with_capacity(MAX_EVENTS);
+        if !unsafe { collect(events, 0, &mut actions) } {
+            return;
+        }
+        let Ok(mut pending) = instance.pending_values.lock() else {
+            return;
+        };
+        for action in actions {
+            let MainHostEventKind::Parameter { id, value } = action.kind else {
+                continue;
+            };
+            if let Some(existing) = pending.iter_mut().find(|item| {
+                matches!(item.kind,
+                MainHostEventKind::Parameter { id: found, .. } if found == id)
+            }) {
+                *existing = action;
+            } else {
+                pending.push(action);
+            }
+            instance.values[id as usize].store(value.to_bits(), Ordering::Release);
+        }
+        return;
+    }
+    // CLAP serializes active flush with process for the same instance.
+    let runtime = unsafe { &mut *runtime };
+    if !unsafe { collect(events, 0, &mut runtime.actions) } {
+        return;
+    }
+    runtime
+        .actions
+        .retain(|action| matches!(action.kind, MainHostEventKind::Parameter { .. }));
+    let mut left = [];
+    let mut right = [];
+    if runtime
+        .audio
+        .process_host(MainHostAudioBlock {
+            input: None,
+            output: [&mut left, &mut right],
+            actions: &runtime.actions,
+        })
+        .is_ok()
+    {
+        for action in &runtime.actions {
+            if let MainHostEventKind::Parameter { id, value } = action.kind {
+                instance.values[id as usize].store(value.to_bits(), Ordering::Release);
+            }
+        }
+    }
+}
 
 unsafe extern "C" fn save(plugin: *const clap_plugin, stream: *const clap_ostream) -> bool {
     let Some(instance) = (unsafe { get(plugin) }) else {

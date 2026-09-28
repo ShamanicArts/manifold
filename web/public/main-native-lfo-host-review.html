@@ -52,11 +52,11 @@
     <h2>Slot lifecycle</h2>
     <table><thead><tr><th>Action</th><th>Host behavior</th></tr></thead><tbody>
       <tr><td>Address a control or route</td><td>Each slot has a fixed 16-ID stride from <code>512</code>. Local IDs 0–4 set LFO controls; 5–10 set route fields.</td></tr>
-      <tr><td>Activate or remove slots 2–4</td><td>Local ID 11 toggles that slot. Slot 1 is always present. Controls for an absent slot reject the entire block before output or state changes.</td></tr>
+      <tr><td>Activate or remove slots 2–4</td><td>Local ID 11 toggles that slot. Slot 1 is always present. Valid automation for an absent slot is held without running that LFO and applies when the slot becomes active.</td></tr>
       <tr><td>Remove and recreate</td><td>DSP and route state reset. The host value bank clears old slot edits; the next save uses the original default LFO face until new edits arrive.</td></tr>
       <tr><td>Save and reopen</td><td>The native save emits the browser's sparse <code>rack.lfos</code> array. The browser opens and saves both the current and upgraded v3 examples with identical loop/sample PCM and the native LFO 2 controls.</td></tr>
     </tbody></table>
-    <p>Native tests also activate all four slots, reject a malformed queue before slot activation, verify a removed slot disappears from the saved array, and check that a recreated slot does not inherit stale route values.</p>
+    <p>Native tests also activate all four slots, reject a malformed queue before slot activation, verify a removed slot disappears from the saved array, and check that a recreated slot does not inherit stale route values. They now check that new host edits sent while a slot is absent apply on activation.</p>
   </section>
   <section>
     <h2>Next boundary</h2>

@@ -48,6 +48,9 @@
       <tr><td>State while processing</td><td>Saved on the host thread while another thread called the audio callback; loop PCM stayed identical.</td></tr>
       <tr><td>Save and reopen</td><td>Exported version-15 state retained identical loop and sample PCM. A second CLAP instance reopened it and its next audio block matched sample by sample.</td></tr>
       <tr><td>State replacement</td><td>Loading an empty Main session while active replaced the audible runtime at a block boundary. A load followed immediately by stop/save preserved the newly loaded session.</td></tr>
+      <tr><td>Host parameter bank</td><td>The CLAP params extension lists every described fixed Main ID, with module/name, physical range, step flag, default, current value, and text conversion. Source Output ID 271 advertises its authored default and reflects imported state.</td></tr>
+      <tr><td>Timed automation</td><td>Source Output and Layer 1 Volume accept host parameter events. A layer-volume change at frame 64 leaves the first 64 audio frames identical to an unautomated instance; later frames differ. The live state save retains the edited value.</td></tr>
+      <tr><td>Inactive host edits</td><td>A CLAP <code>params.flush</code> edit before activation appears in <code>get_value</code> and in a state save made before activation. The saved session opens with that value.</td></tr>
     </tbody></table>
     <p>The probe exposed a one-sample playhead drift from saving normalized position as <code>f32</code>. Native save/load now carries the playhead at <code>f64</code> precision, and the audio reopen comparison passes.</p>
   </section>
@@ -57,7 +60,7 @@
   </section>
   <section>
     <h2>Next implementation gates</h2>
-    <p>Expose Main's stable parameter IDs and looper commands through CLAP, package the actual Main browser surface as its editor, then test capture and state save/reopen in a DAW. A distinct Main VST3 processor/controller will use the same native runtime and session envelope.</p>
+    <p>Wire the remaining Main looper command gestures through CLAP, package the actual Main browser surface as its editor, then test capture and state save/reopen in a DAW. A distinct Main VST3 processor/controller will use the same native runtime and session envelope.</p>
   </section>
 </main></body>
 </html>

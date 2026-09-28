@@ -52,6 +52,17 @@ class State(c.Structure):
     _fields_ = [("save", c.c_void_p), ("load", c.c_void_p)]
 
 
+class Params(c.Structure):
+    _fields_ = [(name, c.c_void_p) for name in (
+        "count", "info", "value", "to_text", "from_text", "flush")]
+
+
+class ParamInfo(c.Structure):
+    _fields_ = [("id", c.c_uint32), ("flags", c.c_uint32), ("cookie", c.c_void_p),
+                ("name", c.c_char * 256), ("module", c.c_char * 1024),
+                ("minimum", c.c_double), ("maximum", c.c_double), ("default", c.c_double)]
+
+
 class AudioBuffer(c.Structure):
     _fields_ = [("data32", c.POINTER(c.POINTER(c.c_float))), ("data64", c.c_void_p),
                 ("channels", c.c_uint32), ("latency", c.c_uint32), ("constant", c.c_uint64)]
@@ -72,6 +83,12 @@ class EventHeader(c.Structure):
 class Note(c.Structure):
     _fields_ = [("header", EventHeader), ("note_id", c.c_int32), ("port", c.c_int16),
                 ("channel", c.c_int16), ("key", c.c_int16), ("velocity", c.c_double)]
+
+
+class ParamValue(c.Structure):
+    _fields_ = [("header", EventHeader), ("param_id", c.c_uint32), ("cookie", c.c_void_p),
+                ("note_id", c.c_int32), ("port", c.c_int16), ("channel", c.c_int16),
+                ("key", c.c_int16), ("value", c.c_double)]
 
 
 class InputEvents(c.Structure):
@@ -139,13 +156,48 @@ def main():
         state_ptr = fn(plugin.get_extension, c.c_void_p, c.c_void_p, c.c_char_p)(plugin_ptr, b"clap.state")
         assert state_ptr
         state = c.cast(state_ptr, c.POINTER(State)).contents
+        params_ptr = fn(plugin.get_extension, c.c_void_p, c.c_void_p, c.c_char_p)(plugin_ptr, b"clap.params")
+        assert params_ptr
+        params = c.cast(params_ptr, c.POINTER(Params)).contents
+        parameter_count = fn(params.count, c.c_uint32, c.c_void_p)(plugin_ptr)
+        assert parameter_count > 200
+        info = ParamInfo()
+        found_master = False
+        for index in range(parameter_count):
+            assert fn(params.info, c.c_bool, c.c_void_p, c.c_uint32, c.POINTER(ParamInfo))(
+                plugin_ptr, index, c.byref(info))
+            if info.id == 271:
+                assert info.name == b"Output" and info.module == b"Source"
+                assert info.default == 1.0 and info.minimum == 0 and info.maximum == 2
+                found_master = True
+        assert found_master
         source, keep_read = read_stream(session)
         assert fn(state.load, c.c_bool, c.c_void_p, c.POINTER(Stream))(plugin_ptr, c.byref(source))
+        value = c.c_double()
+        assert fn(params.value, c.c_bool, c.c_void_p, c.c_uint32, c.POINTER(c.c_double))(
+            plugin_ptr, 271, c.byref(value))
+        assert abs(value.value - 0.6) < 1e-5
         assert fn(plugin.activate, c.c_bool, c.c_void_p, c.c_double, c.c_uint32, c.c_uint32)(
             plugin_ptr, 48000., 1, 128)
         assert fn(plugin.start, c.c_bool, c.c_void_p)(plugin_ptr)
         first = render(plugin_ptr, plugin)
         assert max(abs(sample) for sample in first) > 0.01
+        master_edit = ParamValue(EventHeader(c.sizeof(ParamValue), 64, 0, 5, 0),
+                                 271, None, -1, -1, -1, -1, 0.25)
+
+        @c.CFUNCTYPE(c.c_uint32, c.c_void_p)
+        def param_count(_list):
+            return 1
+
+        @c.CFUNCTYPE(c.c_void_p, c.c_void_p, c.c_uint32)
+        def param_get(_list, index):
+            return c.addressof(master_edit) if index == 0 else None
+
+        param_events = InputEvents(None, c.cast(param_count, c.c_void_p), c.cast(param_get, c.c_void_p))
+        render(plugin_ptr, plugin, param_events)
+        assert fn(params.value, c.c_bool, c.c_void_p, c.c_uint32, c.POINTER(c.c_double))(
+            plugin_ptr, 271, c.byref(value))
+        assert abs(value.value - 0.25) < 1e-6
         running = threading.Event()
         running.set()
         started = threading.Event()
@@ -175,6 +227,7 @@ def main():
                 plugin_ptr, c.byref(live_sink)), "active audio save failed"
             live = json.loads(live_saved)
             assert live["layers"][0]["pcmF32Base64"] == original["layers"][0]["pcmF32Base64"]
+            assert abs(live["rack"]["source"]["output"] - 0.25) < 1e-6
         finally:
             running.clear()
             worker.join(timeout=3)
@@ -218,6 +271,17 @@ def main():
             assert difference < 1e-7, (difference, next_original[:8], reopened[:8],
                                        original["layers"][0]["position"],
                                        exported["layers"][0]["position"])
+            master_edit.param_id = 16  # Layer 1 volume
+            master_edit.value = 0.25
+            altered = render(plugin_ptr, plugin, param_events)
+            reference = render(second_ptr, second)
+            assert max(abs(altered[i] - reference[i]) for i in
+                       [*range(64), *range(128, 192)]) < 1e-7
+            assert max(abs(altered[i] - reference[i]) for i in
+                       [*range(64, 128), *range(192, 256)]) > 0.01
+            assert fn(params.value, c.c_bool, c.c_void_p, c.c_uint32, c.POINTER(c.c_double))(
+                plugin_ptr, 16, c.byref(value))
+            assert abs(value.value - 0.25) < 1e-6
             fn(second.stop, None, c.c_void_p)(second_ptr)
             fn(second.deactivate, None, c.c_void_p)(second_ptr)
         finally:
@@ -261,6 +325,31 @@ def main():
         voice = c.cast(voice_ptr, c.POINTER(Plugin)).contents
         try:
             assert fn(voice.init, c.c_bool, c.c_void_p)(voice_ptr)
+            voice_params_ptr = fn(voice.get_extension, c.c_void_p, c.c_void_p, c.c_char_p)(
+                voice_ptr, b"clap.params")
+            voice_params = c.cast(voice_params_ptr, c.POINTER(Params)).contents
+            master_edit.header.time = 0
+            master_edit.param_id = 271
+            master_edit.value = 0.5
+            fn(voice_params.flush, None, c.c_void_p, c.POINTER(InputEvents), c.c_void_p)(
+                voice_ptr, c.byref(param_events), None)
+            assert fn(voice_params.value, c.c_bool, c.c_void_p, c.c_uint32,
+                      c.POINTER(c.c_double))(voice_ptr, 271, c.byref(value))
+            assert abs(value.value - 0.5) < 1e-6
+            preactivation_saved = bytearray()
+
+            @c.CFUNCTYPE(c.c_int64, c.c_void_p, c.c_void_p, c.c_uint64)
+            def preactivation_write(_stream, data, size):
+                preactivation_saved.extend(c.string_at(data, size))
+                return size
+
+            voice_state_ptr = fn(voice.get_extension, c.c_void_p, c.c_void_p, c.c_char_p)(
+                voice_ptr, b"clap.state")
+            voice_state = c.cast(voice_state_ptr, c.POINTER(State)).contents
+            preactivation_sink = Stream(None, c.cast(preactivation_write, c.c_void_p))
+            assert fn(voice_state.save, c.c_bool, c.c_void_p, c.POINTER(Stream))(
+                voice_ptr, c.byref(preactivation_sink))
+            assert abs(json.loads(preactivation_saved)["rack"]["source"]["output"] - 0.5) < 1e-6
             assert fn(voice.activate, c.c_bool, c.c_void_p, c.c_double, c.c_uint32, c.c_uint32)(
                 voice_ptr, 48000., 1, 128)
             assert fn(voice.start, c.c_bool, c.c_void_p)(voice_ptr)
@@ -287,7 +376,7 @@ def main():
             fn(voice.deactivate, None, c.c_void_p)(voice_ptr)
         finally:
             fn(voice.destroy, None, c.c_void_p)(voice_ptr)
-        print("Main CLAP loaded native v15, rendered loop and timed MIDI, saved identical PCM, and reopened with matching audio.")
+        print("Main CLAP: native v15 audio/state, fixed parameter bank, frame-64 automation, inactive flush/save, and sample-identical reopen passed.")
     finally:
         fn(plugin.destroy, None, c.c_void_p)(plugin_ptr)
 

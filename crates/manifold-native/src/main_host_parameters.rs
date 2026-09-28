@@ -68,6 +68,11 @@ impl MainHostValueBank {
         self.lfo_reinitialized[slot] = true;
     }
 
+    pub(crate) fn mark_lfo_reinitialized(&mut self, slot: usize) {
+        debug_assert!(slot < 4);
+        self.lfo_reinitialized[slot] = true;
+    }
+
     pub fn lfo_reinitialized(&self, slot: usize) -> bool {
         self.lfo_reinitialized.get(slot).copied().unwrap_or(false)
     }
@@ -106,12 +111,35 @@ pub struct MainParameter {
     pub value: f32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MainParameterSpec {
+    pub target: MainParameterTarget,
+    pub min: f32,
+    pub max: f32,
+    pub discrete: bool,
+    pub divisor: f32,
+}
+
 fn in_range(value: f32, min: f32, max: f32, discrete: bool) -> bool {
     value.is_finite() && (min..=max).contains(&value) && (!discrete || value.fract() == 0.0)
 }
 
 impl MainParameter {
     pub fn decode(id: u32, value: f32) -> Result<Self, MainParameterError> {
+        let spec = Self::spec(id)?;
+        if !in_range(value, spec.min, spec.max, spec.discrete)
+            || matches!(spec.target, MainParameterTarget::LfoRoute { local: 1, .. })
+                && ![0.0, 22.0, 23.0, 129.0, 137.0].contains(&value)
+        {
+            return Err(MainParameterError::InvalidValue);
+        }
+        Ok(Self {
+            target: spec.target,
+            value: value / spec.divisor,
+        })
+    }
+
+    pub fn spec(id: u32) -> Result<MainParameterSpec, MainParameterError> {
         let (target, min, max, discrete, divisor) = if id < 6 {
             let (min, max, discrete) = match id {
                 0 => (0.0, 3.0, true),
@@ -216,17 +244,12 @@ impl MainParameter {
                     12.0,
                     true,
                 ),
-                6 => {
-                    if ![0.0, 22.0, 23.0, 129.0, 137.0].contains(&value) {
-                        return Err(MainParameterError::InvalidValue);
-                    }
-                    (
-                        MainParameterTarget::LfoRoute { slot, local: 1 },
-                        0.0,
-                        137.0,
-                        true,
-                    )
-                }
+                6 => (
+                    MainParameterTarget::LfoRoute { slot, local: 1 },
+                    0.0,
+                    137.0,
+                    true,
+                ),
                 7 | 8 => (
                     MainParameterTarget::LfoRoute {
                         slot,
@@ -383,12 +406,12 @@ impl MainParameter {
         } else {
             return Err(MainParameterError::UnknownId);
         };
-        if !in_range(value, min, max, discrete) {
-            return Err(MainParameterError::InvalidValue);
-        }
-        Ok(Self {
+        Ok(MainParameterSpec {
             target,
-            value: value / divisor,
+            min,
+            max,
+            discrete,
+            divisor,
         })
     }
 
@@ -528,6 +551,34 @@ mod tests {
             MainParameter::decode(LFO_BASE, 3.5),
             Err(MainParameterError::InvalidValue)
         );
+    }
+
+    #[test]
+    fn every_described_host_id_uses_the_same_bounds_as_audio_validation() {
+        let mut described = 0;
+        for id in 0..MAIN_HOST_ID_CAPACITY as u32 {
+            let Ok(spec) = MainParameter::spec(id) else {
+                continue;
+            };
+            described += 1;
+            assert!(spec.min <= spec.max && spec.divisor > 0.0, "ID {id}");
+            assert_eq!(
+                MainParameter::decode(id, spec.min).unwrap().target,
+                spec.target
+            );
+            assert_eq!(
+                MainParameter::decode(id, spec.max).unwrap().target,
+                spec.target
+            );
+            if spec.discrete && spec.max - spec.min >= 1.0 {
+                assert_eq!(
+                    MainParameter::decode(id, spec.min + 0.5),
+                    Err(MainParameterError::InvalidValue),
+                    "ID {id}"
+                );
+            }
+        }
+        assert!(described > 200);
     }
 
     #[test]

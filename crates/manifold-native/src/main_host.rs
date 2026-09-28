@@ -866,24 +866,24 @@ mod tests {
         let slot = LFO_BASE + LFO_STRIDE;
         let mut left = [0.5; 128];
         let mut right = [0.5; 128];
-        assert!(matches!(
-            audio.process_host(MainHostAudioBlock {
-                input: None,
-                output: [&mut left, &mut right],
-                actions: &[MainHostEvent {
-                    offset: 64,
-                    kind: MainHostEventKind::Parameter {
-                        id: slot,
-                        value: 3.0
-                    },
-                }],
-            }),
-            Err(NativeError::MainHost(
-                crate::main_instrument::MainHostEventError::InactiveLfoSlot
-            ))
-        ));
-        assert_eq!(left, [0.5; 128]);
-        assert_eq!(right, [0.5; 128]);
+        automate(
+            &mut audio,
+            &[
+                (slot, 3.0),
+                (slot + 1, 2.5),
+                (slot + 5, 5.0),
+                (slot + 6, 22.0),
+                (slot + 7, 0.2),
+                (slot + 10, 1.0),
+            ],
+        );
+        assert_eq!(
+            audio.current.processor.instrument().lfo_slot_active(1),
+            Some(false)
+        );
+        assert_eq!(audio.current.processor.host_values().get(slot), Some(3.0));
+        let absent = save(&mut audio, &mut control);
+        assert_eq!(absent["rack"]["lfos"].as_array().unwrap().len(), 1);
         assert!(matches!(
             audio.process_host(MainHostAudioBlock {
                 input: None,
@@ -916,19 +916,8 @@ mod tests {
             Some(false)
         );
         assert_eq!(left, [0.5; 128]);
-        automate(
-            &mut audio,
-            &[
-                (slot + 11, 1.0),
-                (slot, 3.0),
-                (slot + 1, 2.5),
-                (slot + 2, 0.35),
-                (slot + 5, 5.0),
-                (slot + 6, 22.0),
-                (slot + 7, 0.2),
-                (slot + 10, 1.0),
-            ],
-        );
+        assert_eq!(right, [0.5; 128]);
+        automate(&mut audio, &[(slot + 11, 1.0), (slot + 2, 0.35)]);
         let saved = save(&mut audio, &mut control);
         assert_eq!(saved["rack"]["lfos"].as_array().unwrap().len(), 2);
         assert_eq!(saved["rack"]["lfos"][1]["slot"], 1);
