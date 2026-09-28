@@ -9,7 +9,7 @@ use serde_json::Value;
 use crate::{NativeError, main_instrument::MainNativeProcessor};
 
 const MAX_SESSION_BYTES: usize = 300 * 1024 * 1024;
-const FX_CONTROL_COUNTS: [i64; 21] = [
+pub(crate) const FX_CONTROL_COUNTS: [i64; 21] = [
     5, 5, 4, 5, 2, 2, 3, 2, 2, 2, 3, 4, 3, 4, 3, 4, 3, 3, 4, 3, 4,
 ];
 
@@ -253,6 +253,12 @@ fn apply_rack(
         set_synth(instrument, base + 2, number(band, "freq", 20.0, 20000.0)?)?;
         set_synth(instrument, base + 3, number(band, "gain", -24.0, 24.0)?)?;
         set_synth(instrument, base + 4, number(band, "q", 0.1, 24.0)?)?;
+    }
+    if eq.get("output").is_some() {
+        set_synth(instrument, 104, number(eq, "output", -24.0, 24.0)?)?;
+    }
+    if eq.get("mix").is_some() {
+        set_synth(instrument, 105, number(eq, "mix", 0.0, 1.0)?)?;
     }
 
     let legacy_lfo = rack.get("lfo");

@@ -9,6 +9,44 @@ pub const SYNTH_BASE: u32 = 256;
 pub const LFO_BASE: u32 = 512;
 pub const LFO_STRIDE: u32 = 16;
 pub const ARPEGGIATOR_BASE: u32 = 960;
+pub const MAIN_HOST_ID_CAPACITY: usize = 1024;
+
+/// Values applied by this runtime's timed host queue. Imported session values
+/// remain in the authored session template; this bank records only later host
+/// changes, including ones that happen during the block that starts a save.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MainHostValueBank {
+    values: [f32; MAIN_HOST_ID_CAPACITY],
+    present: [u64; MAIN_HOST_ID_CAPACITY / 64],
+}
+
+impl Default for MainHostValueBank {
+    fn default() -> Self {
+        Self {
+            values: [0.0; MAIN_HOST_ID_CAPACITY],
+            present: [0; MAIN_HOST_ID_CAPACITY / 64],
+        }
+    }
+}
+
+impl MainHostValueBank {
+    pub fn get(&self, id: u32) -> Option<f32> {
+        let index = id as usize;
+        let bit = self.present.get(index / 64)?;
+        if (bit & (1_u64 << (index % 64))) == 0 {
+            None
+        } else {
+            Some(self.values[index])
+        }
+    }
+
+    pub(crate) fn record(&mut self, id: u32, value: f32) {
+        let index = id as usize;
+        debug_assert!(index < MAIN_HOST_ID_CAPACITY);
+        self.values[index] = value;
+        self.present[index / 64] |= 1_u64 << (index % 64);
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MainParameterError {

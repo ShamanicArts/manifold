@@ -105,6 +105,23 @@ pub struct Eq8 {
     mix: f32,
 }
 impl Eq8 {
+    /// Authored controls, including disabled bands. Read on the audio thread
+    /// when producing a coherent Main session header.
+    pub fn control_snapshot(&self) -> [f32; PARAM_COUNT] {
+        let mut controls = [0.0; PARAM_COUNT];
+        for (index, band) in self.target.iter().enumerate() {
+            let offset = index * 5;
+            controls[offset] = f32::from(band.enabled);
+            controls[offset + 1] = band.kind as f32;
+            controls[offset + 2] = band.freq;
+            controls[offset + 3] = band.gain;
+            controls[offset + 4] = band.q;
+        }
+        controls[40] = self.output_target;
+        controls[41] = self.mix_target;
+        controls
+    }
+
     pub fn new(sample_rate: f32, params: [f32; PARAM_COUNT]) -> Self {
         let bands = std::array::from_fn(Band::new);
         let mut eq = Self {

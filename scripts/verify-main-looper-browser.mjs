@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 const requireFromWeb = createRequire(new URL('../web/package.json', import.meta.url));
 const { chromium } = requireFromWeb('playwright-core');
 const browser = await chromium.launch({ executablePath: process.env.MANIFOLD_CHROMIUM ?? '/usr/bin/chromium',
-  headless: true, args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required'] });
+  headless: true, args: ['--no-sandbox', '--mute-audio', '--autoplay-policy=no-user-gesture-required'] });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1100 }, acceptDownloads: true });
   const errors = []; page.on('pageerror', error => errors.push(error.message));

@@ -4,6 +4,7 @@
 //! after a successful block and sends the displaced runtime back for control-
 //! side destruction. Keep the audio runtime on one processing thread.
 
+use std::collections::BTreeMap;
 use std::ptr::null_mut;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
@@ -15,6 +16,7 @@ use crate::main_instrument::{
     MainAudioBlock, MainHostAudioBlock, MainHostEventKind, MainNativeProcessor,
 };
 use crate::main_session::{MainSessionError, prepare_main_session};
+use crate::main_session_export::{MainExportError, export_main_session, strip_audio_template};
 use crate::main_snapshot::{
     self, MainPcmSnapshot, MainSnapshotError, SnapshotAudio, SnapshotControl,
 };
@@ -60,6 +62,7 @@ pub struct MainControl {
     sample_rate: f32,
     max_frames: usize,
     snapshot: SnapshotControl,
+    templates: BTreeMap<u64, serde_json::Value>,
 }
 
 impl MainAudioRuntime {
@@ -90,6 +93,7 @@ impl MainAudioRuntime {
             sample_rate,
             max_frames,
             snapshot: snapshot_control,
+            templates: BTreeMap::new(),
         };
         Ok((audio, control))
     }
@@ -106,6 +110,7 @@ impl MainAudioRuntime {
         let interrupted = published || !self.exchange.pending.load(Ordering::Acquire).is_null();
         self.snapshot.after_block(
             self.current.processor.instrument(),
+            self.current.processor.host_values(),
             self.current.generation,
             interrupted,
         );
@@ -123,6 +128,7 @@ impl MainAudioRuntime {
             mutating || published || !self.exchange.pending.load(Ordering::Acquire).is_null();
         self.snapshot.after_block(
             self.current.processor.instrument(),
+            self.current.processor.host_values(),
             self.current.generation,
             interrupted,
         );
@@ -150,6 +156,47 @@ impl MainAudioRuntime {
 }
 
 impl MainControl {
+    fn prune_templates(&mut self) {
+        if self.snapshot.is_active() {
+            return;
+        }
+        let published = self.published_generation();
+        let pending = self.next_generation.saturating_sub(1);
+        while self.templates.len() > 16 {
+            let Some(oldest) = self
+                .templates
+                .keys()
+                .copied()
+                .find(|generation| *generation != published && *generation != pending)
+            else {
+                break;
+            };
+            self.templates.remove(&oldest);
+        }
+    }
+
+    pub fn request_session_snapshot(&mut self) -> Result<u64, MainExportError> {
+        if !self.templates.contains_key(&self.published_generation()) {
+            return Err(MainExportError::MissingTemplate);
+        }
+        self.snapshot.request().map_err(MainExportError::Snapshot)
+    }
+
+    /// Once ready, encode the browser v15 envelope entirely off the callback.
+    pub fn poll_session_snapshot(&mut self) -> Result<Option<Vec<u8>>, MainExportError> {
+        let Some(snapshot) = self.snapshot.poll().map_err(MainExportError::Snapshot)? else {
+            self.prune_templates();
+            return Ok(None);
+        };
+        let template = self
+            .templates
+            .get(&snapshot.header.generation)
+            .ok_or(MainExportError::MissingTemplate)?;
+        let bytes = export_main_session(&snapshot, template)?;
+        self.prune_templates();
+        Ok(Some(bytes))
+    }
+
     /// Request a coherent PCM/transport snapshot. Poll on this control thread
     /// until it completes or is interrupted by a loop command or import.
     pub fn request_pcm_snapshot(&mut self) -> Result<u64, MainSnapshotError> {
@@ -157,12 +204,18 @@ impl MainControl {
     }
 
     pub fn poll_pcm_snapshot(&mut self) -> Result<Option<MainPcmSnapshot>, MainSnapshotError> {
-        self.snapshot.poll()
+        let result = self.snapshot.poll();
+        self.prune_templates();
+        result
     }
 
     /// Parse and prepare off the callback. A failed import preserves the
     /// current and pending runtimes. The latest accepted pending file wins.
     pub fn submit_session(&mut self, bytes: &[u8]) -> Result<u64, MainSessionError> {
+        let template = strip_audio_template(bytes).map_err(|error| match error {
+            MainExportError::Json(error) => MainSessionError::Json(error),
+            _ => MainSessionError::Invalid("save template"),
+        })?;
         let processor = prepare_main_session(bytes, self.sample_rate, self.max_frames)?;
         let generation = self.next_generation;
         self.next_generation += 1;
@@ -174,8 +227,13 @@ impl MainControl {
         if !previous.is_null() {
             // SAFETY: the swap gives this control endpoint sole ownership.
             unsafe {
-                drop(Box::from_raw(previous));
+                let displaced = Box::from_raw(previous);
+                self.templates.remove(&displaced.generation);
+                drop(displaced);
             }
+        }
+        if let Some(template) = template {
+            self.templates.insert(generation, template);
         }
         self.reclaim();
         Ok(generation)
@@ -196,6 +254,7 @@ impl MainControl {
             }
             count += 1;
         }
+        self.prune_templates();
         count
     }
 }
@@ -216,6 +275,7 @@ impl Drop for MainControl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::main_host_parameters::{ARPEGGIATOR_BASE, SYNTH_BASE};
     use crate::main_instrument::{MainHostEvent, MainHostEventKind};
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     use serde_json::{Value, json};
@@ -439,6 +499,126 @@ mod tests {
             control.poll_pcm_snapshot().err(),
             Some(MainSnapshotError::Unstable)
         );
+    }
+
+    #[test]
+    fn host_values_are_frozen_with_the_first_pcm_header() {
+        let (mut audio, mut control) = MainAudioRuntime::prepare(8_000.0, 128).unwrap();
+        control.submit_session(&snapshot_session()).unwrap();
+        render(&mut audio);
+        control.reclaim();
+        control.request_pcm_snapshot().unwrap();
+        let set_master = |value| MainHostEvent {
+            offset: 64,
+            kind: MainHostEventKind::Parameter {
+                id: SYNTH_BASE + 15,
+                value,
+            },
+        };
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        audio
+            .process_host(MainHostAudioBlock {
+                input: None,
+                output: [&mut left, &mut right],
+                actions: &[set_master(0.25)],
+            })
+            .unwrap();
+        assert!(control.poll_pcm_snapshot().unwrap().is_none());
+        audio
+            .process_host(MainHostAudioBlock {
+                input: None,
+                output: [&mut left, &mut right],
+                actions: &[set_master(0.75)],
+            })
+            .unwrap();
+        let snapshot = loop {
+            render(&mut audio);
+            if let Some(snapshot) = control.poll_pcm_snapshot().unwrap() {
+                break snapshot;
+            }
+        };
+        assert_eq!(snapshot.host_values.get(SYNTH_BASE + 15), Some(0.25));
+        assert_eq!(snapshot.host_values.get(SYNTH_BASE + 22), None);
+    }
+
+    #[test]
+    fn live_main_session_saves_pcm_automated_controls_and_inactive_fx_memories() {
+        let (mut audio, mut control) = MainAudioRuntime::prepare(8_000.0, 128).unwrap();
+        let mut imported: Value = serde_json::from_slice(&snapshot_session()).unwrap();
+        imported["rack"]["fx1"]["parameters"][7][0] = json!(0.77);
+        imported["rack"]["eq"]["bands"][0]["enabled"] = json!(true);
+        imported["rack"]["eq"]["selected"] = json!(0);
+        control
+            .submit_session(&serde_json::to_vec(&imported).unwrap())
+            .unwrap();
+        render(&mut audio);
+        control.reclaim();
+
+        let events = [
+            (SYNTH_BASE + 1, -0.2),
+            (SYNTH_BASE + 15, 0.37),
+            (SYNTH_BASE + 64, 0.0),
+            (SYNTH_BASE + 104, -3.0),
+            (SYNTH_BASE + 105, 0.65),
+            (SYNTH_BASE + 128, 7.0),
+            (SYNTH_BASE + 130, 0.42),
+            (ARPEGGIATOR_BASE + 3, 45.0),
+            (ARPEGGIATOR_BASE + 5, 1.0),
+        ]
+        .map(|(id, value)| MainHostEvent {
+            offset: 64,
+            kind: MainHostEventKind::Parameter { id, value },
+        });
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        audio
+            .process_host(MainHostAudioBlock {
+                input: None,
+                output: [&mut left, &mut right],
+                actions: &events,
+            })
+            .unwrap();
+        control.request_session_snapshot().unwrap();
+        let bytes = loop {
+            render(&mut audio);
+            if let Some(bytes) = control.poll_session_snapshot().unwrap() {
+                break bytes;
+            }
+        };
+        let saved: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(saved["version"], 15);
+        assert_eq!(saved["layers"][0]["frames"], 9_000);
+        assert_eq!(saved["sample"]["frames"], 9_000);
+        assert!((saved["rack"]["source"]["output"].as_f64().unwrap() - 0.37).abs() < 1e-6);
+        assert!((saved["rack"]["source"]["sampleBlend"].as_f64().unwrap() - 0.4).abs() < 1e-6);
+        assert_eq!(
+            saved["rack"]["source"]["sampleSource"],
+            imported["rack"]["source"]["sampleSource"]
+        );
+        assert_eq!(saved["rack"]["fx1"]["selected"], 7);
+        assert!((saved["rack"]["fx1"]["parameters"][7][0].as_f64().unwrap() - 0.42).abs() < 1e-6);
+        for (saved, imported) in saved["rack"]["fx1"]["parameters"][0]
+            .as_array()
+            .unwrap()
+            .iter()
+            .zip(imported["rack"]["fx1"]["parameters"][0].as_array().unwrap())
+        {
+            assert!((saved.as_f64().unwrap() - imported.as_f64().unwrap()).abs() < 1e-6);
+        }
+        assert_eq!(saved["rack"]["eq"]["selected"], -1);
+        assert_eq!(saved["rack"]["eq"]["output"], json!(-3.0));
+        assert!((saved["rack"]["eq"]["mix"].as_f64().unwrap() - 0.65).abs() < 1e-6);
+        assert_eq!(saved["rack"]["arpeggiator"]["gate"], json!(45.0));
+        assert_eq!(saved["rack"]["arpeggiator"]["connected"], true);
+
+        let reopened = prepare_main_session(&bytes, 8_000.0, 128).unwrap();
+        assert_eq!(reopened.instrument().looper().layer_length(0), 9_000);
+        assert_eq!(reopened.instrument().synth_sample_frames(), 9_000);
+        assert!((reopened.instrument().fx_type_params(0, 7).unwrap()[0] - 0.42).abs() < 1e-6);
+        assert_eq!(reopened.instrument().eq_control_snapshot()[40], -3.0);
+        assert!((reopened.instrument().eq_control_snapshot()[41] - 0.65).abs() < 1e-6);
+        assert_eq!(reopened.instrument().arpeggiator_status(11), 1.0);
     }
 
     #[test]

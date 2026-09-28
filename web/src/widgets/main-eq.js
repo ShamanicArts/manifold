@@ -17,6 +17,7 @@ export function mountMainEq(get, parameter, ids) {
   const bands = defaults.map((freq, index) => ({ enabled: false, type: types[index], freq,
     gain: 0, q: index === 0 || index === 7 ? .8 : 1 }));
   let selected = -1, insertType = 0, dragging = false, response = [];
+  let output = 0, mix = 1;
   const send = (index, property, offset) => parameter(ids.base + index * ids.bandStride + offset, bands[index][property]);
   function sendBand(index) {
     for (const [property, offset] of [['enabled', 0], ['type', 1], ['freq', 2], ['gain', 3], ['q', 4]]) {
@@ -141,12 +142,16 @@ export function mountMainEq(get, parameter, ids) {
   return {
     paint,
     setResponse(values) { response = values ?? []; paint(); },
-    snapshot() { return { bands: bands.map(band => ({ ...band })), selected, insertType }; },
+    snapshot() { return { bands: bands.map(band => ({ ...band })), selected, insertType, output, mix }; },
     restore(state) {
       state.bands.forEach((band, index) => Object.assign(bands[index], band));
       selected = state.selected; insertType = state.insertType;
+      output = state.output ?? 0; mix = state.mix ?? 1;
       sync(); paint(); this.sendState();
     },
-    sendState() { bands.forEach((_, index) => sendBand(index)); },
+    sendState() {
+      bands.forEach((_, index) => sendBand(index));
+      parameter(ids.output, output); parameter(ids.mix, mix);
+    },
   };
 }

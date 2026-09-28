@@ -39,6 +39,8 @@ export function validateMainRackState(rack, requireLfo = true, modulation = null
   }
   if (!eq || !Array.isArray(eq.bands) || eq.bands.length !== 8
     || !validInteger(eq.selected, -1, 7) || !validInteger(eq.insertType, 0, 5)
+    || (eq.output !== undefined && !validNumber(eq.output, -24, 24))
+    || (eq.mix !== undefined && !validNumber(eq.mix, 0, 1))
     || (eq.selected >= 0 && eq.bands[eq.selected]?.enabled !== true)
     || eq.bands.some(band => !band || typeof band.enabled !== 'boolean'
       || !validInteger(band.type, 0, 6) || !validNumber(band.freq, 20, 20000)

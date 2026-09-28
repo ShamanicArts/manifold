@@ -6,7 +6,7 @@ use manifold_core::events::{EventError, TimedEvent};
 use manifold_core::main_instrument::MainInstrument;
 
 use crate::NativeError;
-use crate::main_host_parameters::{MainParameter, MainParameterError};
+use crate::main_host_parameters::{MainHostValueBank, MainParameter, MainParameterError};
 
 pub const MAIN_MIDI_TARGET: u64 = 0;
 
@@ -74,6 +74,7 @@ pub struct MainNativeProcessor {
     instrument: MainInstrument,
     max_frames: usize,
     silence: Vec<f32>,
+    host_values: MainHostValueBank,
 }
 
 impl MainNativeProcessor {
@@ -89,6 +90,7 @@ impl MainNativeProcessor {
             instrument: MainInstrument::new(sample_rate, max_frames),
             max_frames,
             silence: vec![0.0; max_frames],
+            host_values: MainHostValueBank::default(),
         })
     }
 
@@ -99,6 +101,10 @@ impl MainNativeProcessor {
 
     pub fn instrument(&self) -> &MainInstrument {
         &self.instrument
+    }
+
+    pub fn host_values(&self) -> &MainHostValueBank {
+        &self.host_values
     }
 
     /// Validates the entire block and MIDI queue before touching output.
@@ -232,6 +238,7 @@ impl MainNativeProcessor {
                     let parameter = MainParameter::decode(id, value).expect("validated above");
                     let applied = parameter.apply(&mut self.instrument);
                     debug_assert!(applied);
+                    self.host_values.record(id, value);
                 }
                 MainHostEventKind::Command { id, value } => {
                     let looper = self.instrument.looper_mut();

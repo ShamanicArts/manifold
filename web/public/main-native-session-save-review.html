@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Main native session round trip · Manifold v2</title>
+  <style>
+    :root { font: 15px/1.55 system-ui, sans-serif; color: #1d3028; background: #f4f5f0; --line: #c9d6cd; --green: #28624c; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 1020px; margin: auto; padding: 36px 22px 90px; }
+    h1, h2 { font-family: Georgia, serif; font-weight: 400; line-height: 1.12; }
+    h1 { font-size: clamp(38px, 6vw, 62px); margin: 12px 0 18px; }
+    h2 { font-size: 27px; margin: 0 0 10px; }
+    p { max-width: 72ch; color: #395346; }
+    a { color: var(--green); }
+    header { border-top: 3px solid var(--green); padding-top: 12px; }
+    .eyebrow { font: 11px ui-monospace, monospace; letter-spacing: .13em; text-transform: uppercase; color: #995d3c; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0 0; }
+    .actions a { display: inline-block; padding: 10px 14px; border: 1px solid var(--green); text-decoration: none; font-weight: 600; }
+    .actions a:first-child { background: var(--green); color: white; }
+    section { border-top: 1px solid var(--line); margin-top: 30px; padding-top: 20px; }
+    .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: #829b8d; border: 1px solid #829b8d; }
+    .steps div { background: white; padding: 14px; min-height: 125px; }
+    .steps strong, .steps span { display: block; }
+    .steps span { margin-top: 6px; font-size: 13px; color: #526458; }
+    figure { margin: 14px 0 0; border: 1px solid var(--line); background: white; padding: 10px; }
+    figure img { display: block; width: 100%; height: auto; }
+    figcaption { margin-top: 8px; color: #526458; font-size: 13px; }
+    code { font: 12px ui-monospace, monospace; background: white; border: 1px solid var(--line); padding: 2px 4px; }
+    @media (max-width: 760px) { .steps { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 500px) { .steps { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body><main>
+  <header>
+    <div class="eyebrow">Manifold v2 / Main / 28 September 2026</div>
+    <h1>A native Main save<br>opens in the real looper.</h1>
+    <p>Rust imported a browser Main session, changed live host controls, captured a coherent audio and rack snapshot, and exported version-15 JSON. The actual browser Main looper opened that file and saved it again with identical loop and sample PCM.</p>
+    <div class="actions">
+      <a href="/main-looper.html">Open the actual Main looper →</a>
+      <a href="/main-native-saved-session.json" download>Download native-saved session</a>
+      <a href="/main-capture-orientation-review.html">Inspect capture direction</a>
+    </div>
+  </header>
+  <section>
+    <h2>What the round trip exercised</h2>
+    <div class="steps">
+      <div><strong>1 · Browser state in</strong><span>A version-15 Main session starts with a 6,000-frame stereo loop and Main Sample.</span></div>
+      <div><strong>2 · Native edits</strong><span>Timed host actions change Source and FX controls inside Rust processing.</span></div>
+      <div><strong>3 · Bounded save</strong><span>The audio thread freezes controls and copies PCM in prepared chunks; the control thread writes JSON.</span></div>
+      <div><strong>4 · Browser state out</strong><span>Main opens the native file, plays its loop, and re-saves identical PCM with the edited rack values.</span></div>
+    </div>
+  </section>
+  <section>
+    <h2>The instrument that opened it</h2>
+    <p>The image below is captured from <a href="/main-looper.html">the live Main looper page</a> after it opened the native save. The capture strips and four looper layers are the working instrument surface.</p>
+    <figure><a href="/main-looper.html"><img src="/main-native-session-browser.png" alt="Actual Main looper after opening a native-saved session, with the first layer playing"></a><figcaption>Main browser instrument, with layer one playing the restored loop.</figcaption></figure>
+  </section>
+  <section>
+    <h2>Proof and next boundary</h2>
+    <p>The native reimport test checks PCM, changed controls, inactive FX memories, EQ, and Arpeggiator state. The browser probe checks the real page, the loaded loop and sample, and byte-identical PCM after a second save. Reproduce with <code>cargo run -p manifold-native --example export_main_browser_session -- web/public/main-native-saved-session.json</code> and <code>node scripts/verify-main-native-session-browser.mjs</code>.</p>
+    <p>Native saving currently requires a version-15 session to have been imported first, because UI-only choices come from that session. Fresh native instances and Main CLAP/VST3 state callbacks are next.</p>
+  </section>
+</main></body>
+</html>

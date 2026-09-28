@@ -17,6 +17,13 @@ use crate::sample_region::ValidatedStereo;
 
 pub const MAIN_LFO_SLOTS: usize = 4;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MainFxControlSnapshot {
+    pub selected: u32,
+    pub mix: f32,
+    pub parameters: [[f32; 5]; 21],
+}
+
 pub struct MainInstrument {
     looper: MainLooper,
     synth: MainVoiceBank,
@@ -354,6 +361,26 @@ impl MainInstrument {
             1 => self.fx2.params_for_type(effect_type),
             _ => None,
         }
+    }
+
+    pub fn fx_control_snapshot(&self, slot: usize) -> Option<MainFxControlSnapshot> {
+        let fx = match slot {
+            0 => &self.fx1,
+            1 => &self.fx2,
+            _ => return None,
+        };
+        Some(MainFxControlSnapshot {
+            selected: fx.selected_type(),
+            mix: fx.target_mix(),
+            parameters: std::array::from_fn(|index| {
+                fx.params_for_type(index as u32)
+                    .expect("all legacy FX types have prepared memories")
+            }),
+        })
+    }
+
+    pub fn eq_control_snapshot(&self) -> [f32; eq8::PARAM_COUNT] {
+        self.eq.control_snapshot()
     }
 
     pub fn set_lfo_parameter(&mut self, id: u32, value: f32) -> bool {

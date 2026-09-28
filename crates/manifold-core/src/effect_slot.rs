@@ -160,6 +160,14 @@ pub const DEFAULT_TYPE_PARAMETERS: [[f32; 5]; 21] = [
 ];
 
 impl EffectSlot {
+    pub fn selected_type(&self) -> u32 {
+        self.selected
+    }
+
+    pub fn target_mix(&self) -> f32 {
+        self.target_mix
+    }
+
     /// Stored normalized controls for an effect, including effects whose
     /// output gate is currently closed.
     pub fn params_for_type(&self, effect_type: u32) -> Option<[f32; 5]> {

@@ -5,8 +5,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crossbeam_queue::ArrayQueue;
-use manifold_core::main_instrument::MainInstrument;
+use manifold_core::eq8;
+use manifold_core::main_instrument::{MainFxControlSnapshot, MainInstrument};
 use manifold_core::main_looper::{LAYERS, Mode};
+
+use crate::main_host_parameters::MainHostValueBank;
 
 const CHUNK_FRAMES: usize = 4096;
 const CHUNK_SAMPLES: usize = CHUNK_FRAMES * 2;
@@ -40,6 +43,13 @@ pub struct MainPcmSnapshot {
     pub header: MainPcmSnapshotHeader,
     pub layers: [Vec<f32>; LAYERS],
     pub sample: Vec<f32>,
+    pub host_values: MainHostValueBank,
+    pub fx: [MainFxControlSnapshot; 2],
+    pub eq: [f32; eq8::PARAM_COUNT],
+    pub sample_hold_held: f32,
+    pub sample_hold_trigger_high: bool,
+    pub compare_gate: bool,
+    pub compare_pulse_remaining: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,6 +65,13 @@ pub enum MainSnapshotError {
 struct HeaderMessage {
     id: u64,
     header: MainPcmSnapshotHeader,
+    host_values: MainHostValueBank,
+    fx: [MainFxControlSnapshot; 2],
+    eq: [f32; eq8::PARAM_COUNT],
+    sample_hold_held: f32,
+    sample_hold_trigger_high: bool,
+    compare_gate: bool,
+    compare_pulse_remaining: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -178,6 +195,7 @@ impl SnapshotAudio {
     pub(crate) fn after_block(
         &mut self,
         instrument: &MainInstrument,
+        host_values: &MainHostValueBank,
         generation: u64,
         content_changed: bool,
     ) {
@@ -205,7 +223,20 @@ impl SnapshotAudio {
                 lengths[index] = layer.frames;
             }
             lengths[LAYERS] = header.sample_frames;
-            let pushed = self.exchange.header.push(HeaderMessage { id, header });
+            let pushed = self.exchange.header.push(HeaderMessage {
+                id,
+                header,
+                host_values: *host_values,
+                fx: [
+                    instrument.fx_control_snapshot(0).expect("FX1 prepared"),
+                    instrument.fx_control_snapshot(1).expect("FX2 prepared"),
+                ],
+                eq: instrument.eq_control_snapshot(),
+                sample_hold_held: instrument.sample_hold_status(2),
+                sample_hold_trigger_high: instrument.sample_hold_status(4) == 1.0,
+                compare_gate: instrument.compare_status(1) == 1.0,
+                compare_pulse_remaining: instrument.compare_status(3) as u32,
+            });
             debug_assert!(pushed.is_ok());
             self.cursor = Some(Cursor {
                 id,
@@ -254,6 +285,10 @@ impl SnapshotAudio {
 }
 
 impl SnapshotControl {
+    pub(crate) fn is_active(&self) -> bool {
+        self.active.is_some()
+    }
+
     pub fn request(&mut self) -> Result<u64, MainSnapshotError> {
         if self.active.is_some() || self.exchange.requested.load(Ordering::Acquire) != 0 {
             return Err(MainSnapshotError::Busy);
@@ -280,6 +315,13 @@ impl SnapshotControl {
                     vec![0.0; message.header.layers[index].frames * 2]
                 }),
                 sample: vec![0.0; message.header.sample_frames * 2],
+                host_values: message.host_values,
+                fx: message.fx,
+                eq: message.eq,
+                sample_hold_held: message.sample_hold_held,
+                sample_hold_trigger_high: message.sample_hold_trigger_high,
+                compare_gate: message.compare_gate,
+                compare_pulse_remaining: message.compare_pulse_remaining,
             });
         }
         while let Some(chunk) = self.exchange.ready.pop() {
