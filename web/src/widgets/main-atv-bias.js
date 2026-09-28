@@ -5,7 +5,7 @@ const signed = value => `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
 
 // Main/ui/components/attenuverter_bias.ui.lua supplies the face geometry;
 // Main/lib/ui/dynamic_module_graphs.lua supplies the transfer curve.
-export function mountMainAtvBias(get, post) {
+export function mountMainAtvBias(get, post, onInputState = () => {}) {
   const state = { amount: 1, bias: 0, slot: 0, port: 0 };
   let input = 0, output = 0;
   const amount = mountCompactSlider(get('atv-amount'), { label: 'Amount', min: -1, max: 1,
@@ -17,9 +17,11 @@ export function mountMainAtvBias(get, post) {
   bias.onChange(value => { state.bias = value; send(1, value); paint(); });
   get('atv-slot').addEventListener('change', event => {
     state.slot = Number(event.target.value); send(2, state.slot);
+    onInputState({ ...state });
   });
   get('atv-port').addEventListener('change', event => {
     state.port = Number(event.target.value); send(3, state.port);
+    onInputState({ ...state });
   });
 
   function paint() {

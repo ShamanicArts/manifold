@@ -105,11 +105,11 @@ export function mountMainLfo(get, post, contract, slot = 0, onRouteState = () =>
   get('lfo-sync').addEventListener('change', event => post({ type: 'lfo-gate', slot, id: 1, high: Number(event.target.checked) }));
   paint();
   return {
-    applyCableRoute(connected) {
-      state.route.source = 0;
+    applyCableRoute(connected, source = 0) {
+      state.route.source = source;
       state.route.target = connected ? 22 : 0;
       state.route.enabled = connected;
-      get('mod-source').value = '0';
+      get('mod-source').value = String(source);
       get('mod-target').value = String(state.route.target);
       get('mod-enabled').checked = connected;
       paintRouteHeading();

@@ -67,12 +67,14 @@ const rackPatch = mountMainAudioPatch({
       processor.port.postMessage({ type: 'rack-routes', requestId, routes });
     });
   },
-  onControlRoute: async connected => {
+  onControlRoute: async moduleId => {
     if (editorMode) return false;
     const previous = lfo.snapshot().find(item => item.slot === 0)?.route;
     if (!previous) return false;
-    const next = { source: 0, target: connected ? 22 : 0, enabled: connected };
-    if (!processor) { lfo.applyCableRoute(connected); return true; }
+    const connected = moduleId === 'lfo1' || moduleId === 'atv1';
+    const next = { source: moduleId === 'atv1' ? 4 : 0,
+      target: connected ? 22 : 0, enabled: connected };
+    if (!processor) { lfo.applyCableRoute(connected, next.source); return true; }
     const routes = [
       { slot: 0, id: project.modulation.routeParameters.source,
         value: next.source, previous: previous.source },
@@ -87,7 +89,7 @@ const rackPatch = mountMainAudioPatch({
       pendingRackRoutes.set(requestId, { resolve, timer });
       processor.port.postMessage({ type: 'modulation-routes', requestId, routes });
     });
-    if (accepted) lfo.applyCableRoute(connected);
+    if (accepted) lfo.applyCableRoute(connected, next.source);
     return accepted;
   },
   onLayout: document => {
@@ -206,7 +208,7 @@ const fx1 = mountMainFxSlot($('fx1-module'), synthParameter, project.fxParameter
 const fx2 = mountMainFxSlot($('fx2-module'), synthParameter, project.fxParameters.fx2Base);
 const lfo = mountMainLfoRack($, post, project.modulation,
   route => { if (!editorMode) rackPatch.reflectControlRoute(route); });
-const atv = mountMainAtvBias($, post);
+const atv = mountMainAtvBias($, post, state => { if (!editorMode) rackPatch.reflectAtvInputRoute(state); });
 const slew = mountMainSlew($, post, project.modulation.slewParameters);
 const sampleHold = mountMainSampleHold($, post, project.modulation.sampleHoldParameters);
 const compare = mountMainCompare($, post, project.modulation.compareParameters);
@@ -359,6 +361,7 @@ function restoreRack(state) {
   lfo.restore(state.lfos ?? state.lfo);
   if (!editorMode) rackPatch.reflectControlRoute(lfo.snapshot().find(item => item.slot === 0)?.route);
   atv.restore(state.atv ?? { amount: 1, bias: 0, slot: 0, port: 0 });
+  if (!editorMode) rackPatch.reflectAtvInputRoute(atv.snapshot());
   slew.restore(state.slew ?? { riseMs: 0, fallMs: 0, shape: 1, source: 0 });
   sampleHold.restore(state.sampleHold ?? {
     mode: 0, source: 0, triggerSource: 0, manualGate: false, held: 0, triggerHigh: false,

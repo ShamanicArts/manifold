@@ -9,7 +9,8 @@
     "fx1": { "name": "FX1", "sizes": [[1, 1], [1, 2], [2, 1], [2, 2]], "ports": { "inputs": [{ "id": "in", "kind": "audio" }, { "id": "recv", "kind": "audio" }, { "id": "mix", "kind": "cv", "parameter": true }], "outputs": [{ "id": "out", "kind": "audio" }, { "id": "mix", "kind": "cv", "parameter": true }] } },
     "fx2": { "name": "FX2", "sizes": [[1, 1], [1, 2], [2, 1]], "ports": { "inputs": [{ "id": "in", "kind": "audio" }, { "id": "mix", "kind": "cv", "parameter": true }], "outputs": [{ "id": "out", "kind": "audio" }, { "id": "mix", "kind": "cv", "parameter": true }] } },
     "eq": { "name": "EQ8", "sizes": [[1, 1], [1, 2], [2, 1]], "ports": { "inputs": [{ "id": "in", "kind": "audio" }], "outputs": [{ "id": "out", "kind": "audio" }] } },
-    "lfo": { "name": "LFO", "sizes": [[1, 1], [1, 2], [2, 1]], "ports": { "inputs": [{ "id": "reset", "kind": "gate" }, { "id": "sync", "kind": "gate" }], "outputs": [{ "id": "out", "kind": "cv" }, { "id": "inv", "kind": "cv" }, { "id": "uni", "kind": "cv" }, { "id": "eoc", "kind": "gate" }] } }
+    "lfo": { "name": "LFO", "sizes": [[1, 1], [1, 2], [2, 1]], "ports": { "inputs": [{ "id": "reset", "kind": "gate" }, { "id": "sync", "kind": "gate" }], "outputs": [{ "id": "out", "kind": "cv" }, { "id": "inv", "kind": "cv" }, { "id": "uni", "kind": "cv" }, { "id": "eoc", "kind": "gate" }] } },
+    "atv": { "name": "ATV / Bias", "sizes": [[1, 1]], "ports": { "inputs": [{ "id": "in", "kind": "cv" }], "outputs": [{ "id": "out", "kind": "cv" }] } }
   },
   "endpoints": {
     "__midiInput": { "nodeId": 4, "ports": { "inputs": [], "outputs": [{ "id": "voice", "kind": "voice" }] } },
@@ -24,7 +25,8 @@
       { "id": "fx1", "nodeId": 7, "type": "fx1", "row": 1, "col": 0, "w": 2, "h": 1 },
       { "id": "fx2", "nodeId": 8, "type": "fx2", "row": 1, "col": 2, "w": 2, "h": 1 },
       { "id": "eq", "nodeId": 9, "type": "eq", "row": 1, "col": 4, "w": 1, "h": 1 },
-      { "id": "lfo1", "nodeId": 11, "type": "lfo", "row": 2, "col": 0, "w": 1, "h": 1 }
+      { "id": "lfo1", "nodeId": 11, "type": "lfo", "row": 2, "col": 0, "w": 1, "h": 1 },
+      { "id": "atv1", "nodeId": 12, "type": "atv", "row": 2, "col": 1, "w": 1, "h": 1 }
     ],
     "connections": [
       { "id": "midi_in_to_adsr", "from": { "moduleId": "__midiInput", "portId": "voice" }, "to": { "moduleId": "adsr", "portId": "midi" } },
@@ -33,7 +35,8 @@
       { "id": "filter_to_fx1", "from": { "moduleId": "filter", "portId": "out" }, "to": { "moduleId": "fx1", "portId": "in" } },
       { "id": "fx1_to_fx2", "from": { "moduleId": "fx1", "portId": "out" }, "to": { "moduleId": "fx2", "portId": "in" } },
       { "id": "fx2_to_eq", "from": { "moduleId": "fx2", "portId": "out" }, "to": { "moduleId": "eq", "portId": "in" } },
-      { "id": "eq_to_output", "from": { "moduleId": "eq", "portId": "out" }, "to": { "moduleId": "__rackOutput", "portId": "main" } }
+      { "id": "eq_to_output", "from": { "moduleId": "eq", "portId": "out" }, "to": { "moduleId": "__rackOutput", "portId": "main" } },
+      { "id": "lfo1_to_atv1", "from": { "moduleId": "lfo1", "portId": "out" }, "to": { "moduleId": "atv1", "portId": "in" } }
     ]
   }
 }

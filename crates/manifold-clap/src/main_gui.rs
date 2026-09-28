@@ -520,7 +520,7 @@ mod tests {
     fn editor_layout_message_persists_while_inactive_and_active() {
         let instance = Instance::new(null(), null());
         let browser: serde_json::Value = serde_json::from_slice(include_bytes!(
-            "../../../web/public/main-rack-layout-saved-session.json"
+            "../../../projects/main-looper/default-session-v16.json"
         ))
         .unwrap();
         let mut moved = browser["rackDocument"].clone();

@@ -520,6 +520,7 @@ body {
 .main-rack-patch-active .rack-filter > .filter-module, .main-rack-patch-active .rack-fx > .fx-module,
 .main-rack-patch-active .rack-eq > .eq-module { visibility: hidden; }
 .main-rack-patch-active .rack-lfo-primary > :not(.rack-shell-head):not(.main-patch-face) { visibility: hidden; }
+.main-rack-patch-active .rack-atv-primary > :not(.rack-shell-head):not(.main-patch-face) { visibility: hidden; }
 .main-patch-column { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .main-patch-column > strong { height: 15px; color: #64748b; font: 9px/15px system-ui, sans-serif; letter-spacing: .11em; }
 .main-patch-outputs > strong { text-align: right; }
@@ -633,6 +634,9 @@ body {
 .route-content button { height: 22px; border: 1px solid #334155; background: #1e293b; color: #cbd5e1; font-size: 9px; cursor: pointer; }
 [id^="mod-effective"] { grid-column: 1 / -1; color: #7dd3fc; font-size: 9px; white-space: nowrap; }
 .rack-atv { position: absolute; left: 708px; top: 465px; width: 236px; height: 220px; background: #0f1f17; border: 1px solid #1f3b2d; border-radius: 10px; }
+.atv-head::before { background: #4ade80; }
+.rack-atv-primary .atv-title { top: 15px; }
+.rack-atv-primary .atv-status { top: 31px; }
 .atv-title, .atv-status, .atv-values { position: absolute; left: 12px; width: 212px; }
 .atv-title { top: 10px; color: #4ade80; font-size: 11px; }
 .atv-status { top: 28px; color: #94a3b8; font-size: 8px; }

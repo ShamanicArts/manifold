@@ -570,6 +570,7 @@ mod tests {
             include_bytes!("../../../web/public/main-rack-layout-saved-session.json").as_slice(),
             include_bytes!("../../../web/public/main-filter-compact-saved-session.json").as_slice(),
             include_bytes!("../../../web/public/main-lfo-rack-saved-session.json").as_slice(),
+            include_bytes!("../../../web/public/main-atv-rack-saved-session.json").as_slice(),
         ] {
             let component = main_processor::MainProcessor::new();
             let (incoming, _) = stream(fixture.to_vec());
@@ -598,7 +599,7 @@ mod tests {
     #[test]
     fn main_vst3_editor_layout_edit_updates_component_state() {
         let browser: serde_json::Value = serde_json::from_slice(include_bytes!(
-            "../../../web/public/main-rack-layout-saved-session.json"
+            "../../../web/public/main-rack-reflow-saved-session.json"
         ))
         .unwrap();
         let mut moved = browser["rackDocument"].clone();

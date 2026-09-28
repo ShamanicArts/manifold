@@ -68,7 +68,7 @@ export function mountMainLfoRack(get, post, contract, onRouteState = () => {}) {
   return {
     add,
     remove: removeSlot,
-    applyCableRoute(connected) { slots[0].widget.applyCableRoute(connected); },
+    applyCableRoute(connected, source = 0) { slots[0].widget.applyCableRoute(connected, source); },
     paint() { slots.forEach(entry => entry?.widget.paint()); },
     snapshot() { return slots.flatMap((entry, slot) => entry ? [{ slot, ...entry.widget.snapshot() }] : []); },
     restore(saved) {

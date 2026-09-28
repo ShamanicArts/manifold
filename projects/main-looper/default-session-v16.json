@@ -623,6 +623,15 @@
         "col": 0,
         "w": 1,
         "h": 1
+      },
+      {
+        "id": "atv1",
+        "nodeId": 12,
+        "type": "atv",
+        "row": 2,
+        "col": 1,
+        "w": 1,
+        "h": 1
       }
     ],
     "connections": [
@@ -701,6 +710,17 @@
         "to": {
           "moduleId": "__rackOutput",
           "portId": "main"
+        }
+      },
+      {
+        "id": "lfo1_to_atv1",
+        "from": {
+          "moduleId": "lfo1",
+          "portId": "out"
+        },
+        "to": {
+          "moduleId": "atv1",
+          "portId": "in"
         }
       }
     ]

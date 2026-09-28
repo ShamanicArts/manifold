@@ -270,13 +270,13 @@ fn apply_rack(rack: &mut Value, snapshot: &MainPcmSnapshot) -> Result<(), MainEx
     Ok(())
 }
 
-fn reconcile_first_lfo_cable(state: &mut Value) -> Result<(), MainExportError> {
-    let has_shell = state["rackDocument"]["modules"]
+fn reconcile_control_cables(state: &mut Value) -> Result<(), MainExportError> {
+    let modules = state["rackDocument"]["modules"]
         .as_array()
-        .ok_or(MainExportError::InvalidTemplate("rackDocument modules"))?
-        .iter()
-        .any(|module| module["id"] == "lfo1");
-    if !has_shell {
+        .ok_or(MainExportError::InvalidTemplate("rackDocument modules"))?;
+    let has_lfo = modules.iter().any(|module| module["id"] == "lfo1");
+    let has_atv = modules.iter().any(|module| module["id"] == "atv1");
+    if !has_lfo {
         return Ok(());
     }
     let route = state["rack"]["lfos"]
@@ -284,31 +284,49 @@ fn reconcile_first_lfo_cable(state: &mut Value) -> Result<(), MainExportError> {
         .and_then(|lfos| lfos.iter().find(|lfo| lfo["slot"] == 0))
         .ok_or(MainExportError::InvalidTemplate("LFO 1 route"))?["route"]
         .clone();
-    let connected = route["source"] == 0 && route["target"] == 22 && route["enabled"] == true;
+    let desired_source = if route["target"] == 22 && route["enabled"] == true {
+        match route["source"].as_u64() {
+            Some(0) => Some("lfo1"),
+            Some(4) if has_atv => Some("atv1"),
+            _ => None,
+        }
+    } else {
+        None
+    };
+    let atv_input =
+        has_atv && state["rack"]["atv"]["slot"] == 0 && state["rack"]["atv"]["port"] == 0;
     let connections = state["rackDocument"]["connections"]
         .as_array_mut()
         .ok_or(MainExportError::InvalidTemplate("rackDocument connections"))?;
-    let existing = connections.iter().position(|edge| {
-        edge["from"]["moduleId"] == "lfo1"
-            && edge["from"]["portId"] == "out"
-            && edge["to"]["moduleId"] == "filter"
-            && edge["to"]["portId"] == "cutoff"
-    });
-    if connected && existing.is_none() {
-        let mut index = 1;
-        while connections
-            .iter()
-            .any(|edge| edge["id"] == format!("connection_{index}"))
-        {
-            index += 1;
+    fn ensure(connections: &mut Vec<Value>, from: Option<&str>, to_module: &str, to_port: &str) {
+        let existing = connections.iter().position(|edge| {
+            edge["to"]["moduleId"] == to_module && edge["to"]["portId"] == to_port
+        });
+        match (existing, from) {
+            (Some(index), Some(source)) => connections[index]["from"]["moduleId"] = json!(source),
+            (Some(index), None) => {
+                connections.remove(index);
+            }
+            (None, Some(source)) => {
+                let mut index = 1;
+                while connections
+                    .iter()
+                    .any(|edge| edge["id"] == format!("connection_{index}"))
+                {
+                    index += 1;
+                }
+                connections.push(json!({
+                    "id": format!("connection_{index}"),
+                    "from": { "moduleId": source, "portId": "out" },
+                    "to": { "moduleId": to_module, "portId": to_port },
+                }));
+            }
+            (None, None) => {}
         }
-        connections.push(json!({
-            "id": format!("connection_{index}"),
-            "from": { "moduleId": "lfo1", "portId": "out" },
-            "to": { "moduleId": "filter", "portId": "cutoff" },
-        }));
-    } else if !connected {
-        connections.retain(|edge| edge["from"]["moduleId"] != "lfo1");
+    }
+    ensure(connections, desired_source, "filter", "cutoff");
+    if has_atv {
+        ensure(connections, atv_input.then_some("lfo1"), "atv1", "in");
     }
     Ok(())
 }
@@ -422,7 +440,7 @@ pub fn export_main_session(
     state["sample"]["frames"] = json!(header.sample_frames);
     state["sample"]["pcmF32Base64"] = json!(pcm_base64(&snapshot.sample));
     apply_rack(&mut state["rack"], snapshot)?;
-    reconcile_first_lfo_cable(&mut state)?;
+    reconcile_control_cables(&mut state)?;
     serde_json::to_vec(&state).map_err(MainExportError::Json)
 }
 
@@ -437,16 +455,16 @@ mod tests {
         ))
         .unwrap();
         state["rack"]["lfos"][0]["route"]["enabled"] = json!(false);
-        reconcile_first_lfo_cable(&mut state).unwrap();
+        reconcile_control_cables(&mut state).unwrap();
         assert!(
             state["rackDocument"]["connections"]
                 .as_array()
                 .unwrap()
                 .iter()
-                .all(|edge| edge["from"]["moduleId"] != "lfo1")
+                .all(|edge| edge["to"]["portId"] != "cutoff")
         );
         state["rack"]["lfos"][0]["route"]["enabled"] = json!(true);
-        reconcile_first_lfo_cable(&mut state).unwrap();
+        reconcile_control_cables(&mut state).unwrap();
         assert!(
             crate::main_rack_document::validate_control_route(
                 &state["rackDocument"],
@@ -459,9 +477,45 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .iter()
-                .filter(|edge| edge["from"]["moduleId"] == "lfo1")
+                .filter(
+                    |edge| edge["from"]["moduleId"] == "lfo1" && edge["to"]["portId"] == "cutoff"
+                )
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn native_atv_source_and_input_selector_reconcile_distinct_cables() {
+        let mut state: Value = serde_json::from_slice(include_bytes!(
+            "../../../web/public/main-atv-rack-saved-session.json"
+        ))
+        .unwrap();
+        state["rack"]["lfos"][0]["route"]["source"] = json!(0);
+        state["rack"]["atv"]["port"] = json!(1);
+        reconcile_control_cables(&mut state).unwrap();
+        let cables = state["rackDocument"]["connections"].as_array().unwrap();
+        assert!(
+            cables
+                .iter()
+                .any(|edge| edge["from"]["moduleId"] == "lfo1" && edge["to"]["portId"] == "cutoff")
+        );
+        assert!(!cables.iter().any(|edge| edge["to"]["moduleId"] == "atv1"));
+        crate::main_rack_document::validate_control_route(&state["rackDocument"], &state["rack"])
+            .unwrap();
+        state["rack"]["lfos"][0]["route"]["source"] = json!(4);
+        state["rack"]["atv"]["port"] = json!(0);
+        reconcile_control_cables(&mut state).unwrap();
+        assert_eq!(
+            state["rackDocument"]["connections"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|edge| edge["to"]["moduleId"] == "atv1")
+                .count(),
+            1
+        );
+        crate::main_rack_document::validate_control_route(&state["rackDocument"], &state["rack"])
+            .unwrap();
     }
 }

@@ -1,4 +1,4 @@
-import { compileMainRackInsert, validateMainRackInsertDocument, withMainLfoShell } from '../state/main-rack-graph.js';
+import { compileMainRackInsert, validateMainRackInsertDocument, withMainControlShells } from '../state/main-rack-graph.js';
 import { initialRackDocument, moveRackModule, resizeRackModuleWithFlow,
   replaceRackInput, disconnectRackInput,
   setRackViewMode } from '../state/rack-document.js';
@@ -6,11 +6,12 @@ import { initialRackDocument, moveRackModule, resizeRackModuleWithFlow,
 const SHELLS = {
   adsr: '.rack-adsr', oscillator: '.rack-source', filter: '.rack-filter',
   fx1: '.rack-fx1', fx2: '.rack-fx2', eq: '.rack-eq', lfo1: '.rack-lfo-primary',
+  atv1: '.rack-atv-primary',
 };
 const AUDIO_INPUTS = new Set(['filter:in', 'fx1:in', 'fx2:in', 'eq:in', '__rackOutput:main']);
 const AUDIO_OUTPUTS = new Set(['oscillator:out', 'filter:out', 'fx1:out', 'fx2:out', 'eq:out']);
 const CONTROL_INPUTS = new Set(['filter:cutoff']);
-const CONTROL_OUTPUTS = new Set(['lfo1:out']);
+const CONTROL_OUTPUTS = new Set(['lfo1:out', 'atv1:out']);
 const NS = 'http://www.w3.org/2000/svg';
 const endpointKey = endpoint => `${endpoint.moduleId}:${endpoint.portId}`;
 
@@ -226,8 +227,14 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
   }
   function drawWire(a, b, kind, preview = false) {
     const path = document.createElementNS(NS, 'path');
-    const bend = Math.max(28, Math.abs(b.x - a.x) * .45);
-    path.setAttribute('d', `M ${a.x} ${a.y} C ${a.x + bend} ${a.y}, ${b.x - bend} ${b.y}, ${b.x} ${b.y}`);
+    if (b.x < a.x - 32 && Math.abs(b.y - a.y) < catalog.grid.cellHeight / 2) {
+      const top = Math.max(6, Math.min(a.y, b.y) - 70);
+      path.setAttribute('d', `M ${a.x} ${a.y} C ${a.x + 32} ${a.y}, ${a.x + 32} ${top}, ${a.x} ${top}`
+        + ` L ${b.x} ${top} C ${b.x - 32} ${top}, ${b.x - 32} ${b.y}, ${b.x} ${b.y}`);
+    } else {
+      const bend = Math.max(28, Math.abs(b.x - a.x) * .45);
+      path.setAttribute('d', `M ${a.x} ${a.y} C ${a.x + bend} ${a.y}, ${b.x - bend} ${b.y}, ${b.x} ${b.y}`);
+    }
     path.setAttribute('class', `main-rack-wire main-rack-wire-${kind}${preview ? ' preview' : ''}`);
     svg.append(path);
   }
@@ -246,7 +253,7 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
       const from = portButtons.get(`output:${endpointKey(source)}`);
       const bounds = content.getBoundingClientRect();
       const scale = bounds.width / content.offsetWidth;
-      const kind = source.moduleId === 'lfo1' ? 'cv' : 'audio';
+      const kind = CONTROL_OUTPUTS.has(endpointKey(source)) ? 'cv' : 'audio';
       drawWire(anchor(from), { x: (drag.x - bounds.left) / scale,
         y: (drag.y - bounds.top) / scale }, kind, true);
     }
@@ -261,7 +268,7 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
         : next.modules.find(module => module.id === to.moduleId).nodeId;
       const sourceId = !from ? 0 : from.moduleId === 'oscillator' ? 1
         : next.modules.find(module => module.id === from.moduleId).nodeId;
-      const accepted = control ? await onControlRoute(Boolean(from))
+      const accepted = control ? await onControlRoute(from?.moduleId ?? null)
         : await onRoute({ to: target, port: 0, from: sourceId });
       if (!accepted) throw new Error('The Rust rack rejected this cable.');
       rack = next;
@@ -309,14 +316,14 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
   }
   async function restore(document, alreadyApplied = false) {
     if (pending) throw new Error('A cable edit is still pending.');
-    const next = withMainLfoShell(document ?? initialRackDocument(catalog), catalog);
+    const next = withMainControlShells(document ?? initialRackDocument(catalog), catalog);
     const routes = audioTargets.map(moduleId => ({ ...routeFor(next, moduleId),
       previous: routeFor(rack, moduleId).from }))
       .filter(route => route.from !== route.previous);
     pending = true;
     try {
-      const controlCable = item => item.connections.some(edge => edge.from.moduleId === 'lfo1'
-        && edge.from.portId === 'out' && edge.to.moduleId === 'filter' && edge.to.portId === 'cutoff');
+      const controlCable = item => item.connections.find(edge => edge.to.moduleId === 'filter'
+        && edge.to.portId === 'cutoff')?.from.moduleId ?? null;
       const controlChanged = controlCable(next) !== controlCable(rack);
       if (!alreadyApplied && controlChanged && !await onControlRoute(controlCable(next))) {
         throw new Error('The Rust rack rejected the saved control cable.');
@@ -341,12 +348,24 @@ export function mountMainAudioPatch({ content, catalog, toggle, onRoute, onRoute
     restore,
     reflectControlRoute(route) {
       if (pending) return;
-      const from = { moduleId: 'lfo1', portId: 'out' };
+      const from = { moduleId: route?.source === 4 ? 'atv1' : 'lfo1', portId: 'out' };
       const to = { moduleId: 'filter', portId: 'cutoff' };
-      const connected = route?.source === 0 && route?.target === 22 && route?.enabled === true;
-      const hasCable = rack.connections.some(edge => endpointKey(edge.from) === endpointKey(from)
-        && endpointKey(edge.to) === endpointKey(to));
-      if (connected === hasCable || !rack.modules.some(module => module.id === 'lfo1')) return;
+      const connected = [0, 4].includes(route?.source)
+        && route?.target === 22 && route?.enabled === true;
+      const existing = rack.connections.find(edge => endpointKey(edge.to) === endpointKey(to));
+      if (connected && endpointKey(existing?.from ?? {}) === endpointKey(from) || !connected && !existing) return;
+      rack = validateMainRackInsertDocument(connected
+        ? replaceRackInput(rack, from, to, catalog)
+        : disconnectRackInput(rack, to, catalog), catalog);
+      paintWires();
+    },
+    reflectAtvInputRoute(state) {
+      if (pending || !rack.modules.some(module => module.id === 'atv1')) return;
+      const from = { moduleId: 'lfo1', portId: 'out' };
+      const to = { moduleId: 'atv1', portId: 'in' };
+      const connected = state?.slot === 0 && state?.port === 0;
+      const existing = rack.connections.some(edge => endpointKey(edge.to) === endpointKey(to));
+      if (connected === existing) return;
       rack = validateMainRackInsertDocument(connected
         ? replaceRackInput(rack, from, to, catalog)
         : disconnectRackInput(rack, to, catalog), catalog);

@@ -8,11 +8,11 @@ import { initialRackDocument, connectRackPorts, disconnectRackInput,
   moveRackModule, removeRackModule, resizeRackModuleWithFlow, replaceRackInput } from './rack-document.js';
 import { compileMainRackAudio, compileMainRackInsert,
   validateMainRackControlRoute, validateMainRackInsertDocument,
-  withMainLfoShell } from './main-rack-graph.js';
+  withMainControlShells } from './main-rack-graph.js';
 
-test('native default session and browser start with the same seven-shell rack', () => {
+test('native default session and browser start with the same eight-shell rack', () => {
   assert.deepEqual(defaultSession.rackDocument, initialRackDocument(catalog));
-  assert.equal(defaultSession.rackDocument.modules.length, 7);
+  assert.equal(defaultSession.rackDocument.modules.length, 8);
 });
 
 test('Main v16 audio document accepts saved bypass but rejects backward prepared routes', () => {
@@ -101,19 +101,31 @@ test('LFO OUT to Filter Cutoff uses the portable graph CV edge and Main existing
   assert.ok(insert.connections.some(edge => edge.from === 1 && edge.to === 6 && edge.inputPort === 0));
   assert.equal(signal.initialParameters.find(parameter => parameter.nodeId === 11 && parameter.id === 1).value, 1);
   assert.deepEqual(validateMainRackInsertDocument(rack, catalog), rack);
-  assert.equal(validateMainRackControlRoute(rack, { lfos: [{ slot: 0,
+  assert.equal(validateMainRackControlRoute(rack, { atv: { slot: 0, port: 0 }, lfos: [{ slot: 0,
     route: { source: 0, target: 22, enabled: true } }] }), rack);
-  assert.throws(() => validateMainRackControlRoute(rack, { lfos: [{ slot: 0,
+  assert.throws(() => validateMainRackControlRoute(rack, { atv: { slot: 0, port: 0 }, lfos: [{ slot: 0,
     route: { source: 0, target: 22, enabled: false } }] }), /disagree/);
 });
 
-test('older six-shell Main documents gain LFO 1 without changing their audio cables', () => {
+test('older six-shell Main documents gain LFO 1 and ATV without changing their audio cables', () => {
   const current = initialRackDocument(catalog);
-  const old = removeRackModule(current, 'lfo1', catalog);
-  const migrated = withMainLfoShell(old, catalog);
-  assert.equal(migrated.modules.length, 7);
+  const old = removeRackModule(removeRackModule(current, 'atv1', catalog), 'lfo1', catalog);
+  const migrated = withMainControlShells(old, catalog);
+  assert.equal(migrated.modules.length, 8);
   assert.deepEqual(migrated.connections, old.connections);
   assert.deepEqual(compileMainRackInsert(migrated, catalog), compileMainRackInsert(old, catalog));
+});
+
+test('ATV OUT to Filter Cutoff names the prepared Rust source without adding a graph node', () => {
+  const original = initialRackDocument(catalog);
+  const routed = connectRackPorts(original, { moduleId: 'atv1', portId: 'out' },
+    { moduleId: 'filter', portId: 'cutoff' }, catalog);
+  assert.deepEqual(compileMainRackInsert(routed, catalog), compileMainRackInsert(original, catalog));
+  assert.equal(validateMainRackControlRoute(routed, { atv: { slot: 0, port: 0 },
+    lfos: [{ slot: 0, route: { source: 4, target: 22, enabled: true } }] }), routed);
+  assert.throws(() => validateMainRackControlRoute(routed, { atv: { slot: 1, port: 0 },
+    lfos: [{ slot: 0, route: { source: 4, target: 22, enabled: true } }] }), /disagree/);
+  assert.throws(() => compileMainRackAudio(routed, catalog), /no DSP mapping/);
 });
 
 test('unsupported voice and control ports fail before publication', () => {

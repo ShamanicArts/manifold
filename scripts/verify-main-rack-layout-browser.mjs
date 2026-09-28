@@ -67,7 +67,7 @@ try {
   assert.deepEqual(Object.fromEntries(session.rackDocument.modules.map(module =>
     [module.id, [module.row, module.col]])), {
     adsr: [0, 0], oscillator: [0, 3], filter: [1, 0],
-    fx1: [0, 1], fx2: [1, 2], eq: [1, 4], lfo1: [2, 0],
+    fx1: [0, 1], fx2: [1, 2], eq: [1, 4], lfo1: [2, 0], atv1: [2, 1],
   });
   await writeFile(new URL('../web/public/main-rack-reflow-saved-session.json', import.meta.url), bytes);
 
@@ -90,7 +90,7 @@ try {
   assert.equal(geometry.height, 2773);
   assert.ok(geometry.lfo.left >= geometry.eq.right - 1,
     'the rack LFO reflows beside EQ rather than overlapping it');
-  for (const utility of [geometry.route, geometry.atv]) {
+  for (const utility of [geometry.route]) {
     assert.ok(utility.top >= geometry.fx2.bottom - 1, 'utility overlaps reflowed FX2');
     assert.ok(utility.top >= geometry.eq.bottom - 1, 'utility overlaps reflowed EQ');
   }
@@ -112,10 +112,10 @@ try {
   await page.waitForFunction(() => document.querySelector('.rack-fx1')?.style.top === '25px');
   assert.match(await page.locator('#status').textContent(), /Opened the four-layer Main session/);
   await page.locator('#rack-view-switch').click();
-  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 7);
+  await page.waitForFunction(() => document.querySelectorAll('.main-rack-wire').length === 8);
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ midpointDrops: 2, reflowedShells: 3, savedPlacement: true, reopenedPlacement: true,
-    patchWiresRemain: 7, pageErrors: 0 }));
+    patchWiresRemain: 8, pageErrors: 0 }));
 } finally {
   await browser.close();
 }
