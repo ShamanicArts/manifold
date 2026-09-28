@@ -46,7 +46,8 @@ pub enum MainHostEventError {
     Parameter(MainParameterError),
 }
 
-fn valid_command(id: u32, value: f32) -> bool {
+/// Validate the separate Main looper command map before a host queues work.
+pub fn valid_main_command(id: u32, value: f32) -> bool {
     if !value.is_finite() {
         return false;
     }
@@ -212,7 +213,7 @@ impl MainNativeProcessor {
                         NativeError::MainHost(MainHostEventError::Parameter(error))
                     })?;
                 }
-                MainHostEventKind::Command { id, value } if !valid_command(id, value) => {
+                MainHostEventKind::Command { id, value } if !valid_main_command(id, value) => {
                     return Err(NativeError::MainHost(MainHostEventError::InvalidCommand));
                 }
                 _ => {}

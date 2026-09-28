@@ -46,8 +46,8 @@ pub fn values_from_session(session: &Value) -> Option<[f32; MAIN_HOST_ID_CAPACIT
     let mut values = [0.0; MAIN_HOST_ID_CAPACITY];
     let rack = session.get("rack")?;
     for (id, key) in [
-        (0, "mode"),
-        (1, "activeLayer"),
+        (0, "activeLayer"),
+        (1, "mode"),
         (2, "tempo"),
         (3, "targetBpm"),
         (4, "overdub"),
@@ -351,5 +351,18 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn transport_host_ids_follow_the_authored_project_control_map() {
+        let mut session: Value = serde_json::from_str(include_str!(
+            "../../../projects/main-looper/default-session-v15.json"
+        ))
+        .unwrap();
+        session["activeLayer"] = serde_json::json!(2);
+        session["mode"] = serde_json::json!(1);
+        let values = values_from_session(&session).unwrap();
+        assert_eq!(values[0], 2.0);
+        assert_eq!(values[1], 1.0);
     }
 }

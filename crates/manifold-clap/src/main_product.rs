@@ -31,6 +31,7 @@ use clap_sys::process::{
     CLAP_PROCESS_CONTINUE, CLAP_PROCESS_ERROR, clap_process, clap_process_status,
 };
 use clap_sys::stream::{clap_istream, clap_ostream};
+use crossbeam_queue::ArrayQueue;
 use manifold_core::events::EventKind;
 use manifold_native::main_host::{MainAudioRuntime, MainControl};
 use manifold_native::main_host_buffers::{MainHostBuffers, RawMainHostBlock};
@@ -38,17 +39,29 @@ use manifold_native::main_host_parameters::{
     MAIN_HOST_ID_CAPACITY, MainParameter, MainParameterTarget,
 };
 use manifold_native::main_host_state::values_from_session;
-use manifold_native::main_instrument::{MainHostAudioBlock, MainHostEvent, MainHostEventKind};
+use manifold_native::main_instrument::{
+    MainHostAudioBlock, MainHostEvent, MainHostEventKind, valid_main_command,
+};
 use manifold_native::main_session::{default_main_session, prepare_main_session};
 use manifold_native::main_session_export::save_template;
 
 const MAX_EVENTS: usize = 4096;
+const MAX_UI_COMMANDS: usize = 128;
 const MAX_STATE: usize = 300 * 1024 * 1024;
+const COMMAND_EXTENSION_ID: &[u8] = b"shamanic.manifold.main.commands/1";
+
+/// Private editor-to-audio command ingress. IDs and values are the authored
+/// `projects/main-looper/project.json` command map, separate from CLAP params.
+#[repr(C)]
+struct MainCommands {
+    enqueue: Option<unsafe extern "C" fn(*const clap_plugin, u32, f32) -> bool>,
+}
 
 struct Runtime {
     audio: MainAudioRuntime,
     buffers: MainHostBuffers,
     actions: Vec<MainHostEvent>,
+    max_frames: usize,
 }
 
 pub(crate) struct Instance {
@@ -58,6 +71,7 @@ pub(crate) struct Instance {
     control: Mutex<Option<MainControl>>,
     state: Mutex<Option<Vec<u8>>>,
     pending_values: Mutex<Vec<MainHostEvent>>,
+    commands: ArrayQueue<MainHostEvent>,
     parameter_ids: Vec<u32>,
     defaults: [f32; MAIN_HOST_ID_CAPACITY],
     values: [AtomicU32; MAIN_HOST_ID_CAPACITY],
@@ -71,6 +85,22 @@ pub(crate) struct Instance {
 unsafe impl Sync for Instance {}
 
 impl Instance {
+    fn drain_commands(&self, actions: &mut Vec<MainHostEvent>) {
+        let insert_at = actions.partition_point(|action| action.offset == 0);
+        let existing = actions.len();
+        while actions.len() < MAX_EVENTS {
+            let Some(command) = self.commands.pop() else {
+                break;
+            };
+            actions.push(command);
+        }
+        // Host changes at offset zero establish the control state used by a
+        // command (for example, Active Layer before Record). Later timed host
+        // events remain after the UI commands.
+        let added = actions.len() - existing;
+        actions[insert_at..].rotate_right(added);
+    }
+
     pub(crate) fn new(
         host: *const clap_host,
         descriptor: *const clap_plugin_descriptor,
@@ -100,6 +130,7 @@ impl Instance {
             control: Mutex::new(None),
             state: Mutex::new(None),
             pending_values: Mutex::new(Vec::new()),
+            commands: ArrayQueue::new(MAX_UI_COMMANDS),
             parameter_ids,
             defaults,
             values: std::array::from_fn(|id| AtomicU32::new(defaults[id].to_bits())),
@@ -188,6 +219,7 @@ impl Instance {
             audio,
             buffers: MainHostBuffers::prepare(max_frames as usize),
             actions: Vec::with_capacity(MAX_EVENTS),
+            max_frames: max_frames as usize,
         });
         *state = Some(bytes);
         for (id, value) in initial_values.into_iter().enumerate() {
@@ -215,12 +247,15 @@ impl Instance {
             let mut left = [];
             let mut right = [];
             // Publish a state load accepted just before processing stopped.
-            unsafe { &mut *runtime }
+            let runtime = unsafe { &mut *runtime };
+            runtime.actions.clear();
+            self.drain_commands(&mut runtime.actions);
+            runtime
                 .audio
                 .process_host(MainHostAudioBlock {
                     input: None,
                     output: [&mut left, &mut right],
-                    actions: &[],
+                    actions: &runtime.actions,
                 })
                 .ok()?;
             control.reclaim();
@@ -300,6 +335,7 @@ impl Instance {
                 audio,
                 buffers: MainHostBuffers::prepare(128),
                 actions: Vec::with_capacity(MAX_EVENTS),
+                max_frames: 128,
             };
             let saved = self.snapshot(&mut temporary, &mut control, true)?;
             *state = Some(saved.clone());
@@ -370,6 +406,7 @@ impl Instance {
         if let Ok(mut pending) = self.pending_values.lock() {
             pending.clear();
         }
+        while self.commands.pop().is_some() {}
         for (id, value) in initial_values.into_iter().enumerate() {
             self.values[id].store(value.to_bits(), Ordering::Release);
         }
@@ -609,6 +646,9 @@ unsafe extern "C" fn process(
     }
     let runtime = unsafe { &mut *pointer };
     let block = unsafe { &*block };
+    if block.frames_count as usize > runtime.max_frames {
+        return CLAP_PROCESS_ERROR;
+    }
     if !unsafe {
         collect(
             block.in_events,
@@ -623,6 +663,7 @@ unsafe extern "C" fn process(
         return CLAP_PROCESS_ERROR;
     };
     let input = unsafe { input_channels(block.audio_inputs, block.audio_inputs_count) };
+    instance.drain_commands(&mut runtime.actions);
     if unsafe {
         runtime.buffers.render(
             &mut runtime.audio,
@@ -646,6 +687,35 @@ unsafe extern "C" fn process(
     CLAP_PROCESS_CONTINUE
 }
 
+unsafe extern "C" fn enqueue_command(plugin: *const clap_plugin, id: u32, value: f32) -> bool {
+    let Some(instance) = (unsafe { get(plugin) }) else {
+        return false;
+    };
+    if !instance.active.load(Ordering::Acquire) || !valid_main_command(id, value) {
+        return false;
+    }
+    if instance
+        .commands
+        .push(MainHostEvent {
+            offset: 0,
+            kind: MainHostEventKind::Command { id, value },
+        })
+        .is_err()
+    {
+        return false;
+    }
+    if !instance.host.is_null() {
+        if let Some(request) = unsafe { (*instance.host).request_process } {
+            unsafe { request(instance.host) };
+        }
+    }
+    true
+}
+
+static COMMANDS: MainCommands = MainCommands {
+    enqueue: Some(enqueue_command),
+};
+
 unsafe extern "C" fn extension(_plugin: *const clap_plugin, id: *const c_char) -> *const c_void {
     if id.is_null() {
         return null();
@@ -659,6 +729,8 @@ unsafe extern "C" fn extension(_plugin: *const clap_plugin, id: *const c_char) -
         &PARAMS as *const _ as *const c_void
     } else if id == CLAP_EXT_STATE {
         &STATE as *const _ as *const c_void
+    } else if id.to_bytes() == COMMAND_EXTENSION_ID {
+        &COMMANDS as *const _ as *const c_void
     } else {
         null()
     }
@@ -726,8 +798,8 @@ fn parameter_name(target: MainParameterTarget) -> (String, String) {
         MainParameterTarget::Transport(local) => (
             "Transport".into(),
             [
-                "Mode",
                 "Active layer",
+                "Mode",
                 "Tempo",
                 "Target BPM",
                 "Overdub",
@@ -1021,6 +1093,7 @@ unsafe extern "C" fn param_flush(
     runtime
         .actions
         .retain(|action| matches!(action.kind, MainHostEventKind::Parameter { .. }));
+    instance.drain_commands(&mut runtime.actions);
     let mut left = [];
     let mut right = [];
     if runtime

@@ -57,6 +57,10 @@ class Params(c.Structure):
         "count", "info", "value", "to_text", "from_text", "flush")]
 
 
+class Commands(c.Structure):
+    _fields_ = [("enqueue", c.c_void_p)]
+
+
 class ParamInfo(c.Structure):
     _fields_ = [("id", c.c_uint32), ("flags", c.c_uint32), ("cookie", c.c_void_p),
                 ("name", c.c_char * 256), ("module", c.c_char * 1024),
@@ -115,12 +119,22 @@ def read_stream(payload):
     return Stream(None, c.cast(read, c.c_void_p)), read
 
 
-def render(plugin_ptr, plugin, events=None):
+def render(plugin_ptr, plugin, events=None, input_value=None):
     left = (c.c_float * 128)()
     right = (c.c_float * 128)()
     channels = (c.POINTER(c.c_float) * 2)(left, right)
     output = AudioBuffer(channels, None, 2, 0, 0)
-    block = Process(0, 128, None, None, c.pointer(output), 0, 1,
+    if input_value is None:
+        host_input = None
+        input_count = 0
+    else:
+        input_left = (c.c_float * 128)(*([input_value] * 128))
+        input_right = (c.c_float * 128)(*([input_value] * 128))
+        source_channels = (c.POINTER(c.c_float) * 2)(input_left, input_right)
+        source = AudioBuffer(source_channels, None, 2, 0, 0)
+        host_input = c.cast(c.pointer(source), c.c_void_p)
+        input_count = 1
+    block = Process(0, 128, None, host_input, c.pointer(output), input_count, 1,
                     c.cast(c.pointer(events), c.c_void_p) if events else None, None)
     assert fn(plugin.process, c.c_int32, c.c_void_p, c.POINTER(Process))(
         plugin_ptr, c.byref(block)) == 1
@@ -282,7 +296,27 @@ def main():
             assert fn(params.value, c.c_bool, c.c_void_p, c.c_uint32, c.POINTER(c.c_double))(
                 plugin_ptr, 16, c.byref(value))
             assert abs(value.value - 0.25) < 1e-6
+            command_ptr = fn(second.get_extension, c.c_void_p, c.c_void_p, c.c_char_p)(
+                second_ptr, b"shamanic.manifold.main.commands/1")
+            assert command_ptr
+            commands = c.cast(command_ptr, c.POINTER(Commands)).contents
+            enqueue = fn(commands.enqueue, c.c_bool, c.c_void_p, c.c_uint32, c.c_float)
+            assert not enqueue(second_ptr, 9, 4.0), "invalid layer must be rejected"
+            assert not enqueue(second_ptr, 7, 0.3), "invalid segment size must be rejected"
+            assert enqueue(second_ptr, 9, 0.0), "clear Layer 1 command was rejected"
+            assert max(abs(sample) for sample in render(second_ptr, second)) == 0
             fn(second.stop, None, c.c_void_p)(second_ptr)
+            cleared_save = bytearray()
+
+            @c.CFUNCTYPE(c.c_int64, c.c_void_p, c.c_void_p, c.c_uint64)
+            def clear_write(_stream, data, size):
+                cleared_save.extend(c.string_at(data, size))
+                return size
+
+            clear_sink = Stream(None, c.cast(clear_write, c.c_void_p))
+            assert fn(second_state.save, c.c_bool, c.c_void_p, c.POINTER(Stream))(
+                second_ptr, c.byref(clear_sink))
+            assert json.loads(cleared_save)["layers"][0]["frames"] == 0
             fn(second.deactivate, None, c.c_void_p)(second_ptr)
         finally:
             fn(second.destroy, None, c.c_void_p)(second_ptr)
@@ -376,7 +410,46 @@ def main():
             fn(voice.deactivate, None, c.c_void_p)(voice_ptr)
         finally:
             fn(voice.destroy, None, c.c_void_p)(voice_ptr)
-        print("Main CLAP: native v15 audio/state, fixed parameter bank, frame-64 automation, inactive flush/save, and sample-identical reopen passed.")
+        capture_ptr = create(factory_ptr, c.byref(host), descriptor.id)
+        assert capture_ptr
+        capture = c.cast(capture_ptr, c.POINTER(Plugin)).contents
+        try:
+            assert fn(capture.init, c.c_bool, c.c_void_p)(capture_ptr)
+            capture_state = c.cast(fn(capture.get_extension, c.c_void_p, c.c_void_p, c.c_char_p)(
+                capture_ptr, b"clap.state"), c.POINTER(State)).contents
+            capture_commands = c.cast(fn(capture.get_extension, c.c_void_p, c.c_void_p, c.c_char_p)(
+                capture_ptr, b"shamanic.manifold.main.commands/1"), c.POINTER(Commands)).contents
+            capture_enqueue = fn(capture_commands.enqueue, c.c_bool, c.c_void_p, c.c_uint32, c.c_float)
+            assert fn(capture.activate, c.c_bool, c.c_void_p, c.c_double, c.c_uint32, c.c_uint32)(
+                capture_ptr, 48000., 1, 128)
+            assert fn(capture.start, c.c_bool, c.c_void_p)(capture_ptr)
+            assert capture_enqueue(capture_ptr, 0, 0.0), "First Loop record was rejected"
+            master_edit.param_id = 0  # Active Layer; same-block host edit precedes Record
+            master_edit.value = 1.0
+            master_edit.header.time = 0
+            render(capture_ptr, capture, param_events, input_value=0.25)
+            assert capture_enqueue(capture_ptr, 1, 0.0), "First Loop stop was rejected"
+            playback_peak = max(max(abs(sample) for sample in render(capture_ptr, capture))
+                                for _ in range(20))
+            assert playback_peak > 0.1, playback_peak
+            fn(capture.stop, None, c.c_void_p)(capture_ptr)
+            captured_save = bytearray()
+
+            @c.CFUNCTYPE(c.c_int64, c.c_void_p, c.c_void_p, c.c_uint64)
+            def captured_write(_stream, data, size):
+                captured_save.extend(c.string_at(data, size))
+                return size
+
+            captured_sink = Stream(None, c.cast(captured_write, c.c_void_p))
+            assert fn(capture_state.save, c.c_bool, c.c_void_p, c.POINTER(Stream))(
+                capture_ptr, c.byref(captured_sink))
+            captured = json.loads(captured_save)
+            assert captured["layers"][0]["frames"] == 0
+            assert captured["layers"][1]["frames"] > 128
+            fn(capture.deactivate, None, c.c_void_p)(capture_ptr)
+        finally:
+            fn(capture.destroy, None, c.c_void_p)(capture_ptr)
+        print("Main CLAP: v15 audio/state, parameters, frame-64 automation, inactive flush/save, First Loop record/stop, clear-layer, and sample-identical reopen passed.")
     finally:
         fn(plugin.destroy, None, c.c_void_p)(plugin_ptr)
 
