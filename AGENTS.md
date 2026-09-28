@@ -17,6 +17,10 @@ Use Jujutsu (`jj`) for status, diffs, descriptions, bookmarks, and pushes. This 
 
 Read `docs/architecture.md` and `docs/migration.md` before changing an architectural boundary. Prefer tests that probe signal behavior, block boundaries, and native/Wasm agreement over tests that mirror implementation.
 
+## Audio test output
+
+Route automated browser, plug-in, and DAW audio tests to a verified private virtual/null sink. A disconnected audio server is sufficient for state and UI probes that do not need playback. Check the test process's audio routing before launch; keep the user's H6 and physical speakers untouched.
+
 ## Checks
 
 ```sh

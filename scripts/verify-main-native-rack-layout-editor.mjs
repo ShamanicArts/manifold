@@ -18,17 +18,26 @@ try {
   await page.addInitScript(() => {
     window.layoutActions = [];
     window.acceptLayout = true;
+    window.injectStalePresentation = false;
     window.ipc = { postMessage: text => {
       const action = JSON.parse(text);
       if (action.kind !== 'rack-layout') return;
       window.layoutActions.push(action);
+      if (window.injectStalePresentation) {
+        window.injectStalePresentation = false;
+        window.manifoldEditorReceive(window.nativePresentation);
+      }
       const ok = window.acceptLayout;
       setTimeout(() => window.manifoldEditorLayoutResult({ requestId: action.requestId, ok }), 0);
     } };
     window.AudioContext = class { constructor() { throw new Error('Native editor opened WebAudio'); } };
   });
   await page.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/main-looper.html?editor=1`);
-  await page.evaluate(document => window.manifoldEditorReceive(document), session);
+  await page.evaluate(document => {
+    window.nativePresentation = document;
+    window.manifoldEditorReceive(document);
+    window.injectStalePresentation = true;
+  }, session);
   await page.locator('[data-main-tab="midisynth"]').click();
   async function swap() {
     const from = await page.locator('.rack-source .rack-shell-head').boundingBox();
@@ -42,6 +51,7 @@ try {
   await page.waitForFunction(() => document.querySelector('.rack-source')?.style.left === '708px');
   assert.equal(await page.evaluate(() => window.layoutActions.at(-1).document.modules
     .find(module => module.id === 'oscillator').col), 3);
+  assert.doesNotMatch(await page.locator('#status').textContent(), /cable edit is still pending/);
   assert.equal(await page.locator('.main-patch-port[data-module="filter"][data-port="in"]').isDisabled(), true);
   await page.locator('#rack-view-switch').click();
   await page.waitForFunction(() => document.querySelector('#rack-view-switch')?.getAttribute('aria-pressed') === 'true');
@@ -54,7 +64,8 @@ try {
   assert.equal(await page.locator('.rack-source').evaluate(element => element.style.left), '708px');
   assert.equal(await page.evaluate(() => window.layoutActions.length), 4);
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ acceptedPlacement: true, rejectedPlacementRollsBack: true,
+  console.log(JSON.stringify({ acceptedPlacement: true, stalePresentationIgnored: true,
+    rejectedPlacementRollsBack: true,
     audioContextOpened: false, pageErrors: 0 }));
 } finally {
   await browser.close();

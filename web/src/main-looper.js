@@ -1102,6 +1102,10 @@ if (editorMode) {
     }
   };
   window.manifoldEditorReceive = (session) => {
+    // A host save can publish an older full snapshot while a rack gesture is
+    // awaiting acknowledgement. Keep the local gesture intact; the host sends
+    // a fresh presentation after it accepts the edit.
+    if (rackPatch.pending()) return;
     if (session?.id !== project.id || session.version !== project.sessionVersion
       || !Array.isArray(session.layers) || session.layers.length !== project.layers
       || !Number.isFinite(session.sampleRate) || !session.rack) {

@@ -19,6 +19,7 @@ import tempfile
 import time
 
 from Xlib import X, display as xdisplay
+from Xlib.ext import xtest
 from PIL import Image
 
 
@@ -40,6 +41,7 @@ def headless_display(directory, weston):
     log = Path(directory) / "weston.log"
     process = subprocess.Popen([
         weston, "--backend=headless", "--xwayland", "--renderer=pixman",
+        "--width=1280", "--height=780",
         "--fake-seat", "--no-config", "--socket=manifold-headless", f"--log={log}",
     ], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     deadline = time.monotonic() + 10
@@ -65,8 +67,10 @@ def main():
     parser.add_argument("--import-while-processing", action="store_true", help="Keep native host blocks running during the file import")
     parser.add_argument("--exercise-export", action="store_true", help="Click the original Download control and save native Main JSON")
     parser.add_argument("--exercise-layout", action="store_true", help="Toggle Main Rack/Patch through the actual child editor and save host state")
+    parser.add_argument("--exercise-drag", action="store_true", help="Drag Source onto Filter in the actual child editor and save host state")
     args = parser.parse_args()
     assert not (args.exercise_sample and args.exercise_free_sample)
+    assert not args.exercise_drag or args.exercise_layout
     assert not args.import_while_processing or args.import_session
     assert not (args.import_while_processing and (args.exercise_sample or args.exercise_free_sample))
     sample_exercise = args.exercise_sample or args.exercise_free_sample
@@ -163,6 +167,7 @@ def main():
                 time.sleep(0.05)
             assert callbacks[0] >= 2, "Main webview did not acknowledge the Rust presentation"
             if args.exercise_layout:
+                time.sleep(0.5)  # Let the initial native presentation finish in the child.
                 layout_probe.write_text("toggle")
                 result_path = Path(f"{layout_probe}.result")
                 result = None
@@ -195,6 +200,56 @@ def main():
                 assert saved_document["modules"] == original_document["modules"]
                 assert saved_document["connections"] == original_document["connections"]
                 print("Actual child Main Rack/Patch button updated packaged CLAP session state.")
+                if args.exercise_drag:
+                    # Coordinates are inside the fixed-size 1280x780 Main child.
+                    # XTEST sends real pointer events to isolated Xwayland;
+                    # JavaScript in the webview does not synthesize the gesture.
+                    result_path.unlink()
+                    root_id = screen.root.id
+                    origin = parent.translate_coords(screen.root, 0, 0)
+                    ox, oy = origin.x, origin.y
+                    for _ in range(10):
+                        xtest.fake_input(x11, X.MotionNotify, root=root_id, x=900 - ox, y=288 - oy)
+                        x11.sync()
+                        time.sleep(0.05)
+                        pointer = screen.root.query_pointer()
+                        if (pointer.root_x, pointer.root_y) == (900 - ox, 288 - oy):
+                            break
+                    assert (pointer.root_x, pointer.root_y) == (900 - ox, 288 - oy), (
+                        f"Xwayland pointer did not reach Main header: {pointer.root_x},{pointer.root_y}")
+                    xtest.fake_input(x11, X.ButtonPress, 1, root=root_id, x=900 - ox, y=288 - oy)
+                    x11.sync()
+                    for step in range(1, 11):
+                        xtest.fake_input(x11, X.MotionNotify, root=root_id, x=900 - 45 * step - ox, y=288 - oy)
+                        x11.sync()
+                        time.sleep(0.03)
+                    xtest.fake_input(x11, X.ButtonRelease, 1, root=root_id, x=450 - ox, y=288 - oy)
+                    x11.sync()
+                    result = None
+                    deadline = time.monotonic() + 15
+                    while time.monotonic() < deadline:
+                        if callbacks[0] > handled:
+                            handled = callbacks[0]
+                            probe.fn(plugin.main, None, c.c_void_p)(plugin_ptr)
+                        if result_path.exists():
+                            try:
+                                result = json.loads(result_path.read_text())
+                                break
+                            except json.JSONDecodeError:
+                                pass
+                        time.sleep(0.02)
+                    assert result and result["ok"], f"Main child header drag failed: {result}"
+                    saved_layout.clear()
+                    assert probe.fn(state.save, c.c_bool, c.c_void_p, c.POINTER(probe.Stream))(
+                        plugin_ptr, c.byref(sink))
+                    dragged = json.loads(saved_layout)["rackDocument"]
+                    before = {item["id"]: item for item in original_document["modules"]}
+                    after = {item["id"]: item for item in dragged["modules"]}
+                    assert after["oscillator"]["col"] == before["filter"]["col"]
+                    assert after["filter"]["col"] == before["oscillator"]["col"]
+                    assert dragged["connections"] == original_document["connections"]
+                    assert dragged["viewMode"] == saved_document["viewMode"]
+                    print("Actual child Source header drag swapped saved Source/Filter cells in packaged CLAP state.")
             if args.exercise_export:
                 deadline = time.monotonic() + 15
                 exported = None

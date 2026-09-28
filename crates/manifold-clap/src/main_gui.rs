@@ -253,6 +253,9 @@ fn receive(instance: &Instance, reader: impl BufRead) {
                     "kind": "rack-layout-result", "requestId": request_id, "ok": accepted
                 });
                 let _ = instance.gui.command(&result.to_string());
+                if accepted {
+                    instance.gui.request_refresh(instance.host);
+                }
             }
             Some("session-import-start") => {
                 import = message["size"]
