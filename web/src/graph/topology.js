@@ -1,8 +1,22 @@
 // Browser authoring contract for a subset of Rust's prepared typed graph.
 // Rust compilation remains the final authority when playback starts.
 import { encodePcm, decodePcm } from '../state/stereo-source.js';
+import { VISUAL_NAMES } from '../widgets/fx-slot-data.js';
 export const SAMPLE_NODE_TYPES = new Set(['sample-instrument', 'sample-region', 'granulator', 'main-voice-bank']);
 const NOTE_NODE_TYPES = new Set(['voice-synth', 'sample-instrument', 'sample-region', 'main-voice-bank']);
+const EQ_FREQUENCIES = [60, 120, 250, 500, 1000, 2500, 6000, 12000];
+const EQ_TYPES = [1, 0, 0, 0, 0, 0, 0, 2];
+const EQ_CURVES = ['Bell', 'Low shelf', 'High shelf', 'Low pass', 'High pass', 'Notch', 'Band pass'];
+const EQ_PARAMETERS = EQ_FREQUENCIES.flatMap((frequency, band) => [
+  { id: band * 5, label: `Band ${band + 1} on`, choices: ['Off', 'On'], default: 0 },
+  { id: band * 5 + 1, label: `Band ${band + 1} curve`, choices: EQ_CURVES, default: EQ_TYPES[band] },
+  { id: band * 5 + 2, label: `Band ${band + 1} Hz`, min: 20, max: 20000, default: frequency },
+  { id: band * 5 + 3, label: `Band ${band + 1} dB`, min: -24, max: 24, default: 0 },
+  { id: band * 5 + 4, label: `Band ${band + 1} Q`, min: .1, max: 24, default: 1 },
+]).concat([
+  { id: 40, label: 'Output dB', min: -24, max: 24, default: 0 },
+  { id: 41, label: 'Mix', min: 0, max: 1, default: 1 },
+]);
 export const NODE_TYPES = {
   'input.raw': { label: 'Live input', code: 0, output: 'audio', inputs: [], fixedId: 1 },
   'input.sidechain': { label: 'Sidechain input', code: 65, output: 'audio', inputs: [] },
@@ -18,6 +32,15 @@ export const NODE_TYPES = {
     parameters: [{ id: 0, label: 'Mode', choices: ['Low pass', 'Band pass', 'High pass', 'Notch'], default: 0 },
       { id: 1, label: 'Cutoff', min: 20, max: 20000, default: 3200 },
       { id: 2, label: 'Resonance', min: .1, max: 1, default: .75 }] },
+  'effect-slot-legacy': { label: 'Main FX slot', code: 52, output: 'audio', inputs: ['audio'],
+    args: { a: 0, b: 0 }, parameters: [
+      { id: 0, label: 'Effect', choices: VISUAL_NAMES, default: 0 },
+      { id: 1, label: 'Mix', min: 0, max: 1, default: 0 },
+      ...Array.from({ length: 5 }, (_, index) => ({ id: index + 2,
+        label: `P${index + 1}`, min: 0, max: 1, default: [0.5, 0.5, 0.2, 0.6, 0.4][index] })),
+    ] },
+  eq8: { label: 'Eight-band EQ', code: 36, output: 'audio', inputs: ['audio'],
+    parameters: EQ_PARAMETERS },
   sum2: { label: 'Audio sum', code: 4, output: 'audio', inputs: ['audio', 'audio'], args: { a: 1, b: 1 } },
   'loop-capture': { label: 'Loop capture', code: 20, output: 'audio', inputs: ['audio'], args: { a: 2, b: 1 },
     parameters: [

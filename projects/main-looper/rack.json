@@ -11,18 +11,18 @@
     "lfo": { "name": "LFO", "sizes": [[1, 1]], "ports": { "inputs": [], "outputs": [{ "id": "out", "kind": "cv" }, { "id": "inv", "kind": "cv" }, { "id": "uni", "kind": "cv" }, { "id": "eoc", "kind": "gate" }] } }
   },
   "endpoints": {
-    "__midiInput": { "nodeId": 1, "ports": { "inputs": [], "outputs": [{ "id": "voice", "kind": "voice" }] } },
-    "__rackOutput": { "nodeId": 7, "ports": { "inputs": [{ "id": "main", "kind": "audio" }], "outputs": [] } }
+    "__midiInput": { "nodeId": 4, "ports": { "inputs": [], "outputs": [{ "id": "voice", "kind": "voice" }] } },
+    "__rackOutput": { "nodeId": 3, "ports": { "inputs": [{ "id": "main", "kind": "audio" }], "outputs": [] } }
   },
   "initial": {
     "viewMode": "rack",
     "modules": [
-      { "id": "adsr", "nodeId": 8, "type": "adsr", "row": 0, "col": 0, "w": 1, "h": 1 },
-      { "id": "oscillator", "nodeId": 2, "type": "source", "row": 0, "col": 1, "w": 2, "h": 1 },
-      { "id": "filter", "nodeId": 3, "type": "filter", "row": 0, "col": 3, "w": 2, "h": 1 },
-      { "id": "fx1", "nodeId": 4, "type": "fx", "row": 1, "col": 0, "w": 2, "h": 1 },
-      { "id": "fx2", "nodeId": 5, "type": "fx", "row": 1, "col": 2, "w": 2, "h": 1 },
-      { "id": "eq", "nodeId": 6, "type": "eq", "row": 1, "col": 4, "w": 1, "h": 1 }
+      { "id": "adsr", "nodeId": 10, "type": "adsr", "row": 0, "col": 0, "w": 1, "h": 1 },
+      { "id": "oscillator", "nodeId": 5, "type": "source", "row": 0, "col": 1, "w": 2, "h": 1 },
+      { "id": "filter", "nodeId": 6, "type": "filter", "row": 0, "col": 3, "w": 2, "h": 1 },
+      { "id": "fx1", "nodeId": 7, "type": "fx", "row": 1, "col": 0, "w": 2, "h": 1 },
+      { "id": "fx2", "nodeId": 8, "type": "fx", "row": 1, "col": 2, "w": 2, "h": 1 },
+      { "id": "eq", "nodeId": 9, "type": "eq", "row": 1, "col": 4, "w": 1, "h": 1 }
     ],
     "connections": [
       { "id": "midi_in_to_adsr", "from": { "moduleId": "__midiInput", "portId": "voice" }, "to": { "moduleId": "adsr", "portId": "midi" } },

@@ -105,6 +105,12 @@ impl NativeProcessor {
         &self.current_parameter_values
     }
 
+    /// Whether compilation retained this node in the prepared plan. A portable
+    /// project can also describe disconnected nodes whose values stay in state.
+    pub fn has_prepared_node(&self, node: NodeId) -> bool {
+        self.plan.node_active(node).is_some()
+    }
+
     pub fn effect_slot_params(&self, node: NodeId, effect_type: u32) -> Option<[f32; 5]> {
         self.plan.effect_slot_params(node, effect_type)
     }

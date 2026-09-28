@@ -33,7 +33,7 @@ test('module edits retain identity and reject collisions', () => {
 
 test('typed CV connection can be added and unpatched without altering audio chain', () => {
   const rack = initialRackDocument(catalog);
-  const withLfo = addRackModule(rack, { id: 'lfo1', nodeId: 9, type: 'lfo', row: 2, col: 0, w: 1, h: 1 }, catalog);
+  const withLfo = addRackModule(rack, { id: 'lfo1', nodeId: 11, type: 'lfo', row: 2, col: 0, w: 1, h: 1 }, catalog);
   const connected = connectRackPorts(withLfo,
     { moduleId: 'lfo1', portId: 'out' }, { moduleId: 'filter', portId: 'cutoff' }, catalog);
   assert.equal(connected.connections.length, rack.connections.length + 1);

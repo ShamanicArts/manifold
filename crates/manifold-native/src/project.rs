@@ -369,6 +369,20 @@ fn required<'a>(map: &'a serde_json::Map<String, Value>, key: &str) -> &'a Value
 }
 
 fn parameter_range(kind: &str, id: u32) -> Option<(f32, f32, bool)> {
+    if kind == "eq8" {
+        return match id {
+            0..=39 => match id % 5 {
+                0 => Some((0., 1., true)),
+                1 => Some((0., 6., true)),
+                2 => Some((20., 20_000., false)),
+                3 => Some((-24., 24., false)),
+                _ => Some((0.1, 24., false)),
+            },
+            40 => Some((-24., 24., false)),
+            41 => Some((0., 1., false)),
+            _ => None,
+        };
+    }
     let spec = match kind {
         "gain" => &[(0., 2., false)][..],
         "midi-transpose" => &[(-24., 24., false)],
@@ -788,7 +802,7 @@ impl NativeProject {
                 .ok_or(ProjectError::Invalid("node type"))?;
             let constructed = match kind {
                 "input.raw" | "input.sidechain" | "output" | "midi-input" | "sample-instrument"
-                | "sample-region" | "svf" | "granulator" | "voice-synth" => {
+                | "sample-region" | "svf" | "granulator" | "voice-synth" | "eq8" => {
                     if entry.len() != 2 {
                         return Err(ProjectError::Invalid("node arguments"));
                     }
@@ -800,6 +814,9 @@ impl NativeProject {
                         "sample-instrument" => NodeKind::SampleInstrument,
                         "sample-region" => NodeKind::SampleRegion,
                         "svf" => NodeKind::Svf,
+                        "eq8" => NodeKind::Eq8 {
+                            params: manifold_core::eq8::defaults(),
+                        },
                         "voice-synth" => NodeKind::VoiceSynth,
                         _ => NodeKind::Granulator {
                             params: manifold_core::granulator::DEFAULTS,
@@ -1036,7 +1053,7 @@ impl NativeProject {
         let parameters = required(signal, "initialParameters")
             .as_array()
             .ok_or(ProjectError::Invalid("parameters"))?;
-        if parameters.len() > 22 * nodes.len() {
+        if parameters.len() > 42 * nodes.len() {
             return Err(ProjectError::Invalid("parameter count"));
         }
         let mut parsed_parameters = Vec::with_capacity(parameters.len());
@@ -1059,7 +1076,7 @@ impl NativeProject {
             host_parameters.push(HostParameter::new(node, id, min, max, discrete, value));
         }
         for (&node, kind) in &kinds {
-            if (0..=19).any(|id| parameter_range(kind, id).is_some() && !seen.contains(&(node, id)))
+            if (0..=41).any(|id| parameter_range(kind, id).is_some() && !seen.contains(&(node, id)))
             {
                 return Err(ProjectError::Invalid("missing parameter"));
             }
@@ -1419,21 +1436,33 @@ impl NativeProject {
             }
         }
         for parameter in self.parameters {
+            if !processor.has_prepared_node(parameter.node.into()) {
+                continue;
+            }
             if !processor.set_parameter(parameter.node.into(), parameter.id, parameter.value) {
                 return Err(ProjectError::Invalid("unavailable parameter"));
             }
         }
         for asset in self.assets {
+            if !processor.has_prepared_node(asset.node.into()) {
+                continue;
+            }
             if !processor.load_sample_stereo(asset.node.into(), asset.stereo, asset.rate) {
                 return Err(ProjectError::Invalid("unavailable sample slot"));
             }
         }
         for target in self.targets {
+            if !processor.has_prepared_node(target.node.into()) {
+                continue;
+            }
             if !processor.load_partials_target(target.node.into(), target.index, target.partials) {
                 return Err(ProjectError::Invalid("unavailable partial target"));
             }
         }
         for (node, speed, frames, recipe) in prepared_temporal {
+            if !processor.has_prepared_node(node.into()) {
+                continue;
+            }
             if !processor.load_main_temporal_frames(node.into(), frames, recipe)
                 || !processor.set_main_temporal_speed(node.into(), speed)
             {
@@ -1466,6 +1495,115 @@ mod tests {
             "../../../projects/graph-workspace/sidechain-sampler.json"
         ))
         .unwrap()
+    }
+
+    #[test]
+    fn authored_main_rack_audio_edges_compile_and_change_note_output() {
+        fn note_energy(bundle: &[u8]) -> f32 {
+            let mut processor = NativeProject::parse(bundle)
+                .unwrap()
+                .prepare(48_000., 128)
+                .unwrap();
+            let mut left = [0.; 128];
+            let mut right = [0.; 128];
+            let mut energy = 0.;
+            let note = TimedEvent {
+                offset: 0,
+                node: 4,
+                kind: EventKind::NoteOn {
+                    channel: 0,
+                    note: 96,
+                    velocity: 120,
+                },
+            };
+            for block in 0..90 {
+                let events: &[TimedEvent] = if block == 0 {
+                    std::slice::from_ref(&note)
+                } else {
+                    &[]
+                };
+                processor
+                    .process(AudioBlock {
+                        main: None,
+                        sidechain: None,
+                        output: [&mut left, &mut right],
+                        events,
+                    })
+                    .unwrap();
+                if block >= 40 {
+                    energy += left.iter().map(|sample| sample.abs()).sum::<f32>();
+                }
+            }
+            energy
+        }
+        let mut rack: Value = serde_json::from_slice(include_bytes!(
+            "../../../projects/main-looper/default-rack-graph.json"
+        ))
+        .unwrap();
+        let cutoff = rack["signal"]["initialParameters"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|parameter| parameter["nodeId"] == 6 && parameter["id"] == 1)
+            .unwrap();
+        cutoff["value"] = json!(80.0);
+        let filtered = note_energy(&serde_json::to_vec(&rack).unwrap());
+        let edge = rack["signal"]["connections"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|edge| edge["to"] == 7)
+            .unwrap();
+        edge["from"] = json!(5);
+        let bypassed = note_energy(&serde_json::to_vec(&rack).unwrap());
+        assert!(
+            bypassed > filtered * 3.,
+            "filter {filtered}, bypass {bypassed}"
+        );
+        let mut parked = NativeProject::parse(&serde_json::to_vec(&rack).unwrap())
+            .unwrap()
+            .prepare_with_state(48_000., 128)
+            .unwrap();
+        let mut reopened: Value = serde_json::from_slice(&parked.save_state().unwrap()).unwrap();
+        assert_eq!(
+            reopened["signal"]["initialParameters"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|parameter| parameter["nodeId"] == 6 && parameter["id"] == 1)
+                .unwrap()["value"],
+            json!(80.0)
+        );
+        reopened["signal"]["connections"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|edge| edge["to"] == 7)
+            .unwrap()["from"] = json!(6);
+        let restored = note_energy(&serde_json::to_vec(&reopened).unwrap());
+        assert!((restored - filtered).abs() < filtered * 0.001);
+
+        // Unplugging the only output parks the voice bank and its partials.
+        // Save must keep them for the later cable reconnection.
+        let mut silent = reopened;
+        silent["signal"]["connections"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|edge| edge["to"] != 3);
+        let mut parked = NativeProject::parse(&serde_json::to_vec(&silent).unwrap())
+            .unwrap()
+            .prepare_with_state(48_000., 128)
+            .unwrap();
+        let mut reopened: Value = serde_json::from_slice(&parked.save_state().unwrap()).unwrap();
+        assert_eq!(reopened["targets"].as_array().unwrap().len(), 2);
+        reopened["signal"]["connections"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"from": 9, "to": 3, "inputPort": 0}));
+        assert!(
+            (note_energy(&serde_json::to_vec(&reopened).unwrap()) - filtered).abs()
+                < filtered * 0.001
+        );
     }
 
     #[test]

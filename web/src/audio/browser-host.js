@@ -224,7 +224,9 @@ export class BrowserAudioHost {
       const graph = { ...project.signal,
         initialParameters: [...(project.signal.initialParameters ?? []), ...prepareValues] };
       const slot = project.signal.nodes.find((node) => ['effect-slot', 'effect-slot-legacy', 'effect-slot-host-switch'].includes(node.type));
-      if (slot) {
+      // Standalone FX projects expose the slot's type/mix as project controls.
+      // Graph projects already carry every slot's authored parameters in signal.
+      if (slot && project.id !== 'manifold.graph-workspace') {
         const controls = project.parameters.filter((parameter) => parameter.nodeId === slot.id);
         const type = controls.find((parameter) => parameter.nodeParameterId === 0);
         const mix = controls.find((parameter) => parameter.nodeParameterId === 1);
