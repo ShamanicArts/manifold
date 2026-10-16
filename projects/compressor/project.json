@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.compressor-workbench",
+  "name": "Compressor",
+  "source": "dsp/core/nodes/CompressorNode.cpp scalar stereo",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 2, "type": "compressor", "a": -24, "b": 4 },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "threshold", "label": "Threshold (dB)", "kind": "float", "min": -60, "max": 0, "default": -24 },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "ratio", "label": "Ratio", "kind": "float", "min": 1, "max": 100, "default": 4 },
+    { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "attack", "label": "Attack (ms)", "kind": "float", "min": 0.01, "max": 500, "default": 10, "prepareOnly": true },
+    { "id": 3, "nodeId": 2, "nodeParameterId": 3, "hostId": "release", "label": "Release (ms)", "kind": "float", "min": 1, "max": 5000, "default": 100, "prepareOnly": true },
+    { "id": 4, "nodeId": 2, "nodeParameterId": 5, "hostId": "makeup", "label": "Makeup (dB)", "kind": "float", "min": 0, "max": 40, "default": 0 },
+    { "id": 5, "nodeId": 2, "nodeParameterId": 10, "hostId": "mix", "label": "Wet mix", "kind": "float", "min": 0, "max": 1, "default": 1 }
+  ]
+}

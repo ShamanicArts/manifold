@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.stereo-widener",
+  "name": "Stereo widener",
+  "source": "Legacy StereoWidenerNode stereo path; mid/side width and mono low band",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 2, "type": "stereo-widener" },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "width", "label": "Width", "kind": "float", "min": 0, "max": 2, "default": 1 },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "mono-low-frequency", "label": "Mono low cutoff", "kind": "float", "min": 20, "max": 500, "default": 120, "unit": "Hz" },
+    { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "mono-low-enable", "label": "Mono low", "kind": "toggle", "default": 1 }
+  ]
+}

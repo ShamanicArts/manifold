@@ -1,0 +1,217 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-29T12:30:25.432Z",
+  "fixture": "projects/graph-workspace/authored-rack-sample-eight-voice-unison3.json",
+  "sampleVoice": null,
+  "allSampleVoices": true,
+  "vocoder": true,
+  "fixtureSha256": "a808788ab472f9793186aaa6a876b46f44b1a821c4a110bee08fa9876d30884b",
+  "wasmSha256": "94325a61a89a5e5e84e0750c66bc402e23c329af10c3f6b311ea151bfa44bd25",
+  "nativeBinarySha256": "6bf8fa3490e9c3e6579588abfe158a3f13640f6f7475a011f02435ac21282b5c",
+  "platform": "linux",
+  "arch": "x64",
+  "cpu": "AMD Ryzen 9 3900X 12-Core Processor",
+  "node": "v25.2.1",
+  "deadlineUs": 2666.6666666666665,
+  "patchable": false,
+  "runs": [
+    {
+      "native": {
+        "blockFrames": 128,
+        "checkpoints": [
+          [
+            0.06564756482839584,
+            0.06380317360162735
+          ],
+          [
+            0.06436096131801605,
+            -0.01827557198703289
+          ],
+          [
+            0.07175888866186142,
+            0.18116578459739685
+          ]
+        ],
+        "maxUs": 3282.607,
+        "measuredBlocks": 2048,
+        "method": "release Rust NativeProcessor::process, offline",
+        "outputChecksum": 429.6451935307123,
+        "overDeadline": 3,
+        "p50Us": 121.698,
+        "p95Us": 2041.944,
+        "p99Us": 2167.082,
+        "parseMs": 0.6366320000000001,
+        "prepareMs": 2.031653,
+        "sampleRate": 48000,
+        "warmupBlocks": 128
+      },
+      "wasm": {
+        "method": "Node/V8 simulated AudioWorklet process, offline",
+        "sampleRate": 48000,
+        "blockFrames": 128,
+        "warmupBlocks": 128,
+        "measuredBlocks": 2048,
+        "initMs": 16.684222,
+        "p50Us": 133.508,
+        "p95Us": 2678.835,
+        "p99Us": 2787.323,
+        "maxUs": 3285.537,
+        "overDeadline": 144,
+        "outputChecksum": 429.6468823134219,
+        "memoryBeforeBytes": 4259840,
+        "checkpoints": [
+          [
+            0.0656486451625824,
+            0.06380317360162735
+          ],
+          [
+            0.06436123698949814,
+            -0.018275486305356026
+          ],
+          [
+            0.07175998389720917,
+            0.18116553127765656
+          ]
+        ],
+        "memoryAfterBytes": 4259840
+      }
+    },
+    {
+      "native": {
+        "blockFrames": 128,
+        "checkpoints": [
+          [
+            0.06564756482839584,
+            0.06380317360162735
+          ],
+          [
+            0.06436096131801605,
+            -0.01827557198703289
+          ],
+          [
+            0.07175888866186142,
+            0.18116578459739685
+          ]
+        ],
+        "maxUs": 2937.6820000000002,
+        "measuredBlocks": 2048,
+        "method": "release Rust NativeProcessor::process, offline",
+        "outputChecksum": 429.6451935307123,
+        "overDeadline": 2,
+        "p50Us": 123.669,
+        "p95Us": 2014.623,
+        "p99Us": 2129.823,
+        "parseMs": 0.640742,
+        "prepareMs": 2.173872,
+        "sampleRate": 48000,
+        "warmupBlocks": 128
+      },
+      "wasm": {
+        "method": "Node/V8 simulated AudioWorklet process, offline",
+        "sampleRate": 48000,
+        "blockFrames": 128,
+        "warmupBlocks": 128,
+        "measuredBlocks": 2048,
+        "initMs": 11.613818,
+        "p50Us": 127.198,
+        "p95Us": 2661.875,
+        "p99Us": 2877.132,
+        "maxUs": 4064.436,
+        "overDeadline": 100,
+        "outputChecksum": 429.6468823134219,
+        "memoryBeforeBytes": 4259840,
+        "checkpoints": [
+          [
+            0.0656486451625824,
+            0.06380317360162735
+          ],
+          [
+            0.06436123698949814,
+            -0.018275486305356026
+          ],
+          [
+            0.07175998389720917,
+            0.18116553127765656
+          ]
+        ],
+        "memoryAfterBytes": 4259840
+      }
+    },
+    {
+      "native": {
+        "blockFrames": 128,
+        "checkpoints": [
+          [
+            0.06564756482839584,
+            0.06380317360162735
+          ],
+          [
+            0.06436096131801605,
+            -0.01827557198703289
+          ],
+          [
+            0.07175888866186142,
+            0.18116578459739685
+          ]
+        ],
+        "maxUs": 3639.602,
+        "measuredBlocks": 2048,
+        "method": "release Rust NativeProcessor::process, offline",
+        "outputChecksum": 429.6451935307123,
+        "overDeadline": 2,
+        "p50Us": 122.698,
+        "p95Us": 2052.113,
+        "p99Us": 2205.9010000000003,
+        "parseMs": 0.6382220000000001,
+        "prepareMs": 1.994334,
+        "sampleRate": 48000,
+        "warmupBlocks": 128
+      },
+      "wasm": {
+        "method": "Node/V8 simulated AudioWorklet process, offline",
+        "sampleRate": 48000,
+        "blockFrames": 128,
+        "warmupBlocks": 128,
+        "measuredBlocks": 2048,
+        "initMs": 8.992972,
+        "p50Us": 133.348,
+        "p95Us": 2695.025,
+        "p99Us": 2842.262,
+        "maxUs": 4363.563,
+        "overDeadline": 167,
+        "outputChecksum": 429.6468823134219,
+        "memoryBeforeBytes": 4259840,
+        "checkpoints": [
+          [
+            0.0656486451625824,
+            0.06380317360162735
+          ],
+          [
+            0.06436123698949814,
+            -0.018275486305356026
+          ],
+          [
+            0.07175998389720917,
+            0.18116553127765656
+          ]
+        ],
+        "memoryAfterBytes": 4259840
+      }
+    }
+  ],
+  "medianOfRuns": {
+    "native": {
+      "p50Us": 122.698,
+      "p95Us": 2041.944,
+      "p99Us": 2167.082,
+      "maxUs": 3282.607
+    },
+    "wasm": {
+      "p50Us": 133.348,
+      "p95Us": 2678.835,
+      "p99Us": 2842.262,
+      "maxUs": 4064.436
+    }
+  },
+  "limits": "Offline sequential runs; native and Wasm adapters differ; no actual browser/DAW callback scheduling or old C++ graph measured."
+}

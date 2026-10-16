@@ -1,0 +1,26 @@
+{
+  "recordedAt": "2026-09-30T06:17:19.921494+00:00",
+  "installedDirectory": "/tmp/manifold-prepared-loop-consumer",
+  "dependency": "installed tarball; no repository package alias",
+  "strictTypeScript": "passed",
+  "vite": "7.3.6 (repository tool executable, independent consumer inputs)",
+  "sha256": {
+    "index.html": "f56c2c1cb02e75930a3a96dfa62848faf783295f602e5c588b538b8baabc35b1",
+    "prepared-loops.html": "f56c2c1cb02e75930a3a96dfa62848faf783295f602e5c588b538b8baabc35b1",
+    "manifold-author-0.1.0.tgz": "ab0788fa27e4ccbfb27e0650558e169f3fc1d7f728b4a89b5bff8addebe67751",
+    "assets/shared-graph-processor-Dm6y4SJs.js": "6fd78f3d46ff1134cea2d1079b96fe1a8006a54cea96a25c591aa4bd41f7eee8",
+    "assets/index-B1KPji-S.js": "bd6a817cc6e1a0b4fd52be08973d69f0796c8fa544e297c9ab27b47d09ad992c",
+    "assets/graph-worker-CEaNXC64.js": "e427c22e00f9dc5f931bba280574be90d4a19605f34692fdc46f05d3aa9a3d76",
+    "assets/prepared-processor-DfyvT8oL.js": "97a6cd0a67aeb3fd82aa643c22c73295d05aeabff6c02f36ca05c0d1b68458b7",
+    "assets/prepared-compiler-BpLx5XZ8.js": "2d39cf0cd1c2cdc670770254668a5a08a56551d68ded64f60d44d8089c89c305",
+    "assets/filter-processor-CX7wR-19.js": "6f8a9ee38533cb009cf904cc6305c4c1ada5878cbe3d3bb0511cd6c9e3eb560c",
+    "assets/manifold_prepared-DQjKWhEl.wasm": "66eacaaceb4e03a4dfd195a0592963a266ba087427bc7c387326ff7f5f48fdec",
+    "assets/manifold_filter-BYVI2rUH.wasm": "35a20840f9bbf1830563ee72b60e1bd6f344eaccab41f7970ac098bc34cfc451",
+    "source/app.js": "72b9bb4a7222b3aad864da912aec1a92353248bf884ac29d9c56f68cea62f3cd",
+    "source/index.html": "add5f2e532f1e036cb719a115814cd3b27a179aa2683d741fe4f7aae0c05ed6a",
+    "source/package.json": "4c9e746b1d47be5a0f7ba33401874a6804c55d80f55cb5839f8acbb186b007e4",
+    "source/package-lock.json": "8abbd41509f2983548f89bf7396fd1f630a48e37cfb50b3648150ead8ca344c7",
+    "source/vite.config.mjs": "c9d059bf4629f60f27dd43ae59642db69c071da3526fe51ef790008c6539015c",
+    "source/types.ts": "fca8a77c5d65dac65be04621e1355d11d2471a7c884f2fcb0a6cdb08e77d57b8"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "independent-manifold-loop-consumer",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@manifold/author": "file:../manifold-prepared-loop-pack/manifold-author-0.1.0.tgz"
+  }
+}

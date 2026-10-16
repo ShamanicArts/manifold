@@ -1,0 +1,705 @@
+{
+  "date": "2026-10-12",
+  "webTests": 190,
+  "releaseRustTests": 569,
+  "debugRustWorkspace": {
+    "status": "not-green",
+    "failure": "Main Wave load exceeded two-second QuickJS budget; one SIGSEGV during value cleanup",
+    "baseline": "previous and current bundles time out in debug and load in release",
+    "crashMechanism": "unresolved"
+  },
+  "nativeMcp": {
+    "initialRevision": 0,
+    "finalRevision": 4,
+    "initialHost": {
+      "audioBlocks": 384,
+      "failed": false,
+      "monitorEnabled": false,
+      "packageId": null,
+      "peak": 0.6495006680488586,
+      "rms": 0.33629149198532104
+    },
+    "finalHost": {
+      "audioBlocks": 1436,
+      "failed": false,
+      "monitorEnabled": false,
+      "packageId": null,
+      "peak": 0.19987019896507263,
+      "rms": 0.10740828514099121
+    },
+    "guideDiscovered": true
+  },
+  "nativeMcpOperations": [
+    "project.inspect",
+    "project.inspect",
+    "parameter.set",
+    "project.inspect",
+    "graph.wrap",
+    "project.inspect",
+    "file.read",
+    "file.write",
+    "project.inspect",
+    "project.inspect",
+    "graph.addInstance",
+    "project.inspect",
+    "project.save",
+    "workspace.inspect"
+  ],
+  "nativeRecording": "~/.cache/manifold/device-completion-20261012/native/live-device-edit.mp4",
+  "browserStudio": {
+    "levels": [
+      {
+        "input": "saw",
+        "rms": 0.3251210805875593
+      },
+      {
+        "input": "none",
+        "rms": 0
+      },
+      {
+        "input": "noise",
+        "rms": 0.2611943294774294
+      },
+      {
+        "input": "saw",
+        "rms": 0.3251210805875593
+      }
+    ],
+    "midi": {
+      "again": 0.043468804813250515,
+      "diagnostics": {
+        "audioBlocks": 1156,
+        "compilerFailed": false,
+        "eventsAdmitted": 5,
+        "eventsCancelled": 0,
+        "eventsConsumed": 5,
+        "eventsPending": 0,
+        "eventsRejected": 0,
+        "execution": "prepared",
+        "lastEventContextFrame": 87040,
+        "lastPreparationMs": 0.2999999523162842,
+        "lastPublicationContextFrame": 2048,
+        "lastPublicationMs": 2.759999990463257,
+        "lastTransferredNodes": 0,
+        "memoryBytes": 16777216,
+        "outputLatencyBlocks": 0,
+        "processorFailed": false,
+        "publications": 1,
+        "renderQuantum": 128,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "rustProcessedBlocks": 1152,
+        "rustProcessingFailures": 0
+      },
+      "playing": 0.04314227547065478,
+      "quiet": 0,
+      "rejected": true,
+      "released": 0,
+      "stopped": 0
+    },
+    "diagnostics": {
+      "audioBlocks": 964,
+      "compilerFailed": false,
+      "eventsAdmitted": 0,
+      "eventsCancelled": 0,
+      "eventsConsumed": 0,
+      "eventsPending": 0,
+      "eventsRejected": 0,
+      "execution": "prepared",
+      "lastEventContextFrame": 0,
+      "lastPreparationMs": 0.4750000238418579,
+      "lastPublicationContextFrame": 96768,
+      "lastPublicationMs": 11.519999980926514,
+      "lastTransferredNodes": 0,
+      "memoryBytes": 16777216,
+      "outputLatencyBlocks": 0,
+      "processorFailed": false,
+      "publications": 2,
+      "renderQuantum": 128,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "rustProcessedBlocks": 964,
+      "rustProcessingFailures": 0
+    }
+  },
+  "browserStudioMidi": {
+    "diagnostics": {
+      "audioBlocks": 804,
+      "compilerFailed": false,
+      "eventsAdmitted": 3,
+      "eventsCancelled": 0,
+      "eventsConsumed": 3,
+      "eventsPending": 0,
+      "eventsRejected": 0,
+      "execution": "prepared",
+      "lastEventContextFrame": 71680,
+      "lastPreparationMs": 4.409999966621399,
+      "lastPublicationContextFrame": 512,
+      "lastPublicationMs": 9.240000009536743,
+      "lastTransferredNodes": 0,
+      "memoryBytes": 16777216,
+      "outputLatencyBlocks": 0,
+      "processorFailed": false,
+      "publications": 1,
+      "renderQuantum": 128,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "rustProcessedBlocks": 804,
+      "rustProcessingFailures": 0
+    },
+    "playing": 0.039423920272005857,
+    "released": 0,
+    "retained": 0.03948689848455361
+  },
+  "nativeWasm": [
+    {
+      "name": "gain",
+      "frames": 6144,
+      "maxDifference": 0,
+      "rms": 0.12846752523217342,
+      "native": {
+        "callbackHeapGuarded": true,
+        "channels": 2,
+        "frames": 6144,
+        "io": {
+          "inputBindings": [
+            {
+              "channels": [
+                null,
+                null
+              ],
+              "nodeId": 1
+            },
+            {
+              "channels": [
+                {
+                  "bus": 0,
+                  "channel": 0
+                },
+                {
+                  "bus": 0,
+                  "channel": 1
+                }
+              ],
+              "nodeId": 4
+            }
+          ],
+          "inputs": [
+            {
+              "channels": 2,
+              "id": "audio",
+              "name": "audio",
+              "optional": false
+            }
+          ],
+          "outputBindings": [
+            {
+              "channel": 0,
+              "nodeId": 5,
+              "outputPort": 0
+            },
+            {
+              "channel": 1,
+              "nodeId": 5,
+              "outputPort": 0
+            }
+          ],
+          "outputs": [
+            {
+              "channels": 2,
+              "id": "audio",
+              "name": "audio",
+              "optional": false
+            }
+          ],
+          "version": 1
+        }
+      }
+    },
+    {
+      "name": "tone",
+      "frames": 6144,
+      "maxDifference": 2.9802322387695312e-08,
+      "rms": 0.05719072150997279,
+      "native": {
+        "callbackHeapGuarded": true,
+        "channels": 2,
+        "frames": 6144,
+        "io": {
+          "inputBindings": [
+            {
+              "channels": [
+                null,
+                null
+              ],
+              "nodeId": 1
+            }
+          ],
+          "inputs": [],
+          "outputBindings": [
+            {
+              "channel": 0,
+              "nodeId": 5,
+              "outputPort": 0
+            },
+            {
+              "channel": 1,
+              "nodeId": 5,
+              "outputPort": 0
+            }
+          ],
+          "outputs": [
+            {
+              "channels": 2,
+              "id": "audio",
+              "name": "audio",
+              "optional": false
+            }
+          ],
+          "version": 1
+        }
+      }
+    },
+    {
+      "name": "spectral",
+      "frames": 6144,
+      "maxDifference": 1.1622905731201172e-06,
+      "rms": 0.09088770331102017,
+      "native": {
+        "callbackHeapGuarded": true,
+        "channels": 2,
+        "frames": 6144,
+        "io": {
+          "inputBindings": [
+            {
+              "channels": [
+                null,
+                null
+              ],
+              "nodeId": 1
+            },
+            {
+              "channels": [
+                {
+                  "bus": 0,
+                  "channel": 0
+                },
+                {
+                  "bus": 0,
+                  "channel": 1
+                }
+              ],
+              "nodeId": 4
+            }
+          ],
+          "inputs": [
+            {
+              "channels": 2,
+              "id": "audio",
+              "name": "audio",
+              "optional": false
+            }
+          ],
+          "outputBindings": [
+            {
+              "channel": 0,
+              "nodeId": 5,
+              "outputPort": 0
+            },
+            {
+              "channel": 1,
+              "nodeId": 5,
+              "outputPort": 0
+            }
+          ],
+          "outputs": [
+            {
+              "channels": 2,
+              "id": "audio",
+              "name": "audio",
+              "optional": false
+            }
+          ],
+          "version": 1
+        }
+      }
+    },
+    {
+      "name": "reusable",
+      "frames": 6144,
+      "maxDifference": 0,
+      "rms": 0.06931472139248973,
+      "native": {
+        "callbackHeapGuarded": true,
+        "channels": 2,
+        "frames": 6144,
+        "io": {
+          "inputBindings": [
+            {
+              "channels": [
+                null,
+                null
+              ],
+              "nodeId": 1
+            },
+            {
+              "channels": [
+                {
+                  "bus": 0,
+                  "channel": 0
+                },
+                {
+                  "bus": 0,
+                  "channel": 1
+                }
+              ],
+              "nodeId": 4
+            }
+          ],
+          "inputs": [
+            {
+              "channels": 2,
+              "id": "audio",
+              "name": "audio",
+              "optional": false
+            }
+          ],
+          "outputBindings": [
+            {
+              "channel": 0,
+              "nodeId": 8,
+              "outputPort": 0
+            },
+            {
+              "channel": 1,
+              "nodeId": 8,
+              "outputPort": 0
+            }
+          ],
+          "outputs": [
+            {
+              "channels": 2,
+              "id": "audio",
+              "name": "audio",
+              "optional": false
+            }
+          ],
+          "version": 1
+        }
+      }
+    },
+    {
+      "name": "handbook-gain",
+      "frames": 6144,
+      "maxDifference": 0,
+      "rms": 0.12846752523217342,
+      "native": {
+        "callbackHeapGuarded": true,
+        "channels": 2,
+        "frames": 6144,
+        "io": {
+          "inputBindings": [
+            {
+              "channels": [
+                null,
+                null
+              ],
+              "nodeId": 1
+            },
+            {
+              "channels": [
+                {
+                  "bus": 0,
+                  "channel": 0
+                },
+                {
+                  "bus": 0,
+                  "channel": 1
+                }
+              ],
+              "nodeId": 4
+            }
+          ],
+          "inputs": [
+            {
+              "channels": 2,
+              "id": "audio",
+              "name": "audio",
+              "optional": false
+            }
+          ],
+          "outputBindings": [
+            {
+              "channel": 0,
+              "nodeId": 5,
+              "outputPort": 0
+            },
+            {
+              "channel": 1,
+              "nodeId": 5,
+              "outputPort": 0
+            }
+          ],
+          "outputs": [
+            {
+              "channels": 2,
+              "id": "audio",
+              "name": "audio",
+              "optional": false
+            }
+          ],
+          "version": 1
+        }
+      }
+    },
+    {
+      "name": "handbook-ring",
+      "frames": 6144,
+      "maxDifference": 0,
+      "rms": 0.02094871913260495,
+      "native": {
+        "callbackHeapGuarded": true,
+        "channels": 2,
+        "frames": 6144,
+        "io": {
+          "inputBindings": [
+            {
+              "channels": [
+                null,
+                null
+              ],
+              "nodeId": 1
+            }
+          ],
+          "inputs": [],
+          "outputBindings": [
+            {
+              "channel": 0,
+              "nodeId": 6,
+              "outputPort": 0
+            },
+            {
+              "channel": 1,
+              "nodeId": 6,
+              "outputPort": 0
+            }
+          ],
+          "outputs": [
+            {
+              "channels": 2,
+              "id": "audio",
+              "name": "audio",
+              "optional": false
+            }
+          ],
+          "version": 1
+        }
+      }
+    },
+    {
+      "name": "handbook-spectral",
+      "frames": 6144,
+      "maxDifference": 1.1622905731201172e-06,
+      "rms": 0.09088770331102017,
+      "native": {
+        "callbackHeapGuarded": true,
+        "channels": 2,
+        "frames": 6144,
+        "io": {
+          "inputBindings": [
+            {
+              "channels": [
+                null,
+                null
+              ],
+              "nodeId": 1
+            },
+            {
+              "channels": [
+                {
+                  "bus": 0,
+                  "channel": 0
+                },
+                {
+                  "bus": 0,
+                  "channel": 1
+                }
+              ],
+              "nodeId": 4
+            }
+          ],
+          "inputs": [
+            {
+              "channels": 2,
+              "id": "audio",
+              "name": "audio",
+              "optional": false
+            }
+          ],
+          "outputBindings": [
+            {
+              "channel": 0,
+              "nodeId": 5,
+              "outputPort": 0
+            },
+            {
+              "channel": 1,
+              "nodeId": 5,
+              "outputPort": 0
+            }
+          ],
+          "outputs": [
+            {
+              "channels": 2,
+              "id": "audio",
+              "name": "audio",
+              "optional": false
+            }
+          ],
+          "version": 1
+        }
+      }
+    },
+    {
+      "name": "handbook-reusable",
+      "frames": 6144,
+      "maxDifference": 0,
+      "rms": 0.06931472139248973,
+      "native": {
+        "callbackHeapGuarded": true,
+        "channels": 2,
+        "frames": 6144,
+        "io": {
+          "inputBindings": [
+            {
+              "channels": [
+                null,
+                null
+              ],
+              "nodeId": 1
+            },
+            {
+              "channels": [
+                {
+                  "bus": 0,
+                  "channel": 0
+                },
+                {
+                  "bus": 0,
+                  "channel": 1
+                }
+              ],
+              "nodeId": 4
+            }
+          ],
+          "inputs": [
+            {
+              "channels": 2,
+              "id": "audio",
+              "name": "audio",
+              "optional": false
+            }
+          ],
+          "outputBindings": [
+            {
+              "channel": 0,
+              "nodeId": 8,
+              "outputPort": 0
+            },
+            {
+              "channel": 1,
+              "nodeId": 8,
+              "outputPort": 0
+            }
+          ],
+          "outputs": [
+            {
+              "channels": 2,
+              "id": "audio",
+              "name": "audio",
+              "optional": false
+            }
+          ],
+          "version": 1
+        }
+      }
+    }
+  ],
+  "nacre": {
+    "sourceBytes": 92585,
+    "assetCount": 14,
+    "types": {
+      "extended-oscillator": [
+        "extendedOscillator"
+      ],
+      "crossfader": [
+        "crossfader"
+      ],
+      "phase-vocoder": [
+        "phaseVocoder"
+      ],
+      "svf": [
+        "lowPassFilter",
+        "svf"
+      ],
+      "wave-shaper": [
+        "waveShaper"
+      ],
+      "gain": [
+        "gain"
+      ],
+      "granulator": [
+        "granulator"
+      ]
+    },
+    "endpoints": [
+      "/nacre/active",
+      "/nacre/afterimage",
+      "/nacre/audition",
+      "/nacre/curve",
+      "/nacre/drive",
+      "/nacre/focus",
+      "/nacre/grain-size",
+      "/nacre/hold",
+      "/nacre/mix",
+      "/nacre/output",
+      "/nacre/pitch",
+      "/nacre/resonance",
+      "/nacre/scatter",
+      "/nacre/shift",
+      "/nacre/source-level",
+      "/nacre/unison",
+      "/nacre/waveform",
+      "/studio/prism-bend/12/edge",
+      "/studio/prism-bend/12/heat"
+    ],
+    "nested": [],
+    "renderer": {
+      "three": "0.184.0",
+      "@manifold/ui-web/control-panel": "0.1.0",
+      "@manifold/ui-web/diegetic": "0.1.0"
+    },
+    "saveReopen": true
+  },
+  "productionWikiChecks": [
+    "All lesson, Markdown, source and Studio routes exist in static output",
+    "Real output gain and zero signal; stopped context closed; restart retains value",
+    "Graph opens its exact source declaration",
+    "Agent prompt fetches raw sources; clipboard or selected-text fallback",
+    "Header/sidebar alignment, light/dark appearance and narrow navigation",
+    "Studio receives the accepted 0.25 gain draft without starting audio",
+    "Measured ring sum/difference peaks, spectral octave/fifth shifts, field response to real audio and silence",
+    "All three experiments preserve edits on Studio handoff without autoplay",
+    "Highlighted source navigation and dual-theme token colours; no overflow at 390px"
+  ],
+  "presenterControl": {
+    "before": 0.2,
+    "after": 0.6000000238418579,
+    "presenter": [
+      12,
+      147,
+      1476,
+      817
+    ]
+  }
+}

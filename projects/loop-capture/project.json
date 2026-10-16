@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.loop-capture-study",
+  "name": "Loop capture",
+  "source": "v2 authored study of legacy RetrospectiveCapture and LoopPlayback behaviors",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 2, "type": "loop-capture", "a": 2, "b": 1 },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "record", "label": "Record", "kind": "toggle", "default": 0 },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "play", "label": "Play", "kind": "toggle", "default": 0 },
+    { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "overdub", "label": "Overdub", "kind": "toggle", "default": 0 },
+    { "id": 3, "nodeId": 2, "nodeParameterId": 3, "hostId": "speed", "label": "Playback speed", "kind": "float", "min": 0.25, "max": 2, "default": 1 },
+    { "id": 4, "nodeId": 2, "nodeParameterId": 4, "hostId": "reverse", "label": "Reverse", "kind": "toggle", "default": 0 },
+    { "id": 5, "nodeId": 2, "nodeParameterId": 5, "hostId": "mix", "label": "Loop mix", "kind": "float", "min": 0, "max": 1, "default": 1 },
+    { "id": 6, "nodeId": 2, "nodeParameterId": 6, "hostId": "overdub-level", "label": "Overdub level", "kind": "float", "min": 0, "max": 1, "default": 0.5 }
+  ]
+}

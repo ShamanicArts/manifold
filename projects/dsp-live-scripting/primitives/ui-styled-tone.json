@@ -1,0 +1,239 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "oscillator",
+        "a": 220,
+        "b": 0.4
+      },
+      {
+        "id": 5,
+        "type": "svf"
+      }
+    ],
+    "connections": [
+      {
+        "from": 5,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 5,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 4,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 4,
+        "id": 2,
+        "value": 0.12
+      },
+      {
+        "nodeId": 5,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 5,
+        "id": 1,
+        "value": 2400
+      },
+      {
+        "nodeId": 5,
+        "id": 2,
+        "value": 0.6
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/ui/tone/cutoff",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 1,
+      "min": 80,
+      "max": 8000,
+      "default": 2400
+    },
+    {
+      "path": "/ui/tone/level",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 2,
+      "min": 0,
+      "max": 0.3,
+      "default": 0.12
+    },
+    {
+      "path": "/ui/tone/pitch",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 1,
+      "min": 55,
+      "max": 880,
+      "default": 220
+    },
+    {
+      "path": "/ui/tone/resonance",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 2,
+      "min": 0.1,
+      "max": 1,
+      "default": 0.6
+    },
+    {
+      "path": "/ui/tone/waveform",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 0,
+      "min": 0,
+      "max": 3,
+      "default": 1
+    }
+  ],
+  "instances": [
+    {
+      "path": "/ui/tone/filter",
+      "nodeId": 5
+    },
+    {
+      "path": "/ui/tone/voice",
+      "nodeId": 4
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// Examples name imports so you can trace each tool to its module.\n// Alternative: import * as manifold from '@manifold/author';\n// Then use manifold.createGraphWorkspace(), manifold.oscillator, etc.\nimport { createGraphWorkspace } from '@manifold/author';\nimport { oscillator, svf } from '@manifold/author/primitives';\n\nexport default function createProject() {\n  // Interface — musical names, units and stable paths belong together.\n  const controls = {\n    pitch: { path: '/ui/tone/pitch', label: 'Pitch · Hz', min: 55, max: 880, default: 220 },\n    level: { path: '/ui/tone/level', label: 'Level', min: 0, max: 0.3, default: 0.12 },\n    waveform: {\n      path: '/ui/tone/waveform', label: 'Waveform', min: 0, max: 3, default: 1,\n      choices: ['Sine', 'Saw', 'Square', 'Triangle'],\n    },\n    cutoff: { path: '/ui/tone/cutoff', label: 'Cutoff · Hz', min: 80, max: 8000, default: 2400 },\n    resonance: { path: '/ui/tone/resonance', label: 'Resonance', min: 0.1, max: 1, default: 0.6 },\n  };\n\n  // Audio interface — a self-contained instrument, with no external input.\n  const graph = createGraphWorkspace().setInputSource('none');\n  const output = graph.output.input('in');\n  const voice = graph.add(oscillator.type, { id: 4 });\n  const filter = graph.add(svf.type, { id: 5 });\n  graph.registerInstance('/ui/tone/voice', voice);\n  graph.registerInstance('/ui/tone/filter', filter);\n  voice.parameter('frequency').expose(controls.pitch);\n  voice.parameter('level').expose(controls.level);\n  voice.parameter('waveform').expose(controls.waveform);\n  filter.parameter('cutoff').expose(controls.cutoff);\n  filter.parameter('resonance').expose(controls.resonance);\n  graph.connect(voice.output('out'), filter.input('audio'));\n  graph.connect(filter.output('out'), output);\n\n  // Presentation — edit these colors, labels and groups, then Apply live.\n  // Portable styles work in retained JS and native/Wasm egui.\n  const palette = {\n    voice: { accent: '#f59e0b', background: '#302313', text: '#fff7ed' },\n    filter: { accent: '#38bdf8', background: '#112a36', text: '#e0f2fe' },\n  };\n  const slider = (control, group, style) => ({\n    id: control.path, type: 'parameter', path: control.path,\n    label: control.label, choices: control.choices, group, style,\n  });\n  const view = [\n    { id: 'voice-title', type: 'label', label: 'Make a tone', fontSize: 22,\n      group: 'Sound', style: palette.voice },\n    slider(controls.waveform, 'Sound', palette.voice),\n    slider(controls.pitch, 'Sound', palette.voice),\n    slider(controls.level, 'Sound', palette.voice),\n    { id: 'filter-title', type: 'label', label: 'Shape its color', fontSize: 22,\n      group: 'Filter', style: palette.filter },\n    slider(controls.cutoff, 'Filter', palette.filter),\n    slider(controls.resonance, 'Filter', palette.filter),\n  ];\n  // A retained declaration is sufficient. Both hosts bind to accepted targets.\n  return { graph, view };\n}\n",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "voice-title",
+        "type": "label",
+        "label": "Make a tone",
+        "fontSize": 22,
+        "group": "Sound",
+        "style": {
+          "accent": "#f59e0b",
+          "background": "#302313",
+          "text": "#fff7ed"
+        }
+      },
+      {
+        "id": "/ui/tone/waveform",
+        "type": "parameter",
+        "path": "/ui/tone/waveform",
+        "label": "Waveform",
+        "choices": [
+          "Sine",
+          "Saw",
+          "Square",
+          "Triangle"
+        ],
+        "group": "Sound",
+        "style": {
+          "accent": "#f59e0b",
+          "background": "#302313",
+          "text": "#fff7ed"
+        }
+      },
+      {
+        "id": "/ui/tone/pitch",
+        "type": "parameter",
+        "path": "/ui/tone/pitch",
+        "label": "Pitch · Hz",
+        "group": "Sound",
+        "style": {
+          "accent": "#f59e0b",
+          "background": "#302313",
+          "text": "#fff7ed"
+        }
+      },
+      {
+        "id": "/ui/tone/level",
+        "type": "parameter",
+        "path": "/ui/tone/level",
+        "label": "Level",
+        "group": "Sound",
+        "style": {
+          "accent": "#f59e0b",
+          "background": "#302313",
+          "text": "#fff7ed"
+        }
+      },
+      {
+        "id": "filter-title",
+        "type": "label",
+        "label": "Shape its color",
+        "fontSize": 22,
+        "group": "Filter",
+        "style": {
+          "accent": "#38bdf8",
+          "background": "#112a36",
+          "text": "#e0f2fe"
+        }
+      },
+      {
+        "id": "/ui/tone/cutoff",
+        "type": "parameter",
+        "path": "/ui/tone/cutoff",
+        "label": "Cutoff · Hz",
+        "group": "Filter",
+        "style": {
+          "accent": "#38bdf8",
+          "background": "#112a36",
+          "text": "#e0f2fe"
+        }
+      },
+      {
+        "id": "/ui/tone/resonance",
+        "type": "parameter",
+        "path": "/ui/tone/resonance",
+        "label": "Resonance",
+        "group": "Filter",
+        "style": {
+          "accent": "#38bdf8",
+          "background": "#112a36",
+          "text": "#e0f2fe"
+        }
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

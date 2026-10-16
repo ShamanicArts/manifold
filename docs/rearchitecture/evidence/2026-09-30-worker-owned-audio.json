@@ -1,0 +1,479 @@
+{
+  "recordedAt": "2026-09-30T01:02:41.384Z",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174",
+  "chromiumVersion": "152.0.7977.82",
+  "forcedTerminationWithheld": true,
+  "ignoredTerminationCalls": 9,
+  "steps": [
+    {
+      "index": 1,
+      "gain": 0.25,
+      "factor": 1,
+      "expected": 0.05,
+      "mean": 0.049999285489320755,
+      "min": 0.049999285489320755,
+      "max": 0.049999285489320755,
+      "diagnostics": {
+        "audioBlocks": 112,
+        "underruns": 0,
+        "pendingRetirements": 0,
+        "lastRetirementMs": 0.019999980926513672,
+        "deferredPublicationBlocks": 0,
+        "publications": 1,
+        "lastPublicationTarget": 13,
+        "maxRenderLagBlocks": 12,
+        "workerLateBlocks": 0,
+        "missingOutputBlocks": 0,
+        "frameMismatchBlocks": 0,
+        "startupMutedBlocks": 12,
+        "recentUnderruns": [],
+        "activeSlot": 1,
+        "outputLatencyBlocks": 4,
+        "lastPreparationMs": 2.209999918937683,
+        "lastPublicationMs": 26.945000052452087,
+        "lastTransferredNodes": 1
+      },
+      "profile": {
+        "blocks": 100,
+        "p50Us": 0,
+        "p95Us": 10,
+        "p99Us": 15,
+        "maxUs": 40,
+        "service": {
+          "blocks": 100,
+          "p50Us": 10,
+          "p95Us": 65,
+          "p99Us": 95,
+          "maxUs": 185
+        }
+      },
+      "workers": [
+        {
+          "id": "EACEB9C79A219F4B3395EBC93187C3B7",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-CEaNXC64.js"
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "gain": 0.75,
+      "factor": 4,
+      "expected": 0.6000000000000001,
+      "mean": 0.599988579750061,
+      "min": 0.599988579750061,
+      "max": 0.599988579750061,
+      "diagnostics": {
+        "audioBlocks": 224,
+        "underruns": 0,
+        "pendingRetirements": 0,
+        "lastRetirementMs": 4.1600000858306885,
+        "deferredPublicationBlocks": 0,
+        "publications": 2,
+        "lastPublicationTarget": 121,
+        "maxRenderLagBlocks": 12,
+        "workerLateBlocks": 0,
+        "missingOutputBlocks": 0,
+        "frameMismatchBlocks": 0,
+        "startupMutedBlocks": 12,
+        "recentUnderruns": [],
+        "activeSlot": 0,
+        "outputLatencyBlocks": 4,
+        "lastPreparationMs": 1.9399999380111694,
+        "lastPublicationMs": 34.144999980926514,
+        "lastTransferredNodes": 1
+      },
+      "profile": {
+        "blocks": 104,
+        "p50Us": 0,
+        "p95Us": 10,
+        "p99Us": 15,
+        "maxUs": 15,
+        "service": {
+          "blocks": 104,
+          "p50Us": 10,
+          "p95Us": 60,
+          "p99Us": 70,
+          "maxUs": 255
+        }
+      },
+      "workers": [
+        {
+          "id": "98B02612A632FCDF27D38838BD8DA69B",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-CEaNXC64.js"
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "gain": 0.5,
+      "factor": 1,
+      "expected": 0.1,
+      "mean": 0.10000286251306534,
+      "min": 0.10000286251306534,
+      "max": 0.10000286251306534,
+      "diagnostics": {
+        "audioBlocks": 332,
+        "underruns": 0,
+        "pendingRetirements": 0,
+        "lastRetirementMs": 4.129999995231628,
+        "deferredPublicationBlocks": 0,
+        "publications": 3,
+        "lastPublicationTarget": 229,
+        "maxRenderLagBlocks": 12,
+        "workerLateBlocks": 0,
+        "missingOutputBlocks": 0,
+        "frameMismatchBlocks": 0,
+        "startupMutedBlocks": 12,
+        "recentUnderruns": [],
+        "activeSlot": 1,
+        "outputLatencyBlocks": 4,
+        "lastPreparationMs": 2.384999990463257,
+        "lastPublicationMs": 30.610000014305115,
+        "lastTransferredNodes": 1
+      },
+      "profile": {
+        "blocks": 104,
+        "p50Us": 0,
+        "p95Us": 10,
+        "p99Us": 15,
+        "maxUs": 15,
+        "service": {
+          "blocks": 104,
+          "p50Us": 10,
+          "p95Us": 55,
+          "p99Us": 80,
+          "maxUs": 195
+        }
+      },
+      "workers": [
+        {
+          "id": "BDB29700F4E17E55F90EA9B82D43668E",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-CEaNXC64.js"
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "gain": 1,
+      "factor": 4,
+      "expected": 0.8,
+      "mean": 0.7999885678291321,
+      "min": 0.7999885678291321,
+      "max": 0.7999885678291321,
+      "diagnostics": {
+        "audioBlocks": 436,
+        "underruns": 0,
+        "pendingRetirements": 0,
+        "lastRetirementMs": 4.120000004768372,
+        "deferredPublicationBlocks": 0,
+        "publications": 4,
+        "lastPublicationTarget": 337,
+        "maxRenderLagBlocks": 12,
+        "workerLateBlocks": 0,
+        "missingOutputBlocks": 0,
+        "frameMismatchBlocks": 0,
+        "startupMutedBlocks": 12,
+        "recentUnderruns": [],
+        "activeSlot": 0,
+        "outputLatencyBlocks": 4,
+        "lastPreparationMs": 2.4299999475479126,
+        "lastPublicationMs": 27.110000014305115,
+        "lastTransferredNodes": 1
+      },
+      "profile": {
+        "blocks": 100,
+        "p50Us": 0,
+        "p95Us": 10,
+        "p99Us": 15,
+        "maxUs": 20,
+        "service": {
+          "blocks": 100,
+          "p50Us": 10,
+          "p95Us": 65,
+          "p99Us": 80,
+          "maxUs": 360
+        }
+      },
+      "workers": [
+        {
+          "id": "CD727113E18E5C57B4A45C4C077FF8E7",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-CEaNXC64.js"
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "gain": 0.875,
+      "factor": 1,
+      "expected": 0.17500000000000002,
+      "mean": 0.17500285804271698,
+      "min": 0.17500285804271698,
+      "max": 0.17500285804271698,
+      "diagnostics": {
+        "audioBlocks": 548,
+        "underruns": 0,
+        "pendingRetirements": 0,
+        "lastRetirementMs": 4.09499990940094,
+        "deferredPublicationBlocks": 0,
+        "publications": 5,
+        "lastPublicationTarget": 445,
+        "maxRenderLagBlocks": 12,
+        "workerLateBlocks": 0,
+        "missingOutputBlocks": 0,
+        "frameMismatchBlocks": 0,
+        "startupMutedBlocks": 12,
+        "recentUnderruns": [],
+        "activeSlot": 1,
+        "outputLatencyBlocks": 4,
+        "lastPreparationMs": 1.909999966621399,
+        "lastPublicationMs": 33.125,
+        "lastTransferredNodes": 1
+      },
+      "profile": {
+        "blocks": 104,
+        "p50Us": 0,
+        "p95Us": 10,
+        "p99Us": 10,
+        "maxUs": 10,
+        "service": {
+          "blocks": 104,
+          "p50Us": 5,
+          "p95Us": 55,
+          "p99Us": 65,
+          "maxUs": 210
+        }
+      },
+      "workers": [
+        {
+          "id": "84EF14378C8B996481914FF4EC6C1C1D",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-CEaNXC64.js"
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "gain": 0.625,
+      "factor": 4,
+      "expected": 0.5,
+      "mean": 0.5000114440917969,
+      "min": 0.5000114440917969,
+      "max": 0.5000114440917969,
+      "diagnostics": {
+        "audioBlocks": 656,
+        "underruns": 0,
+        "pendingRetirements": 0,
+        "lastRetirementMs": 4.0899999141693115,
+        "deferredPublicationBlocks": 0,
+        "publications": 6,
+        "lastPublicationTarget": 557,
+        "maxRenderLagBlocks": 12,
+        "workerLateBlocks": 0,
+        "missingOutputBlocks": 0,
+        "frameMismatchBlocks": 0,
+        "startupMutedBlocks": 12,
+        "recentUnderruns": [],
+        "activeSlot": 0,
+        "outputLatencyBlocks": 4,
+        "lastPreparationMs": 2.334999918937683,
+        "lastPublicationMs": 34.25,
+        "lastTransferredNodes": 1
+      },
+      "profile": {
+        "blocks": 100,
+        "p50Us": 0,
+        "p95Us": 10,
+        "p99Us": 15,
+        "maxUs": 20,
+        "service": {
+          "blocks": 100,
+          "p50Us": 10,
+          "p95Us": 55,
+          "p99Us": 90,
+          "maxUs": 280
+        }
+      },
+      "workers": [
+        {
+          "id": "051CC310CEBB9FA8E6CCF19E4C15DE11",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-CEaNXC64.js"
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "gain": 0.375,
+      "factor": 1,
+      "expected": 0.07500000000000001,
+      "mean": 0.07500143349170685,
+      "min": 0.07500143349170685,
+      "max": 0.07500143349170685,
+      "diagnostics": {
+        "audioBlocks": 768,
+        "underruns": 0,
+        "pendingRetirements": 0,
+        "lastRetirementMs": 4.125,
+        "deferredPublicationBlocks": 0,
+        "publications": 7,
+        "lastPublicationTarget": 665,
+        "maxRenderLagBlocks": 12,
+        "workerLateBlocks": 0,
+        "missingOutputBlocks": 0,
+        "frameMismatchBlocks": 0,
+        "startupMutedBlocks": 12,
+        "recentUnderruns": [],
+        "activeSlot": 1,
+        "outputLatencyBlocks": 4,
+        "lastPreparationMs": 1.8550000190734863,
+        "lastPublicationMs": 33.87000000476837,
+        "lastTransferredNodes": 1
+      },
+      "profile": {
+        "blocks": 104,
+        "p50Us": 0,
+        "p95Us": 10,
+        "p99Us": 20,
+        "maxUs": 30,
+        "service": {
+          "blocks": 104,
+          "p50Us": 10,
+          "p95Us": 70,
+          "p99Us": 110,
+          "maxUs": 255
+        }
+      },
+      "workers": [
+        {
+          "id": "1CEFBE440EC02D5C07D28B8240F332B1",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-CEaNXC64.js"
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "gain": 0.9375,
+      "factor": 4,
+      "expected": 0.75,
+      "mean": 0.7499885559082031,
+      "min": 0.7499885559082031,
+      "max": 0.7499885559082031,
+      "diagnostics": {
+        "audioBlocks": 876,
+        "underruns": 0,
+        "pendingRetirements": 0,
+        "lastRetirementMs": 4.0950000286102295,
+        "deferredPublicationBlocks": 0,
+        "publications": 8,
+        "lastPublicationTarget": 773,
+        "maxRenderLagBlocks": 12,
+        "workerLateBlocks": 0,
+        "missingOutputBlocks": 0,
+        "frameMismatchBlocks": 0,
+        "startupMutedBlocks": 12,
+        "recentUnderruns": [],
+        "activeSlot": 0,
+        "outputLatencyBlocks": 4,
+        "lastPreparationMs": 2.149999976158142,
+        "lastPublicationMs": 30.615000009536743,
+        "lastTransferredNodes": 1
+      },
+      "profile": {
+        "blocks": 104,
+        "p50Us": 0,
+        "p95Us": 10,
+        "p99Us": 15,
+        "maxUs": 15,
+        "service": {
+          "blocks": 104,
+          "p50Us": 10,
+          "p95Us": 40,
+          "p99Us": 50,
+          "maxUs": 175
+        }
+      },
+      "workers": [
+        {
+          "id": "E9567E307CF3F37B056436609169A760",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-CEaNXC64.js"
+        }
+      ]
+    }
+  ],
+  "tail": {
+    "before": {
+      "diagnostics": {
+        "audioBlocks": 876,
+        "underruns": 0,
+        "pendingRetirements": 0,
+        "lastRetirementMs": 4.0950000286102295,
+        "deferredPublicationBlocks": 0,
+        "publications": 8,
+        "lastPublicationTarget": 773,
+        "maxRenderLagBlocks": 12,
+        "workerLateBlocks": 0,
+        "missingOutputBlocks": 0,
+        "frameMismatchBlocks": 0,
+        "startupMutedBlocks": 12,
+        "recentUnderruns": [],
+        "activeSlot": 0,
+        "outputLatencyBlocks": 4,
+        "lastPreparationMs": 2.149999976158142,
+        "lastPublicationMs": 30.615000009536743,
+        "lastTransferredNodes": 1
+      },
+      "profile": {
+        "blocks": 104,
+        "p50Us": 0,
+        "p95Us": 10,
+        "p99Us": 15,
+        "maxUs": 15,
+        "service": {
+          "blocks": 104,
+          "p50Us": 10,
+          "p95Us": 40,
+          "p99Us": 50,
+          "maxUs": 175
+        }
+      }
+    },
+    "after": {
+      "diagnostics": {
+        "audioBlocks": 1164,
+        "underruns": 0,
+        "pendingRetirements": 0,
+        "lastRetirementMs": 4.0950000286102295,
+        "deferredPublicationBlocks": 0,
+        "publications": 8,
+        "lastPublicationTarget": 773,
+        "maxRenderLagBlocks": 12,
+        "workerLateBlocks": 0,
+        "missingOutputBlocks": 0,
+        "frameMismatchBlocks": 0,
+        "startupMutedBlocks": 12,
+        "recentUnderruns": [],
+        "activeSlot": 0,
+        "outputLatencyBlocks": 4,
+        "lastPreparationMs": 2.149999976158142,
+        "lastPublicationMs": 30.615000009536743,
+        "lastTransferredNodes": 1
+      },
+      "profile": {
+        "blocks": 392,
+        "p50Us": 0,
+        "p95Us": 10,
+        "p99Us": 10,
+        "maxUs": 15,
+        "service": {
+          "blocks": 392,
+          "p50Us": 5,
+          "p95Us": 30,
+          "p99Us": 45,
+          "maxUs": 175
+        }
+      }
+    },
+    "audioAdvance": 288,
+    "processed": 288
+  },
+  "afterClose": [],
+  "pageErrors": []
+}

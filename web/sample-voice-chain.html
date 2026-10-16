@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manifold authored Sample voice</title>
+  <style>
+    :root { color-scheme: dark; font: 16px system-ui, sans-serif; background: #10131c; color: #eeedf5; }
+    body { max-width: 860px; margin: 3rem auto; padding: 0 1.25rem; }
+    section { background: #1d2230; border-radius: 12px; padding: 1.25rem; margin-block: 1rem; }
+    button { background: #7663d8; border: 0; border-radius: 7px; color: white; padding: .7rem 1rem; cursor: pointer; margin: .15rem; }
+    button:disabled { opacity: .45; cursor: default; }
+    label { display: flex; align-items: center; gap: 1rem; margin-block: 1rem; }
+    label span { min-width: 8rem; }
+    input { flex: 1; }
+    output { min-width: 4rem; text-align: right; }
+    select { padding: .4rem; }
+    #status { color: #9bd6ae; }
+    pre { max-height: 24rem; overflow: auto; background: #0c0e15; border-radius: 8px; padding: 1rem; font-size: .75rem; }
+  </style>
+</head>
+<body>
+  <h1>Sample voice from public graph nodes</h1>
+  <p>A saved stereo sample feeds Sample Region Playback → Phase Vocoder → voice gain → output gain. Play, pitch, and mode controls are project script actions over those nodes.</p>
+  <section>
+    <button id="start">Start audio</button><button id="stop" disabled>Stop</button><button id="download">Download project</button>
+    <label><span>Voice gate</span><input id="gate" type="range" min="0" max="1" step="0.01" value="0" disabled><output id="gate-value">0%</output></label>
+    <label><span>Voice pitch</span><input id="pitch" type="range" min="48" max="72" step="1" value="60" disabled><output id="pitch-value">MIDI 60</output></label>
+    <label><span>Pitch mode</span><select id="mode" disabled><option value="0">Classic</option><option value="1">Vocoder</option><option value="2">Vocoder HQ</option></select></label>
+    <p id="status" role="status">Ready. The sample is saved in the project.</p>
+    <p id="meter">—</p>
+  </section>
+  <section><h2>Inspectable graph and resource</h2><pre id="project"></pre></section>
+  <script type="module" src="/src/sample-voice-chain.js"></script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+{
+  "id": "prism-bend",
+  "label": "Prism Bend",
+  "version": 2,
+  "nodes": [
+    {
+      "key": "contour",
+      "type": "svf"
+    },
+    {
+      "key": "exciter",
+      "type": "wave-shaper"
+    }
+  ],
+  "connections": [
+    {
+      "from": "contour",
+      "output": "out",
+      "to": "exciter",
+      "input": "audio"
+    }
+  ],
+  "inputs": [
+    {
+      "name": "audio",
+      "node": "contour",
+      "port": "audio"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "out",
+      "node": "exciter",
+      "port": "out"
+    }
+  ],
+  "parameters": [
+    {
+      "name": "edge",
+      "node": "contour",
+      "parameter": "cutoff",
+      "label": "Prism edge · Hz",
+      "min": 100,
+      "max": 12000,
+      "default": 4800,
+      "style": {
+        "accent": "#7cf2e4",
+        "background": "#123f4b",
+        "text": "#edfffc"
+      }
+    },
+    {
+      "name": "heat",
+      "node": "exciter",
+      "parameter": "driveDb",
+      "label": "Prism heat · dB",
+      "min": 0,
+      "max": 40,
+      "default": 8,
+      "style": {
+        "accent": "#ff9c6f",
+        "background": "#632943",
+        "text": "#fff0e8"
+      }
+    }
+  ]
+}

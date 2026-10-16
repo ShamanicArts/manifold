@@ -1,0 +1,4 @@
+   Compiling manifold-project-js v0.1.0 (/home/shamanic/dev/Manifold-v2/crates/manifold-project-js)
+   Compiling manifold-vst3 v0.1.0 (/home/shamanic/dev/Manifold-v2/crates/manifold-vst3)
+   Compiling manifold-clap v0.1.0 (/home/shamanic/dev/Manifold-v2/crates/manifold-clap)
+    Finished `release` profile [optimized] target(s) in 3.46s

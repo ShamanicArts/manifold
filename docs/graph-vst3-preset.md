@@ -1,0 +1,111 @@
+# Graph project to VST3 preset
+
+The Linux `Manifold Graph` class accepts the same `manifold.project` schema v1
+bundle used by the browser graph workspace. The Rust exporter parses the
+project and prepares it at 48 kHz before putting the original JSON in the VST3
+component state chunk. The public host surface stays at 128 fixed macro IDs;
+saved `hostBindings` determine which graph control each slot addresses.
+
+```sh
+./scripts/build-vst3.sh
+cargo run -p manifold-vst3 --example export_graph_preset -- \
+  projects/graph-workspace/tone-texture.json tone-texture.vstpreset
+```
+
+Load the resulting `.vstpreset` in a host's preset browser. REAPER also accepts
+the full path through `TrackFX_SetPreset`, which the isolated
+`scripts/probe-reaper-graph-vst3.py` uses. The probe loads the Tone Texture
+project from a preset and renders one second from a silent item. Its output
+matches direct native Rust over all 48,000 stereo frames within `5.96e-8` peak
+sample error. It also renders the default note graph from a MIDI item with the
+same peak error. The [review page](../web/public/graph-vst3-host-proof.html)
+contains both playable WAV files and the preset.
+
+The container uses Steinberg's [documented VST3 preset format](https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical%2BDocumentation/Locations%2BFormat/Preset%2BFormat.html):
+`VST3` header, processor class ID, a `Comp` chunk containing the JSON bytes,
+and a trailing `List` of chunk offsets. The processor class ID is the graph
+component ID, not its edit controller ID. REAPER's [preset API](https://www.reaper.fm/sdk/reascript/reascripthelp.html)
+allows an absolute `.vstpreset` path. The exporter enforces the same 45 MiB
+state bound as the VST3 stream reader and rejects projects the native engine
+cannot prepare at 48 kHz with 1,024 frame blocks.
+
+The Linux graph class now has an 800×600 native `IPlugView` that uses the ported
+original compact slider and dropdown renderers. It shows each bound graph
+control beside its stable host slot number. `scripts/probe-reaper-graph-vst3-gui.py`
+opens the editor in isolated REAPER, confirms host automation changes the
+visible Semitones control, drags that widget to move REAPER's slot 0 from 0.20
+to 0.773, then loads Tone Texture through REAPER's preset API. The open editor
+rebuilds its cards for the new oscillator, noise, filter, CV gain, and LFO
+bindings. The [review](../web/public/graph-vst3-host-proof.html) shows the
+capture sequence.
+
+The editor also imports the browser's graph JSON directly. Its file input
+validates the graph contract, transfers at most 45 MiB to the companion in
+bounded chunks, and reports the result in the editor. The controller sends a
+host-created VST3 `IMessage` through the host-connected `IConnectionPoint` to
+the processor. The processor parses and prepares the replacement outside the
+audio callback and publishes it at a block boundary. Only after the processor
+accepts the project does the controller update its node cards and ask the host
+to rescan parameter values. This follows Steinberg's
+[processor/controller communication model](https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical%2BDocumentation/API%2BDocumentation/Index.html).
+The isolated REAPER probe's `--direct-import` mode drives that actual file
+input, saves the host project, and verifies that a fresh REAPER render matches
+the preset route over all 48,000 stereo frames exactly. Its `--sample-import`
+mode generates a 513,055-byte project with 48,000 stereo PCM frames, imports
+it through the same editor control, saves and reopens the REAPER project, and
+compares the MIDI render with direct native Rust. Peak sample error is
+`5.96e-8` over all 48,000 stereo frames. A host may impose a smaller
+private-message size than REAPER. The automated `--direct-import` probe injects
+a `File` into the input handler. The separate `--manual-picker` mode opens
+the native file chooser under isolated Xvfb, selects Tone Texture JSON, and
+checks the same saved-project audio result.
+
+The same probe's `--large-sample-import` and `--max-sample-import` modes now
+exercise 10- and 30-second 48 kHz stereo sources. Their browser-compatible
+projects contain 5,121,056 and 15,361,057 JSON bytes respectively. REAPER
+accepts both through the editor, saves them, and reopens them in a fresh process;
+each one-second MIDI render matches direct native Rust within `5.96e-8` peak
+sample error over 48,000 stereo frames. The 30-second source reaches the
+per-asset frame limit, but only its first second of playback was rendered.
+The [large import review](../web/public/graph-large-import-proof.html) shows the
+actual editor and audio. The VST3 project bound is 45 MiB, so this evidence
+establishes the full per-asset frame bound in REAPER, not behavior in other hosts.
+
+The `--multi-sample-import` probe adds a second sample instrument with a separate
+10-second 660 Hz stereo asset, routes both instruments through an audio sum, and
+imports a 10,241,747-byte project. After REAPER save and fresh-process reopen,
+all 48,000 stereo render frames match direct Rust within `5.96e-8` peak error.
+Muting only the second asset changes the native render by 0.0214 RMS, confirming
+both sources contribute. The review page shows the scrolled original controls.
+
+The `--four-sample-import` probe reaches the graph's full 32 MiB aggregate PCM
+allowance: four 1,048,576-frame stereo assets, each on its own sample instrument.
+Its 44,742,408-byte JSON remains below the 45 MiB project bound. REAPER imports,
+saves, and reopens the 11-node graph after the browser's JavaScript graph parser
+accepts all four decoded assets; its first-second MIDI render matches direct
+Rust within `5.96e-8` peak sample error. Muting each source separately changes
+the direct render by 0.0208–0.0214 RMS, confirming all four contribute. This
+does not measure playback later in the 21.85-second sources or host behavior
+above this actual JSON size.
+
+The browser graph workbench can now reassign each bound parameter to a displayed
+host slot 1–128. An occupied slot swaps the two bindings; the exported JSON
+preserves the mapping through preset export and host state. Changing a binding
+can redirect existing DAW automation. The [slot assignment proof](../web/public/graph-host-slot-proof.html)
+uses browser-exported Tone Texture JSON, moves Oscillator Frequency to displayed
+slot 42, exports a VST3 preset, and loads it in isolated REAPER. REAPER reports
+the expected initial normalized value, sets slot 42 to 0.1, and saves the
+project. Fresh-process REAPER renders show the dominant tone moving from 330 to
+1618 Hz over one second of 48 kHz stereo audio. The native editor also accepts
+slot assignments beside the original compact widgets. An isolated XTEST edit
+moved Semitones from displayed slot 1 to 42, REAPER set the new slot to +12
+semitones, and a saved-project render matched direct native Rust within
+`5.96e-8` peak sample error over all 48,000 stereo frames. Changing a slot in
+the native editor reloads the graph and resets active voices and effect tails.
+The same isolated host probe's `--slot-automation` mode creates a Read-mode
+envelope on slot 2 while Waveform owns it, then moves Semitones from slot 1 to
+that occupied slot. Waveform moves to slot 1; the existing envelope drives
+Semitones to +12. A fresh-process REAPER render of the saved project matches
+direct Rust for the resulting Square-wave voice within `5.96e-8` peak sample
+error across 48,000 stereo frames. This verifies retargeting in REAPER; other
+hosts and larger projects remain separate validation work.

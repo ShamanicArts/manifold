@@ -1,0 +1,58 @@
+{
+  "recordedAt": "2026-09-30T04:13:33.118Z",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174",
+  "chromiumVersion": "152.0.7977.82",
+  "runtimeSha256": "8144e88db58439b04cf4f93f531c9a1d9969683a6b9072d476ac0ef90db303c2",
+  "endpoint": {
+    "path": "/dsp/live/input_gain",
+    "kind": "parameter",
+    "nodeId": 4,
+    "id": 0,
+    "min": 0,
+    "max": 0.5,
+    "default": 0.25
+  },
+  "parameters": [
+    {
+      "nodeId": 4,
+      "id": 0,
+      "value": 0.25
+    },
+    {
+      "nodeId": 5,
+      "id": 0,
+      "value": 0.25
+    },
+    {
+      "nodeId": 5,
+      "id": 1,
+      "value": 120
+    },
+    {
+      "nodeId": 5,
+      "id": 2,
+      "value": 1
+    }
+  ],
+  "diagnostics": {
+    "execution": "prepared",
+    "audioBlocks": 56,
+    "rustProcessedBlocks": 44,
+    "publications": 2,
+    "rustProcessingFailures": 0,
+    "rustCallbackAllocations": 0,
+    "rustCallbackDeallocations": 0,
+    "lastTransferredNodes": 2,
+    "lastPublicationContextFrame": 8192,
+    "outputLatencyBlocks": 0,
+    "memoryBytes": 16777216,
+    "lastPreparationMs": 0.3999999761581421,
+    "lastPublicationMs": 106.11000001430511,
+    "compilerFailed": false,
+    "processorFailed": false
+  },
+  "rejected": "Value exceeds published range for /dsp/live/input_gain",
+  "concurrentOldTarget": 0.75,
+  "expectedCandidateTarget": 0.25,
+  "pageErrors": []
+}

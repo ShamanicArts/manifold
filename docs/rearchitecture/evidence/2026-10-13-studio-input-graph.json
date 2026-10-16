@@ -1,0 +1,245 @@
+{
+  "browser": {
+    "saw": 0.038513017620671317,
+    "waveforms": [
+      0.04799067547045177,
+      0.038545908225916845,
+      0.06788185012286437,
+      0.03914126510661777,
+      0.014159096904105568,
+      0.03896479157186344,
+      0.06788185464591608,
+      0.039361504128058084
+    ],
+    "noise": 0.0233725660393087,
+    "live": 0.09060360756991907,
+    "silent": 2.2909301687961788e-08,
+    "returnedSaw": 0.038848299815590806,
+    "quickPointer": [
+      {
+        "target": 530,
+        "value": 527.4611276388168
+      },
+      {
+        "target": 824,
+        "value": 821.9688904285431
+      },
+      {
+        "target": 1118,
+        "value": 1116.4767408370972
+      },
+      {
+        "target": 1412,
+        "value": 1410.9844160079956
+      }
+    ],
+    "controlsAutoUpdate": true,
+    "pointer": [
+      {
+        "target": 530,
+        "value": 530
+      },
+      {
+        "target": 824,
+        "value": 818.6301457881927
+      },
+      {
+        "target": 1118,
+        "value": 1113.9725947380066
+      },
+      {
+        "target": 1412,
+        "value": 1409.3151021003723
+      }
+    ],
+    "savedAndRestored": true,
+    "positionsStable": true,
+    "diagnostics": {
+      "device": {
+        "audioBlocks": 5996,
+        "compilerFailed": false,
+        "eventsAdmitted": 0,
+        "eventsCancelled": 0,
+        "eventsConsumed": 0,
+        "eventsPending": 0,
+        "eventsRejected": 0,
+        "execution": "prepared",
+        "lastEventContextFrame": 0,
+        "lastPreparationMs": 3.1299999952316284,
+        "lastPublicationContextFrame": 759808,
+        "lastPublicationMs": 24.665000081062317,
+        "lastTransferredNodes": 9,
+        "memoryBytes": 16777216,
+        "outputLatencyBlocks": 0,
+        "processorFailed": false,
+        "publications": 2,
+        "renderQuantum": 128,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "rustProcessedBlocks": 5996,
+        "rustProcessingFailures": 0
+      },
+      "input": {
+        "audioBlocks": 5996,
+        "compilerFailed": false,
+        "eventsAdmitted": 0,
+        "eventsCancelled": 0,
+        "eventsConsumed": 0,
+        "eventsPending": 0,
+        "eventsRejected": 0,
+        "execution": "prepared",
+        "lastEventContextFrame": 0,
+        "lastPreparationMs": 0.31499993801116943,
+        "lastPublicationContextFrame": 763392,
+        "lastPublicationMs": 11.634999990463257,
+        "lastTransferredNodes": 5,
+        "memoryBytes": 16777216,
+        "outputLatencyBlocks": 0,
+        "processorFailed": false,
+        "publications": 4,
+        "renderQuantum": 128,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "rustProcessedBlocks": 5996,
+        "rustProcessingFailures": 0
+      }
+    },
+    "stopRestart": true,
+    "errors": []
+  },
+  "native": {
+    "audio_start": true,
+    "quick_controls_drag": [
+      {
+        "target": 432.0,
+        "painted": 428.4684705734253
+      },
+      {
+        "target": 628.0,
+        "painted": 622.7027058601379
+      },
+      {
+        "target": 824.0,
+        "painted": 822.8228235244751
+      },
+      {
+        "target": 1020.0,
+        "painted": 1017.0570588111877
+      },
+      {
+        "target": 1216.0,
+        "painted": 1211.2912940979004
+      },
+      {
+        "target": 1412.0,
+        "painted": 1411.4114117622375
+      },
+      {
+        "target": 1608.0,
+        "painted": 1605.6456470489502
+      }
+    ],
+    "controls_auto_update": true,
+    "inspector_drag": [
+      {
+        "target": 432.0,
+        "painted": 425.8267629146576
+      },
+      {
+        "target": 628.0,
+        "painted": 626.4567053318024
+      },
+      {
+        "target": 824.0,
+        "painted": 819.3700575828552
+      },
+      {
+        "target": 1020.0,
+        "painted": 1020.0
+      },
+      {
+        "target": 1216.0,
+        "painted": 1212.9134106636047
+      },
+      {
+        "target": 1412.0,
+        "painted": 1405.8268213272095
+      },
+      {
+        "target": 1608.0,
+        "painted": 1606.4566469192505
+      }
+    ],
+    "saved_input_separately": true,
+    "audio_stop_restart": true,
+    "sink": "manifold_review_null",
+    "state": {
+      "audioBlocks": 2368,
+      "failed": false,
+      "monitorEnabled": true,
+      "packageId": null,
+      "peak": 0.10603048652410507,
+      "rms": 0.06090070307254791
+    },
+    "reopened_studio_file": true
+  },
+  "nativeNacreLoadComparison": [
+    {
+      "assets": true,
+      "bytes": 4701393,
+      "ms": 645,
+      "path": "/tmp/manifold-nacre-before-input.json",
+      "result": "JavaScript(\"QuickJS library created a unknown error\")"
+    },
+    {
+      "assets": false,
+      "bytes": 106197,
+      "ms": 486,
+      "path": "/tmp/manifold-nacre-before-input.json",
+      "result": "loaded"
+    },
+    {
+      "assets": true,
+      "bytes": 4697353,
+      "ms": 582,
+      "path": "web/public/nacre/2026-10-10-graph/nacre-prism-bend.manifold.json",
+      "result": "JavaScript(\"QuickJS library created a unknown error\")"
+    },
+    {
+      "assets": false,
+      "bytes": 102157,
+      "ms": 508,
+      "path": "web/public/nacre/2026-10-10-graph/nacre-prism-bend.manifold.json",
+      "result": "loaded"
+    }
+  ],
+  "checks": {
+    "rustWorkspacePassed": 575,
+    "webPassed": 198,
+    "finalNativeAndUiPassed": 13,
+    "dspWasmBuild": true,
+    "uiWasmBuild": true,
+    "productionWebBuild": true
+  },
+  "limits": [
+    "Studio feeds the primary Device input bus; other input buses are silent.",
+    "Full Nacre embedded-asset document fails native QuickJS loading before and after this change. Smaller starter effect passed native GUI and save/reopen.",
+    "Fresh Nacre CLAP/VST3 DAW acceptance not performed."
+  ],
+  "nativeNacrePreviousController": [
+    {
+      "assets": true,
+      "bytes": 4701393,
+      "ms": 622,
+      "path": "/tmp/manifold-nacre-before-input.json",
+      "result": "JavaScript(\"QuickJS library created a unknown error\")"
+    },
+    {
+      "assets": false,
+      "bytes": 106197,
+      "ms": 499,
+      "path": "/tmp/manifold-nacre-before-input.json",
+      "result": "loaded"
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b1220" />
+    <title>Manifold · Standalone FX</title>
+  </head>
+  <body>
+    <header
+      class="topbar"><a class="brand" href="/">Manifold</a><span>/</span><strong>Standalone FX</strong><a class="workbench-link" href="/?primitive=standalone-fx">Workbench ↗</a></header>
+    <main>
+      <div class="view-heading">
+        <div>
+          <p class="eyebrow">Authored project / browser reconstruction</p>
+          <h1>Standalone FX</h1>
+        </div>
+        <div class="mode-switch" role="group"
+          aria-label="Original plugin view mode"><button type="button" data-view="split" aria-pressed="true">Split · 472</button><button type="button" data-view="compact" aria-pressed="false">Compact · 236</button></div>
+      </div>
+      <section id="plugin-stage" class="plugin-stage"
+        aria-label="Standalone FX project surface">
+        <div id="plugin-viewport">
+          <div id="plugin-shell">
+            <div
+              class="plugin-header"><span class="plugin-accent"></span><span class="plugin-title">Effect</span><button id="settings-toggle" type="button" aria-label="Open plugin settings">SET</button></div>
+            <div id="plugin-content"></div>
+            <div id="settings-overlay"
+              hidden><span class="settings-heading">Settings</span><button id="settings-close" type="button" aria-label="Close plugin settings">×</button><div class="settings-section">OSC / OSCQuery</div><div class="settings-row"><span>OSC</span><strong>Unavailable in browser host</strong><span>Query</span><strong>Unavailable</strong></div><div class="settings-section remote">Web Remote</div><div class="settings-row"><span>Host</span><strong>—</strong><span>Status</span><strong>Offline</strong></div><p>The original shell exposes OSC and web remote settings here. This browser study uses the controls below the module.</p></div>
+          </div>
+        </div>
+      </section>
+      <section class="host-strip" aria-label="Browser audio host">
+        <div
+          class="host-control"><label for="input-source">Source</label><select id="input-source"><option value="oscillator">Test oscillator</option><option value="microphone">Microphone</option></select><button id="audio-toggle" type="button">Start audio</button></div>
+        <div
+          class="host-meter"><span id="engine-indicator">Idle</span><div class="meter-track"><div id="output-meter"></div></div><output id="output-db">−∞ dB</output></div>
+        <div
+          class="state-actions"><button id="save-state" type="button">Save state</button><button id="save-host-state" type="button">Save host project</button><label class="file-button">Open state<input id="open-state" type="file" accept="application/json,.json" /></label><button id="reset-state" type="button">Reset</button></div>
+      </section>
+      <p id="status" class="status"
+        role="status">Start audio, then raise Mix to audition the effect.</p>
+      <footer><span>Source: Standalone_FX / Main FX slot widgets</span><span>Rust/Wasm audio · <a href="/standalone-fx-host-review.html">Native CLAP checkpoint ↗</a></span></footer>
+    </main>
+    <script type="module" src="/src/fx-module.js"></script>
+  </body>
+</html>

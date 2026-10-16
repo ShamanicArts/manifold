@@ -1,0 +1,31 @@
+{
+  "recordedAt": "2026-09-30T00:28:09.757Z",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174",
+  "retained": [
+    {
+      "src": "https://wubulon.tailfac9f9.ts.net:4174/runtime-graph-proof/dsp-live-scripting.wav",
+      "seconds": 4.117333,
+      "paused": true
+    },
+    {
+      "src": "https://wubulon.tailfac9f9.ts.net:4174/runtime-graph-proof/fx-slot-swap.wav",
+      "seconds": 4.426667,
+      "paused": true
+    }
+  ],
+  "imports": [
+    {
+      "example": "dsp-live-scripting",
+      "nodes": 4,
+      "hostGain": 0.375,
+      "exactSavedGraphRestored": true
+    },
+    {
+      "example": "fx-slot-swap",
+      "nodes": 14,
+      "hostGain": 0.375,
+      "exactSavedGraphRestored": true
+    }
+  ],
+  "pageErrors": []
+}

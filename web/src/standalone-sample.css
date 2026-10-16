@@ -1,0 +1,26 @@
+@import './fx-module.css';
+.plugin-accent { background:#22d3ee; }
+.review-link { color:#92d9dc; font-size:12px; text-decoration:none; }
+.sample-host { border-top:1px solid #2d4151; border-bottom:1px solid #2d4151; padding:14px 0 18px; }
+.host-heading { display:flex; flex-wrap:wrap; align-items:baseline; gap:12px; margin-bottom:13px; }
+.host-heading span { font-weight:650; color:#d8e4ec; font-size:12px; }
+.host-heading small { color:#8397a6; font-size:11px; }
+.host-row { display:flex; flex-wrap:wrap; align-items:center; gap:9px 12px; margin-top:10px; }
+.host-row label { display:flex; align-items:center; gap:7px; color:#9aacbb; font-size:11px; }
+.host-row select,.host-row button,.host-row .file-button { height:30px; border:1px solid #425768; background:#192a38; color:#d7e7e9; padding:0 9px; font-size:11px; }
+.host-row button { cursor:pointer; }
+.host-row button:disabled { opacity:.45; cursor:default; }
+#audio-toggle,#capture-button { border-color:#4aa99c; background:#285752; }
+#engine-indicator,#sample-readout,#midi-status { color:#9aacbb; font-size:11px; }
+#sample-readout { max-width:350px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sample-keyboard { display:flex; margin-top:15px; width:min(100%,600px); height:62px; border:1px solid #3d5160; background:#101a27; overflow:hidden; touch-action:none; }
+.sample-key { position:relative; flex:1; border:0; border-right:1px solid #3d5160; background:#dce8e6; color:#263849; padding:0 0 7px; display:flex; align-items:flex-end; justify-content:center; cursor:pointer; font:10px ui-monospace,monospace; }
+.sample-key:last-child { border-right:0; }
+.sample-key[data-black=true] { background:#253344; color:#d5e6e9; }
+.sample-key[data-active=true] { background:#65cdb6; color:#10251f; }
+.sample-key:disabled { opacity:.5; cursor:default; }
+.state-row { margin-top:15px; }
+#output-db { margin-left:auto; width:80px; white-space:nowrap; color:#a4bac0; font:11px ui-monospace,monospace; }
+.project-canvas { cursor:ew-resize; }
+.project-canvas canvas { image-rendering:auto; }
+body.plugin-editor .sample-host,body.plugin-editor .review-link { display:none; }

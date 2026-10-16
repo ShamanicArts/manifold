@@ -1,0 +1,14 @@
+// The shared creator/controller contract, using the original authored oscillator.
+// Examples name imports so you can trace each tool to its module.
+// Alternative: import * as manifold from '@manifold/author';
+// Then use manifold.createGraphWorkspace(), manifold.gain, etc.
+import { createLiveCreatorProject } from './live-filter-controller.mjs';
+import { source } from './standalone-oscillator.mjs';
+// Host integration — the session publishes edits only after audio acceptance.
+export function createProject(host, saved = null) {
+  return createLiveCreatorProject(host, source, saved);
+}
+// Recall — validate portable state through the same graph contract.
+export function restoreProject(host, saved) {
+  return createProject(host, saved);
+}

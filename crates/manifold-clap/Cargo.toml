@@ -1,0 +1,30 @@
+[package]
+name = "manifold-clap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+build = "../../build/plugin-export.rs"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+libc = "0.2"
+base64 = "0.22.1"
+clap-sys = "0.5.0"
+crossbeam-queue = "0.3.14"
+manifold-core = { path = "../manifold-core" }
+manifold-native = { path = "../manifold-native" }
+manifold-project-js = { path = "../manifold-project-js" }
+serde_json = "1"
+
+[dev-dependencies]
+libc = "0.2"
+sha2 = "0.10"
+
+[build-dependencies]
+serde_json = "1"
+sha2 = "0.10"
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+manifold-editor = { path = "../manifold-editor" }

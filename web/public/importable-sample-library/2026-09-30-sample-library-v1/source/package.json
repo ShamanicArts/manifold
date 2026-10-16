@@ -1,0 +1,14 @@
+{
+  "name": "independent-manifold-sample-consumer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@manifold/author": "file:./manifold-author-0.1.0.tgz"
+  },
+  "devDependencies": {
+    "vite": "7.3.6"
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "recordedAt": "2026-09-30T01:14:36.128Z",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174",
+  "retained": [
+    {
+      "src": "https://wubulon.tailfac9f9.ts.net:4174/runtime-graph-proof/2026-09-30-retired-owned-workers/dsp-live-scripting.wav",
+      "seconds": 4.330667,
+      "paused": true
+    },
+    {
+      "src": "https://wubulon.tailfac9f9.ts.net:4174/runtime-graph-proof/2026-09-30-retired-owned-workers/dsp-live-scripting-secondary.wav",
+      "seconds": 4.330667,
+      "paused": true
+    },
+    {
+      "src": "https://wubulon.tailfac9f9.ts.net:4174/runtime-graph-proof/2026-09-30-retired-owned-workers/fx-slot-swap.wav",
+      "seconds": 4.341333,
+      "paused": true
+    },
+    {
+      "src": "https://wubulon.tailfac9f9.ts.net:4174/runtime-graph-proof/2026-09-30-retired-owned-workers/fx-slot-swap-secondary.wav",
+      "seconds": 4.341333,
+      "paused": true
+    },
+    {
+      "src": "https://wubulon.tailfac9f9.ts.net:4174/runtime-graph-proof/2026-09-30-retired-profiling-off/dsp-live-scripting.wav",
+      "seconds": 4.352,
+      "paused": true
+    },
+    {
+      "src": "https://wubulon.tailfac9f9.ts.net:4174/runtime-graph-proof/2026-09-30-retired-profiling-off/dsp-live-scripting-secondary.wav",
+      "seconds": 4.352,
+      "paused": true
+    },
+    {
+      "src": "https://wubulon.tailfac9f9.ts.net:4174/runtime-graph-proof/2026-09-30-retired-profiling-off/fx-slot-swap.wav",
+      "seconds": 4.661333,
+      "paused": true
+    },
+    {
+      "src": "https://wubulon.tailfac9f9.ts.net:4174/runtime-graph-proof/2026-09-30-retired-profiling-off/fx-slot-swap-secondary.wav",
+      "seconds": 4.661333,
+      "paused": true
+    }
+  ],
+  "imports": [
+    {
+      "run": "2026-09-30-retired-owned-workers",
+      "example": "dsp-live-scripting",
+      "nodes": 4,
+      "hostGain": 0.375,
+      "exactSavedGraphRestored": true
+    },
+    {
+      "run": "2026-09-30-retired-owned-workers",
+      "example": "fx-slot-swap",
+      "nodes": 14,
+      "hostGain": 0.375,
+      "exactSavedGraphRestored": true
+    },
+    {
+      "run": "2026-09-30-retired-profiling-off",
+      "example": "dsp-live-scripting",
+      "nodes": 4,
+      "hostGain": 0.375,
+      "exactSavedGraphRestored": true
+    },
+    {
+      "run": "2026-09-30-retired-profiling-off",
+      "example": "fx-slot-swap",
+      "nodes": 14,
+      "hostGain": 0.375,
+      "exactSavedGraphRestored": true
+    }
+  ],
+  "pageErrors": []
+}

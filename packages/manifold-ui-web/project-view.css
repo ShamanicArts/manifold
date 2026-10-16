@@ -1,0 +1,12 @@
+.manifold-project-view{display:grid;grid-template-columns:1fr;gap:12px;min-height:220px;padding:12px;border:1px solid #35435e;border-radius:8px;background:#14182b;color:#dae1f0;font-family:system-ui,sans-serif}
+.manifold-project-view.has-response{grid-template-columns:1fr 1fr}.manifold-responses:empty{display:none}.manifold-controls{display:flex;flex-direction:column;gap:12px}.manifold-filter-response{width:100%;height:190px;touch-action:none}.manifold-slider{height:24px}.manifold-slider canvas{width:100%;height:100%}.manifold-controls select{font:inherit;padding:5px;background:#162131;color:#dae1f0;border:1px solid #344159;border-radius:4px}
+.manifold-project-view.has-response{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.manifold-responses,.manifold-controls{min-width:0}.manifold-filter-response,.manifold-slider canvas{display:block;max-width:100%}
+
+.manifold-controls.has-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.manifold-controls>section{display:flex;flex-direction:column;gap:12px;min-width:0}.manifold-controls h3{font-size:12px;color:#bba2e8;margin:0 0 4px}
+.manifold-curve{display:block;width:100%;height:132px;border:1px solid #1a1a3a;border-radius:6px}.manifold-controls>section:has(.manifold-curve){grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.manifold-controls>section:has(.manifold-curve)>h3{grid-column:1/-1}
+
+.manifold-keyboard{display:flex;height:110px;gap:1px;outline:none;touch-action:none}.manifold-keyboard:focus-visible{outline:2px solid #a78bfa}.manifold-keyboard button{min-width:0;flex:1;padding:0;font-size:8px;border:1px solid #354259;border-radius:0 0 3px 3px;display:flex;align-items:end;justify-content:center}.manifold-keyboard .white-key{background:#d5dce7;color:#192034}.manifold-keyboard .black-key{background:#172034;height:68%;color:white}.manifold-keyboard button.active{background:#a78bfa}.manifold-controls>section:has(.manifold-keyboard){grid-column:1/-1}
+
+.manifold-controls.has-groups > .curves-only { grid-column: 1 / -1; }
+
+.manifold-controls > .curves-only > canvas:only-of-type { grid-column: 1 / -1; }

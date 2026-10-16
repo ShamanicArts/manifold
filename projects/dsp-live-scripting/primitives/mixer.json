@@ -1,0 +1,637 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "oscillator",
+        "a": 220,
+        "b": 0.4
+      },
+      {
+        "id": 5,
+        "type": "oscillator",
+        "a": 220,
+        "b": 0.4
+      },
+      {
+        "id": 6,
+        "type": "mixer",
+        "a": 32,
+        "b": 1
+      }
+    ],
+    "connections": [
+      {
+        "from": 6,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 6,
+        "inputPort": 0
+      },
+      {
+        "from": 5,
+        "outputPort": 0,
+        "to": 6,
+        "inputPort": 1
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 1,
+        "value": 110
+      },
+      {
+        "nodeId": 4,
+        "id": 2,
+        "value": 0.16
+      },
+      {
+        "nodeId": 5,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 5,
+        "id": 1,
+        "value": 330
+      },
+      {
+        "nodeId": 5,
+        "id": 2,
+        "value": 0.16
+      },
+      {
+        "nodeId": 6,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 3,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 4,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 5,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 6,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 7,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 11,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 12,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 13,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 14,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 15,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 16,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 17,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 18,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 19,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 20,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 21,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 22,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 23,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 24,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 25,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 26,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 27,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 28,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 29,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 30,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 31,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 32,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 36,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 37,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 38,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 39,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 40,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 41,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 42,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 43,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 44,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 45,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 46,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 47,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 48,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 49,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 50,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 51,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 52,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 53,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 54,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 55,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 56,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 57,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 58,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 59,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 60,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 61,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 62,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 63,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 64,
+        "value": 0
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/primitives/mixer/high/0",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 0,
+      "min": 0,
+      "max": 4,
+      "default": 1
+    },
+    {
+      "path": "/primitives/mixer/high/1",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 1,
+      "min": 20,
+      "max": 16000,
+      "default": 330
+    },
+    {
+      "path": "/primitives/mixer/high/2",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 2,
+      "min": 0,
+      "max": 1,
+      "default": 0.16
+    },
+    {
+      "path": "/primitives/mixer/low/0",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 0,
+      "min": 0,
+      "max": 4,
+      "default": 0
+    },
+    {
+      "path": "/primitives/mixer/low/1",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 1,
+      "min": 20,
+      "max": 16000,
+      "default": 110
+    },
+    {
+      "path": "/primitives/mixer/low/2",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 2,
+      "min": 0,
+      "max": 1,
+      "default": 0.16
+    },
+    {
+      "path": "/primitives/mixer/mixer/0",
+      "kind": "parameter",
+      "nodeId": 6,
+      "id": 0,
+      "min": 0,
+      "max": 2,
+      "default": 1
+    },
+    {
+      "path": "/primitives/mixer/mixer/1",
+      "kind": "parameter",
+      "nodeId": 6,
+      "id": 1,
+      "min": 0,
+      "max": 2,
+      "default": 1
+    },
+    {
+      "path": "/primitives/mixer/mixer/2",
+      "kind": "parameter",
+      "nodeId": 6,
+      "id": 2,
+      "min": 0,
+      "max": 2,
+      "default": 1
+    },
+    {
+      "path": "/primitives/mixer/mixer/33",
+      "kind": "parameter",
+      "nodeId": 6,
+      "id": 33,
+      "min": -1,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "path": "/primitives/mixer/mixer/34",
+      "kind": "parameter",
+      "nodeId": 6,
+      "id": 34,
+      "min": -1,
+      "max": 1,
+      "default": 0
+    }
+  ],
+  "instances": [
+    {
+      "path": "/primitives/mixer/high",
+      "nodeId": 5
+    },
+    {
+      "path": "/primitives/mixer/low",
+      "nodeId": 4
+    },
+    {
+      "path": "/primitives/mixer/mixer",
+      "nodeId": 6
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// Stereo mixer: Two active inputs with separate gain and pan, plus master level.\n// Audition composition of public Rust primitives; not an instrument parity claim.\n// Examples name imports so you can trace each tool to its module.\n// Alternative: import * as manifold from '@manifold/author';\n// Then use manifold.createGraphWorkspace(), manifold.gain, etc.\n// Imports — each definition can be inspected in Manifold's primitive catalog.\nimport { createGraphWorkspace } from '@manifold/author';\nimport {\n  oscillator as oscillatorDefinition,\n  mixer as mixerDefinition,\n} from '@manifold/author/primitives';\n\nexport default function createProject() {\n  // Interface — public paths and stable IDs preserve saved controls.\n  const controls = {\n    low_waveform: {\n      \"path\": \"/primitives/mixer/low/0\",\n      \"label\": \"Waveform\",\n      \"group\": \"Oscillator\",\n      \"min\": 0,\n      \"max\": 4,\n      \"default\": 0,\n      \"choices\": [\n        \"Sine\",\n        \"Saw\",\n        \"Square\",\n        \"Triangle\",\n        \"Blend\"\n      ]\n    },\n    low_frequency: {\n      \"path\": \"/primitives/mixer/low/1\",\n      \"label\": \"Frequency\",\n      \"group\": \"Oscillator\",\n      \"min\": 20,\n      \"max\": 16000,\n      \"default\": 110\n    },\n    low_level: {\n      \"path\": \"/primitives/mixer/low/2\",\n      \"label\": \"Level\",\n      \"group\": \"Oscillator\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0.16\n    },\n    high_waveform: {\n      \"path\": \"/primitives/mixer/high/0\",\n      \"label\": \"Waveform\",\n      \"group\": \"Oscillator\",\n      \"min\": 0,\n      \"max\": 4,\n      \"default\": 1,\n      \"choices\": [\n        \"Sine\",\n        \"Saw\",\n        \"Square\",\n        \"Triangle\",\n        \"Blend\"\n      ]\n    },\n    high_frequency: {\n      \"path\": \"/primitives/mixer/high/1\",\n      \"label\": \"Frequency\",\n      \"group\": \"Oscillator\",\n      \"min\": 20,\n      \"max\": 16000,\n      \"default\": 330\n    },\n    high_level: {\n      \"path\": \"/primitives/mixer/high/2\",\n      \"label\": \"Level\",\n      \"group\": \"Oscillator\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0.16\n    },\n    mixer_masterLevel: {\n      \"path\": \"/primitives/mixer/mixer/0\",\n      \"label\": \"Master level\",\n      \"group\": \"Mixer\",\n      \"min\": 0,\n      \"max\": 2,\n      \"default\": 1\n    },\n    mixer_input1Gain: {\n      \"path\": \"/primitives/mixer/mixer/1\",\n      \"label\": \"Input 1 gain\",\n      \"group\": \"Mixer\",\n      \"min\": 0,\n      \"max\": 2,\n      \"default\": 1\n    },\n    mixer_input2Gain: {\n      \"path\": \"/primitives/mixer/mixer/2\",\n      \"label\": \"Input 2 gain\",\n      \"group\": \"Mixer\",\n      \"min\": 0,\n      \"max\": 2,\n      \"default\": 1\n    },\n    mixer_input1Pan: {\n      \"path\": \"/primitives/mixer/mixer/33\",\n      \"label\": \"Input 1 pan\",\n      \"group\": \"Mixer\",\n      \"min\": -1,\n      \"max\": 1,\n      \"default\": 0\n    },\n    mixer_input2Pan: {\n      \"path\": \"/primitives/mixer/mixer/34\",\n      \"label\": \"Input 2 pan\",\n      \"group\": \"Mixer\",\n      \"min\": -1,\n      \"max\": 1,\n      \"default\": 0\n    },\n  };\n\n  // Audio inputs and outputs — generated sound; no audio input is needed.\n  const graph = createGraphWorkspace().setInputSource('none');\n  const output = graph.output.input('in');\n\n  // DSP instances — parameters belong to these named instances.\n  const low = graph.add(oscillatorDefinition.type, {\"id\":4});\n  graph.registerInstance('/primitives/mixer/low', low);\n  low.parameter('waveform').expose(controls.low_waveform);\n  low.parameter('frequency').expose(controls.low_frequency);\n  low.parameter('level').expose(controls.low_level);\n\n  const high = graph.add(oscillatorDefinition.type, {\"id\":5});\n  graph.registerInstance('/primitives/mixer/high', high);\n  high.parameter('waveform').expose(controls.high_waveform);\n  high.parameter('frequency').expose(controls.high_frequency);\n  high.parameter('level').expose(controls.high_level);\n\n  const mixer = graph.add(mixerDefinition.type, {\"id\":6,\"config\":{\"inputs\":32}});\n  graph.registerInstance('/primitives/mixer/mixer', mixer);\n  mixer.parameter('masterLevel').expose(controls.mixer_masterLevel);\n  mixer.parameter('input1Gain').expose(controls.mixer_input1Gain);\n  mixer.parameter('input2Gain').expose(controls.mixer_input2Gain);\n  mixer.parameter('input1Pan').expose(controls.mixer_input1Pan);\n  mixer.parameter('input2Pan').expose(controls.mixer_input2Pan);\n\n  // Composition — named ports make the audio and control paths visible.\n  graph.connect(low.output('out'), mixer.input('in-1'));\n  graph.connect(high.output('out'), mixer.input('in-2'));\n  graph.connect(mixer.output('out'), output);\n\n  // Presentation — both renderers bind to the controls declared above.\n  const view = [\n    controls.low_waveform,\n    controls.low_frequency,\n    controls.low_level,\n    controls.high_waveform,\n    controls.high_frequency,\n    controls.high_level,\n    controls.mixer_masterLevel,\n    controls.mixer_input1Gain,\n    controls.mixer_input2Gain,\n    controls.mixer_input1Pan,\n    controls.mixer_input2Pan\n  ].map(control => ({\n    id: control.path, type: 'parameter', path: control.path,\n    label: control.label, group: control.group,\n    ...(control.choices ? { choices: control.choices } : {}),\n  }));\n  function paint(ui) {\n    for (const component of view) {\n      if (component.type === 'label') ui.label(component.label, component.id);\n      else ui.parameter(component.path, component);\n    }\n  }\n\n  // The host uses this project declaration for audio, UI, save and live edits.\n  return { graph, view, paint };\n}",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "/primitives/mixer/low/0",
+        "type": "parameter",
+        "path": "/primitives/mixer/low/0",
+        "label": "Waveform",
+        "group": "Oscillator",
+        "choices": [
+          "Sine",
+          "Saw",
+          "Square",
+          "Triangle",
+          "Blend"
+        ]
+      },
+      {
+        "id": "/primitives/mixer/low/1",
+        "type": "parameter",
+        "path": "/primitives/mixer/low/1",
+        "label": "Frequency",
+        "group": "Oscillator"
+      },
+      {
+        "id": "/primitives/mixer/low/2",
+        "type": "parameter",
+        "path": "/primitives/mixer/low/2",
+        "label": "Level",
+        "group": "Oscillator"
+      },
+      {
+        "id": "/primitives/mixer/high/0",
+        "type": "parameter",
+        "path": "/primitives/mixer/high/0",
+        "label": "Waveform",
+        "group": "Oscillator",
+        "choices": [
+          "Sine",
+          "Saw",
+          "Square",
+          "Triangle",
+          "Blend"
+        ]
+      },
+      {
+        "id": "/primitives/mixer/high/1",
+        "type": "parameter",
+        "path": "/primitives/mixer/high/1",
+        "label": "Frequency",
+        "group": "Oscillator"
+      },
+      {
+        "id": "/primitives/mixer/high/2",
+        "type": "parameter",
+        "path": "/primitives/mixer/high/2",
+        "label": "Level",
+        "group": "Oscillator"
+      },
+      {
+        "id": "/primitives/mixer/mixer/0",
+        "type": "parameter",
+        "path": "/primitives/mixer/mixer/0",
+        "label": "Master level",
+        "group": "Mixer"
+      },
+      {
+        "id": "/primitives/mixer/mixer/1",
+        "type": "parameter",
+        "path": "/primitives/mixer/mixer/1",
+        "label": "Input 1 gain",
+        "group": "Mixer"
+      },
+      {
+        "id": "/primitives/mixer/mixer/2",
+        "type": "parameter",
+        "path": "/primitives/mixer/mixer/2",
+        "label": "Input 2 gain",
+        "group": "Mixer"
+      },
+      {
+        "id": "/primitives/mixer/mixer/33",
+        "type": "parameter",
+        "path": "/primitives/mixer/mixer/33",
+        "label": "Input 1 pan",
+        "group": "Mixer"
+      },
+      {
+        "id": "/primitives/mixer/mixer/34",
+        "type": "parameter",
+        "path": "/primitives/mixer/mixer/34",
+        "label": "Input 2 pan",
+        "group": "Mixer"
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

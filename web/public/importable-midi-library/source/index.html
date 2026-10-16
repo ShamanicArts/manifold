@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Manifold · Authored MIDI graph</title>
+<style>
+:root{color-scheme:dark;font:16px/1.5 system-ui;background:#11141b;color:#ecedf6}body{max-width:900px;margin:5vh auto;padding:0 1.5rem}
+section{background:#202635;padding:1.4rem;border-radius:.8rem;margin:1.4rem 0}button,select,input{font:inherit}button{padding:.6rem 1rem;border:0;border-radius:.4rem;background:#6753d4;color:white;cursor:pointer}button:disabled{opacity:.5}label{display:flex;gap:1rem;margin:1rem 0}input[type=range]{flex:1}pre{overflow:auto;max-height:22rem;font-size:.75rem}a{color:#b1a9ff}#status{color:#9ce8c3}.keys{display:flex;gap:.5rem;flex-wrap:wrap}audio{width:100%}
+</style></head><body>
+<h1>MIDI through an authored graph</h1>
+<p>MidiInput → Transpose → VoiceSynth. The transpose behavior comes from the old Standalone Transpose adapter. VoiceSynth is an audition voice; full instrument and MIDI-export parity remain open.</p>
+<section>
+<button id="start">Start audio</button> <button id="stop" disabled>Stop</button>
+<button id="insert" disabled>Toggle distortion insert</button> <button id="all-off" disabled>Release all notes</button>
+<label>Semitones <input id="semitones" type="range" min="-24" max="24" step="1" value="0" disabled><output id="interval">0</output></label>
+<label>Pitch bend <input id="bend" type="range" min="0" max="16383" step="1" value="8192" disabled></label>
+<label><input id="latch" type="checkbox" checked>Latch notes for graph editing (click again to release)</label>
+<div id="keys" class="keys"></div>
+<p id="status" role="status">Ready. Start audio, hold a note and edit the graph.</p>
+</section>
+<section><h2>Accepted authored graph</h2><pre id="graph"></pre><h2>Runtime readback</h2><pre id="diagnostics"></pre></section>
+<section><h2>Recorded live-edit comparison</h2>
+<p>55,808 stereo frames at 48 kHz. Eight transparent insert edits, a held interval change, pitch bend, node renumbering and original-key release. Edited and reference PCM are identical. Playback stops the live graph; only one recording plays at a time.</p>
+<label>Edited graph<audio controls preload="none" src="/prepared-midi/2026-09-30-prepared-midi-v2/edited.wav"></audio></label>
+<label>Reference<audio controls preload="none" src="/prepared-midi/2026-09-30-prepared-midi-v2/reference.wav"></audio></label>
+<p><a href="/prepared-midi/2026-09-30-prepared-midi-v2/report.json">Measured report and source hashes</a> · <a href="/prepared-midi/2026-09-30-prepared-midi-v2/final-project.json">Authored graph</a> · <a href="/prepared-midi/2026-09-30-prepared-midi-v2/legacy-events.json">25 legacy events</a></p>
+<p>The retained <a href="/prepared-midi/2026-09-30-prepared-midi/report.json">first probe</a> failed: its comparison insert had a 0.8 output trim, and it expected audible PCM on the note event frame. The corrected probe uses unity trim and checks event frame 64 separately from first audible sample 65.</p>
+</section>
+<p><a href="/rack-oscillator.html?execution=prepared">Authored Rack oscillator</a> · <a href="/importable-midi-library/">Independent installed MIDI consumer</a></p>
+<script type="module" src="./app.js"></script></body></html>

@@ -1,0 +1,34 @@
+{
+  "status": "Design proposals only. Syntax checked; these APIs are not implemented or approved.",
+  "packageName": "manifold is a proposed module specifier, not a claim about registry availability.",
+  "examples": ["gain", "tone", "spectral"],
+  "candidates": {
+    "a": {
+      "title": "Named objects",
+      "summary": "Create the effect, name its processors, expose controls, connect audio.",
+      "tradeoff": "The most direct reading order and smallest extension of current references. The builder records declarations; it must never own DSP state.",
+      "identity": "The explicit names passed to add and control are persistent keys. Local variable names and declaration order are not identity.",
+      "discovery": "After spectral. the editor offers parameters, inputs and outputs. spectral.parameters. offers the phase vocoder\u2019s actual named parameters.",
+      "lowering": "A control-side builder records semantic declarations, then lowers once to GraphWorkspace plus the existing view/interface records.",
+      "examplePrefix": "a"
+    },
+    "b": {
+      "title": "Declarative recipe",
+      "summary": "List named processors and controls in one project description.",
+      "tradeoff": "Easy to inspect and generate as structured data. Callbacks and nested objects make a small patch less linear to read.",
+      "identity": "Processor and control object keys become persistent instance/control keys. Renaming a local callback variable does not rename the declared key.",
+      "discovery": "The processors object determines callback types, including spectral.parameters.pitchSemitones. Control keys are inferred from the returned object.",
+      "lowering": "Read processor keys first, construct typed references, evaluate configuration/control/connection declarations, then use the same lowering path.",
+      "examplePrefix": "b"
+    },
+    "c": {
+      "title": "Composable values",
+      "summary": "Create reusable processor and control descriptions, then assemble them.",
+      "tradeoff": "Works well with ordinary functions and composition helpers. The final assembly is more ceremony for a first patch.",
+      "identity": "instantiate/control names identify immutable descriptions within their eventual project or module occurrence. Reusing a definition never shares live state.",
+      "discovery": "instantiate preserves the imported definition\u2019s parameter and port types. References remain discoverable before an owning project is assembled.",
+      "lowering": "Assembly validates membership, uniqueness and connections, then lowers all immutable descriptions through the same graph contract.",
+      "examplePrefix": "c"
+    }
+  }
+}

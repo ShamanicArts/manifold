@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.fft-spectrum",
+  "name": "FFT spectrum",
+  "source": "authored Rust 2048-point Hann FFT analyzer",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 2, "type": "fft-spectrum", "a": 0.45, "b": -72 },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "smoothing", "label": "Smoothing", "kind": "float", "min": 0, "max": 0.99, "default": 0.45 },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "floor", "label": "Floor (dB)", "kind": "float", "min": -96, "max": -24, "default": -72 }
+  ]
+}

@@ -1,0 +1,129 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 4,
+    "outputs": 5,
+    "io": {
+      "version": 1,
+      "inputs": [
+        {
+          "id": "main",
+          "name": "Three-channel input",
+          "channels": 3,
+          "optional": false
+        },
+        {
+          "id": "aux",
+          "name": "Optional mono input",
+          "channels": 1,
+          "optional": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "stems",
+          "name": "Independent channels",
+          "channels": 4,
+          "optional": false
+        },
+        {
+          "id": "mono",
+          "name": "Mono send",
+          "channels": 1,
+          "optional": false
+        }
+      ],
+      "inputBindings": [
+        {
+          "nodeId": 1,
+          "channels": [
+            {
+              "bus": 0,
+              "channel": 0
+            },
+            {
+              "bus": 0,
+              "channel": 1
+            }
+          ]
+        },
+        {
+          "nodeId": 10,
+          "channels": [
+            {
+              "bus": 0,
+              "channel": 2
+            },
+            {
+              "bus": 1,
+              "channel": 0
+            }
+          ]
+        }
+      ],
+      "outputBindings": [
+        {
+          "nodeId": 1,
+          "outputPort": 0,
+          "channel": 0
+        },
+        {
+          "nodeId": 1,
+          "outputPort": 0,
+          "channel": 1
+        },
+        {
+          "nodeId": 10,
+          "outputPort": 0,
+          "channel": 0
+        },
+        {
+          "nodeId": 10,
+          "outputPort": 0,
+          "channel": 1
+        },
+        {
+          "nodeId": 12,
+          "outputPort": 0,
+          "channel": 0
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 10,
+        "type": "input.raw"
+      },
+      {
+        "id": 12,
+        "type": "gain",
+        "a": 0.7
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 12,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 12,
+        "id": 0,
+        "value": 0.5
+      }
+    ]
+  }
+}

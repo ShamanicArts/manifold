@@ -1,0 +1,58 @@
+{
+  "recordedAt": "2026-09-30T04:05:58.719Z",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174",
+  "chromiumVersion": "152.0.7977.82",
+  "runtimeSha256": "5c0d5551a00d0cecbd1a3ce28d106e73008d5c5b254d9bddd3a854342e8b4121",
+  "endpoint": {
+    "path": "/dsp/live/input_gain",
+    "kind": "parameter",
+    "nodeId": 4,
+    "id": 0,
+    "min": 0,
+    "max": 0.5,
+    "default": 0.25
+  },
+  "parameters": [
+    {
+      "nodeId": 4,
+      "id": 0,
+      "value": 0.75
+    },
+    {
+      "nodeId": 5,
+      "id": 0,
+      "value": 0.25
+    },
+    {
+      "nodeId": 5,
+      "id": 1,
+      "value": 120
+    },
+    {
+      "nodeId": 5,
+      "id": 2,
+      "value": 1
+    }
+  ],
+  "diagnostics": {
+    "execution": "prepared",
+    "audioBlocks": 64,
+    "rustProcessedBlocks": 48,
+    "publications": 2,
+    "rustProcessingFailures": 0,
+    "rustCallbackAllocations": 0,
+    "rustCallbackDeallocations": 0,
+    "lastTransferredNodes": 2,
+    "lastPublicationContextFrame": 10240,
+    "outputLatencyBlocks": 0,
+    "memoryBytes": 16777216,
+    "lastPreparationMs": 0.4049999713897705,
+    "lastPublicationMs": 114.08500003814697,
+    "compilerFailed": false,
+    "processorFailed": false
+  },
+  "rejected": "Endpoint /dsp/live/input_gain does not bind a compatible graph parameter",
+  "concurrentOldTarget": 0.75,
+  "expectedCandidateTarget": 0.25,
+  "pageErrors": []
+}

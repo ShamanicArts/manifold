@@ -1,0 +1,9 @@
+# Slew limiter migration boundary
+
+The original `SlewLimiterNode.cpp` applies Max-style slide independently to each stereo channel. On each sample it chooses the rise divisor when input is above the previous output, otherwise the fall divisor, then advances by `(input - previous) / divisor`. Divisors below 1 behave as 1, so 1 is direct tracking. State starts at zero. A parameter change linearly interpolates each divisor across the next process block, with its first interpolated value used for the first sample. This makes the output at a control change depend on block size. The Rust audio node retains that behavior for C++ comparison.
+
+`SlewAudio` has one stereo audio input and output. Parameters 0 and 1 are rise and fall slide in samples. Six deterministic C++ cases cover direct tracking, slow rise, slow fall, asymmetric slopes, a parameter change, and a 64-frame block partition. The audio workbench plays input through this node and compares the stereo output with the C++ runner. The native Rust parity runner also matches every C++ sample exactly in the six checked-in cases.
+
+`SlewControl` runs the same prepared kernel with one typed control input and output. The graph rejects an audio edge into this node and a control edge into a plain audio port. The authored Slew modulation project routes an LFO through it to `ModulatedGain` at audio sample rate; five native Rust/Wasm cases cover direct, slow, asymmetric, changing, and small-block CV. This project tests composition and graph typing. It does not claim a matching legacy project patch or C++ CV graph.
+
+The slide uses a divisor per sample, rather than a duration in milliseconds, and can be edited while audio is running. The kernel stores two channel outputs and two current/target divisors; processing needs no allocation or lock. Base/effective slider overlays, CV mixing, sample-and-hold, and live graph replacement remain separate roadmap work.

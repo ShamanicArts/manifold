@@ -1,0 +1,171 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "external",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 5,
+        "type": "stereo-widener"
+      }
+    ],
+    "connections": [
+      {
+        "from": 5,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 4,
+        "inputPort": 0
+      },
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 5,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 5,
+        "id": 0,
+        "value": 0.25
+      },
+      {
+        "nodeId": 5,
+        "id": 1,
+        "value": 120
+      },
+      {
+        "nodeId": 5,
+        "id": 2,
+        "value": 1
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/dsp/live/input_gain",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 0,
+      "min": 0,
+      "max": 2,
+      "default": 1
+    },
+    {
+      "path": "/dsp/live/width",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 0,
+      "min": 0,
+      "max": 1,
+      "default": 0.25
+    }
+  ],
+  "hostBindings": [
+    {
+      "slot": 0,
+      "nodeId": 4,
+      "id": 0
+    },
+    {
+      "slot": 1,
+      "nodeId": 5,
+      "id": 0
+    }
+  ],
+  "hostAssignments": [
+    {
+      "slot": 0,
+      "path": "/dsp/live/input_gain"
+    },
+    {
+      "slot": 1,
+      "path": "/dsp/live/width"
+    }
+  ],
+  "controls": [
+    {
+      "path": "/dsp/live/distortion_enabled",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": true
+    }
+  ],
+  "instances": [
+    {
+      "path": "/dsp/live/nodes/input_trim",
+      "nodeId": 4
+    },
+    {
+      "path": "/dsp/live/nodes/width",
+      "nodeId": 5
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// Imports — public graph tools and the DSP definitions this sketch uses.\n// Examples name imports so you can trace each tool to its module.\n// Alternative: import * as manifold from '@manifold/author';\n// Then use manifold.createGraphWorkspace(), manifold.gain, etc.\nimport { createGraphWorkspace } from '@manifold/author';\nimport {\n  gain as gainDefinition,\n  stereoWidener as stereoWidenerDefinition,\n  distortion as distortionDefinition,\n} from '@manifold/author/primitives';\n\nexport default function createProject() {\n  // Interface and reusable graph definition — stable paths retain saved controls.\n  const parameters = {\n    '/dsp/live/input_gain': {\n      nodeId: 4,\n      id: 0,\n      min: 0,\n      max: 2,\n      default: 1,\n    },\n    '/dsp/live/width': {\n      nodeId: 5,\n      id: 0,\n      min: 0,\n      max: 1,\n      default: 0.25,\n    },\n  };\n  function buildGraph() {\n    const graph = createGraphWorkspace().setInputSource('external');\n    const gain = graph.add(gainDefinition.type, { id: 4 });\n    const width = graph.add(stereoWidenerDefinition.type, { id: 5 });\n    graph.registerInstance('/dsp/live/nodes/input_trim', gain);\n    graph.registerInstance('/dsp/live/nodes/width', width);\n    gain.parameter('level').set(parameters['/dsp/live/input_gain'].default);\n    width.parameter('width').set(parameters['/dsp/live/width'].default);\n    graph.registerParameter(\n      '/dsp/live/input_gain',\n      gain,\n      gain.parameter('level').description.id,\n      parameters['/dsp/live/input_gain'],\n    );\n    graph.registerParameter(\n      '/dsp/live/width',\n      width,\n      width.parameter('width').description.id,\n      parameters['/dsp/live/width'],\n    );\n    graph.bindHostSlot(0, gain, gain.parameter('level').description.id);\n    graph.bindHostSlot(1, width, width.parameter('width').description.id);\n    graph.connect(graph.input.output('out'), gain.input('audio'));\n    graph.connect(gain.output('out'), width.input('audio'));\n    graph.connect(width.output('out'), graph.output.input('in'));\n    return graph;\n  }\n  // Composition — prepare the authored input-to-output graph.\n  const graph = buildGraph();\n  const enablePath = '/dsp/live/distortion_enabled';\n  graph.registerControl(enablePath, { min: 0, max: 1, default: 0, discrete: true });\n  function reconcile(graph) {\n    const enabled = graph.findControl(enablePath).value === 1;\n    const gain = graph.findInstance('/dsp/live/nodes/input_trim');\n    const width = graph.findInstance('/dsp/live/nodes/width');\n    const existing = graph.findInstance('/dsp/live/nodes/distortion');\n    if (enabled && !existing) {\n      const distortion = graph.add(distortionDefinition.type, { id: 6 });\n      graph.registerInstance('/dsp/live/nodes/distortion', distortion);\n      distortion.parameter('drive').set(4);\n      distortion.parameter('wetMix').set(1);\n      distortion.parameter('output').set(1);\n      graph.disconnect(width.input('audio'));\n      graph.connect(gain.output('out'), distortion.input('audio'));\n      graph.connect(distortion.output('out'), width.input('audio'));\n    } else if (!enabled && existing) {\n      graph.remove(existing);\n      graph.connect(gain.output('out'), width.input('audio'));\n    }\n  }\n  // Live behavior — submit edits through the acknowledged session.\n  function onControl(session) {\n    session.transaction(reconcile);\n  }\n  // Presentation — retained and immediate views share these paths.\n  const view = [\n    { id: 'gain', type: 'parameter', path: '/dsp/live/input_gain', label: 'Input gain' },\n    { id: 'width', type: 'parameter', path: '/dsp/live/width', label: 'Width' },\n    {\n      id: 'insert',\n      type: 'control',\n      path: enablePath,\n      label: 'Distortion insert',\n      choices: ['Off', 'On'],\n    },\n  ];\n  function paint(ui) {\n    for (const component of view) ui[component.type](component.path, component);\n  }\n  // Host hooks — live controls call onControl; paint renders accepted state.\n  return { graph, view, paint, onControl, reconcile };\n}\n",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "gain",
+        "type": "parameter",
+        "path": "/dsp/live/input_gain",
+        "label": "Input gain"
+      },
+      {
+        "id": "width",
+        "type": "parameter",
+        "path": "/dsp/live/width",
+        "label": "Width"
+      },
+      {
+        "id": "insert",
+        "type": "control",
+        "path": "/dsp/live/distortion_enabled",
+        "label": "Distortion insert",
+        "choices": [
+          "Off",
+          "On"
+        ]
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

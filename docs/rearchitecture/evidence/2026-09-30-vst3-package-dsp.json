@@ -1,0 +1,56 @@
+{
+  "audioDeviceOpened": false,
+  "blockFrames": 128,
+  "editorOpened": false,
+  "host": "VST3 exported factory, offline IAudioProcessor callback",
+  "initialPackageSha256": "58b0e2ba85e80e95c22f35cab2913c0b7e1db5353607d6a38e636bbeaa664d82",
+  "library": "/home/shamanic/dev/Manifold-v2/target/vst3/ManifoldFX.vst3/Contents/x86_64-linux/ManifoldFX.so",
+  "librarySha256": "cca8f209239ac650721a8dda300a15b9efb2ec45d50d41aeb4fb7ce36b0317fc",
+  "recordedAtUnixSeconds": 1790723609,
+  "sampleRate": 48000.0,
+  "steps": [
+    {
+      "acknowledgedAfterOneBlock": true,
+      "afterRms": 0.025120619354586687,
+      "audio": "step-1.wav",
+      "audioSha256": "4a38ae12c8f7e0bc8f6b51142baa74a63b45fabe894ada203d2f4404b762d071",
+      "beforeRms": 0.06151146842049889,
+      "call": {
+        "args": [
+          "/dsp/live/input_gain",
+          0.4
+        ],
+        "method": "set"
+      },
+      "controllerAcceptedState": true,
+      "generation": 2,
+      "hostVsNativeMaximumError": 0.0,
+      "nodesAfter": 4,
+      "nodesBefore": 4,
+      "packageSha256": "52ac648bcc4c9c1e740a9dee96fce63c048be1ab546ad403ae4cea5f72d3448e",
+      "reopenedInstance": false,
+      "saveBeforePublicationUnchanged": true
+    },
+    {
+      "acknowledgedAfterOneBlock": true,
+      "afterRms": 0.03394112528399213,
+      "audio": "step-2.wav",
+      "audioSha256": "39567ee42cbd6adb2d6bf19520fee633b81be9987824888641e4011c7e0816a0",
+      "beforeRms": 0.024604587771281432,
+      "call": {
+        "args": [
+          "/dsp/live/nodes/input_trim"
+        ],
+        "method": "routeOutput"
+      },
+      "controllerAcceptedState": true,
+      "generation": 2,
+      "hostVsNativeMaximumError": 0.0,
+      "nodesAfter": 4,
+      "nodesBefore": 4,
+      "packageSha256": "9b14381bbbd5394cbd61fae3c914d7d4d3555e4093ba43c8f7f5bcf11eaa9460",
+      "reopenedInstance": true,
+      "saveBeforePublicationUnchanged": true
+    }
+  ]
+}

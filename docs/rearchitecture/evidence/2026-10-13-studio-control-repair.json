@@ -1,0 +1,57 @@
+{
+  "date": "2026-10-13",
+  "browser": {
+    "project": "Nacre Prism Bend",
+    "sink": "none",
+    "liveInputRms": 0.15544392202604868,
+    "audioStart": true,
+    "audioStop": true,
+    "audioRestart": true,
+    "inspectorMaxNormalizedError": 0.002631604671478296,
+    "graphMaxNormalizedError": 0.0029411911964416504,
+    "artificialParameterAcknowledgementDelayMs": 160,
+    "errors": [],
+    "diagnostics": {
+      "audioBlocks": 736,
+      "compilerFailed": false,
+      "eventsAdmitted": 0,
+      "eventsCancelled": 0,
+      "eventsConsumed": 0,
+      "eventsPending": 0,
+      "eventsRejected": 0,
+      "execution": "prepared",
+      "lastEventContextFrame": 0,
+      "lastPreparationMs": 8.375,
+      "lastPublicationContextFrame": 0,
+      "lastPublicationMs": 38.03999996185303,
+      "lastTransferredNodes": 0,
+      "memoryBytes": 16777216,
+      "outputLatencyBlocks": 0,
+      "processorFailed": false,
+      "publications": 1,
+      "renderQuantum": 128,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "rustProcessedBlocks": 736,
+      "rustProcessingFailures": 0
+    }
+  },
+  "native": {
+    "sink": "manifold_review_null",
+    "audioStart": true,
+    "audioStopRestart": true,
+    "inspectorMaxNormalizedError": 0.0031496107578277586,
+    "graphMaxNormalizedError": 0.0029411792755126955,
+    "processingFailed": false
+  },
+  "checks": {
+    "rustWorkspaceTests": 573,
+    "webTests": 194,
+    "finalWidgetTests": 6,
+    "nativeRelease": true,
+    "uiWasm": true,
+    "productionWebsite": true
+  },
+  "artifacts": "/home/shamanic/.cache/manifold/control-repair-20261013",
+  "notImplemented": "Separate Studio audition graph and exported Device selection"
+}

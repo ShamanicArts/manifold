@@ -1,0 +1,35 @@
+{
+  "project": "Nacre Prism Bend",
+  "source": "nacre-prism-bend.manifold.json",
+  "module": "prism-bend-module.json",
+  "browser": {
+    "workspace": "Manifold Studio",
+    "audioSink": "none",
+    "liveBeforeRms": 0.10974427589665763,
+    "liveAfterRms": 0.35420759073064645,
+    "capturedFramesPerTake": 31680,
+    "graphNodesBeforeSecondInsertion": 12,
+    "graphNodesDuringSecondInsertion": 14,
+    "graphNodesAfterUndo": 12,
+    "audioHostReadyDuringEdits": true
+  },
+  "websiteExport": {
+    "job": "9ba0ef5d-1fe6-4367-806a-a98cd1816f53",
+    "target": "linux",
+    "formats": ["CLAP", "VST3"],
+    "archiveSha256": "b59f996f87bb94617c12590c8976ee516e84028b9c7a3a5260152743882bf759",
+    "exactSourceAndSignalPreserved": true
+  },
+  "exportedClapAudio": {
+    "processBlocks": 300,
+    "sampleRate": 48000,
+    "blockFrames": 128,
+    "outputRms": 0.051065932318162484,
+    "outputPeak": 0.16210585832595825
+  },
+  "vst3": {
+    "binaryPresent": true,
+    "getPluginFactoryExported": true,
+    "audioHostTested": false
+  }
+}

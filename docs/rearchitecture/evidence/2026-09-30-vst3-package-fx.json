@@ -1,0 +1,57 @@
+{
+  "audioDeviceOpened": false,
+  "blockFrames": 128,
+  "editorOpened": false,
+  "host": "VST3 exported factory, offline IAudioProcessor callback",
+  "initialPackageSha256": "070ad91de65c50a20a98eb1b86f6dd99462b5b7a0ba8f532f4fd92df23d07466",
+  "library": "/home/shamanic/dev/Manifold-v2/target/vst3/ManifoldFX.vst3/Contents/x86_64-linux/ManifoldFX.so",
+  "librarySha256": "cca8f209239ac650721a8dda300a15b9efb2ec45d50d41aeb4fb7ce36b0317fc",
+  "recordedAtUnixSeconds": 1790723609,
+  "sampleRate": 48000.0,
+  "steps": [
+    {
+      "acknowledgedAfterOneBlock": true,
+      "afterRms": 0.08069797963300913,
+      "audio": "step-1.wav",
+      "audioSha256": "959fb125fc3faddf4234ec7e83e27831ea014a3af1650c6012bb3ad7eb68b981",
+      "beforeRms": 0.05430580151377532,
+      "call": {
+        "args": [
+          "/test/fxslot/slotA/select",
+          1
+        ],
+        "method": "set"
+      },
+      "controllerAcceptedState": true,
+      "generation": 2,
+      "hostVsNativeMaximumError": 0.0,
+      "nodesAfter": 12,
+      "nodesBefore": 10,
+      "packageSha256": "173a906705b2c37dc8d895bf3b37bbdc80990cd290de59f1fc8e51eb32a8e97d",
+      "reopenedInstance": false,
+      "saveBeforePublicationUnchanged": true
+    },
+    {
+      "acknowledgedAfterOneBlock": true,
+      "afterRms": 0.12600686256288993,
+      "audio": "step-2.wav",
+      "audioSha256": "979ca096f31dc82efc7e7c5bc7698036cb05caff8ceefcfe71a97999e430b362",
+      "beforeRms": 0.08096065192688437,
+      "call": {
+        "args": [
+          "/test/fxslot/slotB/select",
+          1
+        ],
+        "method": "set"
+      },
+      "controllerAcceptedState": true,
+      "generation": 2,
+      "hostVsNativeMaximumError": 0.0,
+      "nodesAfter": 14,
+      "nodesBefore": 12,
+      "packageSha256": "439f8ca3b32465e2a625568bccf9fa715dcc3cbdd07a44c3031577e9e92a98f8",
+      "reopenedInstance": true,
+      "saveBeforePublicationUnchanged": true
+    }
+  ]
+}

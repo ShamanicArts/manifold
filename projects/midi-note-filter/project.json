@@ -1,0 +1,166 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.midi-note-filter-workbench",
+  "name": "MIDI Note Filter",
+  "source": "Old Main rack Note Filter voice gate, rebuilt as typed MIDI effect in Rust",
+  "signal": {
+    "inputs": 0,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      {
+        "id": 3,
+        "type": "midi-input"
+      },
+      {
+        "id": 4,
+        "type": "midi-note-filter",
+        "a": 36,
+        "b": 96
+      },
+      {
+        "id": 1,
+        "type": "voice-synth"
+      },
+      {
+        "id": 2,
+        "type": "output"
+      }
+    ],
+    "connections": [
+      {
+        "from": 3,
+        "to": 4,
+        "inputPort": 0
+      },
+      {
+        "from": 4,
+        "to": 1,
+        "inputPort": 0
+      },
+      {
+        "from": 1,
+        "to": 2,
+        "inputPort": 0
+      }
+    ]
+  },
+  "parameters": [
+    {
+      "id": 0,
+      "nodeId": 1,
+      "nodeParameterId": 0,
+      "hostId": "waveform",
+      "label": "Waveform",
+      "kind": "choice",
+      "choices": [
+        "Sine",
+        "Saw",
+        "Square",
+        "Triangle"
+      ],
+      "default": 0
+    },
+    {
+      "id": 1,
+      "nodeId": 1,
+      "nodeParameterId": 1,
+      "hostId": "attack",
+      "label": "Attack",
+      "kind": "float",
+      "min": 0.001,
+      "max": 2,
+      "default": 0.01,
+      "unit": "s"
+    },
+    {
+      "id": 2,
+      "nodeId": 1,
+      "nodeParameterId": 2,
+      "hostId": "decay",
+      "label": "Decay",
+      "kind": "float",
+      "min": 0.001,
+      "max": 2,
+      "default": 0.12,
+      "unit": "s"
+    },
+    {
+      "id": 3,
+      "nodeId": 1,
+      "nodeParameterId": 3,
+      "hostId": "sustain",
+      "label": "Sustain",
+      "kind": "float",
+      "min": 0,
+      "max": 1,
+      "default": 0.65
+    },
+    {
+      "id": 4,
+      "nodeId": 1,
+      "nodeParameterId": 4,
+      "hostId": "release",
+      "label": "Release",
+      "kind": "float",
+      "min": 0.001,
+      "max": 3,
+      "default": 0.18,
+      "unit": "s"
+    },
+    {
+      "id": 5,
+      "nodeId": 1,
+      "nodeParameterId": 5,
+      "hostId": "level",
+      "label": "Level",
+      "kind": "float",
+      "min": 0,
+      "max": 1,
+      "default": 0.25
+    },
+    {
+      "id": 6,
+      "nodeId": 4,
+      "nodeParameterId": 0,
+      "hostId": "low-note",
+      "label": "Low note",
+      "kind": "float",
+      "min": 0,
+      "max": 127,
+      "step": 1,
+      "default": 36,
+      "unit": "MIDI"
+    },
+    {
+      "id": 7,
+      "nodeId": 4,
+      "nodeParameterId": 1,
+      "hostId": "high-note",
+      "label": "High note",
+      "kind": "float",
+      "min": 0,
+      "max": 127,
+      "step": 1,
+      "default": 96,
+      "unit": "MIDI"
+    },
+    {
+      "id": 8,
+      "nodeId": 4,
+      "nodeParameterId": 2,
+      "hostId": "range-mode",
+      "label": "Pass range",
+      "kind": "select",
+      "choices": [
+        "Inside",
+        "Outside"
+      ],
+      "choiceValues": [
+        0,
+        1
+      ],
+      "default": 0
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Manifold · Importable audio graph</title>
+    <style>
+      :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #121318; color: #e8e9f0; }
+      body { max-width: 780px; margin: 5vh auto; padding: 0 1.5rem; }
+      h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.1; }
+      p { color: #b9bbc8; }
+      button, input { cursor: pointer; }
+      button { background: #6246ea; color: white; border: 0; border-radius: .5rem; padding: .7rem 1.2rem; font: inherit; }
+      button:disabled { opacity: .5; cursor: default; }
+      button.secondary { background: #333747; }
+      section { margin: 1.5rem 0; padding: 1.4rem; background: #1d202a; border-radius: .8rem; }
+      label { display: grid; grid-template-columns: 1fr 3fr 3em; align-items: center; gap: 1rem; margin: 1rem 0; }
+      input[type=range] { width: 100%; accent-color: #9f87ff; }
+      pre { overflow: auto; max-height: 20rem; font-size: .75rem; background: #0c0e13; padding: 1rem; border-radius: .5rem; }
+      #status { color: #9ae0bb; min-height: 1.5rem; }
+      #endpoints, #instances { list-style: none; padding: 0; margin: 0; }
+      #endpoints li, #instances li { padding: .4rem 0; font-family: ui-monospace, monospace; font-size: .9rem; }
+      .controls { display: flex; gap: .6rem; flex-wrap: wrap; }
+    </style>
+  </head>
+  <body>
+    <h1>Import Manifold. Author the graph.</h1>
+    <p>This plain page imports <code>@manifold/author</code>, the browser host adapter, and the default DSP graph from the legacy DspLiveScripting project. DSP runs in the same Rust/Wasm graph used by native hosts.</p>
+    <div class="controls"><button id="start">Start graph</button><button id="stop" class="secondary" disabled>Stop</button><button id="download" class="secondary">Download authored project</button></div>
+    <p id="status" role="status">Ready to prepare the graph.</p>
+    <section aria-label="Live graph controls">
+      <div id="parameter-controls"></div>
+      <button id="bypass" class="secondary" disabled>Bypass widener</button>
+    </section>
+    <section aria-label="Registered script controls"><h2>Registered script controls</h2><ul id="endpoints"></ul></section>
+    <section aria-label="Named graph instances"><h2>Named graph instances</h2><ul id="instances"></ul></section>
+    <section><h2>Authored project</h2><p>The JSON below changes only after a host acknowledges each edit. It can be loaded in the native renderer.</p><pre id="project"></pre></section>
+    <script type="module" src="/src/generic-graph.js"></script>
+  </body>
+</html>

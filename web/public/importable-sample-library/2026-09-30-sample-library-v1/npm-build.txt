@@ -1,0 +1,19 @@
+
+> build
+> vite build
+
+vite v7.3.6 building client environment for production...
+transforming...
+✓ 14 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                   2.07 kB │ gzip:   1.07 kB
+dist/assets/shared-graph-processor-Dm6y4SJs.js    5.52 kB
+dist/assets/prepared-processor-B7j1WFmO.js       16.50 kB
+dist/assets/prepared-compiler-BTYy-h9G.js        21.71 kB
+dist/assets/graph-worker-COYk6iF6.js             25.15 kB
+dist/assets/filter-processor-B8mjgYNz.js         38.70 kB
+dist/assets/manifold_filter-B78Dka1M.wasm       873.42 kB │ gzip: 263.27 kB
+dist/assets/manifold_prepared-DenRaOLm.wasm     975.61 kB │ gzip: 281.02 kB
+dist/assets/index-DaKwr_Y9.js                   106.48 kB │ gzip:  28.38 kB
+✓ built in 498ms

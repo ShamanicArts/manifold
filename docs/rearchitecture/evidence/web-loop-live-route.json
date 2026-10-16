@@ -1,0 +1,12 @@
+{
+  "site": "https://wubulon.tailfac9f9.ts.net:4173/?primitive=graph-workspace",
+  "route": "2:0",
+  "soundingRms": 0.14340751858229797,
+  "unpluggedRms": 0,
+  "reconnectedRms": 0.09899005202157052,
+  "reopenedRms": 0.14057497156772256,
+  "assetFrames": 24000,
+  "privateSink": "manifold_null",
+  "pageErrors": [],
+  "screenshot": "docs/rearchitecture/evidence/web-loop-live-route.png"
+}

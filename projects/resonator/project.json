@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.resonator",
+  "name": "Resonator",
+  "source": "Legacy ResonatorNode stereo bandpass",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 2, "type": "resonator" },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "gain", "label": "Gain", "kind": "float", "min": 0, "max": 4, "default": 1 },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "frequency", "label": "Resonant frequency", "kind": "float", "min": 20, "max": 20000, "default": 1000, "unit": "Hz", "scale": "log" },
+    { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "q", "label": "Q", "kind": "float", "min": 0.01, "max": 500, "default": 10, "scale": "log" }
+  ]
+}

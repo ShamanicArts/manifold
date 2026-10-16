@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.chorus",
+  "name": "Stereo chorus",
+  "source": "legacy C++ ChorusNode scalar modulated delay",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 2, "type": "chorus", "a": 0.6, "b": 0.45 },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ],
+    "initialParameters": [
+      { "nodeId": 2, "id": 2, "value": 3 },
+      { "nodeId": 2, "id": 3, "value": 0.7 },
+      { "nodeId": 2, "id": 4, "value": 0.1 },
+      { "nodeId": 2, "id": 5, "value": 0 },
+      { "nodeId": 2, "id": 6, "value": 0.5 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "rate", "label": "Sweep rate", "kind": "float", "min": 0.05, "max": 10, "default": 0.6, "unit": "Hz" },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "depth", "label": "Depth", "kind": "float", "min": 0, "max": 1, "default": 0.45 },
+    { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "voices", "label": "Voices", "kind": "float", "min": 1, "max": 4, "default": 3 },
+    { "id": 3, "nodeId": 2, "nodeParameterId": 3, "hostId": "spread", "label": "Stereo spread", "kind": "float", "min": 0, "max": 1, "default": 0.7 },
+    { "id": 4, "nodeId": 2, "nodeParameterId": 4, "hostId": "feedback", "label": "Feedback", "kind": "float", "min": 0, "max": 0.95, "default": 0.1 },
+    { "id": 5, "nodeId": 2, "nodeParameterId": 5, "hostId": "waveform", "label": "LFO waveform", "kind": "choice", "choices": ["Sine", "Triangle"], "choiceValues": [0, 1], "default": 0 },
+    { "id": 6, "nodeId": 2, "nodeParameterId": 6, "hostId": "mix", "label": "Dry / wet", "kind": "float", "min": 0, "max": 1, "default": 0.5 }
+  ]
+}

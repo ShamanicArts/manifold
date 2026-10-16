@@ -1,0 +1,261 @@
+{
+  "recordedAt": "2026-09-30T08:55:58.442Z",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174",
+  "chromiumVersion": "152.0.7977.82",
+  "takes": [
+    {
+      "nodeId": 71,
+      "frames": 20992,
+      "equal": true
+    },
+    {
+      "nodeId": 72,
+      "frames": 20992,
+      "equal": true
+    },
+    {
+      "nodeId": 73,
+      "frames": 20992,
+      "equal": true
+    },
+    {
+      "nodeId": 170,
+      "frames": 20992,
+      "equal": true
+    }
+  ],
+  "peak": 0.7503694295883179,
+  "budgetError": "Capture rings exceed the per-plan resource budget",
+  "budgetRollback": true,
+  "diagnostics": {
+    "execution": "prepared",
+    "audioBlocks": 168,
+    "rustProcessedBlocks": 140,
+    "publications": 2,
+    "rustProcessingFailures": 0,
+    "rustCallbackAllocations": 0,
+    "rustCallbackDeallocations": 0,
+    "lastTransferredNodes": 6,
+    "lastPublicationContextFrame": 9728,
+    "outputLatencyBlocks": 0,
+    "memoryBytes": 34275328,
+    "lastPreparationMs": 11.129999995231628,
+    "lastPublicationMs": 17.40500009059906,
+    "compilerFailed": false,
+    "processorFailed": false,
+    "eventsAdmitted": 0,
+    "eventsConsumed": 0,
+    "eventsCancelled": 0,
+    "eventsRejected": 0,
+    "eventsPending": 0,
+    "lastEventContextFrame": 0,
+    "renderQuantum": 128
+  },
+  "rejected": "Error: Loop asset loading failed",
+  "rollback": 3,
+  "recovery": {
+    "takes": [
+      {
+        "nodeId": 71,
+        "frames": 20992
+      },
+      {
+        "nodeId": 72,
+        "frames": 20992
+      },
+      {
+        "nodeId": 73,
+        "frames": 20992
+      },
+      {
+        "nodeId": 170,
+        "frames": 20992
+      }
+    ],
+    "diagnostics": {
+      "execution": "prepared",
+      "audioBlocks": 276,
+      "rustProcessedBlocks": 248,
+      "publications": 4,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 7,
+      "lastPublicationContextFrame": 32768,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 48955392,
+      "lastPreparationMs": 7.475000023841858,
+      "lastPublicationMs": 16.960000038146973,
+      "compilerFailed": false,
+      "processorFailed": false,
+      "eventsAdmitted": 0,
+      "eventsConsumed": 0,
+      "eventsCancelled": 0,
+      "eventsRejected": 0,
+      "eventsPending": 0,
+      "lastEventContextFrame": 0,
+      "renderQuantum": 128
+    }
+  },
+  "workersAfterClose": [],
+  "served": {
+    "report": {
+      "scope": "Offline release Rust authoring/native rendering and normal Wasm AudioWorklet adapter under Node. Not an actual browser callback, legacy C++ comparison or performance benchmark.",
+      "reports": [
+        {
+          "name": "loops",
+          "input": "web/public/prepared-loops/2026-09-30-prepared-loops-v3/saved-project.json",
+          "inputSha256": "327ee4c934e709715900b0057be9a5b83974cf360f39a1b7c40471ebc75f78cf",
+          "frames": 8192,
+          "sampleRate": 48000,
+          "peak": 0.7992520928382874,
+          "maxDifference": 0,
+          "differingSamples": 0,
+          "jsAndRustGraphsEqual": true,
+          "captureRingBytes": 16128000,
+          "nativePcmSha256": "e68d7be1f73271ab98d93a5d5c0cb60955517c8b7323851a8c08b543147b4fae",
+          "wasmPcmSha256": "e68d7be1f73271ab98d93a5d5c0cb60955517c8b7323851a8c08b543147b4fae",
+          "command": [
+            "cargo",
+            "run",
+            "--quiet",
+            "--release",
+            "-p",
+            "manifold-native",
+            "--example",
+            "reauthor_resources",
+            "--",
+            "/home/shamanic/dev/Manifold-v2/web/public/prepared-loops/2026-09-30-prepared-loops-v3/saved-project.json",
+            "/home/shamanic/dev/Manifold-v2/web/public/configured-resources/2026-09-30-rust-js-resources-v3/loops/native-project.json",
+            "/home/shamanic/dev/Manifold-v2/web/public/configured-resources/2026-09-30-rust-js-resources-v3/loops/native.f32"
+          ]
+        },
+        {
+          "name": "rack-sample",
+          "input": "projects/graph-workspace/authored-rack-sample-eight-voice.json",
+          "inputSha256": "57de36a82995288254130c7c24dc72074d8b302723e212aa2fedc61770aa08cf",
+          "frames": 8192,
+          "sampleRate": 48000,
+          "peak": 0.1091383844614029,
+          "maxDifference": 1.4901161193847656e-8,
+          "differingSamples": 12,
+          "jsAndRustGraphsEqual": true,
+          "captureRingBytes": 0,
+          "nativePcmSha256": "60ec60286bcf63a59a5f09774ca6b5df40ef250926729bbb0787c82badedaa80",
+          "wasmPcmSha256": "783c06ad8a77e6da964bc6bd0a242c397662aff6f14a0ed9d94011dd408f0a84",
+          "command": [
+            "cargo",
+            "run",
+            "--quiet",
+            "--release",
+            "-p",
+            "manifold-native",
+            "--example",
+            "reauthor_resources",
+            "--",
+            "/home/shamanic/dev/Manifold-v2/projects/graph-workspace/authored-rack-sample-eight-voice.json",
+            "/home/shamanic/dev/Manifold-v2/web/public/configured-resources/2026-09-30-rust-js-resources-v3/rack-sample/native-project.json",
+            "/home/shamanic/dev/Manifold-v2/web/public/configured-resources/2026-09-30-rust-js-resources-v3/rack-sample/native.f32"
+          ]
+        }
+      ],
+      "sources": {
+        "crates/manifold-core/src/node_catalog.rs": "0b1c86bae03cea1cfc3d350f341b6db5965f8f5f5120dd2ff8ce08451e4cb645",
+        "crates/manifold-core/src/graph.rs": "f2294f77f372c58edb890d0ebfb895e83f7f2d9dc3fa0def88f277d154901eac",
+        "crates/manifold-native/src/author.rs": "876c92c2093719847111413d865241e808f22251089fb60a004fa7d006effcab",
+        "crates/manifold-native/src/project.rs": "38f11fdcac6a603ad24aaf97c44299af036ede36f94f7f83ff5e726b38b695b8",
+        "crates/manifold-native/examples/reauthor_resources.rs": "019a98d354c05bf6939c04e58c01b3807a00c1d52eee1daeea736e93851cdd11",
+        "packages/manifold-author/index.js": "0fb604ce1d9d219f9f515c084944d0664d3be466e73fa3e359ebcf0fe664eca0",
+        "packages/manifold-author/catalog.generated.js": "5e740aa2e775988d150b4d821b9f505fa32aec6f62d0a4fce7567cf97394286d",
+        "web/src/audio/filter-processor.js": "d0dc6c70ef4ac1e80998e45f08d8b4ca9d89170c9ddb6bf025d23f8391c59bf7",
+        "web/public/manifold_filter.wasm": "a8b2ae1eeb1eaa6983ded30e10d4ffa63cfe6509b8521beeb29b85bdd191f173",
+        "scripts/verify-configured-resources.mjs": "5d2550a2242d62b3b6c298fe9e71a8678da8d9b06c4f0f2854fb2f26355c737e"
+      }
+    },
+    "sources": [
+      {
+        "path": "crates/manifold-core/src/node_catalog.rs",
+        "expected": "0b1c86bae03cea1cfc3d350f341b6db5965f8f5f5120dd2ff8ce08451e4cb645",
+        "actual": "0b1c86bae03cea1cfc3d350f341b6db5965f8f5f5120dd2ff8ce08451e4cb645",
+        "status": 200
+      },
+      {
+        "path": "crates/manifold-core/src/graph.rs",
+        "expected": "f2294f77f372c58edb890d0ebfb895e83f7f2d9dc3fa0def88f277d154901eac",
+        "actual": "f2294f77f372c58edb890d0ebfb895e83f7f2d9dc3fa0def88f277d154901eac",
+        "status": 200
+      },
+      {
+        "path": "crates/manifold-native/src/author.rs",
+        "expected": "876c92c2093719847111413d865241e808f22251089fb60a004fa7d006effcab",
+        "actual": "876c92c2093719847111413d865241e808f22251089fb60a004fa7d006effcab",
+        "status": 200
+      },
+      {
+        "path": "crates/manifold-native/src/project.rs",
+        "expected": "38f11fdcac6a603ad24aaf97c44299af036ede36f94f7f83ff5e726b38b695b8",
+        "actual": "38f11fdcac6a603ad24aaf97c44299af036ede36f94f7f83ff5e726b38b695b8",
+        "status": 200
+      },
+      {
+        "path": "crates/manifold-native/examples/reauthor_resources.rs",
+        "expected": "019a98d354c05bf6939c04e58c01b3807a00c1d52eee1daeea736e93851cdd11",
+        "actual": "019a98d354c05bf6939c04e58c01b3807a00c1d52eee1daeea736e93851cdd11",
+        "status": 200
+      },
+      {
+        "path": "packages/manifold-author/index.js",
+        "expected": "0fb604ce1d9d219f9f515c084944d0664d3be466e73fa3e359ebcf0fe664eca0",
+        "actual": "0fb604ce1d9d219f9f515c084944d0664d3be466e73fa3e359ebcf0fe664eca0",
+        "status": 200
+      },
+      {
+        "path": "packages/manifold-author/catalog.generated.js",
+        "expected": "5e740aa2e775988d150b4d821b9f505fa32aec6f62d0a4fce7567cf97394286d",
+        "actual": "5e740aa2e775988d150b4d821b9f505fa32aec6f62d0a4fce7567cf97394286d",
+        "status": 200
+      },
+      {
+        "path": "web/src/audio/filter-processor.js",
+        "expected": "d0dc6c70ef4ac1e80998e45f08d8b4ca9d89170c9ddb6bf025d23f8391c59bf7",
+        "actual": "d0dc6c70ef4ac1e80998e45f08d8b4ca9d89170c9ddb6bf025d23f8391c59bf7",
+        "status": 200
+      },
+      {
+        "path": "web/public/manifold_filter.wasm",
+        "expected": "a8b2ae1eeb1eaa6983ded30e10d4ffa63cfe6509b8521beeb29b85bdd191f173",
+        "actual": "a8b2ae1eeb1eaa6983ded30e10d4ffa63cfe6509b8521beeb29b85bdd191f173",
+        "status": 200
+      },
+      {
+        "path": "scripts/verify-configured-resources.mjs",
+        "expected": "5d2550a2242d62b3b6c298fe9e71a8678da8d9b06c4f0f2854fb2f26355c737e",
+        "actual": "5d2550a2242d62b3b6c298fe9e71a8678da8d9b06c4f0f2854fb2f26355c737e",
+        "status": 200
+      }
+    ],
+    "waves": [
+      {
+        "path": "loops/native.wav",
+        "status": 200,
+        "frames": 8192
+      },
+      {
+        "path": "loops/wasm.wav",
+        "status": 200,
+        "frames": 8192
+      },
+      {
+        "path": "rack-sample/native.wav",
+        "status": 200,
+        "frames": 8192
+      },
+      {
+        "path": "rack-sample/wasm.wav",
+        "status": 200,
+        "frames": 8192
+      }
+    ]
+  },
+  "pageErrors": []
+}

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b1220" />
+    <title>Manifold · Graph</title>
+  </head>
+  <body>
+    <header class="graph-topbar"><strong>Manifold</strong><span>/</span><span>Graph</span><a href="/">Workbench ↗</a></header>
+    <main>
+      <div class="graph-heading"><div><small>Portable project / host controls</small><h1>Graph</h1></div><output id="graph-count"></output></div>
+      <div class="graph-toolbar"><label class="graph-open"><span id="graph-import-label">Inspect project JSON</span><input id="graph-file" type="file" accept="application/json,.json"></label><button id="graph-note" type="button">Note voice</button><button id="graph-tone" type="button">Tone texture</button><span id="graph-source"></span></div>
+      <section id="graph-capture" class="graph-capture" aria-label="Capture recent audio" hidden><label>Capture source <select id="graph-capture-source"></select></label><label><span id="graph-capture-window-label">Window</span><input id="graph-capture-seconds" type="number" min="0" step="0.05" value="2"><select id="graph-capture-mode" aria-label="Capture window unit"><option value="seconds">s</option><option value="bars">bars</option><option value="free">free</option></select></label><button id="graph-capture-go" type="button">Capture to instrument</button></section>
+      <section id="graph-routes" aria-label="Live graph routes" hidden><h2>Live routes</h2><p>Change a connection at the next audio block. The DAW saves the route after it is applied.</p><div id="graph-route-root"></div></section>
+      <section id="graph-widget-root" aria-label="Graph node controls"></section>
+      <p id="graph-status" role="status">Loading the authored graph…</p>
+      <footer>Controls use the original Manifold compact slider and dropdown renderers. The host keeps the 128 automation slot IDs stable.</footer>
+    </main>
+    <script type="module" src="/src/graph-module.js"></script>
+  </body>
+</html>

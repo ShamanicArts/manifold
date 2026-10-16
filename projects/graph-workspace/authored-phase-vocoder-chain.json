@@ -1,0 +1,116 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "oscillator",
+        "a": 220,
+        "b": 0.4
+      },
+      {
+        "id": 5,
+        "type": "phase-vocoder"
+      }
+    ],
+    "connections": [
+      {
+        "from": 5,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 5,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 1,
+        "value": 440
+      },
+      {
+        "nodeId": 4,
+        "id": 2,
+        "value": 0.4
+      },
+      {
+        "nodeId": 5,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 5,
+        "id": 1,
+        "value": 12
+      },
+      {
+        "nodeId": 5,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 5,
+        "id": 3,
+        "value": 1
+      },
+      {
+        "nodeId": 5,
+        "id": 4,
+        "value": 9
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/sample/voice/mix",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 3,
+      "min": 0,
+      "max": 1,
+      "default": 1
+    },
+    {
+      "path": "/sample/voice/pitch",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 1,
+      "min": -24,
+      "max": 24,
+      "default": 12
+    }
+  ],
+  "instances": [
+    {
+      "path": "/sample/voice/source",
+      "nodeId": 4
+    },
+    {
+      "path": "/sample/voice/vocoder",
+      "nodeId": 5
+    }
+  ]
+}

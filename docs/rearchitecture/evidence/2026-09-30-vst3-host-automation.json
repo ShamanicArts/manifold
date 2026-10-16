@@ -1,0 +1,69 @@
+{
+  "audioDeviceOpened": false,
+  "blockFrames": 128,
+  "editorOpened": false,
+  "host": "VST3 exported factory, offline IAudioProcessor callback",
+  "initialPackageSha256": "58ebdf136835779961f9eb6bb04366aea1869f28abafb21ca516b12eb25e423d",
+  "library": "/home/shamanic/dev/Manifold-v2/target/vst3/ManifoldFX.vst3/Contents/x86_64-linux/ManifoldFX.so",
+  "librarySha256": "7fd31271efd229aff3d9435549a3c7c569c8e9443de2e01a1e7175c3bd53cfd7",
+  "recordedAtUnixSeconds": 1790726331,
+  "sampleRate": 48000.0,
+  "steps": [
+    {
+      "acknowledgedAfterOneBlock": true,
+      "afterRms": 0.030262319466115843,
+      "audio": "step-1.wav",
+      "audioSha256": "9684e4e18df79bff9a5fea6b55320edb8d74b000003d9374c80ab0710906719c",
+      "automationBlock": 187,
+      "automationSampleOffset": 64,
+      "beforeRms": 0.041248305224647445,
+      "call": {
+        "args": [
+          "/test/fxslot/slotA/select",
+          1
+        ],
+        "method": "set"
+      },
+      "controllerAcceptedState": true,
+      "gainAfterStructuralEdit": 0.375,
+      "generation": 2,
+      "hostAutomatedInputGain": 0.375,
+      "hostVsNativeMaximumError": 0.0,
+      "nativeParameterReadback": "automatic from native audio handle",
+      "nativeSavedGain": 0.375,
+      "nodesAfter": 12,
+      "nodesBefore": 10,
+      "packageSha256": "81bf025311774c627f51df78eaf89cc310f547a607e03ba0f3e2c065ca36fea1",
+      "reopenedInstance": false,
+      "saveBeforePublicationUnchanged": true
+    },
+    {
+      "acknowledgedAfterOneBlock": true,
+      "afterRms": 0.047252573714960215,
+      "audio": "step-2.wav",
+      "audioSha256": "5808f02c3614942d373933808f689b4fc17ebe1f6ba5cac74e9ad5b642726c94",
+      "automationBlock": 187,
+      "automationSampleOffset": 64,
+      "beforeRms": 0.03036024456292627,
+      "call": {
+        "args": [
+          "/test/fxslot/slotB/select",
+          1
+        ],
+        "method": "set"
+      },
+      "controllerAcceptedState": true,
+      "gainAfterStructuralEdit": 0.375,
+      "generation": 2,
+      "hostAutomatedInputGain": 0.375,
+      "hostVsNativeMaximumError": 0.0,
+      "nativeParameterReadback": "automatic from native audio handle",
+      "nativeSavedGain": 0.375,
+      "nodesAfter": 14,
+      "nodesBefore": 12,
+      "packageSha256": "128931741709977cff972ac15ba9c5a9722ff3d4574ea1cd98f8a71936d0117c",
+      "reopenedInstance": true,
+      "saveBeforePublicationUnchanged": true
+    }
+  ]
+}

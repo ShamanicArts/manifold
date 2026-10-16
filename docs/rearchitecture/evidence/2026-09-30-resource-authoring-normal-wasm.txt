@@ -1,0 +1,2 @@
+   Compiling manifold-web v0.1.0 (/home/shamanic/dev/Manifold-v2/crates/manifold-web)
+    Finished `release` profile [optimized] target(s) in 0.84s

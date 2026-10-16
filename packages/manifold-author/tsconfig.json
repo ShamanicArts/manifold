@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noEmit": true
+  },
+  "include": ["index.d.ts", "browser.d.ts", "examples/dsp-live-scripting.d.mts",
+    "examples/transpose-audition.d.mts",
+    "examples/loop-authoring.d.mts",
+    "examples/rack-module-host.d.mts", "examples/four-layer-loops.d.mts",
+    "catalog.generated.d.ts", "tests/types.ts"]
+}

@@ -1,0 +1,43 @@
+{
+  "recordedAt": "2026-09-30T03:54:53.506Z",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174",
+  "retained": [
+    {
+      "src": "https://wubulon.tailfac9f9.ts.net:4174/prepared-worklet-prototype/2026-09-30-public-prepared-recordings/dsp-live-scripting.wav",
+      "seconds": 3.68,
+      "paused": true
+    },
+    {
+      "src": "https://wubulon.tailfac9f9.ts.net:4174/prepared-worklet-prototype/2026-09-30-public-prepared-recordings/dsp-live-scripting-secondary.wav",
+      "seconds": 3.682667,
+      "paused": true
+    },
+    {
+      "src": "https://wubulon.tailfac9f9.ts.net:4174/prepared-worklet-prototype/2026-09-30-public-prepared-recordings/fx-slot-swap.wav",
+      "seconds": 4.181333,
+      "paused": true
+    },
+    {
+      "src": "https://wubulon.tailfac9f9.ts.net:4174/prepared-worklet-prototype/2026-09-30-public-prepared-recordings/fx-slot-swap-secondary.wav",
+      "seconds": 4.181333,
+      "paused": true
+    }
+  ],
+  "imports": [
+    {
+      "run": "2026-09-30-public-prepared-recordings",
+      "example": "dsp-live-scripting",
+      "nodes": 4,
+      "hostGain": 0.375,
+      "exactSavedGraphRestored": true
+    },
+    {
+      "run": "2026-09-30-public-prepared-recordings",
+      "example": "fx-slot-swap",
+      "nodes": 14,
+      "hostGain": 0.375,
+      "exactSavedGraphRestored": true
+    }
+  ],
+  "pageErrors": []
+}

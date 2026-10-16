@@ -1,0 +1,379 @@
+#!/usr/bin/env python3
+"""Exercise original Main looper and Sample widgets in isolated REAPER.
+
+Run under a headless Weston wrapper with MANIFOLD_ISOLATED_DISPLAY=1. A private
+PipeWire/Pulse server supplies only auto_null; no user audio device is opened.
+"""
+
+from array import array
+import argparse
+import base64
+import json
+import os
+from pathlib import Path
+import re
+import signal
+import subprocess
+import tempfile
+import time
+import wave
+
+ROOT = Path(__file__).resolve().parents[1]
+BUNDLE = ROOT / "target/vst3/ManifoldFX.vst3"
+
+
+def wait_for(path: Path, predicate=lambda value: True, timeout: float = 20):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if path.exists():
+            try:
+                value = path.read_text()
+                if value and predicate(value):
+                    return value
+            except (OSError, ValueError):
+                pass
+        time.sleep(.08)
+    raise TimeoutError(f"waiting for {path}")
+
+
+def saved_main(path: Path) -> dict:
+    text = path.read_text(errors="replace")
+    match = re.search(r'<VST "VST3i?: Manifold Main[^\n]*\n', text)
+    assert match, "REAPER Main VST3 state chunk missing"
+    lines = text[match.end():].splitlines()[1:]
+    chunks = []
+    for line in lines:
+        encoded = line.strip()
+        if not re.fullmatch(r"[A-Za-z0-9+/=]+", encoded):
+            break
+        chunks.append(encoded)
+        if len(encoded) < 128:
+            break
+    decoded = base64.b64decode("".join(chunks))
+    start = decoded.index(b"{")
+    return json.JSONDecoder().raw_decode(decoded[start:].decode(errors="replace"))[0]
+
+
+def status(path: Path, predicate, timeout: float = 20) -> dict:
+    return json.loads(wait_for(path, lambda text: predicate(json.loads(text)), timeout))
+
+
+def pcm_peak(value: dict) -> float:
+    samples = array("f")
+    samples.frombytes(base64.b64decode(value["pcmF32Base64"]))
+    assert len(samples) == value["frames"] * 2
+    return max((abs(sample) for sample in samples), default=0.0)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--exercise-layout", action="store_true",
+                        help="Click Rack/Patch in the actual VST3 editor and verify REAPER state")
+    args = parser.parse_args()
+    assert os.environ.get("MANIFOLD_ISOLATED_DISPLAY") == "1"
+    assert os.environ.get("DISPLAY") not in (None, ":0")
+    assert BUNDLE.is_dir()
+    with tempfile.TemporaryDirectory(prefix="manifold-main-vst3-live-") as directory:
+        work = Path(directory)
+        home = work / "home"
+        home.mkdir()
+        runtime = work / "audio-runtime"
+        runtime.mkdir(mode=0o700)
+        audio_env = {**os.environ, "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config"),
+                     "XDG_RUNTIME_DIR": str(runtime),
+                     "PIPEWIRE_RUNTIME_DIR": str(runtime),
+                     "PIPEWIRE_REMOTE": "pipewire-0",
+                     "PULSE_SERVER": f"unix:{runtime}/pulse/native"}
+        audio_env.pop("WAYLAND_DISPLAY", None)
+        core_log = (work / "pipewire.log").open("w")
+        pulse_log = (work / "pipewire-pulse.log").open("w")
+        core = subprocess.Popen(["pipewire"], env=audio_env,
+                                stdout=core_log, stderr=subprocess.STDOUT)
+        pulse = subprocess.Popen(["pipewire-pulse"], env=audio_env,
+                                 stdout=pulse_log, stderr=subprocess.STDOUT)
+        process = None
+        try:
+            deadline = time.monotonic() + 5
+            while not (runtime / "pulse/native").exists() and time.monotonic() < deadline:
+                time.sleep(.05)
+            assert (runtime / "pulse/native").exists(), "private Pulse socket did not start"
+            subprocess.run(["pactl", "load-module", "module-null-sink", "sink_name=manifold_null"],
+                           env=audio_env, check=True, capture_output=True)
+            sinks = subprocess.check_output(["pactl", "list", "short", "sinks"],
+                                            env=audio_env, text=True)
+            assert "manifold_null" in sinks and all("null" in line for line in sinks.strip().splitlines()), sinks
+            sources = subprocess.check_output(["pactl", "list", "short", "sources"],
+                                              env=audio_env, text=True)
+            assert "manifold_null.monitor" in sources, sources
+            config = work / "reaper.ini"
+            config.write_text("[reaper]\n"
+                              f"vstpath={BUNDLE.parent}\nvstpath64={BUNDLE.parent}\n")
+            source = work / "input.wav"
+            with wave.open(str(source), "wb") as output:
+                output.setnchannels(2)
+                output.setsampwidth(2)
+                output.setframerate(48000)
+                output.writeframes((4096).to_bytes(2, "little", signed=True) * 2 * 48000 * 8)
+            project = work / "main-live.rpp"
+            sample_project = work / "main-sample.rpp"
+            script = work / "host.lua"
+            script.write_text(f"""
+reaper.GetSetProjectInfo(0,'PROJECT_SRATE',48000,true)
+reaper.GetSetProjectInfo(0,'PROJECT_SRATE_USE',1,true)
+reaper.InsertTrackAtIndex(0,true)
+local track=reaper.GetTrack(0,0)
+reaper.SetOnlyTrackSelected(track)
+reaper.SetEditCurPos(0,false,false)
+reaper.InsertMedia('{source}',0)
+local item=reaper.GetTrackMediaItem(track,0)
+local fx=reaper.TrackFX_AddByName(track,'VST3: Manifold Main',false,-1)
+local ready=io.open('{work / 'ready.txt'}','w')
+if fx<0 then ready:write('FAILED: Main plug-in missing'); ready:close(); return end
+reaper.TrackFX_Show(track,fx,3)
+local ok,mode=reaper.GetAudioDeviceInfo('MODE')
+ready:write('done ' .. tostring(ok) .. ' ' .. tostring(mode)); ready:close()
+local function poll()
+ local request=io.open('{work / 'command.txt'}','r')
+ if request then
+  local value=request:read('*a'); request:close(); os.remove('{work / 'command.txt'}')
+  if value=='play' then reaper.SetEditCurPos(0,false,false); reaper.OnPlayButton() end
+  if value=='stop' then reaper.OnStopButton() end
+  if value=='mute-input' then reaper.SetMediaItemInfo_Value(item,'B_MUTE',1) end
+  if value=='add-note' then
+   local midi=reaper.CreateNewMIDIItemInProj(track,0,1,false)
+   local take=reaper.GetActiveTake(midi)
+   reaper.MIDI_InsertNote(take,false,false,
+    reaper.MIDI_GetPPQPosFromProjTime(take,0.125),
+    reaper.MIDI_GetPPQPosFromProjTime(take,0.75),0,60,100,false)
+   reaper.MIDI_Sort(take)
+  end
+  if value=='save' then reaper.Main_SaveProjectEx(0,'{project}',0) end
+  if value=='save-sample' then reaper.Main_SaveProjectEx(0,'{sample_project}',0) end
+  local out=io.open('{work / 'result.txt'}','w')
+  out:write(value .. ' ' .. tostring(reaper.GetPlayState()) .. ' ' .. tostring(reaper.GetPlayPosition()))
+  out:close()
+ end
+ reaper.defer(poll)
+end
+reaper.defer(poll)
+""")
+            loop_probe = work / "main-loop-command"
+            sample_probe = work / "main-sample-command"
+            layout_probe = work / "main-layout-command"
+            env = {**audio_env, "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config"),
+                   "GDK_BACKEND": "x11", "MANIFOLD_MAIN_LOOP_PROBE": str(loop_probe),
+                   "MANIFOLD_MAIN_SAMPLE_PROBE": str(sample_probe)}
+            if args.exercise_layout:
+                env["MANIFOLD_MAIN_LAYOUT_PROBE"] = str(layout_probe)
+
+            def command(value: str) -> str:
+                (work / "result.txt").unlink(missing_ok=True)
+                (work / "command.txt").write_text(value)
+                return wait_for(work / "result.txt", timeout=10)
+
+            with (work / "reaper.log").open("w") as log:
+                process = subprocess.Popen(
+                    ["pw-jack", "reaper", "-cfgfile", str(config), "-newinst", "-nosplash", "-noactivate", str(script)],
+                    env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                ready = wait_for(work / "ready.txt", timeout=25)
+                assert ready == "done true JACK", ready
+                status(Path(f"{loop_probe}.status"), lambda data: len(data.get("layers", [])) == 4)
+                assert command("play").startswith("play 1")
+                time.sleep(.6)
+                assert float(command("position").split()[-1]) > .25
+                loop_probe.write_text("rec")
+                status(Path(f"{loop_probe}.status"), lambda data: data.get("recording") is True)
+                time.sleep(1.0)
+                loop_probe.write_text("rec")
+                committed = status(Path(f"{loop_probe}.status"),
+                                   lambda data: data.get("recording") is False and data["layers"][0]["length"] > 0)
+                time.sleep(2.0)
+                sample_probe.write_text("retro")
+                update = status(Path(f"{sample_probe}.status"), lambda data: data.get("phase") in ("published", "rejected"), 25)
+                assert update["phase"] == "published", update
+                assert command("mute-input").startswith("mute-input 1")
+                deadline = time.monotonic() + 20
+                last_error = None
+                while time.monotonic() < deadline:
+                    command("save")
+                    try:
+                        state = saved_main(project)
+                        if (state["layers"][0]["frames"] > 0 and state["sample"]["frames"] > 0
+                            and state["rack"]["source"]["sampleBlend"] == 1):
+                            break
+                        last_error = ("state", state["layers"][0]["frames"],
+                                      state["sample"]["frames"], state["rack"]["source"]["sampleBlend"])
+                    except (OSError, ValueError, IndexError, KeyError) as error:
+                        last_error = repr(error)
+                    time.sleep(.3)
+                else:
+                    if project.exists():
+                        (Path("/tmp/manifold-main-vst3-live-failed.rpp")).write_bytes(project.read_bytes())
+                    print("Last Main save observation:", last_error)
+                    print("Loop status:", {"recording": committed["recording"],
+                                           "frames": committed["layers"][0]["length"]})
+                    print("Sample update:", update)
+                    raise AssertionError("Main live loop and Sample PCM did not reach REAPER save")
+                loop_frames = state["layers"][0]["frames"]
+                sample_frames = state["sample"]["frames"]
+                loop_peak = pcm_peak(state["layers"][0])
+                sample_peak = pcm_peak(state["sample"])
+                assert loop_frames > 1000 and sample_frames > 1000
+                assert loop_peak > .01 and sample_peak > .01, (loop_peak, sample_peak)
+                if args.exercise_layout:
+                    before_rack = state["rackDocument"]
+                    layout_probe.write_text("toggle")
+                    layout_result = status(Path(f"{layout_probe}.result"),
+                                           lambda data: "ok" in data, 15)
+                    assert layout_result["ok"], layout_result
+                    deadline = time.monotonic() + 15
+                    while time.monotonic() < deadline:
+                        command("save")
+                        state = saved_main(project)
+                        if state["rackDocument"]["viewMode"] != before_rack["viewMode"]:
+                            break
+                        time.sleep(.2)
+                    else:
+                        raise AssertionError("REAPER did not save the VST3 editor's Rack/Patch change")
+                    assert state["rackDocument"]["modules"] == before_rack["modules"]
+                    assert state["rackDocument"]["connections"] == before_rack["connections"]
+                    print("REAPER VST3 child Rack/Patch click reached saved Main rack state.")
+                children = subprocess.check_output(["ps", "--ppid", str(process.pid),
+                                                    "-o", "pid=,args="], text=True)
+                editor = next((line.strip() for line in children.splitlines()
+                               if "ManifoldFX-editor" in line), None)
+                if args.exercise_layout:
+                    assert editor, "packaged VST3 child editor did not open"
+                if editor:
+                    parent = int(editor.split()[2])
+                    screenshot = ROOT / ("web/public/main-vst3-reaper-layout.png" if args.exercise_layout
+                                         else "web/public/main-vst3-reaper-live.png")
+                    capture = subprocess.run(["ffmpeg", "-v", "error", "-f", "x11grab",
+                        "-window_id", str(parent), "-video_size", "1280x780",
+                        "-i", os.environ["DISPLAY"], "-frames:v", "1", "-y", str(screenshot)],
+                        env=env, capture_output=True, text=True, timeout=15)
+                    assert capture.returncode == 0 and screenshot.stat().st_size > 10_000, capture.stderr
+                if args.exercise_layout:
+                    os.killpg(process.pid, signal.SIGTERM)
+                    process.wait(timeout=5)
+                    process = None
+                    reopened_project = work / "main-layout-reopened.rpp"
+                    reopened_ready = work / "reopened-ready.txt"
+                    reopen_script = work / "reopen-layout.lua"
+                    reopen_script.write_text(f"""
+reaper.Main_openProject('{project}')
+local started=reaper.time_precise()
+local function poll()
+ local track=reaper.GetTrack(0,0)
+ if track and reaper.TrackFX_GetCount(track)>0 then
+  reaper.TrackFX_Show(track,0,3)
+  if reaper.time_precise()-started>1 then
+   reaper.Main_SaveProjectEx(0,'{reopened_project}',0)
+   local out=io.open('{reopened_ready}','w'); out:write('done'); out:close()
+   return
+  end
+ end
+ reaper.defer(poll)
+end
+reaper.defer(poll)
+""")
+                    with (work / "reopen.log").open("w") as log:
+                        process = subprocess.Popen(
+                            ["pw-jack", "reaper", "-cfgfile", str(config), "-newinst",
+                             "-nosplash", "-noactivate", str(reopen_script)],
+                            env=env, stdout=log, stderr=subprocess.STDOUT,
+                            start_new_session=True)
+                        wait_for(reopened_ready, timeout=25)
+                    reopened = saved_main(reopened_project)
+                    assert reopened["rackDocument"] == state["rackDocument"]
+                    assert reopened["layers"][0]["pcmF32Base64"] == state["layers"][0]["pcmF32Base64"]
+                    assert reopened["sample"]["pcmF32Base64"] == state["sample"]["pcmF32Base64"]
+                    report = {"host": "REAPER VST3", "audioSink": "private PipeWire null sink",
+                              "editorAction": "Rack/Patch toggle", "viewMode": reopened["rackDocument"]["viewMode"],
+                              "modulePositionsPreserved": True, "cablesPreserved": True,
+                              "loopAndSamplePcmPreserved": True, "savedAndReopened": True}
+                    (ROOT / "web/public/main-vst3-rack-layout.json").write_text(
+                        json.dumps(report, indent=2) + "\n")
+                    print(json.dumps(report))
+                    print(f"VST3 rack layout review screenshot: {screenshot}")
+                    return
+                loop_probe.write_text("play")
+                status(Path(f"{loop_probe}.status"),
+                       lambda data: data["layers"][0]["length"] > 0
+                       and data["layers"][0]["playing"] is False)
+                assert command("add-note").startswith("add-note 1")
+                command("save-sample")
+                sample_state = saved_main(sample_project)
+                assert sample_state["sample"]["frames"] == sample_frames
+                assert sample_state["rack"]["source"]["sampleBlend"] == 1
+                assert sample_state["layers"][0]["playing"] is False
+                command("stop")
+                print("Saved Main live capture:", loop_frames, sample_frames, loop_peak, sample_peak)
+                os.killpg(process.pid, signal.SIGTERM)
+                process.wait(timeout=5)
+                process = None
+                render_env = {key: value for key, value in env.items()
+                              if key not in ("MANIFOLD_MAIN_LOOP_PROBE", "MANIFOLD_MAIN_SAMPLE_PROBE")}
+
+                def render_saved(saved_project: Path):
+                    log_path = work / f"{saved_project.stem}-render.log"
+                    with log_path.open("w") as render_log:
+                        rendered = subprocess.run(
+                            ["pw-jack", "reaper", "-cfgfile", str(config), "-newinst", "-nosplash",
+                             "-renderproject", str(saved_project)],
+                            env=render_env, stdout=render_log, stderr=subprocess.STDOUT, timeout=60)
+                    assert rendered.returncode == 0, log_path.read_text()[-1500:]
+                    render_file = work / f"{saved_project.stem}.wav"
+                    assert render_file.is_file(), log_path.read_text()[-1500:]
+                    raw = subprocess.check_output(["ffmpeg", "-v", "error", "-i", str(render_file),
+                                                   "-f", "f32le", "-acodec", "pcm_f32le", "-"])
+                    audio = array("f")
+                    audio.frombytes(raw)
+                    return render_file, audio
+
+                render_file, audio = render_saved(project)
+                render_peak = max(abs(sample) for sample in audio)
+                assert render_peak > .01, render_peak
+                review_audio = ROOT / "web/public/main-vst3-reaper-live-render.ogg"
+                subprocess.run(["ffmpeg", "-v", "error", "-i", str(render_file),
+                    "-c:a", "libopus", "-b:a", "96k", "-y", str(review_audio)],
+                    check=True, timeout=20)
+                sample_render_file, sample_audio = render_saved(sample_project)
+                sample_note_peak = max(abs(sample) for sample in sample_audio)
+                sample_lead_peak = max(abs(sample) for sample in sample_audio[:4800 * 2])
+                assert sample_lead_peak < 1e-5 and sample_note_peak > .01, (sample_lead_peak, sample_note_peak)
+                subprocess.run(["ffmpeg", "-v", "error", "-i", str(sample_render_file),
+                    "-c:a", "libopus", "-b:a", "96k", "-y",
+                    str(ROOT / "web/public/main-vst3-reaper-sample-note.ogg")],
+                    check=True, timeout=20)
+                report = {"host":"REAPER VST3", "audioSink":"private PipeWire null sink",
+                          "editorActions":["First Loop REC", "REC stop", "Sample Retro Cap"],
+                          "loopFrames":loop_frames, "loopPeak":loop_peak,
+                          "sampleFrames":sample_frames, "samplePeak":sample_peak,
+                          "savedAndReopened":True, "freshRenderFrames":len(audio)//2,
+                          "freshRenderPeak":render_peak,
+                          "sampleSourceBlend":sample_state["rack"]["source"]["sampleBlend"],
+                          "sampleNoteRenderFrames":len(sample_audio)//2,
+                          "sampleNoteRenderPeak":sample_note_peak,
+                          "sampleNotePreNotePeak":sample_lead_peak}
+                (ROOT / "web/public/main-vst3-reaper-live.json").write_text(json.dumps(report,indent=2)+"\n")
+                print(json.dumps(report))
+        except Exception:
+            if (work / "reaper.log").exists():
+                print((work / "reaper.log").read_text(errors="replace")[-2500:])
+            raise
+        finally:
+            if process is not None:
+                if process.poll() is None:
+                    os.killpg(process.pid, signal.SIGTERM)
+                process.wait(timeout=5)
+            pulse.terminate()
+            core.terminate()
+            pulse.wait(timeout=5)
+            core.wait(timeout=5)
+            pulse_log.close()
+            core_log.close()
+
+
+if __name__ == "__main__":
+    main()

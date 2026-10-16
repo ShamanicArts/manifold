@@ -1,0 +1,339 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "oscillator",
+        "a": 220,
+        "b": 0.4
+      },
+      {
+        "id": 5,
+        "type": "oscillator",
+        "a": 220,
+        "b": 0.4
+      },
+      {
+        "id": 6,
+        "type": "ring-modulator"
+      }
+    ],
+    "connections": [
+      {
+        "from": 6,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 6,
+        "inputPort": 0
+      },
+      {
+        "from": 5,
+        "outputPort": 0,
+        "to": 6,
+        "inputPort": 1
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 1,
+        "value": 110
+      },
+      {
+        "nodeId": 4,
+        "id": 2,
+        "value": 0.16
+      },
+      {
+        "nodeId": 5,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 5,
+        "id": 1,
+        "value": 330
+      },
+      {
+        "nodeId": 5,
+        "id": 2,
+        "value": 0.16
+      },
+      {
+        "nodeId": 6,
+        "id": 0,
+        "value": 180
+      },
+      {
+        "nodeId": 6,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 4,
+        "value": 1
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/primitives/ring/high/0",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 0,
+      "min": 0,
+      "max": 4,
+      "default": 1
+    },
+    {
+      "path": "/primitives/ring/high/1",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 1,
+      "min": 20,
+      "max": 16000,
+      "default": 330
+    },
+    {
+      "path": "/primitives/ring/high/2",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 2,
+      "min": 0,
+      "max": 1,
+      "default": 0.16
+    },
+    {
+      "path": "/primitives/ring/low/0",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 0,
+      "min": 0,
+      "max": 4,
+      "default": 0
+    },
+    {
+      "path": "/primitives/ring/low/1",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 1,
+      "min": 20,
+      "max": 16000,
+      "default": 110
+    },
+    {
+      "path": "/primitives/ring/low/2",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 2,
+      "min": 0,
+      "max": 1,
+      "default": 0.16
+    },
+    {
+      "path": "/primitives/ring/ring/0",
+      "kind": "parameter",
+      "nodeId": 6,
+      "id": 0,
+      "min": 0.1,
+      "max": 8000,
+      "default": 180
+    },
+    {
+      "path": "/primitives/ring/ring/1",
+      "kind": "parameter",
+      "nodeId": 6,
+      "id": 1,
+      "min": 0,
+      "max": 1,
+      "default": 1
+    },
+    {
+      "path": "/primitives/ring/ring/2",
+      "kind": "parameter",
+      "nodeId": 6,
+      "id": 2,
+      "min": 0,
+      "max": 1,
+      "default": 1
+    },
+    {
+      "path": "/primitives/ring/ring/3",
+      "kind": "parameter",
+      "nodeId": 6,
+      "id": 3,
+      "min": 0,
+      "max": 180,
+      "default": 0
+    },
+    {
+      "path": "/primitives/ring/ring/4",
+      "kind": "parameter",
+      "nodeId": 6,
+      "id": 4,
+      "min": 0,
+      "max": 1,
+      "default": 1
+    }
+  ],
+  "instances": [
+    {
+      "path": "/primitives/ring/high",
+      "nodeId": 5
+    },
+    {
+      "path": "/primitives/ring/low",
+      "nodeId": 4
+    },
+    {
+      "path": "/primitives/ring/ring",
+      "nodeId": 6
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// Ring modulator: Two actual oscillator primitives feed the carrier and modulator audio ports.\n// Audition composition of public Rust primitives; not an instrument parity claim.\n// Examples name imports so you can trace each tool to its module.\n// Alternative: import * as manifold from '@manifold/author';\n// Then use manifold.createGraphWorkspace(), manifold.gain, etc.\n// Imports — each definition can be inspected in Manifold's primitive catalog.\nimport { createGraphWorkspace } from '@manifold/author';\nimport {\n  oscillator as oscillatorDefinition,\n  ringModulator as ringModulatorDefinition,\n} from '@manifold/author/primitives';\n\nexport default function createProject() {\n  // Interface — public paths and stable IDs preserve saved controls.\n  const controls = {\n    low_waveform: {\n      \"path\": \"/primitives/ring/low/0\",\n      \"label\": \"Waveform\",\n      \"group\": \"Oscillator\",\n      \"min\": 0,\n      \"max\": 4,\n      \"default\": 0,\n      \"choices\": [\n        \"Sine\",\n        \"Saw\",\n        \"Square\",\n        \"Triangle\",\n        \"Blend\"\n      ]\n    },\n    low_frequency: {\n      \"path\": \"/primitives/ring/low/1\",\n      \"label\": \"Frequency\",\n      \"group\": \"Oscillator\",\n      \"min\": 20,\n      \"max\": 16000,\n      \"default\": 110\n    },\n    low_level: {\n      \"path\": \"/primitives/ring/low/2\",\n      \"label\": \"Level\",\n      \"group\": \"Oscillator\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0.16\n    },\n    high_waveform: {\n      \"path\": \"/primitives/ring/high/0\",\n      \"label\": \"Waveform\",\n      \"group\": \"Oscillator\",\n      \"min\": 0,\n      \"max\": 4,\n      \"default\": 1,\n      \"choices\": [\n        \"Sine\",\n        \"Saw\",\n        \"Square\",\n        \"Triangle\",\n        \"Blend\"\n      ]\n    },\n    high_frequency: {\n      \"path\": \"/primitives/ring/high/1\",\n      \"label\": \"Frequency\",\n      \"group\": \"Oscillator\",\n      \"min\": 20,\n      \"max\": 16000,\n      \"default\": 330\n    },\n    high_level: {\n      \"path\": \"/primitives/ring/high/2\",\n      \"label\": \"Level\",\n      \"group\": \"Oscillator\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0.16\n    },\n    ring_carrierHz: {\n      \"path\": \"/primitives/ring/ring/0\",\n      \"label\": \"Carrier Hz\",\n      \"group\": \"Ring modulator\",\n      \"min\": 0.1,\n      \"max\": 8000,\n      \"default\": 180\n    },\n    ring_depth: {\n      \"path\": \"/primitives/ring/ring/1\",\n      \"label\": \"Depth\",\n      \"group\": \"Ring modulator\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 1\n    },\n    ring_wetMix: {\n      \"path\": \"/primitives/ring/ring/2\",\n      \"label\": \"Wet mix\",\n      \"group\": \"Ring modulator\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 1\n    },\n    ring_spread: {\n      \"path\": \"/primitives/ring/ring/3\",\n      \"label\": \"Spread\",\n      \"group\": \"Ring modulator\",\n      \"min\": 0,\n      \"max\": 180,\n      \"default\": 0\n    },\n    ring_enabled: {\n      \"path\": \"/primitives/ring/ring/4\",\n      \"label\": \"Enabled\",\n      \"group\": \"Ring modulator\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 1,\n      \"choices\": [\n        \"Off\",\n        \"On\"\n      ]\n    },\n  };\n\n  // Audio inputs and outputs — generated sound; no audio input is needed.\n  const graph = createGraphWorkspace().setInputSource('none');\n  const output = graph.output.input('in');\n\n  // DSP instances — parameters belong to these named instances.\n  const low = graph.add(oscillatorDefinition.type, {\"id\":4});\n  graph.registerInstance('/primitives/ring/low', low);\n  low.parameter('waveform').expose(controls.low_waveform);\n  low.parameter('frequency').expose(controls.low_frequency);\n  low.parameter('level').expose(controls.low_level);\n\n  const high = graph.add(oscillatorDefinition.type, {\"id\":5});\n  graph.registerInstance('/primitives/ring/high', high);\n  high.parameter('waveform').expose(controls.high_waveform);\n  high.parameter('frequency').expose(controls.high_frequency);\n  high.parameter('level').expose(controls.high_level);\n\n  const ring = graph.add(ringModulatorDefinition.type, {\"id\":6});\n  graph.registerInstance('/primitives/ring/ring', ring);\n  ring.parameter('carrierHz').expose(controls.ring_carrierHz);\n  ring.parameter('depth').expose(controls.ring_depth);\n  ring.parameter('wetMix').expose(controls.ring_wetMix);\n  ring.parameter('spread').expose(controls.ring_spread);\n  ring.parameter('enabled').expose(controls.ring_enabled);\n\n  // Composition — named ports make the audio and control paths visible.\n  graph.connect(low.output('out'), ring.input('carrier'));\n  graph.connect(high.output('out'), ring.input('modulator'));\n  graph.connect(ring.output('out'), output);\n\n  // Presentation — both renderers bind to the controls declared above.\n  const view = [\n    controls.low_waveform,\n    controls.low_frequency,\n    controls.low_level,\n    controls.high_waveform,\n    controls.high_frequency,\n    controls.high_level,\n    controls.ring_carrierHz,\n    controls.ring_depth,\n    controls.ring_wetMix,\n    controls.ring_spread,\n    controls.ring_enabled\n  ].map(control => ({\n    id: control.path, type: 'parameter', path: control.path,\n    label: control.label, group: control.group,\n    ...(control.choices ? { choices: control.choices } : {}),\n  }));\n  function paint(ui) {\n    for (const component of view) {\n      if (component.type === 'label') ui.label(component.label, component.id);\n      else ui.parameter(component.path, component);\n    }\n  }\n\n  // The host uses this project declaration for audio, UI, save and live edits.\n  return { graph, view, paint };\n}",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "/primitives/ring/low/0",
+        "type": "parameter",
+        "path": "/primitives/ring/low/0",
+        "label": "Waveform",
+        "group": "Oscillator",
+        "choices": [
+          "Sine",
+          "Saw",
+          "Square",
+          "Triangle",
+          "Blend"
+        ]
+      },
+      {
+        "id": "/primitives/ring/low/1",
+        "type": "parameter",
+        "path": "/primitives/ring/low/1",
+        "label": "Frequency",
+        "group": "Oscillator"
+      },
+      {
+        "id": "/primitives/ring/low/2",
+        "type": "parameter",
+        "path": "/primitives/ring/low/2",
+        "label": "Level",
+        "group": "Oscillator"
+      },
+      {
+        "id": "/primitives/ring/high/0",
+        "type": "parameter",
+        "path": "/primitives/ring/high/0",
+        "label": "Waveform",
+        "group": "Oscillator",
+        "choices": [
+          "Sine",
+          "Saw",
+          "Square",
+          "Triangle",
+          "Blend"
+        ]
+      },
+      {
+        "id": "/primitives/ring/high/1",
+        "type": "parameter",
+        "path": "/primitives/ring/high/1",
+        "label": "Frequency",
+        "group": "Oscillator"
+      },
+      {
+        "id": "/primitives/ring/high/2",
+        "type": "parameter",
+        "path": "/primitives/ring/high/2",
+        "label": "Level",
+        "group": "Oscillator"
+      },
+      {
+        "id": "/primitives/ring/ring/0",
+        "type": "parameter",
+        "path": "/primitives/ring/ring/0",
+        "label": "Carrier Hz",
+        "group": "Ring modulator"
+      },
+      {
+        "id": "/primitives/ring/ring/1",
+        "type": "parameter",
+        "path": "/primitives/ring/ring/1",
+        "label": "Depth",
+        "group": "Ring modulator"
+      },
+      {
+        "id": "/primitives/ring/ring/2",
+        "type": "parameter",
+        "path": "/primitives/ring/ring/2",
+        "label": "Wet mix",
+        "group": "Ring modulator"
+      },
+      {
+        "id": "/primitives/ring/ring/3",
+        "type": "parameter",
+        "path": "/primitives/ring/ring/3",
+        "label": "Spread",
+        "group": "Ring modulator"
+      },
+      {
+        "id": "/primitives/ring/ring/4",
+        "type": "parameter",
+        "path": "/primitives/ring/ring/4",
+        "label": "Enabled",
+        "group": "Ring modulator",
+        "choices": [
+          "Off",
+          "On"
+        ]
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

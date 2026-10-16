@@ -1,0 +1,557 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.standalone-eq8",
+  "name": "Standalone EQ8",
+  "source": "legacy Standalone_Eq project and EQ8Node.cpp",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 2,
+        "type": "eq8"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "to": 2,
+        "inputPort": 0
+      },
+      {
+        "from": 2,
+        "to": 3,
+        "inputPort": 0
+      }
+    ]
+  },
+  "parameters": [
+    {
+      "id": 0,
+      "nodeId": 2,
+      "nodeParameterId": 0,
+      "hostId": "band-1-enabled",
+      "label": "Enabled",
+      "kind": "toggle",
+      "default": 0
+    },
+    {
+      "id": 1,
+      "nodeId": 2,
+      "nodeParameterId": 1,
+      "hostId": "band-1-type",
+      "label": "Type",
+      "kind": "select",
+      "choices": [
+        "Bell",
+        "Low shelf",
+        "High shelf",
+        "Low pass",
+        "High pass",
+        "Notch",
+        "Band pass"
+      ],
+      "default": 1
+    },
+    {
+      "id": 2,
+      "nodeId": 2,
+      "nodeParameterId": 2,
+      "hostId": "frequency",
+      "label": "Frequency",
+      "kind": "float",
+      "min": 20,
+      "max": 20000,
+      "default": 60,
+      "unit": "Hz"
+    },
+    {
+      "id": 3,
+      "nodeId": 2,
+      "nodeParameterId": 3,
+      "hostId": "band-1-gain",
+      "label": "Gain",
+      "kind": "float",
+      "min": -24,
+      "max": 24,
+      "default": 0,
+      "unit": "dB"
+    },
+    {
+      "id": 4,
+      "nodeId": 2,
+      "nodeParameterId": 4,
+      "hostId": "band-1-q",
+      "label": "Q",
+      "kind": "float",
+      "min": 0.1,
+      "max": 24,
+      "default": 0.8
+    },
+    {
+      "id": 5,
+      "nodeId": 2,
+      "nodeParameterId": 5,
+      "hostId": "band-2-enabled",
+      "label": "Enabled",
+      "kind": "toggle",
+      "default": 0
+    },
+    {
+      "id": 6,
+      "nodeId": 2,
+      "nodeParameterId": 6,
+      "hostId": "band-2-type",
+      "label": "Type",
+      "kind": "select",
+      "choices": [
+        "Bell",
+        "Low shelf",
+        "High shelf",
+        "Low pass",
+        "High pass",
+        "Notch",
+        "Band pass"
+      ],
+      "default": 0
+    },
+    {
+      "id": 7,
+      "nodeId": 2,
+      "nodeParameterId": 7,
+      "hostId": "frequency",
+      "label": "Frequency",
+      "kind": "float",
+      "min": 20,
+      "max": 20000,
+      "default": 120,
+      "unit": "Hz"
+    },
+    {
+      "id": 8,
+      "nodeId": 2,
+      "nodeParameterId": 8,
+      "hostId": "band-2-gain",
+      "label": "Gain",
+      "kind": "float",
+      "min": -24,
+      "max": 24,
+      "default": 0,
+      "unit": "dB"
+    },
+    {
+      "id": 9,
+      "nodeId": 2,
+      "nodeParameterId": 9,
+      "hostId": "band-2-q",
+      "label": "Q",
+      "kind": "float",
+      "min": 0.1,
+      "max": 24,
+      "default": 1
+    },
+    {
+      "id": 10,
+      "nodeId": 2,
+      "nodeParameterId": 10,
+      "hostId": "band-3-enabled",
+      "label": "Enabled",
+      "kind": "toggle",
+      "default": 0
+    },
+    {
+      "id": 11,
+      "nodeId": 2,
+      "nodeParameterId": 11,
+      "hostId": "band-3-type",
+      "label": "Type",
+      "kind": "select",
+      "choices": [
+        "Bell",
+        "Low shelf",
+        "High shelf",
+        "Low pass",
+        "High pass",
+        "Notch",
+        "Band pass"
+      ],
+      "default": 0
+    },
+    {
+      "id": 12,
+      "nodeId": 2,
+      "nodeParameterId": 12,
+      "hostId": "frequency",
+      "label": "Frequency",
+      "kind": "float",
+      "min": 20,
+      "max": 20000,
+      "default": 250,
+      "unit": "Hz"
+    },
+    {
+      "id": 13,
+      "nodeId": 2,
+      "nodeParameterId": 13,
+      "hostId": "band-3-gain",
+      "label": "Gain",
+      "kind": "float",
+      "min": -24,
+      "max": 24,
+      "default": 0,
+      "unit": "dB"
+    },
+    {
+      "id": 14,
+      "nodeId": 2,
+      "nodeParameterId": 14,
+      "hostId": "band-3-q",
+      "label": "Q",
+      "kind": "float",
+      "min": 0.1,
+      "max": 24,
+      "default": 1
+    },
+    {
+      "id": 15,
+      "nodeId": 2,
+      "nodeParameterId": 15,
+      "hostId": "band-4-enabled",
+      "label": "Enabled",
+      "kind": "toggle",
+      "default": 0
+    },
+    {
+      "id": 16,
+      "nodeId": 2,
+      "nodeParameterId": 16,
+      "hostId": "band-4-type",
+      "label": "Type",
+      "kind": "select",
+      "choices": [
+        "Bell",
+        "Low shelf",
+        "High shelf",
+        "Low pass",
+        "High pass",
+        "Notch",
+        "Band pass"
+      ],
+      "default": 0
+    },
+    {
+      "id": 17,
+      "nodeId": 2,
+      "nodeParameterId": 17,
+      "hostId": "frequency",
+      "label": "Frequency",
+      "kind": "float",
+      "min": 20,
+      "max": 20000,
+      "default": 500,
+      "unit": "Hz"
+    },
+    {
+      "id": 18,
+      "nodeId": 2,
+      "nodeParameterId": 18,
+      "hostId": "band-4-gain",
+      "label": "Gain",
+      "kind": "float",
+      "min": -24,
+      "max": 24,
+      "default": 0,
+      "unit": "dB"
+    },
+    {
+      "id": 19,
+      "nodeId": 2,
+      "nodeParameterId": 19,
+      "hostId": "band-4-q",
+      "label": "Q",
+      "kind": "float",
+      "min": 0.1,
+      "max": 24,
+      "default": 1
+    },
+    {
+      "id": 20,
+      "nodeId": 2,
+      "nodeParameterId": 20,
+      "hostId": "band-5-enabled",
+      "label": "Enabled",
+      "kind": "toggle",
+      "default": 0
+    },
+    {
+      "id": 21,
+      "nodeId": 2,
+      "nodeParameterId": 21,
+      "hostId": "band-5-type",
+      "label": "Type",
+      "kind": "select",
+      "choices": [
+        "Bell",
+        "Low shelf",
+        "High shelf",
+        "Low pass",
+        "High pass",
+        "Notch",
+        "Band pass"
+      ],
+      "default": 0
+    },
+    {
+      "id": 22,
+      "nodeId": 2,
+      "nodeParameterId": 22,
+      "hostId": "frequency",
+      "label": "Frequency",
+      "kind": "float",
+      "min": 20,
+      "max": 20000,
+      "default": 1000,
+      "unit": "Hz"
+    },
+    {
+      "id": 23,
+      "nodeId": 2,
+      "nodeParameterId": 23,
+      "hostId": "band-5-gain",
+      "label": "Gain",
+      "kind": "float",
+      "min": -24,
+      "max": 24,
+      "default": 0,
+      "unit": "dB"
+    },
+    {
+      "id": 24,
+      "nodeId": 2,
+      "nodeParameterId": 24,
+      "hostId": "band-5-q",
+      "label": "Q",
+      "kind": "float",
+      "min": 0.1,
+      "max": 24,
+      "default": 1
+    },
+    {
+      "id": 25,
+      "nodeId": 2,
+      "nodeParameterId": 25,
+      "hostId": "band-6-enabled",
+      "label": "Enabled",
+      "kind": "toggle",
+      "default": 0
+    },
+    {
+      "id": 26,
+      "nodeId": 2,
+      "nodeParameterId": 26,
+      "hostId": "band-6-type",
+      "label": "Type",
+      "kind": "select",
+      "choices": [
+        "Bell",
+        "Low shelf",
+        "High shelf",
+        "Low pass",
+        "High pass",
+        "Notch",
+        "Band pass"
+      ],
+      "default": 0
+    },
+    {
+      "id": 27,
+      "nodeId": 2,
+      "nodeParameterId": 27,
+      "hostId": "frequency",
+      "label": "Frequency",
+      "kind": "float",
+      "min": 20,
+      "max": 20000,
+      "default": 2500,
+      "unit": "Hz"
+    },
+    {
+      "id": 28,
+      "nodeId": 2,
+      "nodeParameterId": 28,
+      "hostId": "band-6-gain",
+      "label": "Gain",
+      "kind": "float",
+      "min": -24,
+      "max": 24,
+      "default": 0,
+      "unit": "dB"
+    },
+    {
+      "id": 29,
+      "nodeId": 2,
+      "nodeParameterId": 29,
+      "hostId": "band-6-q",
+      "label": "Q",
+      "kind": "float",
+      "min": 0.1,
+      "max": 24,
+      "default": 1
+    },
+    {
+      "id": 30,
+      "nodeId": 2,
+      "nodeParameterId": 30,
+      "hostId": "band-7-enabled",
+      "label": "Enabled",
+      "kind": "toggle",
+      "default": 0
+    },
+    {
+      "id": 31,
+      "nodeId": 2,
+      "nodeParameterId": 31,
+      "hostId": "band-7-type",
+      "label": "Type",
+      "kind": "select",
+      "choices": [
+        "Bell",
+        "Low shelf",
+        "High shelf",
+        "Low pass",
+        "High pass",
+        "Notch",
+        "Band pass"
+      ],
+      "default": 0
+    },
+    {
+      "id": 32,
+      "nodeId": 2,
+      "nodeParameterId": 32,
+      "hostId": "frequency",
+      "label": "Frequency",
+      "kind": "float",
+      "min": 20,
+      "max": 20000,
+      "default": 6000,
+      "unit": "Hz"
+    },
+    {
+      "id": 33,
+      "nodeId": 2,
+      "nodeParameterId": 33,
+      "hostId": "band-7-gain",
+      "label": "Gain",
+      "kind": "float",
+      "min": -24,
+      "max": 24,
+      "default": 0,
+      "unit": "dB"
+    },
+    {
+      "id": 34,
+      "nodeId": 2,
+      "nodeParameterId": 34,
+      "hostId": "band-7-q",
+      "label": "Q",
+      "kind": "float",
+      "min": 0.1,
+      "max": 24,
+      "default": 1
+    },
+    {
+      "id": 35,
+      "nodeId": 2,
+      "nodeParameterId": 35,
+      "hostId": "band-8-enabled",
+      "label": "Enabled",
+      "kind": "toggle",
+      "default": 0
+    },
+    {
+      "id": 36,
+      "nodeId": 2,
+      "nodeParameterId": 36,
+      "hostId": "band-8-type",
+      "label": "Type",
+      "kind": "select",
+      "choices": [
+        "Bell",
+        "Low shelf",
+        "High shelf",
+        "Low pass",
+        "High pass",
+        "Notch",
+        "Band pass"
+      ],
+      "default": 2
+    },
+    {
+      "id": 37,
+      "nodeId": 2,
+      "nodeParameterId": 37,
+      "hostId": "frequency",
+      "label": "Frequency",
+      "kind": "float",
+      "min": 20,
+      "max": 20000,
+      "default": 12000,
+      "unit": "Hz"
+    },
+    {
+      "id": 38,
+      "nodeId": 2,
+      "nodeParameterId": 38,
+      "hostId": "band-8-gain",
+      "label": "Gain",
+      "kind": "float",
+      "min": -24,
+      "max": 24,
+      "default": 0,
+      "unit": "dB"
+    },
+    {
+      "id": 39,
+      "nodeId": 2,
+      "nodeParameterId": 39,
+      "hostId": "band-8-q",
+      "label": "Q",
+      "kind": "float",
+      "min": 0.1,
+      "max": 24,
+      "default": 1
+    },
+    {
+      "id": 40,
+      "nodeId": 2,
+      "nodeParameterId": 40,
+      "hostId": "output",
+      "label": "Output",
+      "kind": "float",
+      "min": -24,
+      "max": 24,
+      "default": 0,
+      "unit": "dB"
+    },
+    {
+      "id": 41,
+      "nodeId": 2,
+      "nodeParameterId": 41,
+      "hostId": "mix",
+      "label": "Dry / wet",
+      "kind": "float",
+      "min": 0,
+      "max": 1,
+      "default": 1
+    }
+  ]
+}

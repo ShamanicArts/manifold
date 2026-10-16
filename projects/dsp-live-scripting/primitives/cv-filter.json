@@ -1,0 +1,217 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "external",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "lfo",
+        "a": 2
+      },
+      {
+        "id": 5,
+        "type": "modulated-svf",
+        "a": 2000
+      }
+    ],
+    "connections": [
+      {
+        "from": 5,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 5,
+        "inputPort": 0
+      },
+      {
+        "from": 4,
+        "outputPort": 2,
+        "to": 5,
+        "inputPort": 1
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 5,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 5,
+        "id": 1,
+        "value": 2000
+      },
+      {
+        "nodeId": 5,
+        "id": 2,
+        "value": 0.75
+      },
+      {
+        "nodeId": 5,
+        "id": 3,
+        "value": 5000
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/primitives/cv-filter/filter/0",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 0,
+      "min": 0,
+      "max": 3,
+      "default": 0
+    },
+    {
+      "path": "/primitives/cv-filter/filter/1",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 1,
+      "min": 20,
+      "max": 20000,
+      "default": 2000
+    },
+    {
+      "path": "/primitives/cv-filter/filter/2",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 2,
+      "min": 0.1,
+      "max": 1,
+      "default": 0.75
+    },
+    {
+      "path": "/primitives/cv-filter/filter/3",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 3,
+      "min": 0,
+      "max": 20000,
+      "default": 5000
+    },
+    {
+      "path": "/primitives/cv-filter/lfo/0",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 0,
+      "min": 0,
+      "max": 2,
+      "default": 0
+    },
+    {
+      "path": "/primitives/cv-filter/lfo/1",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 1,
+      "min": 0.05,
+      "max": 20,
+      "default": 1
+    }
+  ],
+  "instances": [
+    {
+      "path": "/primitives/cv-filter/filter",
+      "nodeId": 5
+    },
+    {
+      "path": "/primitives/cv-filter/lfo",
+      "nodeId": 4
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// CV filter: An LFO controls cutoff through a typed CV cable; base cutoff, resonance and depth stay live.\n// Audition composition of public Rust primitives; not an instrument parity claim.\n// Examples name imports so you can trace each tool to its module.\n// Alternative: import * as manifold from '@manifold/author';\n// Then use manifold.createGraphWorkspace(), manifold.gain, etc.\n// Imports — each definition can be inspected in Manifold's primitive catalog.\nimport { createGraphWorkspace } from '@manifold/author';\nimport {\n  lfo as lfoDefinition,\n  modulatedSvf as modulatedSvfDefinition,\n} from '@manifold/author/primitives';\n\nexport default function createProject() {\n  // Interface — public paths and stable IDs preserve saved controls.\n  const controls = {\n    lfo_waveform: {\n      \"path\": \"/primitives/cv-filter/lfo/0\",\n      \"label\": \"Waveform\",\n      \"group\": \"LFO\",\n      \"min\": 0,\n      \"max\": 2,\n      \"default\": 0,\n      \"choices\": [\n        \"Sine\",\n        \"Triangle\",\n        \"Square\"\n      ]\n    },\n    lfo_rate: {\n      \"path\": \"/primitives/cv-filter/lfo/1\",\n      \"label\": \"Rate\",\n      \"group\": \"LFO\",\n      \"min\": 0.05,\n      \"max\": 20,\n      \"default\": 1\n    },\n    filter_mode: {\n      \"path\": \"/primitives/cv-filter/filter/0\",\n      \"label\": \"Mode\",\n      \"group\": \"CV filter\",\n      \"min\": 0,\n      \"max\": 3,\n      \"default\": 0,\n      \"choices\": [\n        \"Low pass\",\n        \"Band pass\",\n        \"High pass\",\n        \"Notch\"\n      ]\n    },\n    filter_cutoff: {\n      \"path\": \"/primitives/cv-filter/filter/1\",\n      \"label\": \"Cutoff\",\n      \"group\": \"CV filter\",\n      \"min\": 20,\n      \"max\": 20000,\n      \"default\": 2000\n    },\n    filter_resonance: {\n      \"path\": \"/primitives/cv-filter/filter/2\",\n      \"label\": \"Resonance\",\n      \"group\": \"CV filter\",\n      \"min\": 0.1,\n      \"max\": 1,\n      \"default\": 0.75\n    },\n    filter_cvDepthHz: {\n      \"path\": \"/primitives/cv-filter/filter/3\",\n      \"label\": \"CV depth Hz\",\n      \"group\": \"CV filter\",\n      \"min\": 0,\n      \"max\": 20000,\n      \"default\": 5000\n    },\n  };\n\n  // Audio inputs and outputs — the host supplies the external audio input.\n  const graph = createGraphWorkspace().setInputSource('external');\n  const input = graph.input.output('out');\n  const output = graph.output.input('in');\n\n  // DSP instances — parameters belong to these named instances.\n  const lfo = graph.add(lfoDefinition.type, {\"id\":4});\n  graph.registerInstance('/primitives/cv-filter/lfo', lfo);\n  lfo.parameter('waveform').expose(controls.lfo_waveform);\n  lfo.parameter('rate').expose(controls.lfo_rate);\n\n  const filter = graph.add(modulatedSvfDefinition.type, {\"id\":5});\n  graph.registerInstance('/primitives/cv-filter/filter', filter);\n  filter.parameter('mode').expose(controls.filter_mode);\n  filter.parameter('cutoff').expose(controls.filter_cutoff);\n  filter.parameter('resonance').expose(controls.filter_resonance);\n  filter.parameter('cvDepthHz').expose(controls.filter_cvDepthHz);\n\n  // Composition — named ports make the audio and control paths visible.\n  graph.connect(input, filter.input('audio'));\n  graph.connect(lfo.output('uni'), filter.input('cv'));\n  graph.connect(filter.output('out'), output);\n\n  // Presentation — both renderers bind to the controls declared above.\n  const view = [\n    controls.lfo_waveform,\n    controls.lfo_rate,\n    controls.filter_mode,\n    controls.filter_cutoff,\n    controls.filter_resonance,\n    controls.filter_cvDepthHz\n  ].map(control => ({\n    id: control.path, type: 'parameter', path: control.path,\n    label: control.label, group: control.group,\n    ...(control.choices ? { choices: control.choices } : {}),\n  }));\n  function paint(ui) {\n    for (const component of view) {\n      if (component.type === 'label') ui.label(component.label, component.id);\n      else ui.parameter(component.path, component);\n    }\n  }\n\n  // The host uses this project declaration for audio, UI, save and live edits.\n  return { graph, view, paint };\n}",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "/primitives/cv-filter/lfo/0",
+        "type": "parameter",
+        "path": "/primitives/cv-filter/lfo/0",
+        "label": "Waveform",
+        "group": "LFO",
+        "choices": [
+          "Sine",
+          "Triangle",
+          "Square"
+        ]
+      },
+      {
+        "id": "/primitives/cv-filter/lfo/1",
+        "type": "parameter",
+        "path": "/primitives/cv-filter/lfo/1",
+        "label": "Rate",
+        "group": "LFO"
+      },
+      {
+        "id": "/primitives/cv-filter/filter/0",
+        "type": "parameter",
+        "path": "/primitives/cv-filter/filter/0",
+        "label": "Mode",
+        "group": "CV filter",
+        "choices": [
+          "Low pass",
+          "Band pass",
+          "High pass",
+          "Notch"
+        ]
+      },
+      {
+        "id": "/primitives/cv-filter/filter/1",
+        "type": "parameter",
+        "path": "/primitives/cv-filter/filter/1",
+        "label": "Cutoff",
+        "group": "CV filter"
+      },
+      {
+        "id": "/primitives/cv-filter/filter/2",
+        "type": "parameter",
+        "path": "/primitives/cv-filter/filter/2",
+        "label": "Resonance",
+        "group": "CV filter"
+      },
+      {
+        "id": "/primitives/cv-filter/filter/3",
+        "type": "parameter",
+        "path": "/primitives/cv-filter/filter/3",
+        "label": "CV depth Hz",
+        "group": "CV filter"
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

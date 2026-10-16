@@ -1,0 +1,2773 @@
+import './style.css';
+import filterProject from '../../projects/standalone-filter/project.json';
+import crossfaderProject from '../../projects/crossfader/project.json';
+import mixerProject from '../../projects/mixer/project.json';
+import voiceProject from '../../projects/voice-synth/project.json';
+import transposeProject from '../../projects/midi-transpose/project.json';
+import noteFilterProject from '../../projects/midi-note-filter/project.json';
+import scaleQuantizerProject from '../../projects/midi-scale-quantizer/project.json';
+import velocityMapperProject from '../../projects/midi-velocity-mapper/project.json';
+import arpeggiatorProject from '../../projects/midi-arpeggiator/project.json';
+import oscillatorProject from '../../projects/oscillator/project.json';
+import adsrProject from '../../projects/adsr/project.json';
+import noiseProject from '../../projects/noise/project.json';
+import patchProject from '../../projects/synth-patch/project.json';
+import graphWorkspaceProject from '../../projects/graph-workspace/project.json';
+import { NODE_TYPES, graphNoteTarget } from './graph/topology.js';
+import modulationProject from '../../projects/modulated-gain/project.json';
+import distortionProject from '../../projects/distortion/project.json';
+import phaserProject from '../../projects/phaser/project.json';
+import chorusProject from '../../projects/chorus/project.json';
+import eq8Project from '../../projects/standalone-eq8/project.json';
+import waveshaperProject from '../../projects/waveshaper/project.json';
+import widenerProject from '../../projects/stereo-widener/project.json';
+import legacyFilterProject from '../../projects/legacy-filter/project.json';
+import reverbProject from '../../projects/reverb/project.json';
+import multitapProject from '../../projects/multitap/project.json';
+import ringProject from '../../projects/ring-modulator/project.json';
+import transientProject from '../../projects/transient-shaper/project.json';
+import bitcrusherProject from '../../projects/bitcrusher/project.json';
+import eqNodeProject from '../../projects/eq-node/project.json';
+import formantProject from '../../projects/formant/project.json';
+import resonatorProject from '../../projects/resonator/project.json';
+import sineBankProject from '../../projects/sine-bank/project.json';
+import mainSampleBlendProject from '../../projects/main-sample-blend/project.json';
+const mainSampleBlendInitialPartials = structuredClone(mainSampleBlendProject.partials);
+const mainSampleBlendInitialExtraPartials = structuredClone(mainSampleBlendProject.extraPartials);
+import reverseDelayProject from '../../projects/reverse-delay/project.json';
+import stutterProject from '../../projects/stutter/project.json';
+import pitchShifterProject from '../../projects/pitch-shifter/project.json';
+import phaseVocoderProject from '../../projects/phase-vocoder/project.json';
+import shimmerProject from '../../projects/shimmer/project.json';
+import granulatorProject from '../../projects/granulator/project.json';
+import compressorProject from '../../projects/compressor/project.json';
+import limiterProject from '../../projects/limiter/project.json';
+import stereoDelayProject from '../../projects/stereo-delay/project.json';
+import fxChainProject from '../../projects/fx-chain/project.json';
+import standaloneFxProject from '../../projects/standalone-fx-slice/project.json';
+import loopCaptureProject from '../../projects/loop-capture/project.json';
+import sampleRegionProject from '../../projects/sample-region/project.json';
+import sampleInstrumentProject from '../../projects/sample-instrument/project.json';
+import mainVoiceBankProject from '../../projects/main-voice-bank/project.json';
+const mainVoiceBankInitialPartials = structuredClone(mainVoiceBankProject.partials);
+const mainVoiceBankInitialExtraPartials = structuredClone(mainVoiceBankProject.extraPartials);
+import spectrumAnalyzerProject from '../../projects/spectrum-analyzer/project.json';
+import fftSpectrumProject from '../../projects/fft-spectrum/project.json';
+import slewAudioProject from '../../projects/slew-audio/project.json';
+import slewModulationProject from '../../projects/slew-modulation/project.json';
+import cvRackProject from '../../projects/cv-rack/project.json';
+import envelopeFollowerProject from '../../projects/envelope-follower/project.json';
+import envelopeDuckingProject from '../../projects/envelope-ducking/project.json';
+import { BrowserAudioHost } from './audio/browser-host.js';
+import { createBrowserLiveSession } from './graph/live-routing.js';
+import { BrowserMidiInput, midiAvailability } from './audio/midi-input.js';
+import { MidiHoldState } from './audio/midi-hold.js';
+import { initializeReferenceLab } from './reference/comparison.js';
+import { drawLiveSpectrum, drawTransferCurve, drawMeterTrace, drawBandBars, drawEqResponse } from './reference/plots.js';
+import { captureStandaloneFxState, parseStandaloneFxState, capturePersistentFxState, parsePersistentFxState } from './state/standalone-fx.js';
+import { captureControlPatchState, parseControlPatchState } from './state/control-patch.js';
+import { captureMainSampleBlendState, parseMainSampleBlendState } from './state/main-sample-blend.js';
+import { captureMainVoiceBankState, parseMainVoiceBankState } from './state/main-voice-bank.js';
+import { captureProjectDocument, captureProjectPreset, applyProjectPreset, parseProjectDocument } from './state/project-document.js';
+import { mountGraphEditor } from './graph/editor.js';
+
+const byId = (id) => document.getElementById(id);
+const primitivePicker = byId('primitive-picker');
+const status = byId('status');
+const toggle = byId('audio-toggle');
+const legacyFxProject = structuredClone(standaloneFxProject);
+legacyFxProject.id = 'manifold.standalone-fx-routing';
+legacyFxProject.name = 'Standalone FX tails';
+legacyFxProject.signal.nodes.find((node) => node.id === 2).type = 'effect-slot-legacy';
+legacyFxProject.signal.nodes.find((node) => node.id === 2).a = 8;
+legacyFxProject.signal.nodes.find((node) => node.id === 2).b = 1;
+legacyFxProject.parameters.find((parameter) => parameter.id === 0).default = 8;
+legacyFxProject.parameters.find((parameter) => parameter.id === 1).default = 1;
+for (const [id, value] of [[2, 0], [3, 0.6], [4, 0.5], [5, 0.5], [6, 0.5]]) {
+  legacyFxProject.parameters.find((parameter) => parameter.id === id).default = value;
+  legacyFxProject.signal.initialParameters.find((parameter) => parameter.id === id).value = value;
+}
+const hostFxProject = structuredClone(legacyFxProject);
+hostFxProject.id = 'manifold.standalone-fx-host';
+hostFxProject.name = 'FX host switch';
+hostFxProject.signal.nodes.find((node) => node.id === 2).type = 'effect-slot-host-switch';
+const hostFxChoice = hostFxProject.parameters.find((parameter) => parameter.id === 0);
+hostFxChoice.choices = ['Chorus', 'Phaser', 'Compressor', 'Stereo Widener', 'Filter', 'SVF Filter', 'Reverb', 'Stereo Delay', 'Ring Mod', 'Transient', 'BitCrusher'];
+hostFxChoice.choiceValues = [0, 1, 3, 4, 5, 6, 7, 8, 12, 16, 17];
+const isFxFamily = (family) => ['standalone-fx', 'standalone-fx-routing', 'standalone-fx-host'].includes(family);
+const hasFxState = (family) => family === 'standalone-fx' || family === 'standalone-fx-routing';
+const projects = {
+  svf: {
+    project: filterProject,
+    title: 'SVF filter',
+    description: 'Four filter modes with smoothed cutoff and resonance. This is the first slice of the historical Standalone Filter project.',
+    signal: 'Live path: input → SVF → output',
+  },
+  crossfader: {
+    project: crossfaderProject,
+    title: 'Crossfader',
+    description: 'Move between two stereo signals. Choose linear or equal power behavior, then blend the result with the dry input.',
+    signal: 'Live path: input ↘ A · input → lowpass → B · A/B → output',
+  },
+  mixer: {
+    project: mixerProject,
+    title: 'Mixer',
+    description: 'Sum stereo buses with independent gain and equal-power pan, then apply a smoothed master level. The graph supports up to 32 buses.',
+    signal: 'Live path: input → bus A · input → lowpass → bus B · mixer → output',
+  },
+  voice: {
+    project: voiceProject,
+    title: 'Voice synth',
+    description: 'An eight voice Rust instrument with note events at audio sample offsets. Sine, saw, square and triangle share an attack, decay, sustain and release envelope.',
+    signal: 'Event path: keyboard → timed note → voice synth → output',
+  },
+  'midi-transpose': {
+    project: transposeProject,
+    title: 'MIDI transpose',
+    description: 'The old Standalone Transpose MIDI effect now runs in Rust before an eight-voice instrument. Change semitones while holding a note to hear its output note release and restart.',
+    signal: 'Event path: keyboard / MIDI → Rust transpose → timed voice events → output',
+  },
+  'midi-note-filter': {
+    project: noteFilterProject,
+    title: 'MIDI note filter',
+    description: 'Pass notes inside or outside a chosen MIDI range. Held keys are rechecked when the range changes, so moving a boundary releases or starts a note immediately.',
+    signal: 'Event path: keyboard / MIDI → Rust note filter → voice synth → output',
+  },
+  'midi-scale-quantizer': {
+    project: scaleQuantizerProject,
+    title: 'MIDI scale quantizer',
+    description: 'Snap incoming notes to a root and scale. Change direction, root or scale while a note is held to hear its output release and remap.',
+    signal: 'Event path: keyboard / MIDI → Rust scale quantizer → voice synth → output',
+  },
+  'midi-velocity-mapper': {
+    project: velocityMapperProject,
+    title: 'MIDI velocity mapper',
+    description: 'Shape each incoming note velocity with the old rack amplitude curve. Amount, Curve, and Offset retrigger held notes so the changed level is audible.',
+    signal: 'Event path: keyboard / MIDI → Rust velocity mapper → voice synth → output',
+  },
+  'midi-arpeggiator': {
+    project: arpeggiatorProject,
+    title: 'MIDI arpeggiator',
+    description: 'Turn held notes into timed steps. The first step waits 30 ms to collect a chord; rate, mode, octave span, gate, and hold shape the sequence.',
+    signal: 'Event path: keyboard / MIDI → Rust arpeggiator → timed voice synth events → output',
+  },
+  oscillator: {
+    project: oscillatorProject,
+    title: 'Oscillator',
+    description: 'The original standard waveform generator, ported to Rust with frequency and amplitude smoothing. This view covers five scalar modes.',
+    signal: 'Audio path: oscillator → stereo output',
+  },
+  adsr: {
+    project: adsrProject,
+    title: 'ADSR envelope',
+    description: 'Shape a stereo signal with attack, decay, sustain and release. The Rust gate also releases during attack or decay.',
+    signal: 'Audio path: oscillator → ADSR → stereo output',
+  },
+  noise: {
+    project: noiseProject,
+    title: 'Noise generator',
+    description: 'Seeded stereo noise with a level control and a color filter from bright to dark.',
+    signal: 'Audio path: noise → stereo output',
+  },
+  patch: {
+    project: patchProject,
+    title: 'Synth patch',
+    description: 'Mix a pitched oscillator with colored noise, shape both with an envelope, then sweep the lowpass filter with a Rust LFO.',
+    signal: 'Audio: oscillator + noise → ADSR → SVF → output · CV: LFO → cutoff',
+  },
+  'graph-workspace': {
+    project: graphWorkspaceProject,
+    title: 'Graph workspace',
+    description: 'Build a stereo graph from Rust audio, CV, and MIDI nodes. Typed ports, cycle checks, and project JSON make topology changes inspectable before the next audio start.',
+    signal: 'Audio / CV / MIDI → editable Rust graph → stereo output',
+  },
+  modulation: {
+    project: modulationProject,
+    title: 'LFO modulation',
+    description: 'An audio oscillator passes through a gain controlled at sample rate by a separate bipolar LFO signal. Set the base gain and modulation depth independently.',
+    signal: 'Audio: oscillator → gain → output · CV: LFO → gain depth',
+  },
+  distortion: {
+    project: distortionProject,
+    title: 'Distortion',
+    description: 'Shape stereo audio with a smoothed drive, a dry/wet blend, and output gain. The final signal is clamped to the audio range.',
+    signal: 'Live path: input → distortion → stereo output',
+  },
+  phaser: {
+    project: phaserProject,
+    title: 'Stereo phaser',
+    description: 'Sweep six or twelve all-pass stages with a shared LFO. Feedback and stereo phase spread shape the movement; the dry signal remains at half level.',
+    signal: 'Live path: input → stereo phaser → output',
+  },
+  chorus: {
+    project: chorusProject,
+    title: 'Stereo chorus',
+    description: 'Blend dry stereo audio with up to four modulated delay voices. Choose a sine or triangle LFO, then set depth, spread, feedback, and mix.',
+    signal: 'Live path: input → stereo chorus → output',
+  },
+  eq8: {
+    project: eq8Project,
+    title: 'Standalone EQ8',
+    description: 'Eight independently switchable bands from the original Standalone EQ project. Each band can be a bell, shelf, pass filter, notch, or band pass.',
+    signal: 'Live path: input → eight serial EQ bands → output gain / mix → stereo output',
+  },
+  waveshaper: {
+    project: waveshaperProject,
+    title: 'WaveShaper',
+    description: 'The original seven curve stereo shaper, with bias, dry/wet mix, and pre/post tone filters. The legacy 1×/2×/4× setting only changes filter coefficients.',
+    signal: 'Live path: input → pre filter → drive and curve → post filter → mix → output',
+  },
+  'stereo-widener': {
+    project: widenerProject,
+    title: 'Stereo widener',
+    description: 'Change high-band stereo width while keeping bass centered. A bounded Rust correlation meter reports the processed stereo relationship.',
+    signal: 'Live path: input → low/high split → mono bass + mid/side width → stereo output',
+  },
+  'legacy-filter': {
+    project: legacyFilterProject,
+    title: 'FilterNode',
+    description: 'The original two-pole lowpass FilterNode with smoothed cutoff, resonance feedback, and dry/wet mix. This is distinct from the Standalone Filter SVF.',
+    signal: 'Live path: input → two-pole resonant lowpass → dry/wet mix → output',
+  },
+  reverb: {
+    project: reverbProject,
+    title: 'Reverb',
+    description: 'A prepared stereo FreeVerb-style network with room size, damping, wet/dry levels, and stereo width. The reverb tail continues across audio blocks.',
+    signal: 'Live path: input → stereo comb/allpass network → dry/wet output',
+  },
+  multitap: {
+    project: multitapProject,
+    title: 'Multitap delay',
+    description: 'Eight independently timed and panned taps with feedback. The first two tap controls are shown here; other taps keep the original defaults and all eight are exercised by the C++ comparisons.',
+    signal: 'Live path: input → prepared eight-tap stereo delay → dry/wet output',
+  },
+  'ring-modulator': {
+    project: ringProject,
+    title: 'Ring modulator',
+    description: 'Multiply stereo audio by an internal oscillator or a routed stereo modulation bus. Switch the modulation input live, then compare both paths with the C++ cases below.',
+    signal: 'Live path: input × internal oscillator or stereo input copy → dry/wet output',
+  },
+  'transient-shaper': {
+    project: transientProject,
+    title: 'Transient shaper',
+    description: 'Fast and slow stereo envelope followers distinguish attack from body. Adjust attack and sustain gain while viewing the original block transient meter.',
+    signal: 'Live path: input → dual envelope transient gain → stereo output · meter → transient strength',
+  },
+  bitcrusher: {
+    project: bitcrusherProject,
+    title: 'BitCrusher',
+    description: 'Quantize and hold stereo samples, then blend them with dry audio. XOR and gate modes use a second stereo bus when one is connected; the C++ comparison includes that route.',
+    signal: 'Live path: input → quantize / hold → dry/wet output',
+  },
+  'eq-node': {
+    project: eqNodeProject,
+    title: 'Three-band EQNode',
+    description: 'The original low shelf, peaking mid, and high shelf EQ. Sweep each band, its frequency and Q, then compare its stereo output with the C++ node below.',
+    signal: 'Live path: input → low shelf → mid peak → high shelf → output trim / mix',
+  },
+  formant: {
+    project: formantProject,
+    title: 'Formant filter',
+    description: 'Morph among A, E, I, O, and U with three moving resonant bands. Formant shift, resonance, drive, and wet mix follow the original node.',
+    signal: 'Live path: input → drive → three parallel vowel bands → saturation / mix → output',
+  },
+  resonator: {
+    project: resonatorProject,
+    title: 'Resonator',
+    description: 'A stereo bandpass with a moving centre frequency and Q. The original node smooths parameter changes across each audio block.',
+    signal: 'Live path: stereo input → resonant bandpass → stereo output',
+  },
+  'sine-bank': {
+    project: sineBankProject,
+    title: 'Sine bank',
+    description: 'The legacy manual additive bank: 32 partial slots, up to eight unison voices, stereo spread, and four drive shapes. Edit partial levels while the Rust audio engine runs.',
+    signal: 'Partial editor → bounded Wasm upload → Rust sine bank → stereo output',
+  },
+  'main-sample-blend': {
+    project: mainSampleBlendProject,
+    title: 'Main sample blend',
+    description: 'An authored Main sample synth slice: wave/sample and additive wave/source crossfades meet at the branch mixer, then pass through the old voice-mix bus. Rust maps one voice note to wave, sample, and vocoder pitch; FM and Sync update source motion once per audio block.',
+    signal: 'Voice frequency + root/keytrack → Rust pitch map → wave pitch / sample speed / vocoder · file → sample region → vocoder → sample stage gain · Rust FM/Sync motion → source rates / retrigger · raw sample → optional wave sync · wave → base crossfade · worker → two Sine banks → Add crossfade → phrase gain · branch mixer → voice mix → output',
+  },
+  'reverse-delay': {
+    project: reverseDelayProject,
+    title: 'Reverse delay',
+    description: 'Read short stereo windows backwards from a prepared delay ring. The window has a triangular envelope; feedback and wet mix shape the tail.',
+    signal: 'Live path: input → stereo delay ring → reverse windows → feedback / mix → output',
+  },
+  stutter: {
+    project: stutterProject,
+    title: 'Stutter',
+    description: 'Repeat short stereo fragments with a gate, filter and pitch decay. A seeded probability and eight-step bit mask decide which fragments stutter.',
+    signal: 'Live path: input → prepared stereo ring → reverse fragment / gate → wet mix',
+  },
+  'pitch-shifter': {
+    project: pitchShifterProject,
+    title: 'Pitch shifter',
+    description: 'Two overlapping delay read heads resample a stereo input with triangular windows. Adjust semitone shift, window length, feedback, and wet mix.',
+    signal: 'Live path: input → two overlapping read heads / feedback → dry/wet output',
+  },
+  'phase-vocoder': {
+    project: phaseVocoderProject,
+    title: 'Phase vocoder',
+    description: 'FFT analysis and overlap-add resynthesis with bin mapping or time stretch plus resampling. The Rust stereo read cursor corrects an old high-quality mode channel mismatch.',
+    signal: 'Live path: stereo input → windowed FFT / phase tracking → overlap-add → output',
+  },
+  shimmer: {
+    project: shimmerProject,
+    title: 'Shimmer',
+    description: 'A long stereo delay with pitched read positions, slow stereo modulation, and filtered feedback. Adjust the delay size and pitch, then listen through the wet mix.',
+    signal: 'Live path: input → modulated pitched delay → filtered feedback → dry/wet output',
+  },
+  granulator: {
+    project: granulatorProject,
+    title: 'Granulator',
+    description: 'The capture ring records stereo input and spawns up to 64 grains. Grain size, density, position, pitch, spray, envelope, and freeze shape the result. The first grains need time to fill the ring.',
+    signal: 'Live path: input → four-second capture ring → grain cloud → dry/wet output',
+  },
+  compressor: {
+    project: compressorProject,
+    title: 'Compressor',
+    description: 'Legacy scalar stereo compression with threshold, ratio, makeup, and dry/wet mix. Gain reduction is shown below in dB.',
+    signal: 'Live path: input → compressor → stereo output · meter → gain reduction',
+  },
+  limiter: {
+    project: limiterProject,
+    title: 'Limiter',
+    description: 'Legacy stereo peak limiter with immediate gain clamp, smoothed release, optional soft clip, and dry/wet mix. Average gain reduction appears below.',
+    signal: 'Live path: input → peak limiter → stereo output · meter → average reduction',
+  },
+  'fx-chain': {
+    project: fxChainProject,
+    title: 'FX chain',
+    description: 'An authored v2 project combining distortion, stereo delay, and a filtered branch. Each stage has its own editable mix.',
+    signal: 'Live path: input → distortion → stereo delay → filter blend → output',
+  },
+  'standalone-fx': {
+    project: standaloneFxProject,
+    title: 'Standalone FX slice',
+    description: 'A swappable effects slot using all 21 original type IDs and normalized controls. Each type runs a prepared Rust effect; the fifth normalized control is unused by many original definitions.',
+    signal: 'Live path: input → selected effect → dry/wet mix → output',
+  },
+  'standalone-fx-routing': {
+    project: legacyFxProject,
+    title: 'Standalone FX tails',
+    description: 'The prepared routing experiment keeps every visited effect processing behind its closed output gate. Switch Delay → Chorus → Delay to hear a returning tail; the isolated old C++ node comparison captures the same switch.',
+    signal: 'Live path: input → visited effects → selected wet gate → legacy gain/mix → output',
+  },
+  'standalone-fx-host': {
+    project: hostFxProject,
+    title: 'FX host switch',
+    description: 'The old graph rebuild snaps gates on each type change. Compare Delay with ten visited effects measured from the C++ graph runtime. Ring Mod exposes the old empty-modulator-bus behavior; Widener, Filter, Transient, and BitCrusher clear signal state on reprepare.',
+    signal: 'Live path: input → visited effects → re-prepared wet gate → legacy gain/mix → output',
+  },
+  'loop-capture': {
+    project: loopCaptureProject,
+    title: 'Loop capture',
+    description: 'Record up to two seconds of stereo input, then play it as a loop. Reverse, change speed, or overdub new sound.',
+    signal: 'Live path: input → bounded capture / loop playback → output',
+  },
+  'sample-region': {
+    project: sampleRegionProject,
+    title: 'Sample region',
+    description: 'Load an audio file, select a playback region, and trigger a loop or one-shot. Decoding happens before the Rust audio callback.',
+    signal: 'File decode → prepared stereo sample → region playback → output',
+  },
+  'sample-instrument': {
+    project: sampleInstrumentProject,
+    title: 'Sample instrument',
+    description: 'Eight note voices share one loaded stereo sample. Root note and key tracking map keyboard pitch to playback speed; channel, note, and velocity stay in the Rust event path.',
+    signal: 'File decode → shared sample → eight note playheads → stereo sum',
+  },
+  'main-voice-bank': {
+    project: mainVoiceBankProject,
+    title: 'Main voice bank',
+    description: 'Eight independent Main voices share one decoded sample. Rust owns note slots, pitch, Ring/FM/Sync, and prepared Add/Morph banks. The assembled legacy graph remains under comparison.',
+    signal: 'MIDI → eight wave + sample + prepared spectral voices → envelopes → stereo sum',
+  },
+  'spectrum-analyzer': {
+    project: spectrumAnalyzerProject,
+    title: 'Spectrum analyzer',
+    description: 'Eight smoothed band estimates from the original Manifold analyzer. Stereo audio passes through unchanged. These bands are one-pole envelopes, not FFT bins.',
+    signal: 'Live path: input → unchanged output · meter tap → eight band estimates',
+  },
+  'fft-spectrum': {
+    project: fftSpectrumProject,
+    title: 'FFT spectrum',
+    description: 'A 2048-point Hann FFT measures 32 logarithmic frequency bands and the strongest peak in hertz. Stereo audio passes through unchanged. The meter updates every 1024 samples.',
+    signal: 'Live path: input → unchanged output · FFT tap → 32 bands and peak Hz',
+  },
+  'slew-audio': {
+    project: slewAudioProject,
+    title: 'Slew limiter',
+    description: 'Limit rises and falls separately with the original Max-style slide rule. A value of 1 follows each stereo input sample directly; larger values slow the response.',
+    signal: 'Live path: input → independent left/right slew → stereo output',
+  },
+  'slew-modulation': {
+    project: slewModulationProject,
+    title: 'Slew modulation',
+    description: 'A Rust LFO passes through a typed control slew before shaping an oscillator’s gain. Rise and fall slides round abrupt CV edges independently.',
+    signal: 'Audio: oscillator → modulated gain → output · CV: LFO → slew → gain',
+  },
+  'cv-rack': {
+    project: cvRackProject,
+    title: 'CV rack slice',
+    description: 'Route typed control sources through sample/hold, scaling, and mixing to shape an oscillator’s gain. Each connected stage runs in Rust at sample rate.',
+    signal: 'Audio: oscillator → modulated gain → output · CV: choose sources in the patch below',
+  },
+  'envelope-follower': {
+    project: envelopeFollowerProject,
+    title: 'Envelope follower',
+    description: 'Follow input level with peak, RMS, or hybrid detection. Set attack, release, sensitivity, and a highpass on the detector. Stereo audio passes through unchanged.',
+    signal: 'Live path: input → unchanged output · detector tap → envelope meter',
+  },
+  'envelope-ducking': {
+    project: envelopeDuckingProject,
+    title: 'Envelope ducking',
+    description: 'Use the input envelope as a sample-rate control signal for a gain stage. Loud input reduces the output level; detector attack, release, sensitivity, and duck depth are editable.',
+    signal: 'Audio: input → modulated gain → output · CV: input → envelope detector → gain',
+  },
+  'stereo-delay': {
+    project: stereoDelayProject,
+    title: 'Stereo delay',
+    description: 'Two fractional delay taps with feedback, crossfeed, tempo divisions, a feedback lowpass, ducking, and freeze.',
+    signal: 'Live path: input → stereo delay → output · feedback recirculates in prepared buffers',
+  },
+};
+for (const button of document.querySelectorAll('.library-item')) {
+  primitivePicker.add(new Option(button.querySelector('strong').textContent, button.dataset.primitive));
+}
+const initial = new URL(location.href).searchParams.get('primitive');
+let activeFamily = Object.hasOwn(projects, initial) ? initial : 'svf';
+function usesSineSource(family = activeFamily) {
+  return family === 'sine-bank' || family === 'main-sample-blend' || family === 'main-voice-bank';
+}
+function resetMainBankTargets() {
+  if (activeFamily !== 'main-voice-bank') return;
+  activeProject.partials = structuredClone(mainVoiceBankInitialPartials);
+  activeProject.extraPartials = structuredClone(mainVoiceBankInitialExtraPartials);
+  delete activeProject.temporalTargets;
+}
+let values = new Map();
+let activeProject = null;
+let graphEditor = null;
+let graphLiveSession = null;
+const mainProjectPresets = new Map([['main-voice-bank', []], ['main-sample-blend', []]]);
+const patchedSignals = new Map();
+const patchedParameterValues = new Map();
+let slotValuesByType = new Map();
+const slotSessionStates = new Map();
+let loopHasTake = false;
+let loadedSample = null;
+let loadedGranulatorSource = null;
+let loadedSineSource = null;
+const sineManualLevels = Array.from({ length: 32 }, (_, index) => sineBankProject.partials.values[index * 4 + 1] ?? 0);
+let exampleSample = null;
+let samplePlayhead = 0;
+let samplePlaying = false;
+let sampleVoicePositions = Array(8).fill(-1);
+let sampleActiveVoices = 0;
+const emptySamplePeaks = new Float32Array(256 * 2);
+let sampleAnalysisWorker = null;
+let sineAnalysisWorker = null;
+let sampleAnalysisSerial = 0;
+const pendingSampleAnalyses = new Map();
+const pendingSineTargets = new Map();
+let latestSineTargetId = 0;
+let sineTargetActive = false;
+let mainBankSnapshotRestored = false;
+let sinePitchSource = null;
+let mainStateRestoring = false;
+let phraseReferenceAuto = true;
+function useAnalyzedPhraseReference(source) {
+  if (activeFamily !== 'main-sample-blend' || !phraseReferenceAuto
+    || !Number.isFinite(source?.analysis?.rms)) return;
+  const reference = Math.round(Math.max(0.05, Math.min(0.6, source.analysis.rms)) * 100) / 100;
+  values.set(12, reference);
+  byId('controls').querySelector('[data-parameter-id="12"]')?.syncValue(reference);
+  audio.setParameter(12, reference);
+}
+function finishMainStateRestore(error = null) {
+  if (!mainStateRestoring) return;
+  mainStateRestoring = false;
+  byId('audio-toggle').disabled = false;
+  if (error) byId('main-state-status').textContent = `State source unavailable: ${error}`;
+}
+function demoSample() {
+  if (exampleSample) return exampleSample;
+  const sourceRate = 48_000;
+  const frames = 24_000;
+  const stereo = new Float32Array(frames * 2);
+  for (let frame = 0; frame < frames; frame++) {
+    const time = frame / sourceRate;
+    const envelope = (1 - frame / frames) ** 2;
+    const tone = envelope * (0.48 * Math.sin(2 * Math.PI * 220 * time)
+      + 0.16 * Math.sin(2 * Math.PI * 440 * time));
+    stereo[frame * 2] = tone;
+    stereo[frame * 2 + 1] = tone * 0.85;
+  }
+  exampleSample = { sourceRate, stereo, sourceKind: 'builtin' };
+  return exampleSample;
+}
+function samplePeaks(source) {
+  return source.peaks ?? emptySamplePeaks;
+}
+function fallbackSamplePeaks(source) {
+  const peaks = new Float32Array(256 * 2);
+  const frames = source.stereo.length / 2;
+  for (let frame = 0; frame < frames; frame++) {
+    const bin = Math.floor(frame * 256 / frames);
+    peaks[bin * 2] = Math.max(peaks[bin * 2], Math.abs(source.stereo[frame * 2]));
+    peaks[bin * 2 + 1] = Math.max(peaks[bin * 2 + 1], Math.abs(source.stereo[frame * 2 + 1]));
+  }
+  source.peaks = peaks;
+}
+function samplePitchNote(source) {
+  const result = source.analysis;
+  if (!result || result.pitchHz <= 0 || result.confidence < 0.75) return null;
+  const midi = Math.round(69 + 12 * Math.log2(result.pitchHz / 440));
+  return midi >= 36 && midi <= 84 ? midi : null;
+}
+function renderSampleAnalysis() {
+  if (!['sample-region', 'sample-instrument', 'main-voice-bank'].includes(activeFamily)) return;
+  const source = loadedSample ?? demoSample();
+  const readout = byId('sample-analysis');
+  const button = byId('sample-use-root');
+  button.hidden = true;
+  if (source.analysisError) {
+    readout.textContent = `Source analysis unavailable: ${source.analysisError}`;
+    return;
+  }
+  if (!source.analysis) {
+    readout.textContent = 'Measuring peak, RMS, and pitch in Rust/Wasm…';
+    return;
+  }
+  const { peak, rms, pitchHz, confidence } = source.analysis;
+  const note = samplePitchNote(source);
+  readout.textContent = `Peak ${peak.toFixed(3)} · RMS ${rms.toFixed(3)} · ${note === null
+    ? 'no stable pitch detected'
+    : `${pitchHz.toFixed(1)} Hz · ${noteNames[note % 12]}${Math.floor(note / 12) - 1} · ${(confidence * 100).toFixed(0)}% confidence`}`;
+  if (['sample-instrument', 'main-voice-bank'].includes(activeFamily) && note !== null) {
+    button.hidden = false;
+    button.textContent = `Use ${noteNames[note % 12]}${Math.floor(note / 12) - 1} as root (${note})`;
+  }
+}
+function selectedSineFrame() {
+  const frames = loadedSineSource?.temporal?.frames;
+  if (!frames?.length) return null;
+  const position = Number(byId('sine-position').value);
+  return frames.reduce((nearest, frame) =>
+    Math.abs(frame.position - position) < Math.abs(nearest.position - position) ? frame : nearest);
+}
+function renderSineBars(values, bars, ratio = false) {
+  bars.replaceChildren();
+  for (let index = 0; index < values.length / 4; index++) {
+    const frequency = values[index * 4];
+    const amplitude = values[index * 4 + 1];
+    const row = document.createElement('div');
+    row.className = 'sine-source-row';
+    const label = document.createElement('span');
+    label.textContent = ratio ? `×${frequency.toFixed(2)}` : `${frequency.toFixed(0)} Hz`;
+    const track = document.createElement('div');
+    track.className = 'sine-source-track';
+    const fill = document.createElement('span');
+    fill.className = 'sine-source-fill';
+    fill.style.width = `${Math.min(100, amplitude * 100)}%`;
+    track.appendChild(fill);
+    const amount = document.createElement('span');
+    amount.textContent = amplitude.toFixed(2);
+    row.append(label, track, amount);
+    bars.appendChild(row);
+  }
+}
+function renderSineSourceAnalysis() {
+  if (!usesSineSource()) return;
+  const source = loadedSineSource;
+  const readout = byId('sine-source-status');
+  const position = byId('sine-position');
+  const audition = byId('sine-use-frame');
+  const bars = byId('sine-source-bars');
+  position.disabled = true;
+  audition.disabled = true;
+  bars.replaceChildren();
+  if (!source) {
+    readout.textContent = 'Choose a source or use the built-in tone.';
+    return;
+  }
+  if (source.temporalError) {
+    readout.textContent = `Partial analysis unavailable: ${source.temporalError}`;
+    return;
+  }
+  if (!source.temporal) {
+    readout.textContent = 'Extracting temporal partial frames in Rust/Wasm…';
+    return;
+  }
+  const result = source.temporal;
+  const frame = selectedSineFrame();
+  position.disabled = result.frames.length < 2;
+  audition.disabled = !frame || (!frame.values.length && Number(byId('sine-target-mode').value) !== 3);
+  const pitchLabel = result.mode === 'harmonic-projection'
+    ? `${result.fundamental.toFixed(1)} Hz pitch · ${(result.confidence * 100).toFixed(0)}% confidence`
+    : `${result.fundamental.toFixed(1)} Hz reference peak · no reliable pitch`;
+  readout.textContent = `${source.label ?? 'Built-in tone'} · ${result.mode === 'harmonic-projection' ? 'pitched harmonic tracking' : 'spectral peak fallback'} · ${result.frames.length} frames · ${pitchLabel}`;
+  if (!frame) return;
+  byId('sine-position-value').textContent = `${Math.round(frame.position * 100)}% · ${(frame.sourceStart / result.sourceRate).toFixed(2)} s`;
+  renderSineBars(frame.values, bars);
+}
+function createSampleAnalysisWorker(temporalWorker) {
+  const worker = new Worker(new URL('./audio/sample-analysis-worker.js', import.meta.url), { type: 'module' });
+  worker.onmessage = ({ data }) => {
+    const target = pendingSineTargets.get(data.id);
+    if (target) {
+      pendingSineTargets.delete(data.id);
+      if (data.id === latestSineTargetId && target.source === loadedSineSource) {
+        if (data.type === 'target' || data.type === 'temporal-targets'
+          || data.type === 'temporal-frames') applyPreparedSineTarget(data, target.mode);
+        else byId('sine-target-status').textContent = `Target unavailable: ${data.message}`;
+        if (activeFamily === 'main-sample-blend') finishMainStateRestore(data.type === 'target' ? null : data.message);
+      }
+      return;
+    }
+    const pending = pendingSampleAnalyses.get(data.id);
+    pendingSampleAnalyses.delete(data.id);
+    if (!pending) return;
+    const { source: analyzed, temporal } = pending;
+    if (data.type === 'result') {
+      analyzed.analysis = data;
+      analyzed.peaks = data.peaks;
+      if (temporal) { analyzed.temporal = data.temporal; analyzed.temporalJobId = data.id; }
+    } else {
+      if (temporal) { analyzed.temporalError = data.message; analyzed.temporalRequested = false; }
+      else { analyzed.analysisError = data.message; analyzed.analysisRequested = false; }
+      if (!analyzed.peaks) fallbackSamplePeaks(analyzed);
+    }
+    if (analyzed === (loadedSample ?? demoSample())) {
+      drawSampleWaveform();
+      renderSampleAnalysis();
+    }
+    if (analyzed === loadedSineSource) {
+      renderSineSourceAnalysis();
+      if (data.type === 'result') useAnalyzedPhraseReference(analyzed);
+      if (sineTargetActive && analyzed.temporal && !mainBankSnapshotRestored) scheduleSineTarget();
+      if (activeFamily === 'main-sample-blend' && analyzed.temporalError) finishMainStateRestore(analyzed.temporalError);
+    }
+  };
+  worker.onerror = (error) => {
+    for (const [id, { source: analyzed, temporal }] of pendingSampleAnalyses) {
+      if (temporal !== temporalWorker) continue;
+      if (temporal) { analyzed.temporalError = error.message || 'Worker failed'; analyzed.temporalRequested = false; }
+      else { analyzed.analysisError = error.message || 'Worker failed'; analyzed.analysisRequested = false; }
+      if (!analyzed.peaks) fallbackSamplePeaks(analyzed);
+      pendingSampleAnalyses.delete(id);
+    }
+    if (temporalWorker) {
+      pendingSineTargets.clear();
+      sineAnalysisWorker = null;
+      byId('sine-target-status').textContent = `Target worker unavailable: ${error.message || 'Worker failed'}`;
+      if (activeFamily === 'main-sample-blend') finishMainStateRestore(error.message || 'Worker failed');
+    } else sampleAnalysisWorker = null;
+    worker.terminate();
+    drawSampleWaveform();
+    renderSampleAnalysis();
+    renderSineSourceAnalysis();
+    if (temporal && source === loadedSineSource && activeFamily === 'main-sample-blend') {
+      finishMainStateRestore(error.message || String(error));
+    }
+  };
+  return worker;
+}
+function requestSampleAnalysis(source, temporal = false) {
+  const requestedFlag = temporal ? 'temporalRequested' : 'analysisRequested';
+  if (source[requestedFlag]) return;
+  source[requestedFlag] = true;
+  if (temporal) source.temporalError = null;
+  else source.analysisError = null;
+  try {
+    const worker = temporal
+      ? (sineAnalysisWorker ??= createSampleAnalysisWorker(true))
+      : (sampleAnalysisWorker ??= createSampleAnalysisWorker(false));
+    const id = ++sampleAnalysisSerial;
+    pendingSampleAnalyses.set(id, { source, temporal });
+    const stereo = source.stereo.slice();
+    worker.postMessage({ id, sourceRate: source.sourceRate, stereo,
+      temporal: temporal ? { maxFrames: 128 } : null }, [stereo.buffer]);
+  } catch (error) {
+    for (const [id, pending] of pendingSampleAnalyses) {
+      if (pending.source === source) pendingSampleAnalyses.delete(id);
+    }
+    if (temporal) { source.temporalError = error.message || String(error); source.temporalRequested = false; }
+    else { source.analysisError = error.message || String(error); source.analysisRequested = false; }
+    if (!source.peaks) fallbackSamplePeaks(source);
+    drawSampleWaveform();
+    renderSampleAnalysis();
+    renderSineSourceAnalysis();
+  }
+}
+function drawSampleWaveform() {
+  if (!['sample-region', 'sample-instrument', 'main-voice-bank'].includes(activeFamily)) return;
+  const canvas = byId('sample-waveform');
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  if (!width || !height) return;
+  const scale = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = Math.round(width * scale);
+  canvas.height = Math.round(height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  ctx.fillStyle = '#111922';
+  ctx.fillRect(0, 0, width, height);
+  const source = loadedSample ?? demoSample();
+  const peaks = samplePeaks(source);
+  const poly = activeFamily !== 'sample-region';
+  const voiceBank = activeFamily === 'main-voice-bank';
+  const loopStart = voiceBank ? 0 : values.get(poly ? 7 : 4) ?? 0;
+  const loopEnd = voiceBank ? 1 : values.get(poly ? 8 : 5) ?? 1;
+  ctx.fillStyle = 'rgba(120, 135, 160, .12)';
+  ctx.fillRect(loopStart * width, 0, Math.max(0, loopEnd - loopStart) * width, height);
+  const fade = voiceBank ? 0 : Math.max(0, loopEnd - loopStart) * (values.get(poly ? 9 : 6) ?? 0);
+  if (fade > 0) {
+    ctx.fillStyle = 'rgba(141, 96, 142, .28)';
+    ctx.fillRect(loopStart * width, 0, fade * width, height);
+    ctx.fillRect((loopEnd - fade) * width, 0, fade * width, height);
+  }
+  for (let channel = 0; channel < 2; channel++) {
+    const center = height * (channel ? .75 : .25);
+    ctx.strokeStyle = channel ? '#79bdcf' : '#ab9ae7';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let bin = 0; bin < 256; bin++) {
+      const x = (bin + .5) / 256 * width;
+      const amplitude = Math.min(1, peaks[bin * 2 + channel]) * height * .21;
+      ctx.moveTo(x, center - amplitude);
+      ctx.lineTo(x, center + amplitude);
+    }
+    ctx.stroke();
+  }
+  const markers = [[values.get(poly ? 6 : 3) ?? 0, '#6ecdb6'], [loopStart, '#d4b468'], [loopEnd, '#d582a7']];
+  if (poly) markers.push(...sampleVoicePositions.filter((position) => position >= 0).map((position) => [position, '#e3e9ed']));
+  else markers.push([samplePlayhead, '#e3e9ed']);
+  for (const [position, color] of markers) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = color === '#e3e9ed' ? 2 : 1;
+    ctx.beginPath();
+    const x = Math.min(width - 1, Math.max(0, position * width));
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.stroke();
+  }
+  byId('sample-playhead').textContent = poly
+    ? `${sampleActiveVoices} / 8 voices · ${(source.stereo.length / 2 / source.sourceRate).toFixed(2)} s source`
+    : `${samplePlaying ? 'Playing' : 'Stopped'} · ${(samplePlayhead * source.stereo.length / 2 / source.sourceRate).toFixed(2)} s / ${(source.stereo.length / 2 / source.sourceRate).toFixed(2)} s`;
+}
+window.addEventListener('resize', drawSampleWaveform);
+let envelopeHistory = [];
+let eqResponseSnapshot = null;
+window.addEventListener('resize', () => {
+  if (activeFamily === 'eq8') drawEqResponse(byId('eq-response'), eqResponseSnapshot);
+});
+const audio = new BrowserAudioHost((message) => { status.textContent = message; }, (nodeId, bands, nodeActive) => {
+  const effectiveParameter = projects[activeFamily]?.project.parameters.find((parameter) =>
+    parameter.effectiveMeter && parameter.nodeId === nodeId);
+  if (effectiveParameter && Number.isFinite(bands[0])) {
+    byId('controls').querySelector(`[data-parameter-id="${effectiveParameter.id}"]`)?.setEffective(bands[0]);
+  }
+  if (activeFamily === 'cv-rack') {
+    const row = byId('cv-stages').querySelector(`[data-cv-node="${nodeId}"]`);
+    if (!row || !Number.isFinite(bands[0])) return;
+    const value = bands[0];
+    row.dataset.parked = String(!nodeActive);
+    row.title = nodeActive ? 'Active in the audio graph' : 'Parked by current routing; showing the last active value';
+    row.querySelector('output').textContent = value.toFixed(3);
+    const fill = row.querySelector('.cv-stage-fill');
+    if (nodeId === 8) {
+      fill.style.left = '0%';
+      fill.style.width = `${Math.max(0, Math.min(100, value / 2 * 100))}%`;
+    } else {
+      fill.style.left = `${value < 0 ? 50 + value * 50 : 50}%`;
+      fill.style.width = `${Math.min(50, Math.abs(value) * 50)}%`;
+    }
+    return;
+  }
+  if (nodeId !== 2) return;
+  if (activeFamily === 'stereo-widener') {
+    byId('correlation-value').textContent = Number.isFinite(bands[0]) ? `${bands[0] >= 0 ? '+' : ''}${bands[0].toFixed(3)}` : '—';
+    return;
+  }
+  if (activeFamily === 'sample-region') {
+    samplePlayhead = Number.isFinite(bands[0]) ? Math.max(0, Math.min(1, bands[0])) : 0;
+    samplePlaying = bands[1] >= .5;
+    drawSampleWaveform();
+    return;
+  }
+  if (activeFamily === 'sample-instrument' || activeFamily === 'main-voice-bank') {
+    sampleActiveVoices = Number.isFinite(bands[0]) ? Math.round(bands[0]) : 0;
+    sampleVoicePositions = bands.slice(1, 9).map((position) => Number.isFinite(position) ? position : -1);
+    drawSampleWaveform();
+    return;
+  }
+  if (activeFamily === 'fft-spectrum') {
+    drawBandBars(byId('fft-bands'), [bands.slice(0, 32)], 1, ['#9a8de8']);
+    byId('fft-peak').textContent = bands[32] > 0 ? `Strongest peak · ${bands[32].toFixed(1)} Hz` : 'Peak · silent';
+    return;
+  }
+  if (!['spectrum-analyzer', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'transient-shaper'].includes(activeFamily)) return;
+  if (activeFamily === 'compressor' || activeFamily === 'limiter') {
+    const reduction = Number.isFinite(bands[0]) ? Math.max(0, activeFamily === 'compressor' ? -bands[0] : bands[0]) : 0;
+    const row = byId('live-bands').firstChild;
+    row.querySelector('.live-band-fill').style.width = `${Math.min(100, reduction / 24 * 100)}%`;
+    row.querySelector('output').textContent = `${reduction.toFixed(1)} dB`;
+    envelopeHistory.push(reduction);
+    if (envelopeHistory.length > 60) envelopeHistory.shift();
+    drawMeterTrace(byId('live-envelope-trace'), [envelopeHistory], Math.max(3, ...envelopeHistory) * 1.2, ['#9a8de8']);
+    return;
+  }
+  const scale = activeFamily === 'spectrum-analyzer'
+    ? Math.max(0.05, Math.max(...bands.filter(Number.isFinite)) * 1.2)
+    : activeFamily === 'transient-shaper' ? Math.max(0.05, (bands[0] || 0) * 1.2) : 1;
+  [...byId('live-bands').children].forEach((row, index) => {
+    const value = Number.isFinite(bands[index]) ? Math.max(0, activeFamily === 'transient-shaper' ? bands[index] : Math.min(1, bands[index])) : 0;
+    row.querySelector('.live-band-fill').style.width = `${Math.min(100, value / scale * 100)}%`;
+    row.querySelector('output').textContent = value.toFixed(3);
+  });
+  if (activeFamily === 'envelope-follower' || activeFamily === 'envelope-ducking' || activeFamily === 'transient-shaper') {
+    envelopeHistory.push(Math.max(0, activeFamily === 'transient-shaper' ? bands[0] ?? 0 : Math.min(1, bands[0] ?? 0)));
+    if (envelopeHistory.length > 60) envelopeHistory.shift();
+    const scale = Math.max(0.2, Math.max(...envelopeHistory) * 1.2);
+    drawMeterTrace(byId('live-envelope-trace'), [envelopeHistory], scale, ['#9a8de8']);
+  }
+}, (nodeId, response) => {
+  if (activeFamily !== 'eq8' || nodeId !== 2 || response.some((value) => !Number.isFinite(value))) return;
+  eqResponseSnapshot = response;
+  drawEqResponse(byId('eq-response'), response);
+  const peak = Math.max(...response);
+  byId('eq-response-status').textContent = `Current response · ${Math.min(...response).toFixed(1)} to ${peak >= 0 ? '+' : ''}${peak.toFixed(1)} dB`;
+}, showMidiTrace);
+for (let band = 0; band < 8; band++) {
+  const row = document.createElement('div');
+  row.className = 'live-band';
+  const label = document.createElement('span');
+  label.textContent = String(band + 1);
+  const track = document.createElement('div');
+  track.className = 'live-band-track';
+  const fill = document.createElement('span');
+  fill.className = 'live-band-fill';
+  track.appendChild(fill);
+  const value = document.createElement('output');
+  value.textContent = '0.000';
+  row.append(label, track, value);
+  byId('live-bands').appendChild(row);
+}
+
+function updateCutoffRange() {
+  const target = byId('cutoff-range');
+  if (!target) return;
+  const base = values.get(10);
+  const depth = Math.abs(values.get(14));
+  const low = Math.max(20, Math.round(base - depth));
+  const high = Math.min(20000, Math.round(base + depth));
+  target.textContent = `Cutoff target: ${low.toLocaleString()}–${high.toLocaleString()} Hz, then 20 ms smoothing.`;
+}
+
+function updateTransferCurve() {
+  const canvas = byId('transfer-curve');
+  if (canvas) drawTransferCurve(canvas, values.get(0), values.get(1), values.get(2));
+}
+window.addEventListener('resize', updateTransferCurve);
+
+function updateMainDepthControls() {
+  if (activeFamily !== 'main-sample-blend') return;
+  const linked = values.get(19) === 1;
+  const voiceLinked = values.get(22) === 1;
+  const directionMode = values.get(24);
+  const mappedPitch = values.get(28) === 1;
+  for (const id of [2, 3, 18, 1, 14, 20, 21, 25, 26, 4, 6, 7, 9, 29, 30, 31, 32]) {
+    const control = byId('controls').querySelector(`[data-parameter-id="${id}"]`);
+    if (!control) continue;
+    const inactive = id === 18 ? !linked && directionMode === 0 : id === 21 ? !voiceLinked
+      : id === 25 || id === 26 ? directionMode !== 2
+      : [4, 6, 7, 9].includes(id) ? mappedPitch
+      : [29, 30, 31, 32].includes(id) ? !mappedPitch
+      : [1, 14, 20].includes(id) ? voiceLinked : linked;
+    control.classList.toggle('inactive', inactive);
+    const input = control.querySelector('input, select');
+    if (input) input.disabled = inactive;
+  }
+  for (const id of [23, 27]) {
+    const button = byId('controls').querySelector(`[data-parameter-id="${id}"]`);
+    if (!button) continue;
+    const inactive = id === 23 ? directionMode !== 0 : directionMode !== 3;
+    button.classList.toggle('inactive', inactive);
+    button.disabled = inactive;
+  }
+}
+
+function addSlider(parameter) {
+  const wrapper = document.createElement('label');
+  wrapper.className = 'compact-slider';
+  const title = document.createElement('span');
+  title.textContent = parameter.label;
+  const readout = document.createElement('output');
+  const input = document.createElement('input');
+  input.type = 'range';
+  input.min = '0';
+  input.max = '1000';
+  input.step = '1';
+  input.setAttribute('aria-label', parameter.label);
+
+  const isLog = parameter.scale === 'log' || parameter.hostId === 'cutoff' || parameter.hostId === 'frequency' || parameter.hostId === 'rate';
+  const logPrecision = parameter.hostId === 'rate' || (parameter.scale === 'log' && parameter.unit !== 'Hz') ? 100 : 1;
+  const precision = parameter.unit === 's' ? 1000 : 100;
+  const rawPhysical = (position) => parameter.scale === 'log-bypass'
+    ? position < 1 ? 0 : Math.round(21 * (parameter.max / 21) ** ((position - 1) / 999))
+    : isLog
+    ? Math.round(parameter.min * (parameter.max / parameter.min) ** (position / 1000) * logPrecision) / logPrecision
+    : parameter.hostId === 'root-note' || parameter.hostId === 'unison' || parameter.hostId === 'voices' || parameter.hostId === 'taps'
+      ? Math.round(parameter.min + (parameter.max - parameter.min) * position / 1000)
+      : Math.round((parameter.min + (parameter.max - parameter.min) * position / 1000) * precision) / precision;
+  const toPhysical = (position) => {
+    const value = rawPhysical(position);
+    return parameter.step ? Math.max(parameter.min, Math.min(parameter.max,
+      parameter.min + Math.round((value - parameter.min) / parameter.step) * parameter.step)) : value;
+  };
+  const toPosition = (value) => parameter.scale === 'log-bypass'
+    ? value <= 20 ? 0 : 1 + 999 * Math.log(value / 21) / Math.log(parameter.max / 21)
+    : isLog
+    ? 1000 * Math.log(value / parameter.min) / Math.log(parameter.max / parameter.min)
+    : 1000 * (value - parameter.min) / (parameter.max - parameter.min);
+  const format = (value) => parameter.hostId === 'root-note' || parameter.unit === 'MIDI' ? `${value} MIDI` : parameter.hostId === 'taps' ? `${value} taps` : parameter.hostId === 'unison' || parameter.hostId === 'voices' ? `${value} voices` : parameter.unit === 'ct' ? `${Number(value).toFixed(1)} ct` : parameter.unit === 'Hz'
+    ? parameter.hostId === 'rate' ? `${Number(value).toFixed(2)} Hz` : `${Math.round(value).toLocaleString()} Hz`
+    : parameter.unit === 'ms' ? `${Number(value).toFixed(1)} ms` : parameter.unit === 's' ? `${Number(value).toFixed(3)} s` : parameter.unit === 'dB' ? `${Number(value).toFixed(1)} dB` : parameter.unit === 'degrees' ? `${Math.round(value)}°` : Number(value).toFixed(2);
+  const sync = (position, publish) => {
+    const value = toPhysical(position);
+    input.value = String(Math.round(position));
+    wrapper.style.setProperty('--fill', `${position / 10}%`);
+    readout.value = format(value);
+    values.set(parameter.id, value);
+    if (isFxFamily(activeFamily)) updateSlotControls();
+    if (publish) audio.setParameter(parameter.id, value);
+    if (publish && activeFamily === 'main-sample-blend' && parameter.hostId === 'phrase-reference') phraseReferenceAuto = false;
+    if (publish) updateCutoffRange();
+    if (publish) updateTransferCurve();
+    if (publish && ['sample-region', 'sample-instrument', 'main-voice-bank'].includes(activeFamily)) drawSampleWaveform();
+  };
+  wrapper.dataset.parameterId = String(parameter.id);
+  if (parameter.prepareOnly) {
+    wrapper.dataset.prepareOnly = 'true';
+    input.disabled = audio.running;
+  }
+  wrapper.syncValue = (value) => sync(toPosition(value), false);
+  sync(toPosition(parameter.default), false);
+  input.addEventListener('input', () => sync(Number(input.value), true));
+  wrapper.addEventListener('dblclick', () => { if (!input.disabled) sync(toPosition(parameter.default), true); });
+  wrapper.append(title, readout, input);
+  if (parameter.effectiveMeter) {
+    wrapper.classList.add('has-effective');
+    const effective = document.createElement('output');
+    effective.className = 'effective-readout';
+    effective.textContent = 'Effective — · start audio';
+    wrapper.setEffective = (value) => {
+      const live = Number.isFinite(value);
+      effective.textContent = live ? `Effective ${format(value)} · live snapshot` : 'Effective — · start audio';
+      wrapper.dataset.live = String(live);
+      if (live) wrapper.style.setProperty('--effective', `${Math.round(Math.max(0, Math.min(100, (value - parameter.min) / (parameter.max - parameter.min) * 100)) * 10) / 10}%`);
+    };
+    wrapper.setEffective(null);
+    wrapper.appendChild(effective);
+  }
+  byId('controls').appendChild(wrapper);
+}
+
+function updateSlotControls() {
+  if (!isFxFamily(activeFamily)) return;
+  const selected = values.get(0);
+  const labels = selected === 0 ? { 2: 'Rate', 3: 'Depth', 4: 'Feedback', 5: 'Spread', 6: 'Voices' }
+    : selected === 1 ? { 2: 'Rate', 3: 'Depth', 4: 'Feedback', 5: 'Spread (legacy °)', 6: 'Stages' }
+    : selected === 2 ? { 2: 'Drive', 3: 'Curve', 4: 'Output', 5: 'Bias' }
+    : selected === 4 ? { 2: 'Width', 3: 'Mono low cutoff' }
+    : selected === 5 ? { 2: 'Cutoff', 3: 'Resonance' }
+    : selected === 7 ? { 2: 'Room size', 3: 'Damping' }
+    : selected === 9 ? { 2: 'Tap count', 3: 'Feedback' }
+    : selected === 12 ? { 2: 'Frequency', 3: 'Depth', 4: 'Spread' }
+    : selected === 13 ? { 2: 'Vowel', 3: 'Shift', 4: 'Resonance', 5: 'Drive' }
+    : selected === 14 ? { 2: 'Low gain', 3: 'High gain', 4: 'Mid gain' }
+    : selected === 19 ? { 2: 'Delay time', 3: 'Reverse window', 4: 'Feedback' }
+    : selected === 20 ? { 2: 'Length', 3: 'Gate', 4: 'Probability', 5: 'Filter decay' }
+    : selected === 10 ? { 2: 'Pitch shift', 3: 'Head window', 4: 'Feedback' }
+    : selected === 11 ? { 2: 'Grain size', 3: 'Density', 4: 'Position', 5: 'Spray' }
+    : selected === 18 ? { 2: 'Delay size', 3: 'Pitch shift', 4: 'Feedback', 5: 'Filter' }
+    : selected === 16 ? { 2: 'Attack', 3: 'Sustain', 4: 'Sensitivity' }
+    : selected === 17 ? { 2: 'Bits', 3: 'Sample hold', 4: 'Output gain' }
+    : selected === 3
+    ? { 2: 'Threshold', 3: 'Ratio', 4: 'Attack (at select)', 5: 'Release (at select)', 6: 'Knee (inert)' }
+    : selected === 6 ? { 2: 'Filter cutoff', 3: 'Resonance', 4: 'Filter drive' }
+      : selected === 15 ? { 2: 'Threshold', 3: 'Pre gain', 4: 'Release', 5: 'Soft clip' }
+        : { 2: 'Delay time', 3: 'Feedback' };
+  for (let id = 2; id <= 6; id++) {
+    const wrapper = byId('controls').querySelector(`[data-parameter-id="${id}"]`);
+    if (!wrapper) continue;
+    wrapper.hidden = !Object.hasOwn(labels, id);
+    if (wrapper.hidden) continue;
+    const value = values.get(id);
+    wrapper.querySelector('span').textContent = labels[id];
+    wrapper.querySelector('input').setAttribute('aria-label', labels[id]);
+    wrapper.querySelector('output').value = selected === 0
+      ? id === 2 ? `${(0.08 + 2.32 * value).toFixed(2)} Hz`
+        : id === 3 ? (0.05 + 0.95 * value).toFixed(2)
+          : id === 4 ? (0.35 * value).toFixed(2)
+            : id === 5 ? value.toFixed(2) : `${Math.min(4, Math.floor(1 + 5 * value + 0.5))} voices`
+      : selected === 1
+      ? id === 2 ? `${(0.05 + 2.75 * value).toFixed(2)} Hz`
+        : id === 3 ? (0.05 + 0.95 * value).toFixed(2)
+          : id === 4 ? (0.8 * value).toFixed(2)
+            : id === 5 ? `${value.toFixed(2)}°` : `${Math.floor(2 + 10 * value + 0.5) >= 9 ? 12 : 6} stages`
+      : selected === 2
+      ? id === 2 ? `${(0.75 + 17.25 * value).toFixed(2)} dB`
+        : id === 3 ? ['Tanh', 'Tube', 'Tape', 'Hard clip', 'Foldback', 'Sigmoid', 'Soft clip'][Math.floor(6 * value + 0.5)]
+          : id === 4 ? `${(0.25 + 0.75 * value).toFixed(2)} dB` : (-0.5 + value).toFixed(2)
+      : selected === 4
+      ? id === 2 ? (2 * value).toFixed(2) : `${Math.round(40 + 280 * value)} Hz`
+      : selected === 5
+      ? id === 2 ? `${Math.round(80 * 150 ** value).toLocaleString()} Hz` : value.toFixed(2)
+      : selected === 7
+      ? id === 2 ? (0.15 + 0.8 * value).toFixed(2) : value.toFixed(2)
+      : selected === 9
+      ? id === 2 ? `${Math.floor(2 + 6 * value + 0.5)} taps` : (0.95 * value).toFixed(2)
+      : selected === 12
+      ? id === 2 ? `${Math.round(20 * 100 ** value).toLocaleString()} Hz`
+        : id === 3 ? value.toFixed(2) : `${Math.round(180 * value)}°`
+      : selected === 13
+      ? id === 2 ? `${['A', 'E', 'I', 'O', 'U'][Math.min(4, Math.round(4 * value))]} · ${(4 * value).toFixed(2)}`
+        : id === 3 ? `${(-12 + 24 * value).toFixed(1)} st`
+          : id === 4 ? (2 + 14 * value).toFixed(2) : (0.8 + 3.2 * value).toFixed(2)
+      : selected === 14
+      ? `${((id === 4 ? -6 + 12 * value : -12 + 24 * value)).toFixed(1)} dB`
+      : selected === 19
+      ? id === 2 ? `${Math.round(50 + 1950 * value)} ms`
+        : id === 3 ? `${Math.round(20 + 380 * value)} ms` : (0.95 * value).toFixed(2)
+      : selected === 20
+      ? id === 2 ? `${(0.125 + 7.875 * value).toFixed(2)} beats` : value.toFixed(2)
+      : selected === 10
+      ? id === 2 ? `${(-12 + 24 * value).toFixed(1)} st`
+        : id === 3 ? `${Math.round(30 + 150 * value)} ms` : (0.75 * value).toFixed(2)
+      : selected === 11
+      ? id === 2 ? `${Math.round(12 + 268 * value)} ms`
+        : id === 3 ? `${Math.round(2 + 62 * value)} /s` : value.toFixed(2)
+      : selected === 18
+      ? id === 2 ? (0.1 + 0.9 * value).toFixed(2)
+        : id === 3 ? `${(-12 + 24 * value).toFixed(1)} st`
+          : id === 4 ? (0.99 * value).toFixed(2) : `${Math.round(100 * 120 ** value).toLocaleString()} Hz`
+      : selected === 16
+      ? id === 4 ? (0.2 + 3.8 * value).toFixed(2) : (-1 + 2 * value).toFixed(2)
+      : selected === 17
+      ? id === 2 ? `${Math.floor(2 + 14 * value + 0.5)} bits`
+        : id === 3 ? `${Math.floor(1 + 63 * value + 0.5)} samples` : (0.25 + 1.75 * value).toFixed(2)
+      : selected === 3
+      ? id === 2 ? `${(-40 + 38 * value).toFixed(1)} dB`
+        : id === 3 ? (1.5 + 18.5 * value).toFixed(2)
+          : id === 4 ? `${(1 + 39 * value).toFixed(1)} ms`
+            : id === 5 ? `${(20 + 230 * value).toFixed(1)} ms`
+              : `${(12 * value).toFixed(1)} dB`
+      : selected === 6
+      ? id === 2 ? `${Math.round(60 * (10000 / 60) ** value).toLocaleString()} Hz`
+        : id === 3 ? (0.08 + 0.92 * value).toFixed(2) : (6 * value).toFixed(2)
+      : selected === 15
+        ? id === 2 ? `${(-20 + 19 * value).toFixed(1)} dB`
+          : id === 3 ? (0.6 + 1.4 * value).toFixed(2)
+            : id === 4 ? `${(10 + 190 * value).toFixed(1)} ms` : value.toFixed(2)
+      : id === 2 ? `${Math.round(40 + 740 * value)} / ${Math.round((40 + 740 * value) * 1.5)} ms`
+        : (0.92 * value).toFixed(2);
+  }
+  const help = byId('slot-help');
+  if (help) help.textContent = activeFamily === 'standalone-fx-host' && selected === 12
+    ? 'The old graph passes a silent second bus to Ring Mod. At full depth and wet mix its output is silent. The normal Standalone FX view uses the audible internal oscillator.'
+    : activeFamily === 'standalone-fx-host' && selected === 4
+    ? 'The old graph prepares Stereo Widener again on each type switch, clearing its low-band filters and correlation meter. The slot applies 1.1× wet gain.'
+    : activeFamily === 'standalone-fx-host' && selected === 5
+    ? 'The old graph prepares FilterNode again on each type switch, clearing both two-pole integrators. Cutoff and resonance are restored from this type’s saved controls.'
+    : activeFamily === 'standalone-fx-host' && selected === 16
+    ? 'The old graph prepares Transient Shaper again on each type switch, clearing its fast and slow envelopes and meter. The comparison changes attack and sustain before the return visit.'
+    : activeFamily === 'standalone-fx-host' && selected === 17
+    ? 'The old graph prepares BitCrusher again on each type switch, clearing its held samples and counters. Logic mode stays Normal; its unused second bus does not affect this slot.'
+    : selected === 0
+    ? 'The original export starts dry. Raise Wet mix to hear Chorus; the slot applies 1.4× wet gain.'
+    : selected === 1
+    ? 'The old slot sends 0–1 directly to a spread setter measured in degrees, so its stereo movement is small. The standalone Phaser exposes 0–180°.'
+    : selected === 3
+    ? 'Compressor attack and release take effect when the effect is selected; changing them while selected needs a switch away and back. The old knee control has no effect.'
+    : selected === 2 ? 'The old slot maps four normalized controls to drive, curve, output and bias. Its fifth control is unused.'
+    : selected === 4 ? 'Width and mono low cutoff are the old slot controls. Mono low is always enabled, and the wet branch has 1.1× gain.'
+    : selected === 5 ? 'This is the original two-pole FilterNode. Cutoff uses exponential mapping; the third through fifth normalized controls are unused.'
+    : selected === 7 ? 'Room and damping are the old slot controls. Internal reverb is fully wet; the public slot mix blends the dry input. The other three controls are unused.'
+    : selected === 9 ? 'Tap count and feedback are the old slot controls. The four assigned taps keep their authored times, gains, and pans; the remaining taps keep the node defaults. Wet gain is 1.4×.'
+    : selected === 12 ? 'Frequency, depth, and spread are the old slot controls. The ring modulator uses its internal oscillator here; a second stereo audio bus is available in the standalone graph API.'
+    : selected === 13 ? 'The old slot maps vowel, shift, resonance, and drive. Internal mix is fully wet and the slot applies 1.5× wet gain; the fifth control is unused.'
+    : selected === 14 ? 'The old slot maps three normalized controls to low, high, and mid gain. Band frequencies and Q use the original fixed slot values; the standalone EQNode exposes all nine controls.'
+    : selected === 19 ? 'The old slot maps delay time, reverse window, and feedback. Internal mix is fully wet, and the slot applies 1.2× wet gain; the last two controls are unused.'
+    : selected === 20 ? 'The old slot maps beat length, gate, probability, and filter decay. Tempo stays at 120 BPM, all eight pattern steps are on, and pitch decay uses the node default.'
+    : selected === 10 ? 'The old slot maps pitch −12…12 semitones, head window 30…180 ms, and feedback 0…0.75. Internal mix is fully wet; the last two controls are unused.'
+    : selected === 11 ? 'The old slot maps grain size, density, capture position, and spray. Pitch is fixed at 0 st and the Hann grain envelope is used; the fifth control is unused.'
+    : selected === 18 ? 'The old slot maps size, pitch, feedback, and an exponential feedback filter. Internal mix is 0.5 and the slot applies 1.4× wet gain; the fifth control is unused.'
+    : selected === 16 ? 'Attack, sustain, and sensitivity are the old slot controls. Internal mix is fully wet; the last two normalized controls are unused.'
+    : selected === 17 ? 'Bit depth, sample hold, and output gain are the old slot controls. Logic mode is Normal and internal mix is fully wet; the last two normalized controls are unused.'
+    : selected === 15 ? 'Limiter pre gain is smoothed before peak detection. Its fifth normalized control is unused in the old slot definition.'
+      : 'Values are stored separately for each effect type and restored when selected.';
+}
+
+function updateGranulatorSourceView() {
+  if (activeFamily !== 'granulator') return;
+  byId('signal-path').textContent = loadedGranulatorSource
+    ? `Live input + ${loadedGranulatorSource.origin === 'capture' ? 'captured take' : 'decoded file'} → grain cloud → dry/wet output`
+    : 'Live path: input → four-second capture ring → grain cloud → dry/wet output';
+  for (const id of [9, 10]) {
+    const wrapper = byId('controls').querySelector(`[data-parameter-id="${id}"]`);
+    if (wrapper) wrapper.hidden = !loadedGranulatorSource;
+  }
+}
+
+function addGate(parameter) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'gate-button';
+  button.setAttribute('aria-pressed', 'false');
+  button.textContent = 'Open gate';
+  button.addEventListener('click', () => {
+    const next = values.get(parameter.id) ? 0 : 1;
+    values.set(parameter.id, next);
+    audio.setParameter(parameter.id, next);
+    button.setAttribute('aria-pressed', String(next === 1));
+    button.textContent = next ? 'Close gate' : 'Open gate';
+  });
+  byId('controls').appendChild(button);
+}
+
+function addToggle(parameter) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'gate-button';
+  button.setAttribute('aria-pressed', String(parameter.default === 1));
+  const render = () => { button.textContent = `${parameter.label}: ${values.get(parameter.id) ? 'On' : 'Off'}`; };
+  button.dataset.parameterId = String(parameter.id);
+  render();
+  button.addEventListener('click', () => {
+    const next = values.get(parameter.id) ? 0 : 1;
+    values.set(parameter.id, next);
+    audio.setParameter(parameter.id, next);
+    if (activeFamily === 'loop-capture' && parameter.id === 0 && next === 1) {
+      loopHasTake = false;
+      for (const id of [1, 2]) {
+        values.set(id, 0);
+        audio.setParameter(id, 0);
+      }
+    }
+    if (activeFamily === 'loop-capture' && parameter.id === 0 && next === 0) {
+      loopHasTake = audio.running;
+    }
+    button.setAttribute('aria-pressed', String(next === 1));
+    render();
+    if (activeFamily === 'loop-capture') updateLoopToggles();
+    if (activeFamily === 'main-sample-blend' && ['linked-depth', 'voice-amp-link', 'mapped-pitch'].includes(parameter.hostId)) updateMainDepthControls();
+  });
+  byId('controls').appendChild(button);
+}
+
+function updateLoopToggles() {
+  if (activeFamily !== 'loop-capture') return;
+  for (const id of [0, 1, 2, 4]) {
+    const button = byId('controls').querySelector(`[data-parameter-id="${id}"]`);
+    if (!button) continue;
+    const label = projects['loop-capture'].project.parameters.find((parameter) => parameter.id === id).label;
+    const on = Boolean(values.get(id));
+    button.textContent = `${label}: ${on ? 'On' : 'Off'}`;
+    button.setAttribute('aria-pressed', String(on));
+    button.disabled = (id === 1 || id === 2) && (Boolean(values.get(0)) || !loopHasTake);
+  }
+  for (const id of ['capture-transfer', 'capture-transfer-granulator',
+    'capture-transfer-main-bank', 'capture-transfer-main-blend']) {
+    byId(id).disabled = !audio.running || !loopHasTake || Boolean(values.get(0));
+  }
+}
+
+function addSelect(parameter) {
+  const wrapper = document.createElement('label');
+  wrapper.className = 'compact-select';
+  wrapper.dataset.parameterId = String(parameter.id);
+  const title = document.createElement('span');
+  title.textContent = parameter.label;
+  const select = document.createElement('select');
+  select.setAttribute('aria-label', parameter.label);
+  parameter.choices.forEach((choice, index) => select.add(new Option(choice, String(parameter.choiceValues?.[index] ?? index))));
+  select.value = String(parameter.default);
+  wrapper.syncValue = (value) => { select.value = String(value); };
+  if (parameter.prepareOnly) {
+    wrapper.dataset.prepareOnly = 'true';
+    select.disabled = audio.running;
+  }
+  select.addEventListener('change', () => {
+    const value = Number(select.value);
+    values.set(parameter.id, value);
+    audio.setParameter(parameter.id, value);
+    if (activeFamily === 'main-sample-blend' && parameter.hostId === 'direction-mode') updateMainDepthControls();
+  });
+  wrapper.append(title, select);
+  byId('controls').appendChild(wrapper);
+}
+
+function renderEq8Controls() {
+  const controls = byId('controls');
+  const tabs = document.createElement('div');
+  tabs.className = 'eq-band-tabs';
+  tabs.setAttribute('role', 'tablist');
+  tabs.setAttribute('aria-label', 'EQ band');
+  const panels = [];
+  const buttons = [];
+  for (let band = 0; band < 8; band++) {
+    const panel = document.createElement('div');
+    panel.className = 'eq-band-panel';
+    panel.id = `eq-band-${band + 1}`;
+    panel.setAttribute('role', 'tabpanel');
+    panel.setAttribute('aria-label', `Band ${band + 1}`);
+    for (let id = band * 5; id < band * 5 + 5; id++) {
+      const control = controls.querySelector(`[data-parameter-id="${id}"]`);
+      if (control) panel.appendChild(control);
+    }
+    const button = document.createElement('button');
+    button.type = 'button';
+    const frequency = eq8Project.parameters[band * 5 + 2].default;
+    button.textContent = `${band + 1} · ${frequency >= 1000 ? `${frequency / 1000}k` : frequency}`;
+    button.setAttribute('role', 'tab');
+    button.setAttribute('aria-controls', panel.id);
+    button.setAttribute('aria-label', `Band ${band + 1}, ${eq8Project.parameters[band * 5 + 2].default} hertz`);
+    button.addEventListener('click', () => {
+      panels.forEach((item, index) => { item.hidden = index !== band; });
+      buttons.forEach((item, index) => item.setAttribute('aria-selected', String(index === band)));
+    });
+    panels.push(panel);
+    buttons.push(button);
+    tabs.appendChild(button);
+  }
+  controls.prepend(tabs, ...panels);
+  buttons[0].click();
+}
+
+function renderPatchEditor(project) {
+  const section = byId('patch-section');
+  section.hidden = !project.patch;
+  section.refreshStatus = null;
+  const rows = byId('patch-rows');
+  rows.replaceChildren();
+  if (!project.patch) return;
+  section.querySelector('.section-label').textContent = project.patch.label ?? 'Control patch';
+  section.querySelector('.control-help').textContent = project.patch.help ?? 'Choose a source for each typed CV input. Changes reach the running graph at the next audio block; existing node state continues.';
+  byId('patch-state-file').disabled = audio.running;
+  byId('patch-state-status').textContent = 'Save routes and controls for this patch.';
+  const refresh = () => {
+    const connected = project.patch.inputs.filter((input) => project.signal.connections.some((edge) =>
+      edge.to === input.to && edge.inputPort === input.inputPort)).length;
+    const summary = project.patch.connectedSummary && project.patch.inputs.length === 1
+      ? connected ? project.patch.connectedSummary : project.patch.disconnectedSummary
+      : `${connected} of ${project.patch.inputs.length} ${project.patch.routeKind ?? 'control'} inputs connected`;
+    byId('patch-status').textContent = `${summary} · ${audio.running ? 'live graph updated' : 'ready for next start'}`;
+  };
+  section.refreshStatus = refresh;
+  for (const port of project.patch.inputs) {
+    const row = document.createElement('label');
+    row.className = 'patch-row';
+    const label = document.createElement('span');
+    label.textContent = port.label;
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', port.label);
+    select.dataset.to = String(port.to);
+    select.dataset.port = String(port.inputPort);
+    select.add(new Option(project.patch.unconnectedLabel ?? 'Unconnected · 0', ''));
+    for (const [nodeId, name] of port.sources) select.add(new Option(name, String(nodeId)));
+    const connected = project.signal.connections.find((edge) => edge.to === port.to && edge.inputPort === port.inputPort);
+    select.value = connected ? String(connected.from) : '';
+    select.addEventListener('change', async () => {
+      const current = project.signal.connections.find((edge) => edge.to === port.to && edge.inputPort === port.inputPort);
+      const previous = current ? String(current.from) : '';
+      const source = select.value === '' ? null : Number(select.value);
+      if (source !== null && !port.sources.some(([id]) => id === source)) {
+        select.value = previous;
+        return;
+      }
+      select.disabled = true;
+      try {
+        if (audio.running) await audio.setRoute(port.to, port.inputPort, source);
+        project.signal.connections = project.signal.connections.filter((edge) =>
+          edge.to !== port.to || edge.inputPort !== port.inputPort);
+        if (source !== null) project.signal.connections.push({ from: source, to: port.to, inputPort: port.inputPort });
+        refresh();
+      } catch (error) {
+        select.value = previous;
+        byId('patch-status').textContent = String(error);
+      } finally {
+        select.disabled = false;
+      }
+    });
+    row.append(label, select);
+    rows.appendChild(row);
+  }
+  refresh();
+}
+
+byId('patch-state-export').addEventListener('click', () => {
+  if (!activeProject?.patch) return;
+  const readout = byId('patch-state-status');
+  try {
+    const state = captureControlPatchState(activeProject, values);
+    const url = URL.createObjectURL(new Blob([`${JSON.stringify(state, null, 2)}\n`], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = activeProject.patch.filename ?? 'manifold-cv-rack-patch.json';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    readout.textContent = `Saved ${state.routes.length} routes and ${Object.keys(state.parameters).length} controls.`;
+  } catch (error) {
+    readout.textContent = `Patch unavailable: ${error.message ?? String(error)}`;
+  }
+});
+byId('patch-state-file').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const readout = byId('patch-state-status');
+  try {
+    if (!activeProject?.patch || audio.running) throw new Error('Stop the control patch before opening a state.');
+    if (file.size > 1024 * 1024) throw new Error('Patch JSON must be smaller than 1 MB.');
+    const project = activeProject;
+    const contents = await file.text();
+    if (activeProject !== project || audio.running) throw new Error('Patch view changed while opening the state.');
+    const state = parseControlPatchState(JSON.parse(contents), project);
+    const ports = new Set(activeProject.patch.inputs.map((port) => `${port.to}:${port.inputPort}`));
+    activeProject.signal.connections = activeProject.signal.connections.filter((edge) => !ports.has(`${edge.to}:${edge.inputPort}`));
+    for (const route of state.routes) {
+      if (route.from !== null) activeProject.signal.connections.push({ from: route.from, to: route.to, inputPort: route.inputPort });
+      const select = byId('patch-rows').querySelector(`select[data-to="${route.to}"][data-port="${route.inputPort}"]`);
+      if (select) select.value = route.from === null ? '' : String(route.from);
+    }
+    applyPatchParameterValues(activeProject, state.parameters);
+    byId('patch-section').refreshStatus();
+    readout.textContent = `Opened ${file.name} · ${state.routes.length} routes and ${Object.keys(state.parameters).length} controls.`;
+  } catch (error) {
+    readout.textContent = `Patch unavailable: ${error.message ?? String(error)}`;
+  } finally {
+    event.target.value = '';
+  }
+});
+
+function applyPatchParameterValues(project, parameters) {
+  for (const parameter of project.parameters) {
+    const value = parameters[parameter.hostId];
+    values.set(parameter.id, value);
+    if (parameter.kind === 'choice') {
+      const choices = parameter.choiceValues ?? parameter.choices.map((_, index) => index);
+      byId('modes').querySelectorAll('button').forEach((button, index) => {
+        button.setAttribute('aria-pressed', String(choices[index] === value));
+      });
+    } else if (parameter.kind === 'toggle') {
+      const button = byId('controls').querySelector(`[data-parameter-id="${parameter.id}"]`);
+      if (button) {
+        button.setAttribute('aria-pressed', String(value === 1));
+        button.textContent = `${parameter.label}: ${value ? 'On' : 'Off'}`;
+      }
+    } else byId('controls').querySelector(`[data-parameter-id="${parameter.id}"]`)?.syncValue(value);
+  }
+}
+
+function applyStandaloneFxState(state) {
+  slotValuesByType = new Map(Object.entries(state.typeParameters).map(([type, controls]) => [Number(type), controls]));
+  values.set(0, state.hostParameters.type);
+  const choices = standaloneFxProject.parameters.find((parameter) => parameter.id === 0).choiceValues;
+  byId('modes').querySelectorAll('button').forEach((button, index) => {
+    button.setAttribute('aria-pressed', String(choices[index] === state.hostParameters.type));
+  });
+  for (const [id, value] of [[1, state.hostParameters.mix], ...[2, 3, 4, 5, 6].map((id) => [id, state.hostParameters[`p/${id - 2}`]])]) {
+    byId('controls').querySelector(`[data-parameter-id="${id}"]`)?.syncValue(value);
+  }
+  updateSlotControls();
+  if (activeFamily === 'standalone-fx') referenceLab?.selectEffectType(state.hostParameters.type);
+}
+
+let sineBankPublishFrame = null;
+function renderSineBankEditor() {
+  const section = byId('sine-bank-section');
+  section.hidden = activeFamily !== 'sine-bank';
+  if (section.hidden) return;
+  const levels = sineManualLevels;
+  const update = () => {
+    sineTargetActive = false;
+    latestSineTargetId = 0;
+    pendingSineTargets.clear();
+    sineBankProject.partials.fundamental = 440;
+    sineBankProject.partials.values = levels.flatMap((amplitude, index) => [440 * (index + 1), amplitude, 0, 0]);
+    byId('sine-source-status').textContent = 'Manual harmonic bank active. Select Audition prepared target to return to the analyzed source.';
+    byId('sine-target-status').textContent = 'Manual harmonic bank active.';
+    if (sineBankPublishFrame !== null) cancelAnimationFrame(sineBankPublishFrame);
+    sineBankPublishFrame = requestAnimationFrame(() => {
+      sineBankPublishFrame = null;
+      if (activeFamily === 'sine-bank') audio.setPartials(sineBankProject.partials);
+    });
+  };
+  const first = byId('sine-bank-partials');
+  const extra = byId('sine-bank-extra');
+  first.replaceChildren();
+  extra.replaceChildren();
+  const sliders = [];
+  for (let index = 0; index < 32; index++) {
+    const row = document.createElement('label');
+    row.className = 'sine-partial';
+    const name = document.createElement('span');
+    name.textContent = `H${String(index + 1).padStart(2, '0')}`;
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = '0';
+    slider.max = '1';
+    slider.step = '0.001';
+    slider.value = String(levels[index]);
+    slider.setAttribute('aria-label', `Harmonic ${index + 1} amplitude`);
+    const readout = document.createElement('output');
+    readout.textContent = levels[index].toFixed(2);
+    slider.addEventListener('input', () => {
+      levels[index] = Number(slider.value);
+      readout.textContent = levels[index].toFixed(2);
+      update();
+    });
+    row.append(name, slider, readout);
+    (index < 8 ? first : extra).appendChild(row);
+    sliders.push({ slider, readout });
+  }
+  const presets = byId('sine-bank-presets');
+  presets.replaceChildren();
+  for (const [name, formula] of [
+    ['Sine', (harmonic) => harmonic === 1 ? 1 : 0],
+    ['Saw', (harmonic) => 1 / harmonic],
+    ['Odd', (harmonic) => harmonic % 2 ? 1 / harmonic : 0],
+    ['Bell', (harmonic) => harmonic === 1 ? 1 : harmonic === 3 ? .5 : harmonic === 6 ? .28 : harmonic === 10 ? .16 : 0],
+  ]) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = name;
+    button.addEventListener('click', () => {
+      levels.forEach((_, index) => {
+        levels[index] = formula(index + 1);
+        sliders[index].slider.value = String(levels[index]);
+        sliders[index].readout.textContent = levels[index].toFixed(2);
+      });
+      update();
+    });
+    presets.appendChild(button);
+  }
+}
+
+function renderPrimitive(family) {
+  graphEditor?.destroy();
+  graphEditor = null;
+  graphLiveSession = null;
+  midiBrowserUrl.value = new URL(`?primitive=${['sample-instrument', 'main-voice-bank', 'midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator', 'graph-workspace'].includes(family) ? family : 'voice'}`, location.href).href;
+  const { project, title, description, signal } = projects[family];
+  finishMainStateRestore();
+  if (project.patch && !patchedSignals.has(family)) patchedSignals.set(family, structuredClone(project.signal));
+  activeProject = project.patch ? { ...project, signal: patchedSignals.get(family) } : project;
+  const isInstrument = project.signal.inputSource === 'none';
+  activeFamily = family;
+  if (usesSineSource(family)) sinePitchSource = null;
+  primitivePicker.value = family;
+  values = new Map(project.parameters.map((parameter) => [parameter.id, parameter.default]));
+  if (family === 'main-sample-blend') {
+    phraseReferenceAuto = true;
+    sineTargetActive = false;
+    activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
+    activeProject.extraPartials = structuredClone(mainSampleBlendInitialExtraPartials);
+    byId('sine-target-bars').replaceChildren();
+    byId('sine-target-status').textContent = 'Select a target after analysis.';
+  }
+  if (family === 'main-voice-bank') mainBankSnapshotRestored = false;
+  if (isFxFamily(family)) slotValuesByType = new Map([
+    [0, [0.5, 0.5, 0.2, 0.6, 0.4]],
+    [1, [0.5, 0.5, 0.4, 0.5, 0.4]],
+    [2, [0.3, 0.0, 0.7, 0.5, 0.5]],
+    [4, [0.6, 0.4, 0.5, 0.5, 0.5]],
+    [5, [0.5, 0.2, 0.5, 0.5, 0.5]],
+    [7, [0.5, 0.4, 0.5, 0.5, 0.5]],
+    [9, [0.3, 0.3, 0.5, 0.5, 0.5]],
+    [12, [0.3, 1.0, 0.2, 0.5, 0.5]],
+    [13, [0.0, 0.5, 0.4, 0.3, 0.5]],
+    [14, [0.5, 0.5, 0.5, 0.5, 0.5]],
+    [16, [0.5, 0.5, 0.5, 0.5, 0.5]],
+    [17, [0.3, 0.12, 0.55, 0.5, 0.5]],
+    [19, [0.2, 0.25, 0.47, 0.5, 0.5]],
+    [20, [0.05, 0.8, 0.8, 0.25, 0.5]],
+    [10, [0.5, 0.5, 0.2, 0.5, 0.5]],
+    [11, [0.3, 0.4, 0.6, 0.25, 0.5]],
+    [18, [0.6, 0.75, 0.7, 0.5, 0.5]],
+    [3, [0.4, 0.3, 0.1, 0.3, 0.5]],
+    [6, [0.5, 0.4, 0.1, 0.5, 0.5]], [8, [0.3, 0.3, 0.5, 0.5, 0.5]],
+    [15, [0.5, 0.3, 0.4, 0.4, 0.5]],
+  ]);
+  if (family === 'standalone-fx-routing' || family === 'standalone-fx-host') slotValuesByType.set(8, [0, 0.6, 0.5, 0.5, 0.5]);
+  if (family === 'loop-capture') loopHasTake = false;
+  byId('capture-transfer-section').hidden = family !== 'loop-capture';
+  if (family === 'loop-capture') byId('capture-transfer-status').textContent = 'Record a take, then stop recording to send it to a sample project.';
+  byId('module-title').textContent = title;
+  const analyzerView = ['spectrum-analyzer', 'fft-spectrum', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'transient-shaper'].includes(family);
+  document.querySelector('.measurements h2').textContent = family === 'fft-spectrum' ? 'FFT spectrum' : family === 'spectrum-analyzer' ? 'Band levels' : family === 'compressor' || family === 'limiter' ? 'Gain reduction' : family === 'transient-shaper' ? 'Transient strength' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector level' : 'Live output';
+  envelopeHistory = [];
+  document.querySelector('.scope-wrap').hidden = analyzerView;
+  document.querySelector('.axis-caption').hidden = analyzerView;
+  byId('live-bands').hidden = !analyzerView || family === 'fft-spectrum';
+  byId('fft-view').hidden = family !== 'fft-spectrum';
+  byId('cv-stages').hidden = family !== 'cv-rack';
+  if (family === 'cv-rack') byId('cv-stages').querySelectorAll('.cv-stage').forEach((row) => {
+    row.querySelector('output').textContent = '—';
+    row.querySelector('.cv-stage-fill').style.width = '0%';
+    row.dataset.parked = 'false';
+    row.removeAttribute('title');
+  });
+  if (family === 'fft-spectrum') { drawBandBars(byId('fft-bands'), [Array(32).fill(0)], 1, ['#9a8de8']); byId('fft-peak').textContent = 'Peak —'; }
+  byId('eq-response-section').hidden = family !== 'eq8';
+  byId('correlation-section').hidden = family !== 'stereo-widener';
+  byId('correlation-value').textContent = '— · start audio';
+  eqResponseSnapshot = null;
+  if (family === 'eq8') {
+    drawEqResponse(byId('eq-response'), null);
+    byId('eq-response-status').textContent = 'Start audio to see the effective band response.';
+  }
+  byId('live-bands').setAttribute('aria-label', family === 'spectrum-analyzer' ? 'Eight legacy analyzer bands' : family === 'compressor' || family === 'limiter' ? 'Live gain reduction in decibels' : family === 'transient-shaper' ? 'Live transient strength' : 'Live envelope value');
+  byId('live-envelope-trace').hidden = !['envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'transient-shaper'].includes(family);
+  byId('live-envelope-trace').setAttribute('aria-label', family === 'compressor' || family === 'limiter' ? 'Recent gain reduction in decibels' : family === 'transient-shaper' ? 'Recent transient strength' : 'Recent envelope history');
+  [...byId('live-bands').children].forEach((row, index) => {
+    row.hidden = family !== 'spectrum-analyzer' && index > 0;
+    row.firstChild.textContent = family === 'compressor' || family === 'limiter' ? 'GR' : family === 'transient-shaper' ? 'Tr' : family !== 'spectrum-analyzer' ? 'Env' : String(index + 1);
+    row.querySelector('output').textContent = family === 'compressor' || family === 'limiter' ? '0.0 dB' : '0.000';
+    row.querySelector('.live-band-fill').style.width = '0%';
+  });
+  byId('module-description').textContent = description;
+  byId('signal-path').textContent = signal;
+  document.querySelector('.panel-note').textContent = family === 'fft-spectrum' ? '2048 point · 32 bands' : family === 'spectrum-analyzer' ? 'Eight band meter' : family === 'compressor' || family === 'limiter' ? 'Reduction meter' : family === 'transient-shaper' ? 'Transient meter' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Envelope meter' : `Post ${title.toLowerCase()}`;
+  document.querySelectorAll('[data-primitive]').forEach((button) => {
+    button.setAttribute('aria-current', button.dataset.primitive === family ? 'page' : 'false');
+  });
+  byId('modes').replaceChildren();
+  byId('controls').replaceChildren();
+  byId('parameter-section').hidden = family === 'graph-workspace';
+  renderSineBankEditor();
+  byId('sine-source-section').hidden = !usesSineSource(family);
+  updateSineTargetControls();
+  byId('main-state-section').hidden = family !== 'main-sample-blend' && family !== 'main-voice-bank';
+  if (family === 'main-sample-blend' || family === 'main-voice-bank') {
+    byId('main-state-label').textContent = family === 'main-voice-bank' ? 'Main voice bank project' : 'Main blend project';
+    byId('main-state-status').textContent = family === 'main-voice-bank'
+      ? 'Saves the fixed graph, all bank controls, both prepared targets, and the shared source. Stop audio before opening a project.'
+      : 'Saves the fixed graph, branch controls, target settings, and the shared source. Stop audio before opening a project.';
+    byId('main-preset-name').value = '';
+    byId('main-preset-status').textContent = 'Presets hold controls and targets; they use the current project source. Stop audio before applying one.';
+    renderMainPresetList();
+  }
+  byId('main-state-file').disabled = audio.running;
+  if (family === 'main-sample-blend' && !loadedSineSource) {
+    const demo = demoSample();
+    loadedSineSource = { sourceRate: demo.sourceRate, stereo: demo.stereo, sourceKind: 'builtin', label: 'Built-in two-tone source' };
+    requestSampleAnalysis(loadedSineSource, true);
+  }
+  if (family === 'main-voice-bank') {
+    loadedSample ??= demoSample();
+    loadedSineSource = loadedSample;
+    if (activeProject.temporalTargets?.source !== loadedSample) delete activeProject.temporalTargets;
+    requestSampleAnalysis(loadedSineSource, true);
+  }
+  if (usesSineSource(family)) renderSineSourceAnalysis();
+  renderPatchEditor(activeProject);
+  byId('graph-workspace-section').hidden = family !== 'graph-workspace';
+  if (family === 'graph-workspace') {
+    graphEditor = mountGraphEditor(byId('graph-workspace-section'), activeProject, {
+      isRunning: () => audio.running,
+      canRouteLive: () => graphLiveSession !== null,
+      onRoute: (to, inputPort, from, outputPort) => {
+        if (!graphLiveSession) throw new Error('Live routing is unavailable for this graph.');
+        const target = activeProject.signal.nodes.find(node => node.id === to);
+        const source = activeProject.signal.nodes.find(node => node.id === from);
+        return graphLiveSession.route({
+          to, input: NODE_TYPES[target.type].inputNames[inputPort], from,
+          output: source && NODE_TYPES[source.type].outputNames[outputPort],
+        }).then(project => project.signal);
+      },
+      isActive: () => activeFamily === 'graph-workspace' && activeProject === graphWorkspaceProject,
+      onChange: (edited) => {
+        byId('signal-path').textContent = `${edited.nodes.length} Rust nodes · ${edited.connections.length} typed routes · stereo output`;
+        const internal = edited.inputSource === 'none';
+        const hasNotes = graphNoteTarget(edited) !== null;
+        byId('input-label').textContent = internal ? 'Instrument' : 'Live input';
+        byId('source').disabled = internal;
+        byId('source').hidden = internal;
+        byId('keyboard-section').hidden = !hasNotes;
+        byId('midi-access-section').hidden = !hasNotes;
+        byId('midi-output-section').hidden = !edited.nodes.some((node) => node.type === 'midi-transpose');
+        byId('graph-midi-permission-note').hidden = !hasNotes;
+        if (hasNotes) resetNoteEvents();
+        if (!audio.running) toggle.textContent = internal ? 'Start instrument' : 'Start audio';
+        document.querySelector('.measurement-hint').textContent = internal
+          ? hasNotes ? 'Start the instrument, then play the keyboard. The comparison below is a fixed native Rust capture.' : 'Start the instrument to see the output spectrum. The comparison below is a fixed native Rust capture.'
+          : 'Start audio to view the processed live input.';
+      },
+      onParameter: (nodeId, id, value) => graphLiveSession
+        ? graphLiveSession.parameter({ nodeId, id, value })
+        : audio.setNodeParameter(nodeId, id, value),
+      onTemporalSpeed: (nodeId, speed) => audio.setTemporalSpeed(speed, nodeId),
+      onCaptureArm: (captureId) => audio.armFreeCapture(captureId),
+      onCaptureCancel: () => audio.cancelFreeCapture(),
+      onCapturePublish: async (captureId, instrumentId, live = false, window = 0) => {
+        if (live) return audio.publishLiveCapture(captureId, instrumentId, window);
+        const take = await audio.captureSnapshot(captureId);
+        await audio.publishCapture(captureId, instrumentId);
+        return take;
+      },
+      onSampleReplace: (nodeId, sourceRate, stereo) => audio.replaceSample(nodeId, sourceRate, stereo),
+      onTemplateLoaded: (caseId) => referenceLab?.selectCase(caseId),
+      decodeSample: decodeFileSource,
+      builtinSample: demoSample,
+    });
+  }
+  const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
+  byId('mode-section').hidden = !mode;
+  byId('mode-label').textContent = family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper' || family === 'midi-arpeggiator' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'sine-bank' ? 'Drive shape' : family === 'waveshaper' ? 'Shaping curve' : family === 'phaser' ? 'Stages' : family === 'chorus' ? 'LFO waveform' : family === 'granulator' ? 'Grain envelope' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : isFxFamily(family) ? 'Effect type' : 'Mode';
+  byId('input-label').textContent = isInstrument ? 'Instrument' : 'Live input';
+  byId('source').disabled = isInstrument;
+  const sampleView = ['sample-region', 'sample-instrument', 'main-voice-bank'].includes(family);
+  byId('keyboard-section').hidden = !['voice', 'midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator', 'sample-instrument', 'main-voice-bank'].includes(family)
+    && !(family === 'graph-workspace' && graphNoteTarget(project.signal) !== null);
+  byId('midi-output-section').hidden = !['midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator'].includes(family)
+    && !(family === 'graph-workspace' && project.signal.nodes.some((node) => node.type === 'midi-transpose'));
+  byId('midi-access-section').hidden = byId('keyboard-section').hidden;
+  byId('graph-midi-permission-note').hidden = family !== 'graph-workspace' || graphNoteTarget(project.signal) === null;
+  byId('sample-section').hidden = !sampleView;
+  byId('slot-state-section').hidden = !hasFxState(family);
+  byId('slot-state-file').disabled = audio.running;
+  if (isFxFamily(family)) byId('slot-state-status').textContent = `Save the selected type and all 21 effect settings${family === 'standalone-fx-routing' ? ' for persistent routing' : ''}.`;
+  byId('granulator-file-section').hidden = family !== 'granulator';
+  byId('granulator-file').disabled = audio.running;
+  byId('granulator-clear-file').disabled = audio.running;
+  byId('granulator-clear-file').hidden = !loadedGranulatorSource;
+  byId('granulator-source-status').textContent = loadedGranulatorSource?.label ?? 'Live input feeds the capture ring. Choose a file to grain from a fixed source instead.';
+  byId('sample-trigger').hidden = family !== 'sample-region';
+  byId('sample-help').textContent = family === 'sample-instrument' || family === 'main-voice-bank'
+    ? 'Start the instrument, then play the keyboard or connect MIDI. Stop it before changing the file.'
+    : 'Start the instrument, then trigger. Stop the instrument before changing its file.';
+  document.querySelector('.sample-legend span:nth-child(4)').textContent = family === 'sample-instrument' || family === 'main-voice-bank' ? 'Playheads' : 'Playhead';
+  document.querySelectorAll('.sample-legend span:not(:nth-child(4))').forEach((entry) => {
+    entry.hidden = family === 'main-voice-bank';
+  });
+  byId('sample-waveform').setAttribute('aria-label', family === 'main-voice-bank'
+    ? 'Stereo source waveform with eight note playheads'
+    : 'Stereo sample waveform with play start, loop bounds, crossfade, and playhead');
+  byId('sample-file').disabled = audio.running;
+  samplePlayhead = 0;
+  samplePlaying = false;
+  sampleVoicePositions = Array(8).fill(-1);
+  sampleActiveVoices = 0;
+  if (!byId('keyboard-section').hidden) resetNoteEvents();
+  if (mode) {
+    byId('modes').style.gridTemplateColumns = `repeat(${family === 'standalone-fx-host' ? 3 : isFxFamily(family) && mode.choices.length === 9 ? 3 : family === 'waveshaper' || isFxFamily(family) ? 4 : mode.choices.length}, minmax(0, 1fr))`;
+    const buttons = mode.choices.map((choice, index) => {
+      const value = mode.choiceValues?.[index] ?? index;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = family === 'svf' ? ['LP', 'BP', 'HP', 'Notch'][value]
+        : family === 'granulator' ? ['Hann', 'Tri', 'Black', 'Tukey', 'Rect'][value]
+        : isFxFamily(family) ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 4: 'Width', 5: 'Filter', 6: 'SVF', 7: 'Reverb', 8: 'Delay', 9: 'Multitap', 10: 'Pitch', 11: 'Grains', 12: 'Ring Mod', 13: 'Formant', 14: 'EQ', 15: 'Limit', 16: 'Transient', 17: 'Bits', 18: 'Shimmer', 19: 'Reverse', 20: 'Stutter' })[value] : choice;
+      button.setAttribute('aria-label', choice);
+      button.setAttribute('aria-pressed', String(value === mode.default));
+      button.addEventListener('click', () => {
+        if (isFxFamily(family)) {
+          slotValuesByType.set(values.get(0), [2, 3, 4, 5, 6].map((id) => values.get(id)));
+        }
+        values.set(mode.id, value);
+        audio.setParameter(mode.id, value);
+        if (family === 'standalone-fx' || family === 'standalone-fx-host') referenceLab?.selectEffectType(value);
+        buttons.forEach((item, itemIndex) => item.setAttribute('aria-pressed', String(itemIndex === index)));
+        if (isFxFamily(family)) {
+          const restored = slotValuesByType.get(value);
+          [2, 3, 4, 5, 6].forEach((id, offset) => {
+            values.set(id, restored[offset]);
+            byId('controls').querySelector(`[data-parameter-id="${id}"]`)?.syncValue(restored[offset]);
+            audio.setParameter(id, restored[offset]);
+          });
+          updateSlotControls();
+        }
+      });
+      byId('modes').appendChild(button);
+      return button;
+    });
+  }
+  for (const parameter of project.parameters.filter((item) => item.kind !== 'choice')) {
+    if (parameter.kind === 'gate') addGate(parameter);
+    else if (parameter.kind === 'toggle') addToggle(parameter);
+    else if (parameter.kind === 'select') addSelect(parameter);
+    else addSlider(parameter);
+  }
+  if (family === 'main-sample-blend') useAnalyzedPhraseReference(loadedSineSource);
+  if (family === 'main-sample-blend') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = 'Direction mode selects normal, FM, or Sync. FM moves sample speed with wave phase and wave pitch with sample cursor; Branch depth sets the modulation budget. Sync retriggers or resumes the sample on phase wraps and hard-syncs the wave on raw crossings when the blend favors wave. Map Main note + sample pitch to route the voice frequency through root note, keytrack, and classic or vocoder pitch; this temporarily overrides the manual sample speed and vocoder controls. Normal mode keeps the manual hard-sync toggle. Voice amplitude links oscillator, sample, and Add levels. Phrase reference starts from source analysis; moving it saves a manual value.';
+    byId('controls').appendChild(help);
+    updateMainDepthControls();
+  }
+  if (project.patch && patchedParameterValues.has(family)) {
+    applyPatchParameterValues(activeProject, patchedParameterValues.get(family));
+  }
+  if (family === 'eq8') renderEq8Controls();
+  updateSlotControls();
+  updateLoopToggles();
+  if (family === 'loop-capture') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = 'Start audio, record a phrase, stop recording, then turn Play on. The input remains audible while recording.';
+    byId('controls').appendChild(help);
+  }
+  if (family === 'sample-instrument') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = 'Unison count applies to new notes; detune and spread also change held notes.';
+    byId('controls').appendChild(help);
+  }
+  if (family === 'main-voice-bank') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = 'Add blends prepared wave and source spectra; Morph follows the source spectrum and interpolates pitch. Select a source frame below to replace both prepared targets. The sample-clock ADSR is a v2 timing change.';
+    byId('controls').appendChild(help);
+  }
+  if (family === 'midi-transpose') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = 'The note monitor shows incoming keys. Rust maps them to output notes; changing Transpose while a key is held sends an off/on pair. The on-screen keyboard needs no MIDI permission.';
+    byId('controls').appendChild(help);
+  }
+  if (family === 'midi-note-filter') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = 'The monitor shows incoming notes. Try C4 inside the default range, then move Low above 60 while holding C4 to hear it release. The keyboard needs no MIDI permission.';
+    byId('controls').appendChild(help);
+  }
+  if (family === 'midi-scale-quantizer') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = 'Play C♯4: Major / Nearest emits C4. Change Direction to Up while holding it to hear D4. The on-screen keyboard works without hardware MIDI permission.';
+    byId('controls').appendChild(help);
+  }
+  if (family === 'midi-velocity-mapper') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = 'Start audio and play a key. Change Curve to Hard while holding it: Rust retriggers that note at a lower velocity. Negative Offset can silence it; the on-screen keyboard needs no hardware MIDI permission.';
+    byId('controls').appendChild(help);
+  }
+  if (family === 'midi-arpeggiator') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = 'Start audio and hold C4 and E4. The first Rust step starts after a 30 ms chord capture; watch its note and sample-offset output trace. The on-screen keyboard needs no hardware MIDI permission.';
+    byId('controls').appendChild(help);
+  }
+  if (family === 'stereo-delay') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = '¹ The original delay exposes resonance but its feedback filter uses one pole, so resonance has no audible effect.';
+    byId('controls').appendChild(help);
+  }
+  if (family === 'compressor') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = 'Attack and release are captured when audio starts; stop audio to change them. The old knee, auto makeup, mode, detector mode, and sidechain HPF controls do not affect this processing path.';
+    byId('controls').appendChild(help);
+  }
+  if (isFxFamily(family)) {
+    const help = document.createElement('p');
+    help.id = 'slot-help';
+    help.className = 'control-help';
+    help.textContent = 'Values are stored separately for each effect type and restored when selected.';
+    byId('controls').appendChild(help);
+    updateSlotControls();
+    const sessionState = slotSessionStates.get(family);
+    if (sessionState) {
+      applyStandaloneFxState(sessionState);
+      byId('slot-state-status').textContent = `Session state restored · type ${sessionState.hostParameters.type} · 21 effect settings.`;
+    }
+  }
+  if (family === 'patch') {
+    const range = document.createElement('p');
+    range.id = 'cutoff-range';
+    range.className = 'control-help';
+    byId('controls').appendChild(range);
+    updateCutoffRange();
+  }
+  if (family === 'distortion') {
+    const label = document.createElement('p');
+    label.className = 'control-help';
+    label.textContent = 'Transfer curve · input −1 to +1';
+    const curve = document.createElement('canvas');
+    curve.id = 'transfer-curve';
+    curve.className = 'transfer-curve';
+    curve.setAttribute('aria-label', 'Distortion transfer curve');
+    byId('controls').append(label, curve);
+    updateTransferCurve();
+  }
+  if (sampleView) {
+    byId('sample-source-status').textContent = loadedSample?.label ?? 'Built-in example loaded when you start. Choose an audio file to replace it.';
+    drawSampleWaveform();
+    renderSampleAnalysis();
+    requestSampleAnalysis(loadedSample ?? demoSample());
+  }
+  updateGranulatorSourceView();
+  byId('source').hidden = isInstrument;
+  toggle.textContent = isInstrument ? 'Start instrument' : 'Start audio';
+  document.querySelector('.measurement-hint').textContent = family === 'main-voice-bank'
+    ? 'Play chords with the on-screen keyboard. This base branch has independent Rust voice state; the full old Main graph remains in progress.'
+    : family === 'sample-instrument'
+    ? 'Start the instrument, then play notes to hear the loaded sample at different pitches. Native Rust/Wasm comparisons are below.'
+    : family === 'sample-region'
+    ? 'Start the instrument, then trigger the loaded sample. Native Rust/Wasm comparisons are below.'
+    : family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper' || family === 'midi-arpeggiator'
+    ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
+    : family === 'oscillator' || family === 'adsr' || family === 'noise' || family === 'patch' || family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack'
+      ? `Start the instrument to view its spectrum${family === 'cv-rack' ? ' and each CV stage' : ''}. The ${family === 'patch' || family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'native Rust' : 'C++'} comparisons below run offline.`
+    : family === 'envelope-ducking' ? 'Start audio to hear envelope-controlled gain and inspect the detector. Native Rust/Wasm comparisons are below.'
+    : family === 'compressor' || family === 'limiter' ? 'Start audio to hear dynamics and view gain reduction in dB. C++ audio and meter snapshots are compared below.'
+    : family === 'envelope-follower' ? 'Start audio to view the detected envelope. C++ meter snapshots are compared below.'
+    : family === 'transient-shaper' ? 'Start audio to hear attack and sustain shaping and view transient strength. C++ audio and meter snapshots are compared below.'
+    : family === 'fft-spectrum' ? 'Start audio to view 32 FFT bands and the strongest peak frequency. Native Rust/Wasm comparisons are below.'
+    : analyzerView ? 'Start audio to see the original eight band meter. Bars scale to the current peak; numbers are normalized 0–1 values.'
+    : 'Start audio to view the output spectrum. The reference cases below run offline.';
+  if (family === 'svf') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = 'Legacy DSP caps resonance at 1.00, although its control reaches 2.00.';
+    byId('controls').appendChild(help);
+  }
+}
+
+function updatePrepareOnlyControls() {
+  for (const wrapper of document.querySelectorAll('[data-prepare-only="true"]')) {
+    wrapper.querySelector('input, select').disabled = audio.running;
+  }
+}
+
+const keyboardNotes = [
+  ['C', 60, 'a'], ['C♯', 61, 'w'], ['D', 62, 's'], ['D♯', 63, 'e'],
+  ['E', 64, 'd'], ['F', 65, 'f'], ['F♯', 66, 't'], ['G', 67, 'g'],
+  ['G♯', 68, 'y'], ['A', 69, 'h'], ['A♯', 70, 'u'], ['B', 71, 'j'],
+];
+const keyButtons = new Map();
+const pressedNotes = new Set();
+const midiHeld = new MidiHoldState();
+const keyboardDevice = Symbol('on-screen keyboard');
+const noteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+let lastMidiTraceSequence = 0;
+const noteTarget = () => activeFamily === 'graph-workspace' ? graphNoteTarget(activeProject.signal)
+  : activeFamily === 'midi-transpose' || activeFamily === 'midi-note-filter' || activeFamily === 'midi-scale-quantizer' || activeFamily === 'midi-velocity-mapper' || activeFamily === 'midi-arpeggiator' ? 3 : activeFamily === 'voice' ? 1 : activeFamily === 'sample-instrument' || activeFamily === 'main-voice-bank' ? 2 : null;
+function resetNoteEvents() {
+  const placeholder = document.createElement('li');
+  placeholder.textContent = 'Play the keyboard to inspect note events.';
+  byId('midi-events').replaceChildren(placeholder);
+  const outputPlaceholder = document.createElement('li');
+  outputPlaceholder.textContent = 'Start the instrument to inspect transformed events.';
+  byId('midi-output-events').replaceChildren(outputPlaceholder);
+  lastMidiTraceSequence = 0;
+}
+function showMidiTrace(events) {
+  const graphEffects = activeFamily === 'graph-workspace'
+    ? new Set(activeProject.signal.nodes.filter((node) => node.type === 'midi-transpose').map((node) => node.id)) : null;
+  if (!graphEffects && !['midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator'].includes(activeFamily)) return;
+  const list = byId('midi-output-events');
+  for (const event of events) {
+    if (event.sequence <= lastMidiTraceSequence || !(graphEffects ? graphEffects.has(event.nodeId) : event.nodeId === 4)) continue;
+    lastMidiTraceSequence = event.sequence;
+    if (list.firstChild?.textContent === 'Start the instrument to inspect transformed events.') list.replaceChildren();
+    const item = document.createElement('li');
+    const pitch = `${noteNames[event.note % 12]}${Math.floor(event.note / 12) - 1} (${event.note})`;
+    const action = event.emitted ? event.kind === 0 ? 'On' : event.kind === 1 ? 'Off' : event.kind === 3 ? 'Bend' : 'All off'
+      : event.kind === 0 ? 'Blocked on' : 'Blocked off';
+    item.textContent = `${action} · ${event.kind === 3 ? (event.note | event.velocity << 7) : pitch} · ch ${event.channel + 1}${event.kind === 0 ? ` · vel ${event.velocity}` : ''} · +${event.offset}f`;
+    item.dataset.emitted = String(event.emitted);
+    list.prepend(item);
+    while (list.childElementCount > 8) list.lastChild.remove();
+  }
+}
+function showNoteEvent(kind, channel, note, velocity, source, forwarded, detail = '') {
+  const list = byId('midi-events');
+  if (list.firstChild?.textContent === 'Play the keyboard to inspect note events.') list.replaceChildren();
+  const item = document.createElement('li');
+  const name = `${noteNames[note % 12]}${Math.floor(note / 12) - 1}`;
+  item.textContent = `${kind === 'on' ? 'On' : 'Off'} · ${name} (${note}) · ch ${channel + 1} · vel ${velocity} · ${source}${detail ? ` · ${detail}` : forwarded ? '' : ' · received only'}`;
+  list.prepend(item);
+  while (list.childElementCount > 6) list.lastChild.remove();
+}
+function showPedalEvent(channel, down, forwarded) {
+  const list = byId('midi-events');
+  if (list.firstChild?.textContent === 'Play the keyboard to inspect note events.') list.replaceChildren();
+  const item = document.createElement('li');
+  item.textContent = `Sustain ${down ? 'down' : 'up'} · ch ${channel + 1} · MIDI${forwarded ? '' : ' · received only'}`;
+  list.prepend(item);
+  while (list.childElementCount > 6) list.lastChild.remove();
+}
+function showBendEvent(channel, value, source, forwarded) {
+  const list = byId('midi-events');
+  if (list.firstChild?.textContent === 'Play the keyboard to inspect note events.') list.replaceChildren();
+  const item = document.createElement('li');
+  item.textContent = `Bend ${((value - 8192) * 12 / 8192).toFixed(1)} st · ch ${channel + 1} · ${source}${forwarded ? '' : ' · received only'}`;
+  list.prepend(item);
+  while (list.childElementCount > 6) list.lastChild.remove();
+}
+function sendPitchBend(channel, value, source, eventTimeMs = null) {
+  const target = noteTarget();
+  const forwarded = target !== null && audio.running;
+  if (forwarded) {
+    const lsb = value & 127;
+    const msb = value >> 7;
+    if (eventTimeMs === null) audio.sendEvent(target, 3, lsb, msb, 0, channel);
+    else audio.sendMidiEvent(target, 3, lsb, msb, channel, eventTimeMs);
+  }
+  showBendEvent(channel, value, source, forwarded);
+}
+const pitchBend = byId('pitch-bend');
+pitchBend.addEventListener('input', () => {
+  const semitones = Number(pitchBend.value);
+  byId('pitch-bend-value').textContent = `${semitones.toFixed(1)} st`;
+  sendPitchBend(15, Math.max(0, Math.min(16383, Math.round(8192 + semitones * 8192 / 12))), 'Keyboard');
+});
+byId('pitch-bend-center').addEventListener('click', () => {
+  pitchBend.value = '0';
+  pitchBend.dispatchEvent(new Event('input'));
+});
+function noteOn(note) {
+  const target = noteTarget();
+  if (target === null || !audio.running || pressedNotes.has(note)) return;
+  pressedNotes.add(note);
+  keyButtons.get(note)?.setAttribute('aria-pressed', 'true');
+  const { events } = midiHeld.note(keyboardDevice, 'on', 15, note, 100);
+  for (const event of events) {
+    audio.sendEvent(target, 0, event.note, event.velocity, 0, event.channel);
+  }
+  showNoteEvent('on', 15, note, 100, 'Keyboard', events.length > 0,
+    events.length ? '' : 'held by another input');
+}
+function noteOff(note) {
+  if (!pressedNotes.delete(note)) return;
+  keyButtons.get(note)?.setAttribute('aria-pressed', 'false');
+  const { events, deferred } = midiHeld.note(keyboardDevice, 'off', 15, note, 0);
+  for (const event of events) {
+    if (audio.running && noteTarget() !== null) audio.sendEvent(noteTarget(), 1, event.note, 0, 0, event.channel);
+  }
+  showNoteEvent('off', 15, note, 0, 'Keyboard', events.length > 0,
+    deferred ? 'held by sustain' : events.length ? '' : 'held by another input');
+}
+function releaseAllNotes() {
+  if ((pressedNotes.size || midiHeld.hasHeldNotes) && audio.running && noteTarget() !== null) audio.sendEvent(noteTarget(), 2);
+  pressedNotes.clear();
+  midiHeld.clear();
+  for (const button of keyButtons.values()) button.setAttribute('aria-pressed', 'false');
+}
+function releaseDevice(deviceId) {
+  const releases = midiHeld.disconnect(deviceId);
+  if (audio.running && noteTarget() !== null) {
+    for (const event of releases) {
+      audio.sendMidiEvent(noteTarget(), 1, event.note, 0, event.channel, performance.now());
+      showNoteEvent('off', event.channel, event.note, 0, 'MIDI disconnect', true);
+    }
+  }
+}
+function receiveMidiNote(deviceId, kind, channel, note, velocity, eventTimeMs) {
+  const target = noteTarget();
+  if (target === null) return;
+  if (!audio.running) {
+    showNoteEvent(kind, channel, note, velocity, 'MIDI', false);
+    return;
+  }
+  const { events, deferred } = midiHeld.note(deviceId, kind, channel, note, velocity);
+  for (const event of events) {
+    audio.sendMidiEvent(target, event.kind === 'on' ? 0 : 1, event.note, event.velocity, event.channel, eventTimeMs);
+  }
+  showNoteEvent(kind, channel, note, velocity, 'MIDI', events.length > 0,
+    deferred ? 'held by sustain' : events.length ? '' : 'held by another input');
+}
+function receiveMidiSustain(deviceId, channel, down, eventTimeMs) {
+  const target = noteTarget();
+  if (target === null) return;
+  if (!audio.running) { showPedalEvent(channel, down, false); return; }
+  const releases = midiHeld.sustain(deviceId, channel, down);
+  showPedalEvent(channel, down, true);
+  for (const event of releases) {
+    audio.sendMidiEvent(target, 1, event.note, 0, event.channel, eventTimeMs);
+    showNoteEvent('off', event.channel, event.note, 0, 'MIDI sustain', true);
+  }
+}
+const midiToggle = byId('midi-toggle');
+const midiBrowserUrl = byId('midi-browser-url');
+midiBrowserUrl.addEventListener('click', () => midiBrowserUrl.select());
+byId('midi-copy-url').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(midiBrowserUrl.value);
+    byId('midi-copy-status').textContent = 'URL copied. Paste it into your browser address bar.';
+  } catch {
+    midiBrowserUrl.select();
+    byId('midi-copy-status').textContent = 'Select and copy this URL, then paste it into your browser address bar.';
+  }
+});
+const syncMidiToggle = () => {
+  midiToggle.textContent = midiInput.pending ? 'Stop waiting for MIDI' : midiInput.listening ? 'Stop MIDI input' : 'Request MIDI access';
+  midiToggle.disabled = Boolean(midiAvailability());
+};
+const midiInput = new BrowserMidiInput(receiveMidiNote, releaseDevice, (message) => {
+  byId('midi-status').textContent = message;
+}, receiveMidiSustain, (_deviceId, channel, value, eventTimeMs) => {
+  sendPitchBend(channel, value, 'MIDI', eventTimeMs);
+}, syncMidiToggle);
+const midiUnavailable = midiAvailability();
+if (midiUnavailable) {
+  midiToggle.disabled = true;
+  byId('midi-status').textContent = `${midiUnavailable} The on-screen keyboard still works.`;
+}
+midiToggle.addEventListener('click', () => {
+  if (midiInput.listening || midiInput.pending) midiInput.stop();
+  else void midiInput.connect();
+});
+for (const [label, note, shortcut] of keyboardNotes) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = label.includes('♯') ? 'black-key' : 'white-key';
+  button.textContent = label;
+  button.setAttribute('aria-label', `${label}4 · ${shortcut.toUpperCase()}`);
+  button.setAttribute('aria-pressed', 'false');
+  button.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    button.setPointerCapture(event.pointerId);
+    noteOn(note);
+  });
+  button.addEventListener('pointerup', () => noteOff(note));
+  button.addEventListener('pointercancel', () => noteOff(note));
+  byId('keyboard').appendChild(button);
+  keyButtons.set(note, button);
+}
+const shortcutToNote = new Map(keyboardNotes.map(([, note, shortcut]) => [shortcut, note]));
+document.addEventListener('keydown', (event) => {
+  if (event.repeat || event.target.matches('input, select')) return;
+  const note = shortcutToNote.get(event.key.toLowerCase());
+  if (note !== undefined && noteTarget() !== null) { event.preventDefault(); noteOn(note); }
+});
+document.addEventListener('keyup', (event) => {
+  const note = shortcutToNote.get(event.key.toLowerCase());
+  if (note !== undefined && noteTarget() !== null) noteOff(note);
+});
+
+let referenceLab;
+async function selectPrimitive(family, updateUrl = true) {
+  if (!Object.hasOwn(projects, family)) return;
+  releaseAllNotes();
+  if (audio.running) {
+    await audio.stop();
+    toggle.textContent = 'Start audio';
+  }
+  stopMonitoring();
+  if (activeProject?.patch) {
+    patchedParameterValues.set(activeFamily, Object.fromEntries(activeProject.parameters.map((parameter) => [parameter.hostId, values.get(parameter.id)])));
+  }
+  if (hasFxState(activeFamily)) slotSessionStates.set(activeFamily,
+    (activeFamily === 'standalone-fx-routing' ? capturePersistentFxState : captureStandaloneFxState)(values, slotValuesByType));
+  renderPrimitive(family);
+  if (updateUrl) {
+    const url = new URL(location.href);
+    url.searchParams.set('primitive', family);
+    history.pushState({ primitive: family }, '', url);
+  }
+  referenceLab?.selectFamily(family);
+  if (family === 'standalone-fx' || family === 'standalone-fx-host') referenceLab?.selectEffectType(values.get(0));
+  drawLiveSpectrum(byId('live-spectrum'), null);
+}
+
+renderPrimitive(activeFamily);
+document.querySelectorAll('[data-primitive]').forEach((button) => {
+  button.addEventListener('click', () => selectPrimitive(button.dataset.primitive).catch((error) => { status.textContent = String(error); }));
+});
+primitivePicker.addEventListener('change', () => {
+  selectPrimitive(primitivePicker.value).catch((error) => { status.textContent = String(error); });
+});
+window.addEventListener('popstate', () => {
+  const family = new URL(location.href).searchParams.get('primitive');
+  selectPrimitive(Object.hasOwn(projects, family) ? family : 'svf', false).catch((error) => { status.textContent = String(error); });
+});
+
+let spectrumFrame = null;
+let meterTimer = null;
+const meterFamilies = ['spectrum-analyzer', 'fft-spectrum', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'stereo-widener', 'transient-shaper', 'sample-region', 'sample-instrument', 'main-voice-bank', 'cv-rack'];
+function stopMonitoring() {
+  if (spectrumFrame !== null) cancelAnimationFrame(spectrumFrame);
+  if (meterTimer !== null) clearInterval(meterTimer);
+  spectrumFrame = null;
+  meterTimer = null;
+}
+const animateSpectrum = () => {
+  drawLiveSpectrum(byId('live-spectrum'), audio.analyser);
+  spectrumFrame = audio.running ? requestAnimationFrame(animateSpectrum) : null;
+};
+function startMonitoring() {
+  stopMonitoring();
+  if (!audio.running) return;
+  if (activeFamily === 'eq8') {
+    audio.requestEqResponse(2);
+    meterTimer = setInterval(() => audio.requestEqResponse(2), 250);
+    animateSpectrum();
+    return;
+  }
+  if (activeFamily === 'midi-transpose' || activeFamily === 'midi-note-filter' || activeFamily === 'midi-scale-quantizer' || activeFamily === 'midi-velocity-mapper' || activeFamily === 'midi-arpeggiator'
+    || activeFamily === 'graph-workspace' && activeProject.signal.nodes.some((node) => node.type === 'midi-transpose')) {
+    audio.requestMidiTrace();
+    meterTimer = setInterval(() => audio.requestMidiTrace(), 100);
+    animateSpectrum();
+    return;
+  }
+  const effectiveNodes = [...new Set(projects[activeFamily].project.parameters
+    .filter((parameter) => parameter.effectiveMeter).map((parameter) => parameter.nodeId))];
+  if (meterFamilies.includes(activeFamily) || effectiveNodes.length) {
+    const request = () => {
+      if (activeFamily === 'cv-rack') {
+        for (const nodeId of [4, 5, 7]) audio.requestMeters(nodeId, 1);
+      } else if (meterFamilies.includes(activeFamily)) {
+        audio.requestMeters(2, activeFamily === 'fft-spectrum' ? 33 : activeFamily === 'sample-instrument' || activeFamily === 'main-voice-bank' ? 9 : activeFamily === 'spectrum-analyzer' ? 8 : activeFamily === 'sample-region' ? 2 : 1);
+      }
+      for (const nodeId of effectiveNodes) audio.requestMeters(nodeId, 1);
+    };
+    request();
+    meterTimer = setInterval(request, 100);
+    if (activeFamily === 'sample-region' || activeFamily === 'sample-instrument' || activeFamily === 'main-voice-bank' || activeFamily === 'cv-rack' || activeFamily === 'stereo-widener') animateSpectrum();
+  } else animateSpectrum();
+}
+drawLiveSpectrum(byId('live-spectrum'), null);
+async function decodeFileSource(file) {
+  const decoder = new OfflineAudioContext(2, 1, 48_000);
+  const audioBuffer = await decoder.decodeAudioData(await file.arrayBuffer());
+  if (audioBuffer.length === 0) {
+    throw new Error('Choose an audio file containing samples.');
+  }
+  const stereo = new Float32Array(audioBuffer.length * 2);
+  const left = audioBuffer.getChannelData(0);
+  const right = audioBuffer.getChannelData(Math.min(1, audioBuffer.numberOfChannels - 1));
+  for (let frame = 0; frame < audioBuffer.length; frame++) {
+    stereo[frame * 2] = left[frame];
+    stereo[frame * 2 + 1] = right[frame];
+  }
+  const label = `${file.name} · ${audioBuffer.duration.toFixed(2)} s · ${audioBuffer.numberOfChannels} channel${audioBuffer.numberOfChannels === 1 ? '' : 's'}`;
+  return { sourceRate: audioBuffer.sampleRate, stereo, label, sourceKind: 'embedded' };
+}
+byId('sample-file').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const readout = byId('sample-source-status');
+  try {
+    if (audio.running) throw new Error('Stop the instrument before changing its file.');
+    readout.textContent = `Decoding ${file.name}…`;
+    loadedSample = await decodeFileSource(file);
+    if (activeFamily === 'main-voice-bank') {
+      loadedSineSource = loadedSample;
+      sineTargetActive = false;
+      resetMainBankTargets();
+      requestSampleAnalysis(loadedSineSource, true);
+    }
+    samplePlayhead = 0;
+    samplePlaying = false;
+    drawSampleWaveform();
+    renderSampleAnalysis();
+    requestSampleAnalysis(loadedSample);
+    readout.textContent = `${loadedSample.label} · ready to start`;
+  } catch (error) {
+    readout.textContent = `Sample unavailable: ${error.message ?? String(error)}`;
+  }
+});
+byId('sine-use-demo').addEventListener('click', () => {
+  if ((activeFamily === 'main-sample-blend' || activeFamily === 'main-voice-bank') && audio.running) {
+    byId('sine-source-status').textContent = 'Stop the instrument before replacing its shared source.';
+    return;
+  }
+  const demo = demoSample();
+  finishMainStateRestore();
+  loadedSineSource = { sourceRate: demo.sourceRate, stereo: demo.stereo, sourceKind: 'builtin', label: 'Built-in two-tone source' };
+  if (activeFamily === 'main-voice-bank') {
+    loadedSample = loadedSineSource;
+    resetMainBankTargets();
+    drawSampleWaveform();
+  }
+  phraseReferenceAuto = true;
+  sineTargetActive = false;
+  if (activeFamily === 'main-sample-blend') activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
+  if (activeFamily === 'main-sample-blend') activeProject.extraPartials = structuredClone(mainSampleBlendInitialExtraPartials);
+  byId('sine-target-bars').replaceChildren();
+  byId('sine-target-status').textContent = 'Select a target after analysis.';
+  renderSineSourceAnalysis();
+  requestSampleAnalysis(loadedSineSource, true);
+});
+byId('sine-source-file').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  byId('sine-source-status').textContent = `Decoding ${file.name}…`;
+  try {
+    if ((activeFamily === 'main-sample-blend' || activeFamily === 'main-voice-bank') && audio.running) {
+      throw new Error('Stop the instrument before changing the shared sample file.');
+    }
+    const decoded = await decodeFileSource(file);
+    finishMainStateRestore();
+    loadedSineSource = decoded;
+    if (activeFamily === 'main-voice-bank') {
+      loadedSample = decoded;
+      resetMainBankTargets();
+      drawSampleWaveform();
+    }
+    phraseReferenceAuto = true;
+    sineTargetActive = false;
+    if (activeFamily === 'main-sample-blend') activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
+    if (activeFamily === 'main-sample-blend') activeProject.extraPartials = structuredClone(mainSampleBlendInitialExtraPartials);
+    byId('sine-target-bars').replaceChildren();
+    byId('sine-target-status').textContent = 'Select a target after analysis.';
+    renderSineSourceAnalysis();
+    requestSampleAnalysis(loadedSineSource, true);
+  } catch (error) {
+    byId('sine-source-status').textContent = `Source unavailable: ${error.message ?? String(error)}`;
+  } finally {
+    event.target.value = '';
+  }
+});
+function applyPreparedSineTarget(data, mode) {
+  if (!usesSineSource()) return;
+  const pitched = loadedSineSource.temporal.mode === 'harmonic-projection';
+  const absolute = mode === 0;
+  const bankRoot = absolute ? (pitched ? data.fundamental : 440) : 1;
+  const pitch = pitched ? Math.max(40, Math.min(1600, loadedSineSource.temporal.fundamental)) : 440;
+  if (activeFamily === 'main-voice-bank') {
+    activeProject.partials = { nodeId: 2, target: 0, fundamental: 1, values: Array.from(data.waveValues ?? []) };
+    activeProject.extraPartials = [{ nodeId: 2, target: 1, fundamental: 1, values: Array.from(data.values) }];
+    audio.setPartials(activeProject.partials);
+    audio.setPartials(activeProject.extraPartials[0]);
+    if (data.type === 'temporal-targets' || data.type === 'temporal-frames') {
+      activeProject.temporalTargets = { frames: data.frames,
+        ...(data.type === 'temporal-frames'
+          ? { rawFrames: data.packed, rawRecipe: data.rawRecipe }
+          : { values: data.table }),
+        speed: Number(byId('sine-temporal-speed').value), source: loadedSineSource };
+      audio.setTemporalTargets(activeProject.temporalTargets);
+    } else {
+      delete activeProject.temporalTargets;
+      audio.clearTemporalTargets();
+    }
+    renderSineBars(data.values, byId('sine-target-bars'), true);
+    byId('sine-target-status').textContent = data.type === 'temporal-frames'
+      ? `${data.frames} source frames interpolate at each voice’s sample position`
+      : data.type === 'temporal-targets'
+      ? `${data.frames} prepared source spectra follow each voice’s sample position`
+      : `Wave recipe + ${data.values.length / 4} source partials prepared for all eight voices`;
+    return;
+  }
+  activeProject.partials = { nodeId: activeProject.partials.nodeId, fundamental: bankRoot, values: Array.from(data.values) };
+  audio.setPartials(activeProject.partials);
+  if (activeFamily === 'main-sample-blend' && data.waveValues) {
+    activeProject.extraPartials = [{ nodeId: 13, fundamental: 1, values: Array.from(data.waveValues) }];
+    audio.setPartials(activeProject.extraPartials[0]);
+  }
+  if (sinePitchSource !== loadedSineSource) {
+    values.set(0, pitch);
+    byId('controls').querySelector('[data-parameter-id="0"]')?.syncValue(pitch);
+    audio.setParameter(0, pitch);
+    sinePitchSource = loadedSineSource;
+  }
+  renderSineBars(data.values, byId('sine-target-bars'), !absolute);
+  const name = ['Source frame', 'Add · self', 'Add · driven', 'Morph'][mode];
+  byId('sine-target-status').textContent = `${name} · ${data.values.length / 4} prepared partials · ${absolute ? pitched ? `${data.fundamental.toFixed(1)} Hz pitch` : 'unpitched original frequencies' : `pitch ${values.get(0).toFixed(1)} Hz × partial ratios`}`;
+}
+function requestPreparedSineTarget() {
+  mainBankSnapshotRestored = false;
+  const source = loadedSineSource;
+  if (!usesSineSource() || !source?.temporalJobId || !sineAnalysisWorker) return;
+  const selectedMode = Number(byId('sine-target-mode').value);
+  const temporal = activeFamily === 'main-voice-bank' && byId('sine-follow-playback').checked;
+  const mode = activeFamily === 'main-voice-bank' ? (selectedMode === 3 ? 2 : 1)
+    : selectedMode === 3 ? 2 : selectedMode === 0 ? 0 : 1;
+  const recipe = new Float32Array([
+    Number(byId('sine-waveform').value), 8, 0, 0, Number(byId('sine-pulse-width').value),
+    selectedMode === 2 ? 1 : 0,
+    Number(byId('sine-morph-amount').value), Number(byId('sine-morph-depth').value),
+    Number(byId('sine-morph-curve').value),
+    Number(byId('sine-stretch').value), Number(byId('sine-tilt-mode').value),
+  ]);
+  const id = ++sampleAnalysisSerial;
+  latestSineTargetId = id;
+  pendingSineTargets.set(id, { source, mode: selectedMode, temporal });
+  byId('sine-target-status').textContent = temporal ? 'Preparing per-voice spectra in Rust/Wasm…' : 'Preparing target in Rust/Wasm…';
+  sineAnalysisWorker.postMessage({ type: temporal ? 'prepare-temporal-frames' : 'prepare-target', id, sourceId: source.temporalJobId,
+    mode, includeWave: activeFamily === 'main-sample-blend' || activeFamily === 'main-voice-bank', position: Number(byId('sine-position').value),
+    smooth: Number(byId('sine-smooth').value), contrast: Number(byId('sine-contrast').value), recipe }, [recipe.buffer]);
+}
+let sineTargetRequestFrame = null;
+function scheduleSineTarget() {
+  mainBankSnapshotRestored = false;
+  if (!sineTargetActive) return;
+  if (sineTargetRequestFrame !== null) cancelAnimationFrame(sineTargetRequestFrame);
+  sineTargetRequestFrame = requestAnimationFrame(() => {
+    sineTargetRequestFrame = null;
+    if (sineTargetActive) requestPreparedSineTarget();
+  });
+}
+function updateSineTargetControls() {
+  const mode = Number(byId('sine-target-mode').value);
+  byId('sine-waveform-label').hidden = mode !== 2 && mode !== 3;
+  byId('sine-pulse-width-label').hidden = mode !== 2 || Number(byId('sine-waveform').value) !== 6;
+  byId('sine-morph-label').hidden = mode !== 3;
+  byId('sine-morph-depth-label').hidden = mode !== 3;
+  byId('sine-morph-curve-label').hidden = mode !== 3;
+  byId('sine-stretch-label').hidden = mode === 0;
+  byId('sine-tilt-label').hidden = mode === 0;
+  const bank = activeFamily === 'main-voice-bank';
+  byId('sine-follow-controls').hidden = !bank;
+  byId('sine-use-frame').textContent = bank && byId('sine-follow-playback').checked
+    ? 'Prepare per-voice motion' : 'Audition prepared target';
+  byId('sine-position-label').firstChild.textContent = bank && byId('sine-follow-playback').checked
+    ? 'Preview position ' : 'Temporal position ';
+}
+updateSineTargetControls();
+byId('sine-position').addEventListener('input', () => {
+  renderSineSourceAnalysis();
+  if (!byId('sine-follow-playback').checked || activeFamily !== 'main-voice-bank') scheduleSineTarget();
+});
+byId('sine-follow-playback').addEventListener('change', () => {
+  if (activeFamily !== 'main-voice-bank') return;
+  updateSineTargetControls();
+  if (!byId('sine-follow-playback').checked) {
+    delete activeProject.temporalTargets;
+    audio.clearTemporalTargets();
+  }
+  scheduleSineTarget();
+});
+byId('sine-temporal-speed').addEventListener('input', () => {
+  const speed = Number(byId('sine-temporal-speed').value);
+  byId('sine-temporal-speed-value').textContent = `${speed.toFixed(2)}×`;
+  if (activeProject?.temporalTargets) activeProject.temporalTargets.speed = speed;
+  audio.setTemporalSpeed(speed);
+});
+for (const id of ['sine-target-mode', 'sine-waveform', 'sine-pulse-width', 'sine-morph-amount',
+  'sine-morph-depth', 'sine-morph-curve', 'sine-stretch', 'sine-tilt-mode', 'sine-smooth', 'sine-contrast']) {
+  byId(id).addEventListener('input', () => { updateSineTargetControls(); renderSineSourceAnalysis(); scheduleSineTarget(); });
+}
+byId('sine-use-frame').addEventListener('click', () => {
+  if (!usesSineSource() || !loadedSineSource?.temporal) return;
+  sineTargetActive = true;
+  requestPreparedSineTarget();
+});
+function mainBlendTargetControls() {
+  return {
+    active: sineTargetActive,
+    mode: Number(byId('sine-target-mode').value),
+    waveform: Number(byId('sine-waveform').value),
+    pulseWidth: Number(byId('sine-pulse-width').value),
+    position: Number(byId('sine-position').value),
+    morphAmount: Number(byId('sine-morph-amount').value),
+    morphDepth: Number(byId('sine-morph-depth').value),
+    morphCurve: Number(byId('sine-morph-curve').value),
+    stretch: Number(byId('sine-stretch').value),
+    tiltMode: Number(byId('sine-tilt-mode').value),
+    smooth: Number(byId('sine-smooth').value),
+    contrast: Number(byId('sine-contrast').value),
+  };
+}
+function mainStateReader() {
+  return activeFamily === 'main-voice-bank' ? parseMainVoiceBankState : parseMainSampleBlendState;
+}
+function captureCurrentMainState() {
+  return activeFamily === 'main-voice-bank'
+    ? captureMainVoiceBankState(activeProject, values, {
+      ...mainBlendTargetControls(), followPlayback: byId('sine-follow-playback').checked,
+      speed: Number(byId('sine-temporal-speed').value),
+    }, loadedSample)
+    : captureMainSampleBlendState(activeProject, values, mainBlendTargetControls(), loadedSineSource);
+}
+function renderMainPresetList(selectedId = '') {
+  const list = byId('main-preset-list');
+  const presets = mainProjectPresets.get(activeFamily) ?? [];
+  list.replaceChildren(new Option('Select a preset', ''));
+  for (const preset of presets) list.add(new Option(preset.name, preset.id));
+  list.value = presets.some((preset) => preset.id === selectedId) ? selectedId : '';
+  byId('main-preset-apply').disabled = !list.value;
+  byId('main-preset-remove').disabled = !list.value;
+}
+byId('main-preset-list').addEventListener('change', () => {
+  const selected = byId('main-preset-list').value;
+  const preset = mainProjectPresets.get(activeFamily)?.find((entry) => entry.id === selected);
+  byId('main-preset-name').value = preset?.name ?? '';
+  byId('main-preset-apply').disabled = !preset;
+  byId('main-preset-remove').disabled = !preset;
+});
+byId('main-state-export').addEventListener('click', () => {
+  if (activeFamily !== 'main-sample-blend' && activeFamily !== 'main-voice-bank') return;
+  const readout = byId('main-state-status');
+  try {
+    const bank = activeFamily === 'main-voice-bank';
+    const state = captureCurrentMainState();
+    const bundle = captureProjectDocument(activeProject, state,
+      mainProjectPresets.get(activeFamily), mainStateReader());
+    const url = URL.createObjectURL(new Blob([`${JSON.stringify(bundle)}\n`], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = bank ? 'manifold-main-voice-bank-project.json' : 'manifold-main-sample-blend-project.json';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    readout.textContent = `Saved authored graph, ${bundle.presets.length} presets, ${activeProject.parameters.length} controls, ${bank ? 'both prepared targets' : 'target settings'}, and ${state.source.kind === 'builtin' ? 'the built-in source choice' : `${state.source.frames} source frames`}.`;
+  } catch (error) {
+    readout.textContent = `State unavailable: ${error.message ?? String(error)}`;
+  }
+});
+function restoreMainState(state, label) {
+    if (activeFamily === 'main-voice-bank') {
+      pendingSineTargets.clear();
+      latestSineTargetId = 0;
+      if (sineTargetRequestFrame !== null) cancelAnimationFrame(sineTargetRequestFrame);
+      sineTargetRequestFrame = null;
+      sineTargetActive = state.targetControls.active;
+      mainBankSnapshotRestored = !(state.targetControls.active && state.targetControls.followPlayback);
+      delete activeProject.temporalTargets;
+      applyPatchParameterValues(activeProject, state.parameters);
+      for (const [id, value] of Object.entries({
+        'sine-target-mode': state.targetControls.mode, 'sine-waveform': state.targetControls.waveform,
+        'sine-pulse-width': state.targetControls.pulseWidth,
+        'sine-position': state.targetControls.position, 'sine-morph-amount': state.targetControls.morphAmount,
+        'sine-morph-depth': state.targetControls.morphDepth, 'sine-morph-curve': state.targetControls.morphCurve,
+        'sine-stretch': state.targetControls.stretch, 'sine-tilt-mode': state.targetControls.tiltMode,
+        'sine-smooth': state.targetControls.smooth, 'sine-contrast': state.targetControls.contrast,
+      })) byId(id).value = String(value);
+      byId('sine-follow-playback').checked = state.targetControls.followPlayback;
+      byId('sine-temporal-speed').value = String(state.targetControls.speed);
+      byId('sine-temporal-speed-value').textContent = `${state.targetControls.speed.toFixed(2)}×`;
+      updateSineTargetControls();
+      activeProject.partials = state.targets[0];
+      activeProject.extraPartials = [state.targets[1]];
+      const demo = demoSample();
+      loadedSample = state.source.kind === 'builtin'
+        ? { sourceRate: demo.sourceRate, stereo: demo.stereo, sourceKind: 'builtin', label: 'Built-in two-tone source' }
+        : { sourceRate: state.source.sourceRate, stereo: state.source.stereo,
+          sourceKind: 'embedded', label: state.source.label };
+      loadedSineSource = loadedSample;
+      sinePitchSource = loadedSample;
+      samplePlayhead = 0;
+      samplePlaying = false;
+      sampleVoicePositions = Array(8).fill(-1);
+      sampleActiveVoices = 0;
+      byId('sine-target-bars').replaceChildren();
+      renderSineBars(state.targets[1].values, byId('sine-target-bars'), true);
+      byId('sine-target-status').textContent = 'Both saved targets restored. Audition a new target to rebuild them from the source.';
+      drawSampleWaveform();
+      renderSampleAnalysis();
+      renderSineSourceAnalysis();
+      requestSampleAnalysis(loadedSample);
+      requestSampleAnalysis(loadedSineSource, true);
+      byId('main-state-status').textContent = `Opened ${label} · ${activeProject.parameters.length} controls, two prepared targets, and ${state.source.kind === 'builtin' ? 'built-in source' : `${state.source.frames} embedded source frames`}.`;
+      return;
+    }
+    phraseReferenceAuto = false;
+    for (const parameter of mainSampleBlendProject.parameters) {
+      const value = state.parameters[parameter.hostId];
+      const control = byId('controls').querySelector(`[data-parameter-id="${parameter.id}"]`);
+      control?.syncValue?.(value);
+      values.set(parameter.id, value);
+      if (parameter.kind === 'toggle' && control) {
+        control.setAttribute('aria-pressed', String(value === 1));
+        control.textContent = `${parameter.label}: ${value ? 'On' : 'Off'}`;
+      }
+    }
+    updateMainDepthControls();
+    for (const [id, value] of Object.entries({
+      'sine-target-mode': state.target.mode, 'sine-waveform': state.target.waveform,
+      'sine-pulse-width': state.target.pulseWidth,
+      'sine-position': state.target.position, 'sine-morph-amount': state.target.morphAmount,
+      'sine-morph-depth': state.target.morphDepth, 'sine-morph-curve': state.target.morphCurve,
+      'sine-stretch': state.target.stretch, 'sine-tilt-mode': state.target.tiltMode,
+      'sine-smooth': state.target.smooth, 'sine-contrast': state.target.contrast,
+    })) byId(id).value = String(value);
+    updateSineTargetControls();
+    pendingSineTargets.clear();
+    latestSineTargetId = 0;
+    sineTargetActive = state.target.active;
+    mainStateRestoring = sineTargetActive;
+    byId('audio-toggle').disabled = mainStateRestoring;
+    activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
+    activeProject.extraPartials = structuredClone(mainSampleBlendInitialExtraPartials);
+    const demo = demoSample();
+    loadedSineSource = state.source.kind === 'builtin'
+      ? { sourceRate: demo.sourceRate, stereo: demo.stereo, sourceKind: 'builtin', label: 'Built-in two-tone source' }
+      : { sourceRate: state.source.sourceRate, stereo: state.source.stereo,
+        sourceKind: 'embedded', label: state.source.label };
+    sinePitchSource = loadedSineSource;
+    byId('sine-target-bars').replaceChildren();
+    byId('sine-target-status').textContent = sineTargetActive ? 'Rebuilding prepared target in Rust/Wasm…' : 'Source restored; select Audition prepared target.';
+    renderSineSourceAnalysis();
+    requestSampleAnalysis(loadedSineSource, true);
+    byId('main-state-status').textContent = `Opened ${label} · ${activeProject.parameters.length} controls, target settings, and ${state.source.kind === 'builtin' ? 'built-in source' : `${state.source.frames} embedded source frames`}.`;
+}
+byId('main-state-file').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const readout = byId('main-state-status');
+  try {
+    if (!['main-sample-blend', 'main-voice-bank'].includes(activeFamily) || audio.running) throw new Error('Stop the Main instrument before opening a project.');
+    if (file.size > 20 * 1024 * 1024) throw new Error('Project JSON must be smaller than 20 MB.');
+    const family = activeFamily;
+    const contents = await file.text();
+    if (activeFamily !== family || audio.running) throw new Error('Project view changed while opening the project.');
+    const project = family === 'main-voice-bank' ? mainVoiceBankProject : mainSampleBlendProject;
+    const { state, presets } = parseProjectDocument(JSON.parse(contents), project, mainStateReader());
+    restoreMainState(state, file.name);
+    mainProjectPresets.set(family, presets);
+    byId('main-preset-name').value = '';
+    renderMainPresetList();
+    byId('main-preset-status').textContent = `Loaded ${presets.length} named sound presets. Store updates a selected preset or creates a new one.`;
+  } catch (error) {
+    readout.textContent = `State unavailable: ${error.message ?? String(error)}`;
+  } finally {
+    event.target.value = '';
+  }
+});
+byId('main-preset-store').addEventListener('click', () => {
+  const readout = byId('main-preset-status');
+  try {
+    if (!mainProjectPresets.has(activeFamily)) return;
+    const name = byId('main-preset-name').value.trim();
+    const list = byId('main-preset-list');
+    const id = list.value || crypto.randomUUID().replaceAll('-', '');
+    const snapshot = captureCurrentMainState();
+    const preset = captureProjectPreset(id, name, snapshot, activeProject, mainStateReader());
+    const presets = [...mainProjectPresets.get(activeFamily).filter((entry) => entry.id !== id), preset];
+    captureProjectDocument(activeProject, snapshot, presets, mainStateReader());
+    mainProjectPresets.set(activeFamily, presets);
+    renderMainPresetList(id);
+    readout.textContent = `Stored ${name}. Download the project bundle to keep ${presets.length} preset${presets.length === 1 ? '' : 's'}.`;
+  } catch (error) {
+    readout.textContent = `Preset unavailable: ${error.message ?? String(error)}`;
+  }
+});
+byId('main-preset-apply').addEventListener('click', () => {
+  const readout = byId('main-preset-status');
+  try {
+    if (audio.running) throw new Error('Stop audio before applying a preset.');
+    const preset = mainProjectPresets.get(activeFamily)?.find((entry) => entry.id === byId('main-preset-list').value);
+    if (!preset) throw new Error('Choose a preset first.');
+    const snapshot = captureCurrentMainState();
+    const state = applyProjectPreset(snapshot, preset, activeProject, mainStateReader());
+    restoreMainState(state, preset.name);
+    readout.textContent = `Applied ${preset.name} with the current project source.`;
+  } catch (error) {
+    readout.textContent = `Preset unavailable: ${error.message ?? String(error)}`;
+  }
+});
+byId('main-preset-remove').addEventListener('click', () => {
+  const id = byId('main-preset-list').value;
+  const presets = mainProjectPresets.get(activeFamily) ?? [];
+  const preset = presets.find((entry) => entry.id === id);
+  if (!preset) return;
+  mainProjectPresets.set(activeFamily, presets.filter((entry) => entry.id !== id));
+  byId('main-preset-name').value = '';
+  renderMainPresetList();
+  byId('main-preset-status').textContent = `Removed ${preset.name}. Download the project bundle to keep this change.`;
+});
+byId('slot-state-export').addEventListener('click', () => {
+  if (!hasFxState(activeFamily)) return;
+  try {
+    const routing = activeFamily === 'standalone-fx-routing';
+    const state = (routing ? capturePersistentFxState : captureStandaloneFxState)(values, slotValuesByType);
+    const url = URL.createObjectURL(new Blob([`${JSON.stringify(state, null, 2)}\n`], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = routing ? 'manifold-standalone-fx-routing-state.json' : 'manifold-standalone-fx-state.json';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    byId('slot-state-status').textContent = `Saved type ${state.hostParameters.type} and all 21 effect settings.`;
+  } catch (error) {
+    byId('slot-state-status').textContent = `State unavailable: ${error.message ?? String(error)}`;
+  }
+});
+byId('slot-state-file').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const readout = byId('slot-state-status');
+  try {
+    if (!hasFxState(activeFamily) || audio.running) throw new Error('Stop Standalone FX audio before opening a state.');
+    const family = activeFamily;
+    if (file.size > 1024 * 1024) throw new Error('State JSON must be smaller than 1 MB.');
+    const contents = await file.text();
+    if (activeFamily !== family || audio.running) throw new Error('Effect view changed while opening the state.');
+    const state = (family === 'standalone-fx-routing' ? parsePersistentFxState : parseStandaloneFxState)(JSON.parse(contents));
+    applyStandaloneFxState(state);
+    readout.textContent = `Opened ${file.name} · type ${state.hostParameters.type} · 21 effect settings.`;
+  } catch (error) {
+    readout.textContent = `State unavailable: ${error.message ?? String(error)}`;
+  } finally {
+    event.target.value = '';
+  }
+});
+byId('granulator-file').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const readout = byId('granulator-source-status');
+  try {
+    if (audio.running) throw new Error('Stop audio before changing the grain source.');
+    readout.textContent = `Decoding ${file.name}…`;
+    const decoder = new OfflineAudioContext(2, 1, 48_000);
+    const audioBuffer = await decoder.decodeAudioData(await file.arrayBuffer());
+    if (audioBuffer.length < 2) throw new Error('Choose an audio file containing samples.');
+    const left = audioBuffer.getChannelData(0);
+    const right = audioBuffer.getChannelData(Math.min(1, audioBuffer.numberOfChannels - 1));
+    const stereo = new Float32Array(audioBuffer.length * 2);
+    for (let frame = 0; frame < audioBuffer.length; frame++) {
+      stereo[frame * 2] = left[frame];
+      stereo[frame * 2 + 1] = right[frame];
+    }
+    loadedGranulatorSource = { origin: 'file', sourceRate: audioBuffer.sampleRate, stereo,
+      label: `${file.name} · ${audioBuffer.duration.toFixed(2)} s · ready to start` };
+    byId('granulator-clear-file').hidden = false;
+    readout.textContent = loadedGranulatorSource.label;
+    updateGranulatorSourceView();
+  } catch (error) {
+    readout.textContent = `Grain source unavailable: ${error.message ?? String(error)}`;
+  }
+});
+byId('granulator-clear-file').addEventListener('click', () => {
+  if (audio.running) return;
+  loadedGranulatorSource = null;
+  byId('granulator-file').value = '';
+  byId('granulator-clear-file').hidden = true;
+  byId('granulator-source-status').textContent = 'Live input feeds the capture ring. Choose a file to grain from a fixed source instead.';
+  updateGranulatorSourceView();
+});
+byId('sample-use-root').addEventListener('click', () => {
+  if (!['sample-instrument', 'main-voice-bank'].includes(activeFamily)) return;
+  const note = samplePitchNote(loadedSample ?? demoSample());
+  if (note === null) return;
+  const parameterId = activeFamily === 'main-voice-bank' ? 2 : 0;
+  byId('controls').querySelector(`[data-parameter-id="${parameterId}"]`)?.syncValue(note);
+  audio.setParameter(parameterId, note);
+});
+async function transferCapturedTake(destination) {
+  const readout = byId('capture-transfer-status');
+  for (const id of ['capture-transfer', 'capture-transfer-granulator',
+    'capture-transfer-main-bank', 'capture-transfer-main-blend']) byId(id).disabled = true;
+  try {
+    if (activeFamily !== 'loop-capture' || !audio.running || !loopHasTake || values.get(0)) {
+      throw new Error('Record a take and stop recording before sending it.');
+    }
+    readout.textContent = 'Copying the stopped take…';
+    const sample = await audio.captureSnapshot(2);
+    if (activeFamily !== 'loop-capture' || !audio.running || values.get(0)) {
+      throw new Error('Loop capture changed while exporting the take.');
+    }
+    const main = destination === 'main-voice-bank' || destination === 'main-sample-blend';
+    if (main && (sample.stereo.length < 512 || sample.sourceRate < 8_000 || sample.sourceRate > 96_000)) {
+      throw new Error('Main needs at least 256 frames at a sample rate between 8 and 96 kHz.');
+    }
+    const source = { ...sample, sourceKind: 'embedded',
+      label: `Captured take · ${(sample.stereo.length / 2 / sample.sourceRate).toFixed(2)} s · ready to start` };
+    if (destination === 'granulator') {
+      loadedGranulatorSource = { ...source, origin: 'capture' };
+      byId('granulator-file').value = '';
+    } else if (destination === 'main-sample-blend') loadedSineSource = source;
+    else {
+      loadedSample = source;
+      if (destination === 'main-voice-bank') loadedSineSource = source;
+    }
+    if (main) sineTargetActive = false;
+    await selectPrimitive(destination);
+    if (destination === 'main-voice-bank') {
+      resetMainBankTargets();
+      byId('sine-target-bars').replaceChildren();
+      byId('sine-target-status').textContent = 'Captured source analyzing. Audition a frame to prepare its spectral targets.';
+    } else if (destination === 'main-sample-blend') requestSampleAnalysis(loadedSineSource, true);
+  } catch (error) {
+    readout.textContent = `Take unavailable: ${error.message ?? String(error)}`;
+  } finally {
+    if (activeFamily === 'loop-capture') updateLoopToggles();
+  }
+}
+byId('capture-transfer').addEventListener('click', () => transferCapturedTake('sample-instrument'));
+byId('capture-transfer-granulator').addEventListener('click', () => transferCapturedTake('granulator'));
+byId('capture-transfer-main-bank').addEventListener('click', () => transferCapturedTake('main-voice-bank'));
+byId('capture-transfer-main-blend').addEventListener('click', () => transferCapturedTake('main-sample-blend'));
+byId('sample-trigger').addEventListener('click', () => {
+  if (audio.running && activeFamily === 'sample-region') audio.sendEvent(2, 0, 60, 100);
+  else byId('sample-source-status').textContent = 'Start the instrument before triggering the sample.';
+});
+toggle.addEventListener('click', async () => {
+  toggle.disabled = true;
+  graphEditor?.setBusy(true);
+  const patchSelectors = [...byId('patch-rows').querySelectorAll('select')];
+  patchSelectors.forEach((select) => { select.disabled = true; });
+  byId('patch-state-file').disabled = true;
+  try {
+    if (audio.running) {
+      releaseAllNotes(); await audio.stop();
+      graphLiveSession = null;
+      if (activeFamily === 'eq8') byId('eq-response-status').textContent = 'Last captured response · start audio to refresh.';
+      if (activeFamily === 'loop-capture') {
+        loopHasTake = false;
+        for (const id of [0, 1, 2]) values.set(id, 0);
+        updateLoopToggles();
+      }
+      if (activeFamily === 'sample-region' || activeFamily === 'sample-instrument' || activeFamily === 'main-voice-bank') {
+        samplePlayhead = 0;
+        samplePlaying = false;
+        sampleVoicePositions = Array(8).fill(-1);
+        sampleActiveVoices = 0;
+        drawSampleWaveform();
+      }
+    }
+    else {
+      const candidate = activeFamily === 'graph-workspace'
+        ? createBrowserLiveSession(activeProject, audio) : null;
+      await audio.start(byId('source').value, values, activeProject,
+        ['sample-region', 'sample-instrument', 'main-voice-bank'].includes(activeFamily) ? loadedSample ?? demoSample()
+          : activeFamily === 'granulator' ? loadedGranulatorSource
+            : activeFamily === 'main-sample-blend' ? loadedSineSource ?? demoSample()
+              : activeFamily === 'graph-workspace' ? activeProject.graphAssets ?? [] : null,
+        { patchable: candidate !== null });
+      graphLiveSession = candidate;
+      if (noteTarget() !== null && Number(pitchBend.value) !== 0) pitchBend.dispatchEvent(new Event('input'));
+    }
+    const isInstrument = projects[activeFamily].project.signal.inputSource === 'none';
+    toggle.textContent = audio.running
+      ? isInstrument ? 'Stop instrument' : 'Stop audio'
+      : isInstrument ? 'Start instrument' : 'Start audio';
+    updatePrepareOnlyControls();
+    updateLoopToggles();
+    byId('patch-section').refreshStatus?.();
+    if (!audio.running) byId('controls').querySelectorAll('.has-effective').forEach((slider) => slider.setEffective(null));
+    byId('sample-file').disabled = audio.running;
+    byId('slot-state-file').disabled = audio.running;
+    byId('main-state-file').disabled = audio.running;
+    byId('patch-state-file').disabled = audio.running;
+    byId('granulator-file').disabled = audio.running;
+    byId('granulator-clear-file').disabled = audio.running;
+    document.querySelector('.measurement-hint').textContent = audio.running
+      ? activeFamily === 'compressor' || activeFamily === 'limiter' ? 'Live gain reduction in dB; the bar shows 0–24 dB and the trace scales to recent values.' : activeFamily === 'envelope-ducking' ? 'Detector drives gain at sample rate; the live meter shows its normalized control level.' : activeFamily === 'envelope-follower' ? 'Detected input envelope, normalized 0–1. Audio passes through unchanged.' : activeFamily === 'transient-shaper' ? 'Block-mean transient strength from the Rust detector.' : activeFamily === 'spectrum-analyzer' ? 'Legacy eight band estimates; bars scale to the current peak, numbers are normalized 0–1. Audio passes through unchanged.' : activeFamily === 'voice' || activeFamily === 'midi-transpose' || activeFamily === 'midi-note-filter' || activeFamily === 'midi-scale-quantizer' || activeFamily === 'midi-velocity-mapper' || activeFamily === 'midi-arpeggiator' || activeFamily === 'sample-instrument' || activeFamily === 'main-voice-bank' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
+      : activeFamily === 'main-voice-bank'
+        ? 'Start the instrument, then play chords on the keyboard. Main base branch only; full project reconstruction is in progress.'
+      : activeFamily === 'sample-instrument'
+        ? 'Start the instrument, then play notes to hear the loaded sample at different pitches. Native Rust/Wasm comparisons are below.'
+      : activeFamily === 'sample-region'
+        ? 'Start the instrument, then trigger the loaded sample. Native Rust/Wasm comparisons are below.'
+      : activeFamily === 'voice' || activeFamily === 'midi-transpose' || activeFamily === 'midi-note-filter' || activeFamily === 'midi-scale-quantizer' || activeFamily === 'midi-velocity-mapper' || activeFamily === 'midi-arpeggiator'
+        ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
+        : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation'
+          ? `Start the instrument to view its spectrum. The ${activeFamily === 'patch' || activeFamily === 'modulation' ? 'native Rust' : 'C++'} comparisons below run offline.`
+        : activeFamily === 'compressor' || activeFamily === 'limiter' ? 'Start audio to hear dynamics and view gain reduction in dB. C++ audio and meter snapshots are compared below.' : activeFamily === 'envelope-ducking' ? 'Start audio to hear envelope-controlled gain. Native Rust/Wasm comparisons are below.' : activeFamily === 'envelope-follower' ? 'Start audio to view the detected envelope. C++ meter snapshots are compared below.' : activeFamily === 'spectrum-analyzer' ? 'Start audio to see the original eight band meter. C++ meter snapshots are compared below.' : 'Start audio to view the output spectrum. The reference cases below run offline.';
+    startMonitoring();
+  } catch (error) {
+    status.textContent = String(error);
+    toggle.textContent = projects[activeFamily].project.signal.inputSource === 'none' ? 'Start instrument' : 'Start audio';
+  } finally {
+    patchSelectors.forEach((select) => { select.disabled = false; });
+    byId('patch-state-file').disabled = audio.running;
+    toggle.disabled = false;
+    graphEditor?.setBusy(false);
+  }
+});
+
+initializeReferenceLab(activeFamily, ['standalone-fx', 'standalone-fx-host'].includes(activeFamily) ? values.get(0) : null).then((lab) => { referenceLab = lab; referenceLab.selectFamily(activeFamily); if (['standalone-fx', 'standalone-fx-host'].includes(activeFamily)) referenceLab.selectEffectType(values.get(0)); }).catch((error) => {
+  byId('reference-status').textContent = `Reference unavailable: ${String(error)}`;
+  byId('reference-meta').textContent = 'Run the reference generation script to create fixture files.';
+});

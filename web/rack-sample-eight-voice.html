@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manifold authored Rack Sample</title>
+  <style>
+    :root { color-scheme: dark; font: 16px system-ui,sans-serif; background: #10131c; color: #eeedf5; }
+    body { max-width: 1060px; margin: 2rem auto; padding: 0 1.25rem; }
+    section { background: #1d2230; border-radius: 12px; padding: 1.25rem; margin-block: 1rem; }
+    button { background: #7663d8; border: 0; border-radius: 7px; color: white; padding: .7rem 1rem; cursor: pointer; margin: .15rem; }
+    button:disabled { opacity: .45; cursor: default; }
+    #voices { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: .7rem; }
+    .voice { background: #111520; border-radius: 8px; padding: .8rem; }
+    .voice label { display: flex; justify-content: space-between; gap: .6rem; margin: .5rem 0; }
+    .voice input { width: 55%; }
+    #status { color: #9bd6ae; }
+    pre { max-height: 20rem; overflow: auto; background: #0c0e15; padding: 1rem; font-size: .75rem; }
+  </style>
+</head>
+<body>
+  <h1>Rack Sample: eight authored voices</h1>
+  <p>Eight public Sample Region Playback → Phase Vocoder → Gain chains share one decoded PCM source. Each voice has its own playback cursor and gate; all eight meet at a public mixer.</p>
+  <section>
+    <button id="start">Start audio</button><button id="stop" disabled>Stop</button>
+    <button id="download">Download project</button>
+    <label>Open project <input id="load" type="file" accept=".json,application/json"></label>
+    <button id="insert" disabled>Insert Distortion (dry)</button>
+    <button id="replace" disabled>Replace shared PCM</button>
+    <label>Unison <select id="unison" disabled><option>1</option><option>3</option><option>8</option></select></label>
+    <label>Pitch mode <select id="mode" disabled><option value="0">Classic</option><option value="1">Vocoder</option><option value="2">Vocoder HQ</option></select></label>
+    <p id="status" role="status">Ready. PCM is embedded once and bound to seven more voices.</p>
+    <p id="meter">—</p>
+  </section>
+  <p>Graph edits preserve sounding voices and compatible vocoder history. Replacing PCM stops playback; lower and raise a gate to trigger the new source. Save/reopen retains the graph and gates, then triggers them on Start. Playback position is not saved.</p>
+  <section><h2>Voice controls</h2><div id="voices"></div></section>
+  <section><h2>Runtime diagnostics</h2><pre id="diagnostics"></pre></section>
+  <section><h2>Inspectable graph and resources</h2><pre id="project"></pre></section>
+  <script type="module" src="/src/rack-sample-eight-voice.js"></script>
+</body>
+</html>

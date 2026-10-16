@@ -1,0 +1,57 @@
+{
+  "abi": {
+    "normal": 5,
+    "prepared": 4
+  },
+  "checks": {
+    "rustPassed": 499,
+    "webPassed": 70
+  },
+  "logs": {
+    "workspace-tests": "docs/rearchitecture/evidence/2026-09-30-prepared-sample-workspace-tests.txt",
+    "web-tests": "docs/rearchitecture/evidence/2026-09-30-prepared-sample-web-tests.txt",
+    "normal-wasm": "docs/rearchitecture/evidence/2026-09-30-prepared-sample-normal-wasm.txt",
+    "prepared-wasm": "docs/rearchitecture/evidence/2026-09-30-prepared-sample-prepared-wasm.txt",
+    "web-ci": "docs/rearchitecture/evidence/2026-09-30-prepared-sample-web-ci.txt",
+    "web-build": "docs/rearchitecture/evidence/2026-09-30-prepared-sample-web-build.txt",
+    "clap-build": "docs/rearchitecture/evidence/2026-09-30-prepared-sample-clap-build.txt",
+    "vst3-build": "docs/rearchitecture/evidence/2026-09-30-prepared-sample-vst3-build.txt"
+  },
+  "artifacts": {
+    "packages/manifold-author/runtime/manifold_filter.wasm": {
+      "sha256": "ce3ec3dfe1dd22f249d84c22cbe7adf96072eebc0035b937186e49c3059e5097",
+      "bytes": 873420
+    },
+    "packages/manifold-author/runtime/manifold_prepared.wasm": {
+      "sha256": "42c8affc7e86e51ef9d15be0e6bd81013d4e03785682978ca7b4589ccfac6cba",
+      "bytes": 975610
+    },
+    "target/clap/ManifoldFX.clap": {
+      "sha256": "5b0d4c141bbc19b85e0f282048804b51d020e55b41107fbcfc4208d7f72fd50d",
+      "bytes": 4508784
+    },
+    "target/clap/ManifoldFX-editor": {
+      "sha256": "fe4af0bcb7222e10d4580d8200794bba0949c5c051229cd1f965bf193e8a9227",
+      "bytes": 1443928
+    },
+    "target/vst3/ManifoldFX.vst3/Contents/x86_64-linux/ManifoldFX.so": {
+      "sha256": "927b12bb993f6a5a1786033473ff7694594edebd334049633405256305c4f945",
+      "bytes": 4674528
+    },
+    "target/vst3/ManifoldFX.vst3/Contents/x86_64-linux/ManifoldFX-editor": {
+      "sha256": "fe4af0bcb7222e10d4580d8200794bba0949c5c051229cd1f965bf193e8a9227",
+      "bytes": 1443928
+    },
+    "web/dist/rack-sample-eight-voice.html": {
+      "sha256": "cee1b887373e910e344823ac0f376465e2ea8352f67d1e2d49b680aa2ef1289f",
+      "bytes": 3164
+    },
+    "web/public/importable-sample-library/2026-09-30-sample-library-v1/manifold-author-0.1.0.tgz": {
+      "sha256": "8de21ae914ef06c35d0d27da5c281895cdf43e6a451d9fde54a4365391cdcfbe",
+      "bytes": 629388
+    }
+  },
+  "resourceProof": "2026-09-30-prepared-samples-v5",
+  "consumerProof": "2026-09-30-imported-sample-library",
+  "scope": "Build/paired graph history and packed browser library evidence. No actual release Sample DAW lifecycle or legacy C++ parity/performance claim."
+}

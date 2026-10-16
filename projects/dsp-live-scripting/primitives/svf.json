@@ -1,0 +1,133 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "external",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "svf"
+      }
+    ],
+    "connections": [
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 4,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 1,
+        "value": 3200
+      },
+      {
+        "nodeId": 4,
+        "id": 2,
+        "value": 0.75
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/primitives/svf/node/0",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 0,
+      "min": 0,
+      "max": 3,
+      "default": 0
+    },
+    {
+      "path": "/primitives/svf/node/1",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 1,
+      "min": 20,
+      "max": 20000,
+      "default": 3200
+    },
+    {
+      "path": "/primitives/svf/node/2",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 2,
+      "min": 0.1,
+      "max": 2,
+      "default": 0.75
+    }
+  ],
+  "instances": [
+    {
+      "path": "/primitives/svf/node",
+      "nodeId": 4
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// SVF filter: Four modes, cutoff and resonance.\n// Audition composition of public Rust primitives; not an instrument parity claim.\n// Examples name imports so you can trace each tool to its module.\n// Alternative: import * as manifold from '@manifold/author';\n// Then use manifold.createGraphWorkspace(), manifold.gain, etc.\n// Imports — each definition can be inspected in Manifold's primitive catalog.\nimport { createGraphWorkspace } from '@manifold/author';\nimport {\n  svf as svfDefinition,\n} from '@manifold/author/primitives';\n\nexport default function createProject() {\n  // Interface — public paths and stable IDs preserve saved controls.\n  const controls = {\n    svf_mode: {\n      \"path\": \"/primitives/svf/node/0\",\n      \"label\": \"Mode\",\n      \"group\": \"SVF filter\",\n      \"min\": 0,\n      \"max\": 3,\n      \"default\": 0,\n      \"choices\": [\n        \"Low pass\",\n        \"Band pass\",\n        \"High pass\",\n        \"Notch\"\n      ]\n    },\n    svf_cutoff: {\n      \"path\": \"/primitives/svf/node/1\",\n      \"label\": \"Cutoff\",\n      \"group\": \"SVF filter\",\n      \"min\": 20,\n      \"max\": 20000,\n      \"default\": 3200\n    },\n    svf_resonance: {\n      \"path\": \"/primitives/svf/node/2\",\n      \"label\": \"Resonance\",\n      \"group\": \"SVF filter\",\n      \"min\": 0.1,\n      \"max\": 2,\n      \"default\": 0.75\n    },\n  };\n\n  // Audio inputs and outputs — the host supplies the external audio input.\n  const graph = createGraphWorkspace().setInputSource('external');\n  const input = graph.input.output('out');\n  const output = graph.output.input('in');\n\n  // DSP instances — parameters belong to these named instances.\n  const svf = graph.add(svfDefinition.type, {\"id\":4});\n  graph.registerInstance('/primitives/svf/node', svf);\n  svf.parameter('mode').expose(controls.svf_mode);\n  svf.parameter('cutoff').expose(controls.svf_cutoff);\n  svf.parameter('resonance').expose(controls.svf_resonance);\n\n  // Composition — named ports make the audio and control paths visible.\n  graph.connect(input, svf.input('audio'));\n  graph.connect(svf.output('out'), output);\n\n  // Presentation — both renderers bind to the controls declared above.\n  const view = [\n    controls.svf_mode,\n    controls.svf_cutoff,\n    controls.svf_resonance\n  ].map(control => ({\n    id: control.path, type: 'parameter', path: control.path,\n    label: control.label, group: control.group,\n    ...(control.choices ? { choices: control.choices } : {}),\n  }));\n  function paint(ui) {\n    for (const component of view) {\n      if (component.type === 'label') ui.label(component.label, component.id);\n      else ui.parameter(component.path, component);\n    }\n  }\n\n  // The host uses this project declaration for audio, UI, save and live edits.\n  return { graph, view, paint };\n}",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "/primitives/svf/node/0",
+        "type": "parameter",
+        "path": "/primitives/svf/node/0",
+        "label": "Mode",
+        "group": "SVF filter",
+        "choices": [
+          "Low pass",
+          "Band pass",
+          "High pass",
+          "Notch"
+        ]
+      },
+      {
+        "id": "/primitives/svf/node/1",
+        "type": "parameter",
+        "path": "/primitives/svf/node/1",
+        "label": "Cutoff",
+        "group": "SVF filter"
+      },
+      {
+        "id": "/primitives/svf/node/2",
+        "type": "parameter",
+        "path": "/primitives/svf/node/2",
+        "label": "Resonance",
+        "group": "SVF filter"
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

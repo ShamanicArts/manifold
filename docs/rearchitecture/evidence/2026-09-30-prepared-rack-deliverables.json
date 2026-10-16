@@ -1,0 +1,18 @@
+{
+  "recordedAt": "2026-09-30T04:30:22.634Z",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174",
+  "players": [
+    {
+      "src": "https://wubulon.tailfac9f9.ts.net:4174/prepared-rack-oscillator/2026-09-30-prepared-rack-oscillator-v2/edited.wav",
+      "seconds": 1.685333,
+      "paused": true
+    },
+    {
+      "src": "https://wubulon.tailfac9f9.ts.net:4174/prepared-rack-oscillator/2026-09-30-prepared-rack-oscillator-v2/reference.wav",
+      "seconds": 1.685333,
+      "paused": true
+    }
+  ],
+  "crossOriginIsolated": true,
+  "pageErrors": []
+}

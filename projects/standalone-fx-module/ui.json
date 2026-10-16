@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "projectId": "manifold.standalone-fx-module",
+  "source": [
+    "Standalone_FX/ui/main.ui.lua",
+    "Main/lib/export_plugin_shell.lua",
+    "Main/ui/components/export_fx_slot.ui.lua",
+    "Main/ui/behaviors/fx_slot.lua"
+  ],
+  "height": 220,
+  "widths": { "split": 472, "compact": 236 },
+  "shell": {
+    "background": "#0b1220",
+    "border": "#1f2b4d",
+    "header": "#111827",
+    "headerHeight": 12,
+    "accent": "#4ade80",
+    "accentWidth": 18,
+    "title": "Effect",
+    "settingsLabel": "SET"
+  },
+  "module": {
+    "id": "fxRoot",
+    "type": "Panel",
+    "bounds": { "split": [0, 0, 472, 208], "compact": [0, 0, 236, 208] },
+    "style": { "bg": "#121a2f", "border": "#1f2b4d" },
+    "children": [
+      {
+        "id": "xy_pad",
+        "type": "Canvas",
+        "bounds": {
+          "split": [10, 10, 226, 188],
+          "compact": [10, 10, 216, 188]
+        },
+        "style": { "bg": "#0d1420", "border": "#1a1a3a" }
+      },
+      {
+        "id": "filter_graph",
+        "type": "Canvas",
+        "bounds": {
+          "split": [10, 10, 226, 188],
+          "compact": [10, 10, 216, 188]
+        },
+        "style": { "bg": "#0d1420", "border": "#1a1a3a" }
+      },
+      {
+        "id": "visual_mode_dots",
+        "type": "PaginationDots",
+        "bounds": {
+          "split": [109, 184, 28, 12],
+          "compact": [104, 184, 28, 12]
+        },
+        "count": 2
+      },
+      {
+        "id": "type_dropdown",
+        "type": "Dropdown",
+        "maxVisibleRows": 8,
+        "options": [
+          "Chorus",
+          "Phaser",
+          "WaveShaper",
+          "Compressor",
+          "StereoWidener",
+          "Filter",
+          "SVF Filter",
+          "Reverb",
+          "Stereo Delay",
+          "Multitap",
+          "Pitch Shift",
+          "Granulator",
+          "Ring Mod",
+          "Formant",
+          "EQ",
+          "Limiter",
+          "Transient",
+          "Bitcrusher",
+          "Shimmer",
+          "Reverse Delay",
+          "Stutter"
+        ],
+        "bounds": { "split": [242, 10, 220, 20] },
+        "style": { "bg": "#1e293b", "colour": "#22d3ee" }
+      },
+      {
+        "id": "xy_x_label",
+        "type": "Label",
+        "text": "X",
+        "bounds": { "split": [242, 38, 12, 14] },
+        "style": { "colour": "#94a3b8", "fontSize": 10 }
+      },
+      {
+        "id": "xy_x_dropdown",
+        "type": "Dropdown",
+        "maxVisibleRows": 6,
+        "bounds": { "split": [256, 36, 92, 20] },
+        "style": { "bg": "#1e293b", "colour": "#64748b", "fontSize": 9 }
+      },
+      {
+        "id": "xy_y_label",
+        "type": "Label",
+        "text": "Y",
+        "bounds": { "split": [354, 38, 12, 14] },
+        "style": { "colour": "#94a3b8", "fontSize": 10 }
+      },
+      {
+        "id": "xy_y_dropdown",
+        "type": "Dropdown",
+        "maxVisibleRows": 6,
+        "bounds": { "split": [368, 36, 94, 20] },
+        "style": { "bg": "#1e293b", "colour": "#64748b", "fontSize": 9 }
+      },
+      {
+        "id": "mix_knob",
+        "type": "Slider",
+        "label": "Mix",
+        "min": 0, "max": 1, "step": 0.01, "value": 0, "compact": true, "showValue": true,
+        "parameterId": 1,
+        "bounds": { "split": [242, 64, 220, 18] },
+        "style": { "colour": "#4ade80", "bg": "#102317", "fontSize": 9 }
+      },
+      {
+        "id": "param1",
+        "type": "Slider",
+        "label": "P1", "min": 0, "max": 1, "step": 0.01, "value": 0.5, "compact": true, "showValue": true,
+        "parameterId": 2,
+        "bounds": { "split": [242, 86, 220, 18] },
+        "style": { "colour": "#22d3ee", "bg": "#08212a", "fontSize": 9 }
+      },
+      {
+        "id": "param2",
+        "type": "Slider",
+        "label": "P2", "min": 0, "max": 1, "step": 0.01, "value": 0.5, "compact": true, "showValue": true,
+        "parameterId": 3,
+        "bounds": { "split": [242, 108, 220, 18] },
+        "style": { "colour": "#38bdf8", "bg": "#0b1c2e", "fontSize": 9 }
+      },
+      {
+        "id": "param3",
+        "type": "Slider",
+        "label": "P3", "min": 0, "max": 1, "step": 0.01, "value": 0.5, "compact": true, "showValue": true,
+        "parameterId": 4,
+        "bounds": { "split": [242, 130, 220, 18] },
+        "style": { "colour": "#a78bfa", "bg": "#1e1b33", "fontSize": 9 }
+      },
+      {
+        "id": "param4",
+        "type": "Slider",
+        "label": "P4", "min": 0, "max": 1, "step": 0.01, "value": 0.5, "compact": true, "showValue": true,
+        "parameterId": 5,
+        "bounds": { "split": [242, 152, 220, 18] },
+        "style": { "colour": "#f472b6", "bg": "#2b1020", "fontSize": 9 }
+      },
+      {
+        "id": "param5",
+        "type": "Slider",
+        "label": "P5", "min": 0, "max": 1, "step": 0.01, "value": 0.5, "compact": true, "showValue": true,
+        "parameterId": 6,
+        "bounds": { "split": [242, 174, 220, 18] },
+        "style": { "colour": "#fbbf24", "bg": "#2b2008", "fontSize": 9 }
+      }
+    ]
+  }
+}

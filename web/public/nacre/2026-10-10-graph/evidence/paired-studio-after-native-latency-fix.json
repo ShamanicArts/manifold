@@ -1,0 +1,30 @@
+{
+  "project": "Nacre",
+  "operation": "graph.group + graph.ungroup",
+  "results": [
+    {
+      "host": "browser",
+      "operations": 20,
+      "p50Ms": 41.4,
+      "p95Ms": 55.6,
+      "minMs": 33.6,
+      "maxMs": 61.2,
+      "graphUnchanged": true,
+      "groupsRestored": true,
+      "audioBlocksAdvanced": null,
+      "running": false
+    },
+    {
+      "host": "native",
+      "operations": 20,
+      "p50Ms": 64.3,
+      "p95Ms": 85,
+      "minMs": 61,
+      "maxMs": 101.3,
+      "graphUnchanged": true,
+      "groupsRestored": true,
+      "audioBlocksAdvanced": true,
+      "running": true
+    }
+  ]
+}

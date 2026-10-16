@@ -1,0 +1,73 @@
+{
+  "name": "@manifold/ui-web",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./filter": {
+      "types": "./filter.d.ts",
+      "default": "./filter.js"
+    },
+    "./slider": {
+      "types": "./compact-slider.d.ts",
+      "default": "./compact-slider.js"
+    },
+    "./project-view": {
+      "types": "./project-view.d.ts",
+      "default": "./project-view.js"
+    },
+    "./project-view.css": "./project-view.css",
+    "./parameter-gesture": {
+      "types": "./parameter-gesture.d.ts",
+      "default": "./parameter-gesture.js"
+    },
+    "./custom-view": {
+      "types": "./custom-view.d.ts",
+      "default": "./custom-view.js"
+    },
+    "./control-panel": {
+      "types": "./control-panel.d.ts",
+      "default": "./control-panel.js"
+    },
+    "./diegetic": {
+      "types": "./diegetic.d.ts",
+      "default": "./diegetic.js"
+    },
+    "./composition-view": {
+      "types": "./composition-view.d.ts",
+      "default": "./composition-view.js"
+    }
+  },
+  "files": [
+    "filter.js",
+    "filter.d.ts",
+    "compact-slider.js",
+    "compact-slider.d.ts",
+    "project-view.js",
+    "project-view.d.ts",
+    "project-view.css",
+    "keyboard.js",
+    "parameter-gesture.js",
+    "parameter-gesture.d.ts",
+    "custom-view.js",
+    "custom-view.d.ts",
+    "control-panel.js",
+    "control-panel.d.ts",
+    "diegetic.js",
+    "diegetic.d.ts",
+    "composition-view.js",
+    "composition-runtime.js",
+    "composition-view.d.ts",
+    "presentation-controls.js",
+    "scene-object.js",
+    "node-previews.js",
+    "presentation-clock.js",
+    "image-renderer.js"
+  ],
+  "peerDependencies": {
+    "@manifold/author": "^0.1.0"
+  },
+  "devDependencies": {
+    "@manifold/author": "file:../manifold-author"
+  }
+}

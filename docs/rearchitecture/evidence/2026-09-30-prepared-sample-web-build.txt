@@ -1,0 +1,79 @@
+
+> manifold-v2-web@0.1.0 build
+> vite build
+
+vite v7.3.6 building client environment for production...
+transforming...
+✓ 198 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/assets/analysis-worker-D0uT4So6.js                1.19 kB
+dist/phase-vocoder.html                                2.15 kB │ gzip:   1.03 kB
+dist/fx-slot-swap.html                                 2.48 kB │ gzip:   1.19 kB
+dist/prepared-worklet-prototype.html                   2.53 kB │ gzip:   1.28 kB
+dist/sample-voice-chain.html                           2.66 kB │ gzip:   1.17 kB
+dist/graph-module.html                                 2.68 kB │ gzip:   1.08 kB
+dist/generic-graph.html                                2.98 kB │ gzip:   1.34 kB
+dist/rack-sample-eight-voice.html                      3.16 kB │ gzip:   1.41 kB
+dist/prepared-loops.html                               3.48 kB │ gzip:   1.56 kB
+dist/prepared-midi.html                                3.61 kB │ gzip:   1.66 kB
+dist/fx-module.html                                    4.05 kB │ gzip:   1.47 kB
+dist/package-project.html                              4.08 kB │ gzip:   1.68 kB
+dist/standalone-sample.html                            4.41 kB │ gzip:   1.54 kB
+dist/assets/shared-graph-processor-Dm6y4SJs.js         5.52 kB
+dist/graph-runtime-review.html                         5.71 kB │ gzip:   2.59 kB
+dist/rack-oscillator.html                              5.75 kB │ gzip:   1.93 kB
+dist/assets/sample-analysis-worker-CiqsNZUE.js         6.11 kB
+dist/rack-filter-eq.html                              11.08 kB │ gzip:   2.93 kB
+dist/assets/prepared-processor-B7j1WFmO.js            16.50 kB
+dist/assets/prepared-compiler-prototype-B0CVv26z.js   16.85 kB
+dist/assets/prepared-compiler-BTYy-h9G.js             21.71 kB
+dist/assets/graph-worker-COYk6iF6.js                  25.15 kB
+dist/main-looper.html                                 29.23 kB │ gzip:   6.51 kB
+dist/assets/main-looper-processor-C7v2HKfC.js         32.73 kB
+dist/index.html                                       34.53 kB │ gzip:   7.56 kB
+dist/assets/filter-processor-B8mjgYNz.js              38.70 kB
+dist/assets/manifold_filter-B78Dka1M.wasm            873.42 kB │ gzip: 263.27 kB
+dist/assets/manifold_prepared-DenRaOLm.wasm          975.61 kB │ gzip: 281.02 kB
+dist/assets/graphModule-C8vSQkMi.css                   4.34 kB │ gzip:   1.49 kB
+dist/assets/fxModule-cOpEx1Kl.css                      6.61 kB │ gzip:   2.09 kB
+dist/assets/standaloneSample-BZqDN4oz.css              8.53 kB │ gzip:   2.53 kB
+dist/assets/workbench-ppXymp4g.css                    22.00 kB │ gzip:   5.14 kB
+dist/assets/mainLooper-CpXWb1C9.css                   37.47 kB │ gzip:   7.28 kB
+dist/assets/fx-slot-data-B8R_oZ2p.js                   1.34 kB │ gzip:   0.60 kB
+dist/assets/tone-texture-B3y4x8GP.js                   1.59 kB │ gzip:   0.51 kB
+dist/assets/project-ui-BXw1tpZG.js                     1.65 kB │ gzip:   0.83 kB
+dist/assets/package-CyJr-NQJ.js                        1.98 kB │ gzip:   0.97 kB
+dist/assets/sample-voice-chain-D_8FStHV.js             2.13 kB │ gzip:   0.90 kB
+dist/assets/midi-hold-Bt6mWAsk.js                      2.20 kB │ gzip:   0.78 kB
+dist/assets/phaseVocoder-C58M7nJY.js                   2.53 kB │ gzip:   1.15 kB
+dist/assets/standalone-fx-BJJQKb0a.js                  2.54 kB │ gzip:   1.14 kB
+dist/assets/ui-Dmt35ad8.js                             2.55 kB │ gzip:   0.81 kB
+dist/assets/midi-input-CFx56vXU.js                     2.74 kB │ gzip:   1.20 kB
+dist/assets/sampleVoiceChain-luUkc5Xq.js               3.24 kB │ gzip:   1.56 kB
+dist/assets/rackOscillator-BFqfKN4F.js                 3.40 kB │ gzip:   1.43 kB
+dist/assets/rack-oscillator-BqtQobGR.js                3.71 kB │ gzip:   1.54 kB
+dist/assets/preparedMidi-CTnfvUQ4.js                   5.35 kB │ gzip:   2.18 kB
+dist/assets/genericGraph-Jum52IvK.js                   5.36 kB │ gzip:   2.14 kB
+dist/assets/packageProject-DqJcHCQy.js                 5.88 kB │ gzip:   2.38 kB
+dist/assets/fxSlotSwap-DKJy2aEq.js                     6.62 kB │ gzip:   2.52 kB
+dist/assets/rack-sample-eight-voice-Dj4DHcBs.js        7.24 kB │ gzip:   2.84 kB
+dist/assets/preparedLoops-D205853T.js                  7.29 kB │ gzip:   2.90 kB
+dist/assets/dropdown-DPSYktE7.js                       8.14 kB │ gzip:   3.21 kB
+dist/assets/graphModule-IotM9ZWu.js                   10.76 kB │ gzip:   4.08 kB
+dist/assets/fxModule-CQlNj8w1.js                      11.38 kB │ gzip:   4.72 kB
+dist/assets/standaloneSample-CI5TAdBl.js              11.57 kB │ gzip:   4.66 kB
+dist/assets/graphRuntimeReview-DlPVedDc.js            13.80 kB │ gzip:   5.78 kB
+dist/assets/four-layer-loops-CIs-VBLF.js              14.50 kB │ gzip:   4.34 kB
+dist/assets/rackFilterEq-B8otsMQX.js                  16.52 kB │ gzip:   5.35 kB
+dist/assets/topology-B319mC3P.js                      16.56 kB │ gzip:   5.33 kB
+dist/assets/browser-host-DXUGwPnH.js                  20.14 kB │ gzip:   5.59 kB
+dist/assets/preparedWorkletPrototype-BaDHDIPW.js      22.90 kB │ gzip:   8.81 kB
+dist/assets/workspace-types-HIg5FiiJ.js               23.83 kB │ gzip:   4.83 kB
+dist/assets/index-BqAoKM_W.js                         32.15 kB │ gzip:   9.90 kB
+dist/assets/browser-C7OlIYN7.js                       39.79 kB │ gzip:  11.11 kB
+dist/assets/authored-sample-voice-chain-DrtgDNfw.js   53.69 kB │ gzip:  18.15 kB
+dist/assets/rackSampleEightVoice-8apnCaJH.js          67.28 kB │ gzip:  21.82 kB
+dist/assets/mainLooper-BFeA6vsH.js                   131.94 kB │ gzip:  40.36 kB
+dist/assets/workbench-fma7Sen7.js                    301.20 kB │ gzip:  70.46 kB
+✓ built in 1.82s

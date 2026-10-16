@@ -1,0 +1,5648 @@
+{
+  "sourceRevision": "836f58e4c889",
+  "inspectedAt": "2026-10-12",
+  "method": "Line-level search signals, complemented by the manual review in README.md. Generated files and displayed sources intentionally overlap. Counts are not a count of distinct designs or proof of duplicate metadata.",
+  "counts": {
+    "package-example-file": {
+      "total": 73,
+      "graphWorkspace": 63,
+      "numericIdentity": 40,
+      "typeSelector": 41,
+      "separateInstanceRegistration": 33,
+      "stringParameterOrPort": 39,
+      "controlExposure": 25,
+      "viewDeclaration": 26,
+      "studioBookkeeping": 6,
+      "hostOrSerialization": 33
+    },
+    "handbook-executable": {
+      "total": 4,
+      "graphWorkspace": 4,
+      "numericIdentity": 4,
+      "typeSelector": 4,
+      "separateInstanceRegistration": 1,
+      "stringParameterOrPort": 4,
+      "controlExposure": 4,
+      "viewDeclaration": 4,
+      "studioBookkeeping": 1,
+      "hostOrSerialization": 0
+    },
+    "handbook-lesson": {
+      "total": 15,
+      "graphWorkspace": 3,
+      "numericIdentity": 3,
+      "typeSelector": 3,
+      "separateInstanceRegistration": 0,
+      "stringParameterOrPort": 4,
+      "controlExposure": 1,
+      "viewDeclaration": 0,
+      "studioBookkeeping": 1,
+      "hostOrSerialization": 4
+    },
+    "studio-template": {
+      "total": 1,
+      "graphWorkspace": 1,
+      "numericIdentity": 0,
+      "typeSelector": 0,
+      "separateInstanceRegistration": 0,
+      "stringParameterOrPort": 1,
+      "controlExposure": 1,
+      "viewDeclaration": 1,
+      "studioBookkeeping": 1,
+      "hostOrSerialization": 0
+    },
+    "public-readme": {
+      "total": 2,
+      "graphWorkspace": 1,
+      "numericIdentity": 1,
+      "typeSelector": 1,
+      "separateInstanceRegistration": 1,
+      "stringParameterOrPort": 1,
+      "controlExposure": 1,
+      "viewDeclaration": 0,
+      "studioBookkeeping": 1,
+      "hostOrSerialization": 2
+    },
+    "handbook-host-controls": {
+      "total": 1,
+      "graphWorkspace": 0,
+      "numericIdentity": 0,
+      "typeSelector": 0,
+      "separateInstanceRegistration": 0,
+      "stringParameterOrPort": 0,
+      "controlExposure": 0,
+      "viewDeclaration": 0,
+      "studioBookkeeping": 0,
+      "hostOrSerialization": 0
+    },
+    "studio-generation-or-agent-guidance": {
+      "total": 5,
+      "graphWorkspace": 2,
+      "numericIdentity": 1,
+      "typeSelector": 4,
+      "separateInstanceRegistration": 2,
+      "stringParameterOrPort": 0,
+      "controlExposure": 2,
+      "viewDeclaration": 1,
+      "studioBookkeeping": 4,
+      "hostOrSerialization": 0
+    },
+    "delivered-live-source": {
+      "total": 38,
+      "graphWorkspace": 38,
+      "numericIdentity": 38,
+      "typeSelector": 38,
+      "separateInstanceRegistration": 37,
+      "stringParameterOrPort": 38,
+      "controlExposure": 36,
+      "viewDeclaration": 37,
+      "studioBookkeeping": 3,
+      "hostOrSerialization": 2
+    }
+  },
+  "rows": [
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/arbitrary-io.d.mts",
+      "lines": 3,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          2
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/arbitrary-io.mjs",
+      "lines": 58,
+      "signals": {
+        "graphWorkspace": [
+          3,
+          8,
+          12
+        ],
+        "numericIdentity": [
+          13,
+          14
+        ],
+        "typeSelector": [
+          13,
+          14
+        ],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [
+          15,
+          16
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/authored-keyboard-source.mjs",
+      "lines": 85,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [
+          30,
+          70
+        ],
+        "typeSelector": [
+          26,
+          40,
+          51,
+          63,
+          65
+        ],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          9
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/cv-decisions.mjs",
+      "lines": 40,
+      "signals": {
+        "graphWorkspace": [
+          4,
+          13,
+          15
+        ],
+        "numericIdentity": [
+          16,
+          17,
+          18,
+          19,
+          20,
+          21
+        ],
+        "typeSelector": [
+          16,
+          17,
+          18,
+          19,
+          20,
+          21
+        ],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          39
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/cv-utilities.mjs",
+      "lines": 42,
+      "signals": {
+        "graphWorkspace": [
+          4,
+          14,
+          16
+        ],
+        "numericIdentity": [
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ],
+        "typeSelector": [
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          41
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/dsp-live-creator-source.generated.mjs",
+      "lines": 3,
+      "signals": {
+        "graphWorkspace": [
+          2
+        ],
+        "numericIdentity": [
+          2
+        ],
+        "typeSelector": [
+          2
+        ],
+        "separateInstanceRegistration": [
+          2
+        ],
+        "stringParameterOrPort": [
+          2
+        ],
+        "controlExposure": [
+          2
+        ],
+        "viewDeclaration": [
+          2
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/dsp-live-scripting.d.mts",
+      "lines": 25,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          6,
+          13
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          15
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/dsp-live-scripting.mjs",
+      "lines": 161,
+      "signals": {
+        "graphWorkspace": [
+          3,
+          12,
+          31,
+          108,
+          118
+        ],
+        "numericIdentity": [
+          16,
+          23,
+          32,
+          33,
+          91,
+          135
+        ],
+        "typeSelector": [
+          32,
+          33,
+          91,
+          109,
+          135,
+          155
+        ],
+        "separateInstanceRegistration": [
+          34,
+          35,
+          92,
+          136
+        ],
+        "stringParameterOrPort": [
+          36,
+          37,
+          41,
+          47,
+          50,
+          51,
+          52,
+          53,
+          54,
+          93,
+          94,
+          95,
+          96,
+          97,
+          98,
+          101,
+          137,
+          138,
+          139,
+          140,
+          141,
+          142,
+          144
+        ],
+        "controlExposure": [
+          38,
+          44
+        ],
+        "viewDeclaration": [
+          150,
+          151,
+          152
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          71,
+          108
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/filter-instrument.d.mts",
+      "lines": 8,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          4
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [
+          5
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/filter-instrument.mjs",
+      "lines": 106,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          6,
+          47
+        ],
+        "numericIdentity": [
+          52
+        ],
+        "typeSelector": [
+          52
+        ],
+        "separateInstanceRegistration": [
+          53
+        ],
+        "stringParameterOrPort": [
+          48,
+          49,
+          54,
+          55,
+          56,
+          58,
+          59,
+          60,
+          63,
+          64
+        ],
+        "controlExposure": [
+          54,
+          55,
+          56,
+          67
+        ],
+        "viewDeclaration": [
+          73,
+          79,
+          86
+        ],
+        "studioBookkeeping": [
+          8,
+          12,
+          13,
+          65,
+          66,
+          85,
+          100,
+          104
+        ],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/four-layer-loops.d.mts",
+      "lines": 21,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          5
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/four-layer-loops.mjs",
+      "lines": 87,
+      "signals": {
+        "graphWorkspace": [
+          6,
+          9,
+          71
+        ],
+        "numericIdentity": [
+          41,
+          43,
+          45,
+          46,
+          48
+        ],
+        "typeSelector": [
+          17,
+          36,
+          75
+        ],
+        "separateInstanceRegistration": [
+          20
+        ],
+        "stringParameterOrPort": [
+          13,
+          21,
+          26
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          71,
+          85
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/fx-slot-creator-source.generated.mjs",
+      "lines": 3,
+      "signals": {
+        "graphWorkspace": [
+          2
+        ],
+        "numericIdentity": [
+          2
+        ],
+        "typeSelector": [
+          2
+        ],
+        "separateInstanceRegistration": [
+          2
+        ],
+        "stringParameterOrPort": [
+          2
+        ],
+        "controlExposure": [
+          2
+        ],
+        "viewDeclaration": [
+          2
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/fx-slot-swap.d.mts",
+      "lines": 22,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          3,
+          10,
+          20,
+          21
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          12
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/fx-slot-swap.mjs",
+      "lines": 301,
+      "signals": {
+        "graphWorkspace": [
+          3,
+          13,
+          14,
+          127,
+          266,
+          272
+        ],
+        "numericIdentity": [
+          128,
+          141,
+          142,
+          143,
+          169,
+          192,
+          195
+        ],
+        "typeSelector": [
+          48,
+          59,
+          60,
+          71,
+          72,
+          91,
+          104,
+          105,
+          128,
+          141,
+          142,
+          143,
+          169,
+          191,
+          194,
+          295
+        ],
+        "separateInstanceRegistration": [
+          68,
+          74,
+          75,
+          129,
+          144,
+          145,
+          146,
+          170,
+          197,
+          198
+        ],
+        "stringParameterOrPort": [
+          130,
+          134,
+          137,
+          138,
+          147,
+          148,
+          149,
+          150,
+          151,
+          171,
+          172,
+          173,
+          199,
+          200,
+          201,
+          202,
+          204,
+          205,
+          206
+        ],
+        "controlExposure": [
+          131
+        ],
+        "viewDeclaration": [
+          287
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          255,
+          266
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/inverted-lfo.mjs",
+      "lines": 21,
+      "signals": {
+        "graphWorkspace": [
+          3,
+          9,
+          11
+        ],
+        "numericIdentity": [
+          12,
+          13,
+          14
+        ],
+        "typeSelector": [
+          12,
+          13,
+          14
+        ],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [
+          16,
+          17,
+          18
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          20
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/live-filter-controller.mjs",
+      "lines": 74,
+      "signals": {
+        "graphWorkspace": [
+          4
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          38,
+          43,
+          46,
+          57,
+          61
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/live-main-wave-controller.mjs",
+      "lines": 14,
+      "signals": {
+        "graphWorkspace": [
+          3
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/live-oscillator-controller.mjs",
+      "lines": 15,
+      "signals": {
+        "graphWorkspace": [
+          4
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/live-primitives-controller.mjs",
+      "lines": 14,
+      "signals": {
+        "graphWorkspace": [
+          3
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/loop-authoring.d.mts",
+      "lines": 20,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          4,
+          7
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          2,
+          5,
+          6,
+          9
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/loop-authoring.mjs",
+      "lines": 104,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          13,
+          21,
+          102
+        ],
+        "numericIdentity": [
+          22,
+          23,
+          32,
+          36,
+          86
+        ],
+        "typeSelector": [
+          22,
+          23,
+          32,
+          36,
+          86
+        ],
+        "separateInstanceRegistration": [
+          24,
+          26,
+          33,
+          37,
+          87
+        ],
+        "stringParameterOrPort": [
+          25,
+          27,
+          29,
+          34,
+          35,
+          38,
+          39,
+          84,
+          91,
+          92,
+          95
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          63,
+          102
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/main-voice-control.d.mts",
+      "lines": 15,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/main-voice-control.mjs",
+      "lines": 167,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          118,
+          132,
+          154,
+          162
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/main-wave-creator-source.generated.mjs",
+      "lines": 3,
+      "signals": {
+        "graphWorkspace": [
+          2
+        ],
+        "numericIdentity": [
+          2
+        ],
+        "typeSelector": [
+          2
+        ],
+        "separateInstanceRegistration": [
+          2
+        ],
+        "stringParameterOrPort": [
+          2
+        ],
+        "controlExposure": [
+          2
+        ],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/main-wave-creator.d.mts",
+      "lines": 2,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/main-wave-creator.mjs",
+      "lines": 101,
+      "signals": {
+        "graphWorkspace": [
+          5
+        ],
+        "numericIdentity": [
+          24,
+          77,
+          86,
+          88,
+          91
+        ],
+        "typeSelector": [
+          24
+        ],
+        "separateInstanceRegistration": [
+          25
+        ],
+        "stringParameterOrPort": [
+          16,
+          18,
+          19,
+          28,
+          29,
+          30
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [
+          36
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          70,
+          85,
+          90
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/main-wave-graph.d.mts",
+      "lines": 33,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          7,
+          9,
+          11,
+          14,
+          19,
+          31
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          20
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/main-wave-graph.mjs",
+      "lines": 303,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          14,
+          15,
+          199,
+          302
+        ],
+        "numericIdentity": [
+          117,
+          204,
+          241,
+          253,
+          276,
+          277,
+          289
+        ],
+        "typeSelector": [
+          90,
+          117,
+          203,
+          288
+        ],
+        "separateInstanceRegistration": [
+          51,
+          94,
+          118,
+          152,
+          206,
+          292
+        ],
+        "stringParameterOrPort": [
+          61,
+          62,
+          65,
+          66,
+          68,
+          70,
+          100,
+          119,
+          164,
+          165,
+          166,
+          167,
+          172,
+          173,
+          174,
+          177,
+          178,
+          179,
+          180,
+          181,
+          207,
+          211,
+          285,
+          293,
+          294,
+          295
+        ],
+        "controlExposure": [
+          71,
+          76,
+          125,
+          189
+        ],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          227,
+          230,
+          268,
+          302
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/main-wave-live-source.generated.mjs",
+      "lines": 3,
+      "signals": {
+        "graphWorkspace": [
+          2
+        ],
+        "numericIdentity": [
+          2
+        ],
+        "typeSelector": [
+          2
+        ],
+        "separateInstanceRegistration": [
+          2
+        ],
+        "stringParameterOrPort": [
+          2
+        ],
+        "controlExposure": [
+          2
+        ],
+        "viewDeclaration": [
+          2
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          2
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/network-instrument.d.mts",
+      "lines": 10,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          6
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [
+          7
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/network-instrument.mjs",
+      "lines": 141,
+      "signals": {
+        "graphWorkspace": [
+          4,
+          5,
+          47
+        ],
+        "numericIdentity": [
+          50,
+          51,
+          52,
+          53,
+          54
+        ],
+        "typeSelector": [
+          50,
+          51,
+          52,
+          53,
+          54,
+          85,
+          89
+        ],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [
+          48,
+          55,
+          56,
+          57,
+          58,
+          60,
+          61,
+          62,
+          63,
+          64,
+          65,
+          66,
+          67
+        ],
+        "controlExposure": [
+          55,
+          56,
+          57,
+          58
+        ],
+        "viewDeclaration": [
+          124,
+          133
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/network-services.mjs",
+      "lines": 3,
+      "signals": {
+        "graphWorkspace": [
+          2
+        ],
+        "numericIdentity": [
+          2
+        ],
+        "typeSelector": [
+          2
+        ],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [
+          2
+        ],
+        "controlExposure": [
+          2
+        ],
+        "viewDeclaration": [
+          2
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/oscillator-preview.d.mts",
+      "lines": 14,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/oscillator-preview.mjs",
+      "lines": 146,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/phase-vocoder-chain.d.mts",
+      "lines": 12,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          3,
+          7
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          9
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/phase-vocoder-chain.mjs",
+      "lines": 54,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          10,
+          13
+        ],
+        "numericIdentity": [
+          14,
+          15
+        ],
+        "typeSelector": [
+          14,
+          15
+        ],
+        "separateInstanceRegistration": [
+          16,
+          17
+        ],
+        "stringParameterOrPort": [
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          28,
+          34,
+          37,
+          38
+        ],
+        "controlExposure": [
+          25,
+          31
+        ],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          50
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/primitive-library.d.mts",
+      "lines": 4,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/primitive-library.mjs",
+      "lines": 497,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          37,
+          86,
+          88,
+          98
+        ],
+        "numericIdentity": [
+          131
+        ],
+        "typeSelector": [
+          27,
+          29,
+          35,
+          39,
+          41,
+          48,
+          55,
+          70,
+          120
+        ],
+        "separateInstanceRegistration": [
+          50
+        ],
+        "stringParameterOrPort": [
+          68,
+          71,
+          99
+        ],
+        "controlExposure": [
+          68
+        ],
+        "viewDeclaration": [
+          107,
+          112
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/rack-filter-eq.d.mts",
+      "lines": 49,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          26,
+          33
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          35
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/rack-filter-eq.mjs",
+      "lines": 520,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          19,
+          63
+        ],
+        "numericIdentity": [
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          74,
+          75,
+          76,
+          77,
+          78,
+          79,
+          80,
+          81,
+          82,
+          83,
+          84,
+          85,
+          86,
+          87,
+          338,
+          348,
+          353,
+          360,
+          390,
+          470,
+          489,
+          501,
+          502,
+          505,
+          508,
+          509
+        ],
+        "typeSelector": [
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          74,
+          75,
+          76,
+          77,
+          78,
+          79,
+          80,
+          81,
+          82,
+          83,
+          84,
+          85,
+          86,
+          87,
+          290
+        ],
+        "separateInstanceRegistration": [
+          88,
+          89,
+          90,
+          91,
+          92,
+          111,
+          112,
+          113,
+          114
+        ],
+        "stringParameterOrPort": [
+          115,
+          116,
+          117,
+          118,
+          119,
+          120,
+          121,
+          122,
+          123,
+          124,
+          125,
+          126,
+          127,
+          128,
+          129,
+          130,
+          131,
+          132,
+          133,
+          134,
+          135,
+          136,
+          137,
+          138,
+          146,
+          147,
+          148,
+          158,
+          159,
+          163,
+          164,
+          165,
+          166,
+          167,
+          168,
+          169,
+          170,
+          171,
+          172,
+          173,
+          174,
+          175,
+          176,
+          177,
+          182,
+          183,
+          184,
+          185,
+          186,
+          187,
+          189,
+          190
+        ],
+        "controlExposure": [
+          251
+        ],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          396,
+          513
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/rack-module-host.d.mts",
+      "lines": 31,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          7,
+          8,
+          16
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          18
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/rack-module-host.mjs",
+      "lines": 116,
+      "signals": {
+        "graphWorkspace": [
+          4
+        ],
+        "numericIdentity": [
+          72,
+          73,
+          79,
+          88,
+          90
+        ],
+        "typeSelector": [
+          42,
+          45,
+          72,
+          73,
+          79,
+          88,
+          89
+        ],
+        "separateInstanceRegistration": [
+          46,
+          47,
+          74,
+          75,
+          80,
+          92,
+          93
+        ],
+        "stringParameterOrPort": [
+          40,
+          48,
+          49,
+          50,
+          51,
+          52,
+          76,
+          78,
+          81,
+          82,
+          84,
+          85,
+          94,
+          95,
+          99,
+          100,
+          103,
+          104
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          31
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/rack-oscillator-source.generated.mjs",
+      "lines": 3,
+      "signals": {
+        "graphWorkspace": [
+          2
+        ],
+        "numericIdentity": [
+          2
+        ],
+        "typeSelector": [
+          2
+        ],
+        "separateInstanceRegistration": [
+          2
+        ],
+        "stringParameterOrPort": [
+          2
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          2
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/rack-oscillator.d.mts",
+      "lines": 21,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          4,
+          9,
+          16
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          18
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/rack-oscillator.mjs",
+      "lines": 177,
+      "signals": {
+        "graphWorkspace": [
+          4,
+          10,
+          73
+        ],
+        "numericIdentity": [
+          92,
+          97,
+          103,
+          113,
+          119,
+          127
+        ],
+        "typeSelector": [
+          22,
+          32,
+          37
+        ],
+        "separateInstanceRegistration": [
+          25,
+          33,
+          38
+        ],
+        "stringParameterOrPort": [
+          26,
+          27,
+          28,
+          29,
+          35,
+          39,
+          40,
+          41
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          79,
+          173
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/rack-sample-eight-voice.d.mts",
+      "lines": 44,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          23,
+          24,
+          28
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          41
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/rack-sample-eight-voice.mjs",
+      "lines": 392,
+      "signals": {
+        "graphWorkspace": [
+          4,
+          11,
+          20
+        ],
+        "numericIdentity": [
+          313,
+          331,
+          342,
+          365
+        ],
+        "typeSelector": [
+          36,
+          37,
+          44,
+          47,
+          50
+        ],
+        "separateInstanceRegistration": [
+          38,
+          39,
+          53,
+          54,
+          55
+        ],
+        "stringParameterOrPort": [
+          22,
+          40,
+          41,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          113,
+          122,
+          157,
+          171,
+          213,
+          244,
+          278,
+          387
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/sample-voice-chain.d.mts",
+      "lines": 16,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          4,
+          10
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          13
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/sample-voice-chain.mjs",
+      "lines": 162,
+      "signals": {
+        "graphWorkspace": [
+          4,
+          10,
+          16
+        ],
+        "numericIdentity": [
+          17,
+          18,
+          19,
+          20,
+          89,
+          103,
+          110,
+          111,
+          117,
+          125,
+          131,
+          132,
+          138,
+          152
+        ],
+        "typeSelector": [
+          17,
+          18,
+          19,
+          20
+        ],
+        "separateInstanceRegistration": [
+          21,
+          22,
+          23,
+          24
+        ],
+        "stringParameterOrPort": [
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          74,
+          158
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/standalone-filter.d.mts",
+      "lines": 3,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/standalone-filter.mjs",
+      "lines": 3,
+      "signals": {
+        "graphWorkspace": [
+          2
+        ],
+        "numericIdentity": [
+          2
+        ],
+        "typeSelector": [
+          2
+        ],
+        "separateInstanceRegistration": [
+          2
+        ],
+        "stringParameterOrPort": [
+          2
+        ],
+        "controlExposure": [
+          2
+        ],
+        "viewDeclaration": [
+          2
+        ],
+        "studioBookkeeping": [
+          2
+        ],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/standalone-oscillator-source.generated.mjs",
+      "lines": 3,
+      "signals": {
+        "graphWorkspace": [
+          2
+        ],
+        "numericIdentity": [
+          2
+        ],
+        "typeSelector": [
+          2
+        ],
+        "separateInstanceRegistration": [
+          2
+        ],
+        "stringParameterOrPort": [
+          2
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [
+          2
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          2
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/standalone-oscillator.d.mts",
+      "lines": 3,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/standalone-oscillator.mjs",
+      "lines": 88,
+      "signals": {
+        "graphWorkspace": [
+          4,
+          13
+        ],
+        "numericIdentity": [
+          17,
+          78
+        ],
+        "typeSelector": [
+          17
+        ],
+        "separateInstanceRegistration": [
+          18
+        ],
+        "stringParameterOrPort": [
+          19,
+          21,
+          22
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [
+          30
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/transpose-audition.d.mts",
+      "lines": 17,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          7,
+          9
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          2,
+          8,
+          11
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/transpose-audition.mjs",
+      "lines": 79,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          12,
+          19
+        ],
+        "numericIdentity": [
+          20,
+          21,
+          22,
+          65
+        ],
+        "typeSelector": [
+          20,
+          21,
+          22,
+          65
+        ],
+        "separateInstanceRegistration": [
+          23,
+          24,
+          25,
+          66
+        ],
+        "stringParameterOrPort": [
+          26,
+          27,
+          28,
+          29,
+          34,
+          63,
+          70,
+          71,
+          74
+        ],
+        "controlExposure": [
+          29
+        ],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          51
+        ]
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/ui-nacre-source.generated.mjs",
+      "lines": 3,
+      "signals": {
+        "graphWorkspace": [
+          2
+        ],
+        "numericIdentity": [
+          2
+        ],
+        "typeSelector": [
+          2
+        ],
+        "separateInstanceRegistration": [
+          2
+        ],
+        "stringParameterOrPort": [
+          2
+        ],
+        "controlExposure": [
+          2
+        ],
+        "viewDeclaration": [
+          2
+        ],
+        "studioBookkeeping": [
+          2
+        ],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/ui-nacre-view.mjs",
+      "lines": 911,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [
+          114
+        ],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/ui-nacre.d.mts",
+      "lines": 5,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          4
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [
+          4
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/ui-nacre.mjs",
+      "lines": 1053,
+      "signals": {
+        "graphWorkspace": [
+          4,
+          64
+        ],
+        "numericIdentity": [
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73
+        ],
+        "typeSelector": [
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          255
+        ],
+        "separateInstanceRegistration": [
+          75
+        ],
+        "stringParameterOrPort": [
+          80,
+          81,
+          82,
+          83,
+          84,
+          85,
+          86,
+          87,
+          88,
+          89,
+          90,
+          91,
+          92,
+          93,
+          94,
+          95,
+          96,
+          97,
+          98,
+          99,
+          100,
+          101,
+          102,
+          103,
+          104,
+          105,
+          106,
+          107,
+          108,
+          109,
+          110,
+          113,
+          114,
+          115,
+          116,
+          117,
+          118,
+          119,
+          120,
+          121,
+          122,
+          123,
+          124
+        ],
+        "controlExposure": [
+          80,
+          81,
+          82,
+          85,
+          86,
+          88,
+          92,
+          93,
+          94,
+          95,
+          98,
+          102,
+          103,
+          104,
+          106,
+          108,
+          110,
+          128
+        ],
+        "viewDeclaration": [
+          130,
+          131
+        ],
+        "studioBookkeeping": [
+          6,
+          8,
+          9,
+          10,
+          125,
+          127,
+          138
+        ],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/ui-orbit-source.generated.mjs",
+      "lines": 3,
+      "signals": {
+        "graphWorkspace": [
+          2
+        ],
+        "numericIdentity": [
+          2
+        ],
+        "typeSelector": [
+          2
+        ],
+        "separateInstanceRegistration": [
+          2
+        ],
+        "stringParameterOrPort": [
+          2
+        ],
+        "controlExposure": [
+          2
+        ],
+        "viewDeclaration": [
+          2
+        ],
+        "studioBookkeeping": [
+          2
+        ],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/ui-orbit.d.mts",
+      "lines": 5,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          4
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [
+          4
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/ui-orbit.mjs",
+      "lines": 240,
+      "signals": {
+        "graphWorkspace": [
+          3,
+          40
+        ],
+        "numericIdentity": [
+          41,
+          42
+        ],
+        "typeSelector": [
+          41,
+          42
+        ],
+        "separateInstanceRegistration": [
+          43,
+          44
+        ],
+        "stringParameterOrPort": [
+          49,
+          50,
+          51,
+          52,
+          53,
+          54
+        ],
+        "controlExposure": [
+          47,
+          49,
+          51,
+          52,
+          59
+        ],
+        "viewDeclaration": [
+          63,
+          64,
+          68
+        ],
+        "studioBookkeeping": [
+          5,
+          9,
+          10,
+          55,
+          57,
+          67,
+          77
+        ],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/ui-reactive-tone-source.generated.mjs",
+      "lines": 3,
+      "signals": {
+        "graphWorkspace": [
+          2
+        ],
+        "numericIdentity": [
+          2
+        ],
+        "typeSelector": [
+          2
+        ],
+        "separateInstanceRegistration": [
+          2
+        ],
+        "stringParameterOrPort": [
+          2
+        ],
+        "controlExposure": [
+          2
+        ],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/ui-reactive-tone.d.mts",
+      "lines": 4,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          3
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/ui-reactive-tone.mjs",
+      "lines": 55,
+      "signals": {
+        "graphWorkspace": [
+          3,
+          4,
+          13
+        ],
+        "numericIdentity": [
+          14
+        ],
+        "typeSelector": [
+          14
+        ],
+        "separateInstanceRegistration": [
+          15
+        ],
+        "stringParameterOrPort": [
+          16,
+          17,
+          18
+        ],
+        "controlExposure": [
+          16,
+          17
+        ],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/ui-styled-tone-source.generated.mjs",
+      "lines": 3,
+      "signals": {
+        "graphWorkspace": [
+          2
+        ],
+        "numericIdentity": [
+          2
+        ],
+        "typeSelector": [
+          2
+        ],
+        "separateInstanceRegistration": [
+          2
+        ],
+        "stringParameterOrPort": [
+          2
+        ],
+        "controlExposure": [
+          2
+        ],
+        "viewDeclaration": [
+          2
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/ui-styled-tone.d.mts",
+      "lines": 4,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          3
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/ui-styled-tone.mjs",
+      "lines": 59,
+      "signals": {
+        "graphWorkspace": [
+          3,
+          4,
+          21
+        ],
+        "numericIdentity": [
+          23,
+          24
+        ],
+        "typeSelector": [
+          23,
+          24
+        ],
+        "separateInstanceRegistration": [
+          25,
+          26
+        ],
+        "stringParameterOrPort": [
+          22,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33
+        ],
+        "controlExposure": [
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "viewDeclaration": [
+          42,
+          45
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/ui-three-tone-source.generated.mjs",
+      "lines": 3,
+      "signals": {
+        "graphWorkspace": [
+          2
+        ],
+        "numericIdentity": [
+          2
+        ],
+        "typeSelector": [
+          2
+        ],
+        "separateInstanceRegistration": [
+          2
+        ],
+        "stringParameterOrPort": [
+          2
+        ],
+        "controlExposure": [
+          2
+        ],
+        "viewDeclaration": [
+          2
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/ui-three-tone.d.mts",
+      "lines": 5,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          4
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [
+          4
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "package-example-file",
+      "file": "packages/manifold-author/examples/ui-three-tone.mjs",
+      "lines": 153,
+      "signals": {
+        "graphWorkspace": [
+          3,
+          4,
+          15
+        ],
+        "numericIdentity": [
+          16,
+          17
+        ],
+        "typeSelector": [
+          16,
+          17
+        ],
+        "separateInstanceRegistration": [
+          18,
+          19
+        ],
+        "stringParameterOrPort": [
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26
+        ],
+        "controlExposure": [
+          20,
+          21,
+          23
+        ],
+        "viewDeclaration": [
+          29,
+          30
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "handbook-executable",
+      "file": "web/handbook/examples/gain.mjs",
+      "lines": 22,
+      "signals": {
+        "graphWorkspace": [
+          3,
+          6
+        ],
+        "numericIdentity": [
+          8
+        ],
+        "typeSelector": [
+          7,
+          8
+        ],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [
+          9,
+          15,
+          16
+        ],
+        "controlExposure": [
+          9
+        ],
+        "viewDeclaration": [
+          19
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "handbook-executable",
+      "file": "web/handbook/examples/ring.mjs",
+      "lines": 52,
+      "signals": {
+        "graphWorkspace": [
+          3,
+          6
+        ],
+        "numericIdentity": [
+          10,
+          19,
+          28,
+          35
+        ],
+        "typeSelector": [
+          10,
+          19,
+          28,
+          35
+        ],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [
+          11,
+          12,
+          20,
+          21,
+          29,
+          36,
+          38,
+          39,
+          40,
+          41
+        ],
+        "controlExposure": [
+          12,
+          21,
+          29
+        ],
+        "viewDeclaration": [
+          45,
+          46,
+          47,
+          48
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "handbook-executable",
+      "file": "web/handbook/examples/spectral.mjs",
+      "lines": 37,
+      "signals": {
+        "graphWorkspace": [
+          3,
+          6
+        ],
+        "numericIdentity": [
+          10
+        ],
+        "typeSelector": [
+          9,
+          10
+        ],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [
+          11,
+          17,
+          25,
+          26,
+          27
+        ],
+        "controlExposure": [
+          11,
+          17
+        ],
+        "viewDeclaration": [
+          31,
+          32,
+          33
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "handbook-lesson",
+      "file": "docs/handbook/README.md",
+      "lines": 66,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "handbook-lesson",
+      "file": "docs/handbook/agents.md",
+      "lines": 34,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "handbook-lesson",
+      "file": "docs/handbook/browser-host.md",
+      "lines": 50,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          1,
+          3,
+          9,
+          10,
+          19,
+          21,
+          25
+        ]
+      }
+    },
+    {
+      "surface": "handbook-lesson",
+      "file": "docs/handbook/concepts.md",
+      "lines": 87,
+      "signals": {
+        "graphWorkspace": [
+          26,
+          28,
+          38,
+          47
+        ],
+        "numericIdentity": [
+          29,
+          30,
+          31,
+          41
+        ],
+        "typeSelector": [
+          29,
+          30,
+          31,
+          45
+        ],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [
+          43
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          17,
+          80
+        ]
+      }
+    },
+    {
+      "surface": "handbook-lesson",
+      "file": "docs/handbook/embed-a-gain-stage.md",
+      "lines": 92,
+      "signals": {
+        "graphWorkspace": [
+          26,
+          28,
+          32
+        ],
+        "numericIdentity": [
+          29
+        ],
+        "typeSelector": [
+          29
+        ],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [
+          34
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          13,
+          44,
+          48,
+          51,
+          54,
+          55,
+          66,
+          77
+        ]
+      }
+    },
+    {
+      "surface": "handbook-lesson",
+      "file": "docs/handbook/graphs-and-source.md",
+      "lines": 46,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "handbook-lesson",
+      "file": "docs/handbook/index.md",
+      "lines": 43,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "handbook-lesson",
+      "file": "docs/handbook/ring-modulation.md",
+      "lines": 40,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [
+          29,
+          30
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "handbook-lesson",
+      "file": "docs/handbook/sound-into-surface.md",
+      "lines": 66,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "handbook-lesson",
+      "file": "docs/handbook/spectral-pitch.md",
+      "lines": 52,
+      "signals": {
+        "graphWorkspace": [
+          22,
+          24
+        ],
+        "numericIdentity": [
+          25
+        ],
+        "typeSelector": [
+          25,
+          35
+        ],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [
+          27
+        ],
+        "controlExposure": [
+          27
+        ],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          49
+        ]
+      }
+    },
+    {
+      "surface": "handbook-lesson",
+      "file": "docs/handbook/studio-first-project.md",
+      "lines": 46,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "handbook-lesson",
+      "file": "docs/handbook/studio-graphs.md",
+      "lines": 44,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [
+          35
+        ],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "handbook-lesson",
+      "file": "docs/handbook/studio-layout.md",
+      "lines": 32,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "handbook-lesson",
+      "file": "docs/handbook/studio-save-export.md",
+      "lines": 40,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "handbook-lesson",
+      "file": "docs/handbook/studio.md",
+      "lines": 47,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "studio-template",
+      "file": "web/src/authoring/templates/basic-plugin.js",
+      "lines": 24,
+      "signals": {
+        "graphWorkspace": [
+          2,
+          9
+        ],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [
+          10
+        ],
+        "controlExposure": [
+          14
+        ],
+        "viewDeclaration": [
+          17,
+          18
+        ],
+        "studioBookkeeping": [
+          3,
+          5,
+          6,
+          12,
+          13,
+          17,
+          21
+        ],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "public-readme",
+      "file": "README.md",
+      "lines": 60,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          35
+        ]
+      }
+    },
+    {
+      "surface": "public-readme",
+      "file": "packages/manifold-author/README.md",
+      "lines": 694,
+      "signals": {
+        "graphWorkspace": [
+          215,
+          217,
+          254,
+          256,
+          471
+        ],
+        "numericIdentity": [
+          218,
+          219,
+          220,
+          360,
+          363,
+          364,
+          495,
+          629
+        ],
+        "typeSelector": [
+          218,
+          219,
+          220,
+          360,
+          364,
+          629
+        ],
+        "separateInstanceRegistration": [
+          477
+        ],
+        "stringParameterOrPort": [
+          127,
+          221,
+          222,
+          223,
+          258,
+          259,
+          361,
+          365
+        ],
+        "controlExposure": [
+          127,
+          234
+        ],
+        "viewDeclaration": [],
+        "studioBookkeeping": [
+          8
+        ],
+        "hostOrSerialization": [
+          122,
+          227,
+          241,
+          256,
+          260,
+          268,
+          271,
+          272,
+          274,
+          403,
+          420,
+          471,
+          500,
+          510,
+          513,
+          517,
+          526,
+          530,
+          535,
+          547,
+          568,
+          577,
+          579
+        ]
+      }
+    },
+    {
+      "surface": "handbook-host-controls",
+      "file": "web/handbook/examples.js",
+      "lines": 72,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "studio-generation-or-agent-guidance",
+      "file": "packages/manifold-author/studio-graph.js",
+      "lines": 263,
+      "signals": {
+        "graphWorkspace": [
+          17
+        ],
+        "numericIdentity": [],
+        "typeSelector": [
+          32,
+          69,
+          110,
+          111,
+          112,
+          114,
+          115,
+          116,
+          131,
+          155,
+          156,
+          157,
+          159,
+          195,
+          198
+        ],
+        "separateInstanceRegistration": [
+          62,
+          70
+        ],
+        "stringParameterOrPort": [],
+        "controlExposure": [
+          76
+        ],
+        "viewDeclaration": [],
+        "studioBookkeeping": [
+          54,
+          117,
+          120,
+          126,
+          127,
+          131,
+          132,
+          139,
+          141,
+          143,
+          155,
+          158
+        ],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "studio-generation-or-agent-guidance",
+      "file": "packages/manifold-author/studio-source.js",
+      "lines": 45,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [
+          6,
+          7,
+          8,
+          9,
+          10
+        ],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [
+          18,
+          19
+        ],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "studio-generation-or-agent-guidance",
+      "file": "packages/manifold-author/audio-graphs.js",
+      "lines": 906,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          21,
+          34,
+          244
+        ],
+        "numericIdentity": [
+          22,
+          177,
+          201
+        ],
+        "typeSelector": [
+          3,
+          8,
+          15,
+          16,
+          17,
+          22,
+          25,
+          84,
+          87,
+          88,
+          89,
+          91,
+          259,
+          265,
+          312,
+          314,
+          318,
+          319,
+          324,
+          346,
+          451,
+          590,
+          591,
+          702
+        ],
+        "separateInstanceRegistration": [
+          266
+        ],
+        "stringParameterOrPort": [],
+        "controlExposure": [
+          287
+        ],
+        "viewDeclaration": [
+          540
+        ],
+        "studioBookkeeping": [
+          281
+        ],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "studio-generation-or-agent-guidance",
+      "file": "packages/manifold-author/agent-tools.js",
+      "lines": 323,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [
+          229,
+          239,
+          247,
+          257
+        ],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [
+          156
+        ],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "studio-generation-or-agent-guidance",
+      "file": "docs/rearchitecture/studio-agent-quickstart.md",
+      "lines": 96,
+      "signals": {
+        "graphWorkspace": [],
+        "numericIdentity": [],
+        "typeSelector": [],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [],
+        "controlExposure": [],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "handbook-executable",
+      "file": "web/public/studio/field-rules.manifold.json#source",
+      "lines": 39,
+      "signals": {
+        "graphWorkspace": [
+          1,
+          20
+        ],
+        "numericIdentity": [
+          21
+        ],
+        "typeSelector": [
+          21
+        ],
+        "separateInstanceRegistration": [
+          22
+        ],
+        "stringParameterOrPort": [
+          23,
+          30,
+          31
+        ],
+        "controlExposure": [
+          23,
+          34
+        ],
+        "viewDeclaration": [
+          36
+        ],
+        "studioBookkeeping": [
+          3,
+          7,
+          17,
+          32,
+          33,
+          37
+        ],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "ui-nacre",
+      "lines": 1053,
+      "signals": {
+        "graphWorkspace": [
+          4,
+          64
+        ],
+        "numericIdentity": [
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73
+        ],
+        "typeSelector": [
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          255
+        ],
+        "separateInstanceRegistration": [
+          75
+        ],
+        "stringParameterOrPort": [
+          80,
+          81,
+          82,
+          83,
+          84,
+          85,
+          86,
+          87,
+          88,
+          89,
+          90,
+          91,
+          92,
+          93,
+          94,
+          95,
+          96,
+          97,
+          98,
+          99,
+          100,
+          101,
+          102,
+          103,
+          104,
+          105,
+          106,
+          107,
+          108,
+          109,
+          110,
+          113,
+          114,
+          115,
+          116,
+          117,
+          118,
+          119,
+          120,
+          121,
+          122,
+          123,
+          124
+        ],
+        "controlExposure": [
+          80,
+          81,
+          82,
+          85,
+          86,
+          88,
+          92,
+          93,
+          94,
+          95,
+          98,
+          102,
+          103,
+          104,
+          106,
+          108,
+          110,
+          128
+        ],
+        "viewDeclaration": [
+          130,
+          131
+        ],
+        "studioBookkeeping": [
+          6,
+          8,
+          9,
+          10,
+          125,
+          127,
+          138
+        ],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "ui-orbit",
+      "lines": 240,
+      "signals": {
+        "graphWorkspace": [
+          3,
+          40
+        ],
+        "numericIdentity": [
+          41,
+          42
+        ],
+        "typeSelector": [
+          41,
+          42
+        ],
+        "separateInstanceRegistration": [
+          43,
+          44
+        ],
+        "stringParameterOrPort": [
+          49,
+          50,
+          51,
+          52,
+          53,
+          54
+        ],
+        "controlExposure": [
+          47,
+          49,
+          51,
+          52,
+          59
+        ],
+        "viewDeclaration": [
+          63,
+          64,
+          68
+        ],
+        "studioBookkeeping": [
+          5,
+          9,
+          10,
+          55,
+          57,
+          67,
+          77
+        ],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "ui-three-tone",
+      "lines": 153,
+      "signals": {
+        "graphWorkspace": [
+          3,
+          4,
+          15
+        ],
+        "numericIdentity": [
+          16,
+          17
+        ],
+        "typeSelector": [
+          16,
+          17
+        ],
+        "separateInstanceRegistration": [
+          18,
+          19
+        ],
+        "stringParameterOrPort": [
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26
+        ],
+        "controlExposure": [
+          20,
+          21,
+          23
+        ],
+        "viewDeclaration": [
+          29,
+          30
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "ui-styled-tone",
+      "lines": 59,
+      "signals": {
+        "graphWorkspace": [
+          3,
+          4,
+          21
+        ],
+        "numericIdentity": [
+          23,
+          24
+        ],
+        "typeSelector": [
+          23,
+          24
+        ],
+        "separateInstanceRegistration": [
+          25,
+          26
+        ],
+        "stringParameterOrPort": [
+          22,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33
+        ],
+        "controlExposure": [
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "viewDeclaration": [
+          42,
+          45
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "ui-reactive-tone",
+      "lines": 55,
+      "signals": {
+        "graphWorkspace": [
+          3,
+          4,
+          13
+        ],
+        "numericIdentity": [
+          14
+        ],
+        "typeSelector": [
+          14
+        ],
+        "separateInstanceRegistration": [
+          15
+        ],
+        "stringParameterOrPort": [
+          16,
+          17,
+          18
+        ],
+        "controlExposure": [
+          16,
+          17
+        ],
+        "viewDeclaration": [],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "network-services",
+      "lines": 141,
+      "signals": {
+        "graphWorkspace": [
+          4,
+          5,
+          47
+        ],
+        "numericIdentity": [
+          50,
+          51,
+          52,
+          53,
+          54
+        ],
+        "typeSelector": [
+          50,
+          51,
+          52,
+          53,
+          54,
+          85,
+          89
+        ],
+        "separateInstanceRegistration": [],
+        "stringParameterOrPort": [
+          48,
+          55,
+          56,
+          57,
+          58,
+          60,
+          61,
+          62,
+          63,
+          64,
+          65,
+          66,
+          67
+        ],
+        "controlExposure": [
+          55,
+          56,
+          57,
+          58
+        ],
+        "viewDeclaration": [
+          124,
+          133
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "default",
+      "lines": 102,
+      "signals": {
+        "graphWorkspace": [
+          4,
+          5,
+          31
+        ],
+        "numericIdentity": [
+          17,
+          24,
+          32,
+          33,
+          67
+        ],
+        "typeSelector": [
+          32,
+          33,
+          67,
+          97
+        ],
+        "separateInstanceRegistration": [
+          34,
+          35,
+          68
+        ],
+        "stringParameterOrPort": [
+          36,
+          37,
+          41,
+          47,
+          50,
+          51,
+          52,
+          53,
+          54,
+          69,
+          70,
+          71,
+          72,
+          73,
+          74,
+          77
+        ],
+        "controlExposure": [
+          38,
+          44
+        ],
+        "viewDeclaration": [
+          85,
+          86,
+          87
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "fx-slots",
+      "lines": 201,
+      "signals": {
+        "graphWorkspace": [
+          4,
+          5,
+          48
+        ],
+        "numericIdentity": [
+          49,
+          62,
+          63,
+          64,
+          90,
+          113,
+          116
+        ],
+        "typeSelector": [
+          49,
+          62,
+          63,
+          64,
+          90,
+          112,
+          115,
+          196
+        ],
+        "separateInstanceRegistration": [
+          50,
+          65,
+          66,
+          67,
+          91,
+          118,
+          119
+        ],
+        "stringParameterOrPort": [
+          51,
+          55,
+          58,
+          59,
+          68,
+          69,
+          70,
+          71,
+          72,
+          92,
+          93,
+          94,
+          120,
+          121,
+          122,
+          123,
+          125,
+          126,
+          127
+        ],
+        "controlExposure": [
+          52
+        ],
+        "viewDeclaration": [
+          163,
+          166
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "gain",
+      "lines": 56,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          26
+        ],
+        "numericIdentity": [
+          31
+        ],
+        "typeSelector": [
+          31,
+          49
+        ],
+        "separateInstanceRegistration": [
+          32
+        ],
+        "stringParameterOrPort": [
+          27,
+          28,
+          33,
+          36,
+          37
+        ],
+        "controlExposure": [
+          33
+        ],
+        "viewDeclaration": [
+          40,
+          43
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "fixed-gain",
+      "lines": 42,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          19
+        ],
+        "numericIdentity": [
+          24
+        ],
+        "typeSelector": [
+          24,
+          35
+        ],
+        "separateInstanceRegistration": [
+          25
+        ],
+        "stringParameterOrPort": [
+          20,
+          21,
+          28,
+          29
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [
+          32
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "width",
+      "lines": 80,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          46
+        ],
+        "numericIdentity": [
+          51
+        ],
+        "typeSelector": [
+          51,
+          73
+        ],
+        "separateInstanceRegistration": [
+          52
+        ],
+        "stringParameterOrPort": [
+          47,
+          48,
+          53,
+          54,
+          55,
+          58,
+          59
+        ],
+        "controlExposure": [
+          53,
+          54,
+          55
+        ],
+        "viewDeclaration": [
+          62,
+          67
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "distortion",
+      "lines": 76,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          42
+        ],
+        "numericIdentity": [
+          47
+        ],
+        "typeSelector": [
+          47,
+          69
+        ],
+        "separateInstanceRegistration": [
+          48
+        ],
+        "stringParameterOrPort": [
+          43,
+          44,
+          49,
+          50,
+          51,
+          54,
+          55
+        ],
+        "controlExposure": [
+          49,
+          50,
+          51
+        ],
+        "viewDeclaration": [
+          58,
+          63
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "svf",
+      "lines": 82,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          48
+        ],
+        "numericIdentity": [
+          53
+        ],
+        "typeSelector": [
+          53,
+          75
+        ],
+        "separateInstanceRegistration": [
+          54
+        ],
+        "stringParameterOrPort": [
+          49,
+          50,
+          55,
+          56,
+          57,
+          60,
+          61
+        ],
+        "controlExposure": [
+          55,
+          56,
+          57
+        ],
+        "viewDeclaration": [
+          64,
+          69
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "oscillator",
+      "lines": 81,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          49
+        ],
+        "numericIdentity": [
+          53
+        ],
+        "typeSelector": [
+          53,
+          74
+        ],
+        "separateInstanceRegistration": [
+          54
+        ],
+        "stringParameterOrPort": [
+          50,
+          55,
+          56,
+          57,
+          60
+        ],
+        "controlExposure": [
+          55,
+          56,
+          57
+        ],
+        "viewDeclaration": [
+          63,
+          68
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "extended-oscillator",
+      "lines": 242,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          182
+        ],
+        "numericIdentity": [
+          186
+        ],
+        "typeSelector": [
+          186,
+          235
+        ],
+        "separateInstanceRegistration": [
+          187
+        ],
+        "stringParameterOrPort": [
+          183,
+          188,
+          189,
+          190,
+          191,
+          192,
+          193,
+          194,
+          195,
+          196,
+          197,
+          198,
+          199,
+          200,
+          201,
+          202,
+          203,
+          204,
+          207
+        ],
+        "controlExposure": [
+          188,
+          189,
+          190,
+          191,
+          192,
+          193,
+          194,
+          195,
+          196,
+          197,
+          198,
+          199,
+          200,
+          201,
+          202,
+          203,
+          204
+        ],
+        "viewDeclaration": [
+          210,
+          229
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "pulse",
+      "lines": 74,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          42
+        ],
+        "numericIdentity": [
+          46
+        ],
+        "typeSelector": [
+          46,
+          67
+        ],
+        "separateInstanceRegistration": [
+          47
+        ],
+        "stringParameterOrPort": [
+          43,
+          48,
+          49,
+          50,
+          53
+        ],
+        "controlExposure": [
+          48,
+          49,
+          50
+        ],
+        "viewDeclaration": [
+          56,
+          61
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "adsr",
+      "lines": 140,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          94
+        ],
+        "numericIdentity": [
+          98,
+          104
+        ],
+        "typeSelector": [
+          98,
+          104,
+          133
+        ],
+        "separateInstanceRegistration": [
+          99,
+          105
+        ],
+        "stringParameterOrPort": [
+          95,
+          100,
+          101,
+          102,
+          106,
+          107,
+          108,
+          109,
+          110,
+          113,
+          114
+        ],
+        "controlExposure": [
+          100,
+          101,
+          102,
+          106,
+          107,
+          108,
+          109,
+          110
+        ],
+        "viewDeclaration": [
+          117,
+          127
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "lfo-gain",
+      "lines": 96,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          56
+        ],
+        "numericIdentity": [
+          61,
+          66
+        ],
+        "typeSelector": [
+          61,
+          66,
+          89
+        ],
+        "separateInstanceRegistration": [
+          62,
+          67
+        ],
+        "stringParameterOrPort": [
+          57,
+          58,
+          63,
+          64,
+          68,
+          69,
+          72,
+          73,
+          74
+        ],
+        "controlExposure": [
+          63,
+          64,
+          68,
+          69
+        ],
+        "viewDeclaration": [
+          77,
+          83
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "crossfader",
+      "lines": 157,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          105
+        ],
+        "numericIdentity": [
+          109,
+          115,
+          121
+        ],
+        "typeSelector": [
+          109,
+          115,
+          121,
+          150
+        ],
+        "separateInstanceRegistration": [
+          110,
+          116,
+          122
+        ],
+        "stringParameterOrPort": [
+          106,
+          111,
+          112,
+          113,
+          117,
+          118,
+          119,
+          123,
+          124,
+          125,
+          128,
+          129,
+          130
+        ],
+        "controlExposure": [
+          111,
+          112,
+          113,
+          117,
+          118,
+          119,
+          123,
+          124,
+          125
+        ],
+        "viewDeclaration": [
+          133,
+          144
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "sum",
+      "lines": 127,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          81
+        ],
+        "numericIdentity": [
+          85,
+          91,
+          97
+        ],
+        "typeSelector": [
+          85,
+          91,
+          97,
+          120
+        ],
+        "separateInstanceRegistration": [
+          86,
+          92,
+          98
+        ],
+        "stringParameterOrPort": [
+          82,
+          87,
+          88,
+          89,
+          93,
+          94,
+          95,
+          101,
+          102,
+          103
+        ],
+        "controlExposure": [
+          87,
+          88,
+          89,
+          93,
+          94,
+          95
+        ],
+        "viewDeclaration": [
+          106,
+          114
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "mixer",
+      "lines": 177,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          121
+        ],
+        "numericIdentity": [
+          125,
+          131,
+          137
+        ],
+        "typeSelector": [
+          125,
+          131,
+          137,
+          170
+        ],
+        "separateInstanceRegistration": [
+          126,
+          132,
+          138
+        ],
+        "stringParameterOrPort": [
+          122,
+          127,
+          128,
+          129,
+          133,
+          134,
+          135,
+          139,
+          140,
+          141,
+          142,
+          143,
+          146,
+          147,
+          148
+        ],
+        "controlExposure": [
+          127,
+          128,
+          129,
+          133,
+          134,
+          135,
+          139,
+          140,
+          141,
+          142,
+          143
+        ],
+        "viewDeclaration": [
+          151,
+          164
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "phase-vocoder",
+      "lines": 91,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          54
+        ],
+        "numericIdentity": [
+          59
+        ],
+        "typeSelector": [
+          59,
+          84
+        ],
+        "separateInstanceRegistration": [
+          60
+        ],
+        "stringParameterOrPort": [
+          55,
+          56,
+          61,
+          62,
+          63,
+          64,
+          65,
+          68,
+          69
+        ],
+        "controlExposure": [
+          61,
+          62,
+          63,
+          64
+        ],
+        "viewDeclaration": [
+          72,
+          78
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "noise",
+      "lines": 64,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          34
+        ],
+        "numericIdentity": [
+          38
+        ],
+        "typeSelector": [
+          38,
+          57
+        ],
+        "separateInstanceRegistration": [
+          39
+        ],
+        "stringParameterOrPort": [
+          35,
+          40,
+          41,
+          44
+        ],
+        "controlExposure": [
+          40,
+          41
+        ],
+        "viewDeclaration": [
+          47,
+          51
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "cv-slew",
+      "lines": 161,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          105
+        ],
+        "numericIdentity": [
+          109,
+          115,
+          120,
+          125
+        ],
+        "typeSelector": [
+          109,
+          115,
+          120,
+          125,
+          154
+        ],
+        "separateInstanceRegistration": [
+          110,
+          116,
+          121,
+          126
+        ],
+        "stringParameterOrPort": [
+          106,
+          111,
+          112,
+          113,
+          117,
+          118,
+          122,
+          123,
+          127,
+          128,
+          131,
+          132,
+          133,
+          134
+        ],
+        "controlExposure": [
+          111,
+          112,
+          113,
+          117,
+          118,
+          122,
+          123,
+          127,
+          128
+        ],
+        "viewDeclaration": [
+          137,
+          148
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "attenuverter",
+      "lines": 161,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          105
+        ],
+        "numericIdentity": [
+          109,
+          115,
+          120,
+          125
+        ],
+        "typeSelector": [
+          109,
+          115,
+          120,
+          125,
+          154
+        ],
+        "separateInstanceRegistration": [
+          110,
+          116,
+          121,
+          126
+        ],
+        "stringParameterOrPort": [
+          106,
+          111,
+          112,
+          113,
+          117,
+          118,
+          122,
+          123,
+          127,
+          128,
+          131,
+          132,
+          133,
+          134
+        ],
+        "controlExposure": [
+          111,
+          112,
+          113,
+          117,
+          118,
+          122,
+          123,
+          127,
+          128
+        ],
+        "viewDeclaration": [
+          137,
+          148
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "sample-hold",
+      "lines": 185,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          123
+        ],
+        "numericIdentity": [
+          127,
+          133,
+          138,
+          143,
+          147
+        ],
+        "typeSelector": [
+          127,
+          133,
+          138,
+          143,
+          147,
+          178
+        ],
+        "separateInstanceRegistration": [
+          128,
+          134,
+          139,
+          144,
+          148
+        ],
+        "stringParameterOrPort": [
+          124,
+          129,
+          130,
+          131,
+          135,
+          136,
+          140,
+          141,
+          145,
+          149,
+          150,
+          153,
+          154,
+          155,
+          156,
+          157
+        ],
+        "controlExposure": [
+          129,
+          130,
+          131,
+          135,
+          136,
+          140,
+          141,
+          145,
+          149,
+          150
+        ],
+        "viewDeclaration": [
+          160,
+          172
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "cv-mix",
+      "lines": 192,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          129
+        ],
+        "numericIdentity": [
+          133,
+          139,
+          144,
+          152
+        ],
+        "typeSelector": [
+          133,
+          139,
+          144,
+          152,
+          185
+        ],
+        "separateInstanceRegistration": [
+          134,
+          140,
+          145,
+          153
+        ],
+        "stringParameterOrPort": [
+          130,
+          135,
+          136,
+          137,
+          141,
+          142,
+          146,
+          147,
+          148,
+          149,
+          150,
+          154,
+          155,
+          158,
+          159,
+          160,
+          161,
+          162
+        ],
+        "controlExposure": [
+          135,
+          136,
+          137,
+          141,
+          142,
+          146,
+          147,
+          148,
+          149,
+          150,
+          154,
+          155
+        ],
+        "viewDeclaration": [
+          165,
+          179
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "compare",
+      "lines": 176,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          118
+        ],
+        "numericIdentity": [
+          122,
+          128,
+          133,
+          139
+        ],
+        "typeSelector": [
+          122,
+          128,
+          133,
+          139,
+          169
+        ],
+        "separateInstanceRegistration": [
+          123,
+          129,
+          134,
+          140
+        ],
+        "stringParameterOrPort": [
+          119,
+          124,
+          125,
+          126,
+          130,
+          131,
+          135,
+          136,
+          137,
+          141,
+          142,
+          145,
+          146,
+          147,
+          148
+        ],
+        "controlExposure": [
+          124,
+          125,
+          126,
+          130,
+          131,
+          135,
+          136,
+          137,
+          141,
+          142
+        ],
+        "viewDeclaration": [
+          151,
+          163
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "range",
+      "lines": 175,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          117
+        ],
+        "numericIdentity": [
+          121,
+          127,
+          132,
+          138
+        ],
+        "typeSelector": [
+          121,
+          127,
+          132,
+          138,
+          168
+        ],
+        "separateInstanceRegistration": [
+          122,
+          128,
+          133,
+          139
+        ],
+        "stringParameterOrPort": [
+          118,
+          123,
+          124,
+          125,
+          129,
+          130,
+          134,
+          135,
+          136,
+          140,
+          141,
+          144,
+          145,
+          146,
+          147
+        ],
+        "controlExposure": [
+          123,
+          124,
+          125,
+          129,
+          130,
+          134,
+          135,
+          136,
+          140,
+          141
+        ],
+        "viewDeclaration": [
+          150,
+          162
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "cv-filter",
+      "lines": 122,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          78
+        ],
+        "numericIdentity": [
+          83,
+          88
+        ],
+        "typeSelector": [
+          83,
+          88,
+          115
+        ],
+        "separateInstanceRegistration": [
+          84,
+          89
+        ],
+        "stringParameterOrPort": [
+          79,
+          80,
+          85,
+          86,
+          90,
+          91,
+          92,
+          93,
+          96,
+          97,
+          98
+        ],
+        "controlExposure": [
+          85,
+          86,
+          90,
+          91,
+          92,
+          93
+        ],
+        "viewDeclaration": [
+          101,
+          109
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "ring",
+      "lines": 181,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          125
+        ],
+        "numericIdentity": [
+          129,
+          135,
+          141
+        ],
+        "typeSelector": [
+          129,
+          135,
+          141,
+          174
+        ],
+        "separateInstanceRegistration": [
+          130,
+          136,
+          142
+        ],
+        "stringParameterOrPort": [
+          126,
+          131,
+          132,
+          133,
+          137,
+          138,
+          139,
+          143,
+          144,
+          145,
+          146,
+          147,
+          150,
+          151,
+          152
+        ],
+        "controlExposure": [
+          131,
+          132,
+          133,
+          137,
+          138,
+          139,
+          143,
+          144,
+          145,
+          146,
+          147
+        ],
+        "viewDeclaration": [
+          155,
+          168
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "eq8",
+      "lines": 570,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          458
+        ],
+        "numericIdentity": [
+          463
+        ],
+        "typeSelector": [
+          463,
+          563
+        ],
+        "separateInstanceRegistration": [
+          464
+        ],
+        "stringParameterOrPort": [
+          459,
+          460,
+          465,
+          466,
+          467,
+          468,
+          469,
+          470,
+          471,
+          472,
+          473,
+          474,
+          475,
+          476,
+          477,
+          478,
+          479,
+          480,
+          481,
+          482,
+          483,
+          484,
+          485,
+          486,
+          487,
+          488,
+          489,
+          490,
+          491,
+          492,
+          493,
+          494,
+          495,
+          496,
+          497,
+          498,
+          499,
+          500,
+          501,
+          502,
+          503,
+          504,
+          505,
+          506,
+          509,
+          510
+        ],
+        "controlExposure": [
+          465,
+          466,
+          467,
+          468,
+          469,
+          470,
+          471,
+          472,
+          473,
+          474,
+          475,
+          476,
+          477,
+          478,
+          479,
+          480,
+          481,
+          482,
+          483,
+          484,
+          485,
+          486,
+          487,
+          488,
+          489,
+          490,
+          491,
+          492,
+          493,
+          494,
+          495,
+          496,
+          497,
+          498,
+          499,
+          500,
+          501,
+          502,
+          503,
+          504,
+          505,
+          506
+        ],
+        "viewDeclaration": [
+          513,
+          557
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "mixer9",
+      "lines": 137,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          89
+        ],
+        "numericIdentity": [
+          93,
+          99,
+          105
+        ],
+        "typeSelector": [
+          93,
+          99,
+          105,
+          130
+        ],
+        "separateInstanceRegistration": [
+          94,
+          100,
+          106
+        ],
+        "stringParameterOrPort": [
+          90,
+          95,
+          96,
+          97,
+          101,
+          102,
+          103,
+          107,
+          110,
+          111,
+          112
+        ],
+        "controlExposure": [
+          95,
+          96,
+          97,
+          101,
+          102,
+          103,
+          107
+        ],
+        "viewDeclaration": [
+          115,
+          124
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "wave-shaper",
+      "lines": 126,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          83
+        ],
+        "numericIdentity": [
+          88
+        ],
+        "typeSelector": [
+          88,
+          119
+        ],
+        "separateInstanceRegistration": [
+          89
+        ],
+        "stringParameterOrPort": [
+          84,
+          85,
+          90,
+          91,
+          92,
+          93,
+          94,
+          95,
+          96,
+          97,
+          100,
+          101
+        ],
+        "controlExposure": [
+          90,
+          91,
+          92,
+          93,
+          94,
+          95,
+          96
+        ],
+        "viewDeclaration": [
+          104,
+          113
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "legacy-filter",
+      "lines": 76,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          7,
+          42
+        ],
+        "numericIdentity": [
+          47
+        ],
+        "typeSelector": [
+          47,
+          69
+        ],
+        "separateInstanceRegistration": [
+          48
+        ],
+        "stringParameterOrPort": [
+          43,
+          44,
+          49,
+          50,
+          51,
+          54,
+          55
+        ],
+        "controlExposure": [
+          49,
+          50,
+          51
+        ],
+        "viewDeclaration": [
+          58,
+          63
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "standalone-filter",
+      "lines": 106,
+      "signals": {
+        "graphWorkspace": [
+          5,
+          6,
+          47
+        ],
+        "numericIdentity": [
+          52
+        ],
+        "typeSelector": [
+          52
+        ],
+        "separateInstanceRegistration": [
+          53
+        ],
+        "stringParameterOrPort": [
+          48,
+          49,
+          54,
+          55,
+          56,
+          58,
+          59,
+          60,
+          63,
+          64
+        ],
+        "controlExposure": [
+          54,
+          55,
+          56,
+          67
+        ],
+        "viewDeclaration": [
+          73,
+          79,
+          86
+        ],
+        "studioBookkeeping": [
+          8,
+          12,
+          13,
+          65,
+          66,
+          85,
+          100,
+          104
+        ],
+        "hostOrSerialization": []
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "standalone-oscillator",
+      "lines": 460,
+      "signals": {
+        "graphWorkspace": [
+          4,
+          10,
+          78,
+          168
+        ],
+        "numericIdentity": [
+          97,
+          102,
+          108,
+          118,
+          124,
+          132,
+          172,
+          307,
+          361,
+          421,
+          422
+        ],
+        "typeSelector": [
+          27,
+          37,
+          42,
+          172,
+          354,
+          375,
+          389,
+          407,
+          413
+        ],
+        "separateInstanceRegistration": [
+          30,
+          38,
+          43,
+          173
+        ],
+        "stringParameterOrPort": [
+          31,
+          32,
+          33,
+          34,
+          40,
+          44,
+          45,
+          46,
+          174,
+          176,
+          177
+        ],
+        "controlExposure": [],
+        "viewDeclaration": [
+          196
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          84,
+          329
+        ]
+      }
+    },
+    {
+      "surface": "delivered-live-source",
+      "file": "main-wave",
+      "lines": 565,
+      "signals": {
+        "graphWorkspace": [
+          4,
+          13,
+          14,
+          203
+        ],
+        "numericIdentity": [
+          121,
+          208,
+          237,
+          376,
+          395,
+          396,
+          402,
+          410,
+          466,
+          526,
+          527
+        ],
+        "typeSelector": [
+          94,
+          121,
+          207,
+          237,
+          459,
+          480,
+          494,
+          512,
+          518
+        ],
+        "separateInstanceRegistration": [
+          55,
+          98,
+          122,
+          156,
+          210,
+          238
+        ],
+        "stringParameterOrPort": [
+          65,
+          66,
+          69,
+          70,
+          72,
+          74,
+          104,
+          123,
+          168,
+          169,
+          170,
+          171,
+          176,
+          177,
+          178,
+          181,
+          182,
+          183,
+          184,
+          185,
+          211,
+          215,
+          227,
+          230,
+          232,
+          241,
+          242,
+          243
+        ],
+        "controlExposure": [
+          75,
+          80,
+          129,
+          193
+        ],
+        "viewDeclaration": [
+          271
+        ],
+        "studioBookkeeping": [],
+        "hostOrSerialization": [
+          363,
+          391,
+          408,
+          434
+        ]
+      }
+    }
+  ]
+}

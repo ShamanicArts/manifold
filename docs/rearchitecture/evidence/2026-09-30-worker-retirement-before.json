@@ -1,0 +1,268 @@
+{
+  "records": [
+    {
+      "i": 0,
+      "targets": [
+        {
+          "id": "C014791772D141A0565C2126C649973B",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        },
+        {
+          "id": "59B96E3802C1AA875771349E2CADD8D2",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        }
+      ],
+      "state": {
+        "diagnostics": {
+          "audioBlocks": 28,
+          "underruns": 0,
+          "deferredPublicationBlocks": 0,
+          "publications": 1,
+          "lastPublicationTarget": 21,
+          "maxRenderLagBlocks": 12,
+          "workerLateBlocks": 0,
+          "missingOutputBlocks": 0,
+          "frameMismatchBlocks": 0,
+          "startupMutedBlocks": 12,
+          "recentUnderruns": [],
+          "activeSlot": 1,
+          "outputLatencyBlocks": 4,
+          "lastPreparationMs": 2.184999942779541,
+          "lastPublicationMs": 31.875,
+          "lastTransferredNodes": 2
+        },
+        "profile": {
+          "blocks": 8,
+          "p50Us": 15,
+          "p95Us": 155,
+          "p99Us": 155,
+          "maxUs": 155,
+          "service": null
+        }
+      }
+    },
+    {
+      "i": 1,
+      "targets": [
+        {
+          "id": "C014791772D141A0565C2126C649973B",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        },
+        {
+          "id": "59B96E3802C1AA875771349E2CADD8D2",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        },
+        {
+          "id": "07424C8E3FD1733757560980E34A1DB2",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        }
+      ],
+      "state": {
+        "diagnostics": {
+          "audioBlocks": 40,
+          "underruns": 0,
+          "deferredPublicationBlocks": 0,
+          "publications": 2,
+          "lastPublicationTarget": 33,
+          "maxRenderLagBlocks": 12,
+          "workerLateBlocks": 0,
+          "missingOutputBlocks": 0,
+          "frameMismatchBlocks": 0,
+          "startupMutedBlocks": 12,
+          "recentUnderruns": [],
+          "activeSlot": 0,
+          "outputLatencyBlocks": 4,
+          "lastPreparationMs": 2.115000009536743,
+          "lastPublicationMs": 21.735000014305115,
+          "lastTransferredNodes": 2
+        },
+        "profile": {
+          "blocks": 12,
+          "p50Us": 5,
+          "p95Us": 40,
+          "p99Us": 40,
+          "maxUs": 40,
+          "service": null
+        }
+      }
+    },
+    {
+      "i": 2,
+      "targets": [
+        {
+          "id": "C014791772D141A0565C2126C649973B",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        },
+        {
+          "id": "59B96E3802C1AA875771349E2CADD8D2",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        },
+        {
+          "id": "67938BA2CEC65D6F46B7F00624EC3CDC",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        },
+        {
+          "id": "07424C8E3FD1733757560980E34A1DB2",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        }
+      ],
+      "state": {
+        "diagnostics": {
+          "audioBlocks": 52,
+          "underruns": 0,
+          "deferredPublicationBlocks": 0,
+          "publications": 3,
+          "lastPublicationTarget": 45,
+          "maxRenderLagBlocks": 12,
+          "workerLateBlocks": 0,
+          "missingOutputBlocks": 0,
+          "frameMismatchBlocks": 0,
+          "startupMutedBlocks": 12,
+          "recentUnderruns": [],
+          "activeSlot": 1,
+          "outputLatencyBlocks": 4,
+          "lastPreparationMs": 1.8000000715255737,
+          "lastPublicationMs": 20.149999976158142,
+          "lastTransferredNodes": 2
+        },
+        "profile": {
+          "blocks": 12,
+          "p50Us": 20,
+          "p95Us": 45,
+          "p99Us": 45,
+          "maxUs": 45,
+          "service": null
+        }
+      }
+    },
+    {
+      "i": 3,
+      "targets": [
+        {
+          "id": "C014791772D141A0565C2126C649973B",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        },
+        {
+          "id": "59B96E3802C1AA875771349E2CADD8D2",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        },
+        {
+          "id": "67938BA2CEC65D6F46B7F00624EC3CDC",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        },
+        {
+          "id": "07424C8E3FD1733757560980E34A1DB2",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        },
+        {
+          "id": "092A3A12123CB2B7D0EC3CC154D2B820",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        }
+      ],
+      "state": {
+        "diagnostics": {
+          "audioBlocks": 60,
+          "underruns": 0,
+          "deferredPublicationBlocks": 0,
+          "publications": 4,
+          "lastPublicationTarget": 53,
+          "maxRenderLagBlocks": 12,
+          "workerLateBlocks": 0,
+          "missingOutputBlocks": 0,
+          "frameMismatchBlocks": 0,
+          "startupMutedBlocks": 12,
+          "recentUnderruns": [],
+          "activeSlot": 0,
+          "outputLatencyBlocks": 4,
+          "lastPreparationMs": 2.309999942779541,
+          "lastPublicationMs": 16.649999976158142,
+          "lastTransferredNodes": 2
+        },
+        "profile": {
+          "blocks": 20,
+          "p50Us": 5,
+          "p95Us": 20,
+          "p99Us": 20,
+          "maxUs": 20,
+          "service": null
+        }
+      }
+    },
+    {
+      "i": "tail",
+      "targets": [
+        {
+          "id": "C014791772D141A0565C2126C649973B",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        },
+        {
+          "id": "59B96E3802C1AA875771349E2CADD8D2",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        },
+        {
+          "id": "67938BA2CEC65D6F46B7F00624EC3CDC",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        },
+        {
+          "id": "07424C8E3FD1733757560980E34A1DB2",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        },
+        {
+          "id": "092A3A12123CB2B7D0EC3CC154D2B820",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+        }
+      ],
+      "state": {
+        "diagnostics": {
+          "audioBlocks": 344,
+          "underruns": 0,
+          "deferredPublicationBlocks": 0,
+          "publications": 4,
+          "lastPublicationTarget": 53,
+          "maxRenderLagBlocks": 12,
+          "workerLateBlocks": 0,
+          "missingOutputBlocks": 0,
+          "frameMismatchBlocks": 0,
+          "startupMutedBlocks": 12,
+          "recentUnderruns": [],
+          "activeSlot": 0,
+          "outputLatencyBlocks": 4,
+          "lastPreparationMs": 2.309999942779541,
+          "lastPublicationMs": 16.649999976158142,
+          "lastTransferredNodes": 2
+        },
+        "profile": {
+          "blocks": 872,
+          "p50Us": 5,
+          "p95Us": 15,
+          "p99Us": 20,
+          "maxUs": 90,
+          "service": null
+        }
+      }
+    }
+  ],
+  "afterClose": [
+    {
+      "id": "C014791772D141A0565C2126C649973B",
+      "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+    },
+    {
+      "id": "59B96E3802C1AA875771349E2CADD8D2",
+      "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+    },
+    {
+      "id": "67938BA2CEC65D6F46B7F00624EC3CDC",
+      "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+    },
+    {
+      "id": "07424C8E3FD1733757560980E34A1DB2",
+      "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+    },
+    {
+      "id": "092A3A12123CB2B7D0EC3CC154D2B820",
+      "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-B40pcsmk.js"
+    }
+  ],
+  "errors": []
+}

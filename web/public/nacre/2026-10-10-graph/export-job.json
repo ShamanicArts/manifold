@@ -1,0 +1,17 @@
+{
+  "id": "9ba0ef5d-1fe6-4367-806a-a98cd1816f53",
+  "status": "complete",
+  "stage": "Ready to download",
+  "target": "linux",
+  "revision": 0,
+  "archiveSha256": "b59f996f87bb94617c12590c8976ee516e84028b9c7a3a5260152743882bf759",
+  "downloads": {
+    "plugin.tar.gz": "/__manifold/exports/9ba0ef5d-1fe6-4367-806a-a98cd1816f53/plugin.tar.gz",
+    "project.manifold.json": "/__manifold/exports/9ba0ef5d-1fe6-4367-806a-a98cd1816f53/project.manifold.json",
+    "manifest.json": "/__manifold/exports/9ba0ef5d-1fe6-4367-806a-a98cd1816f53/manifest.json",
+    "receipt.json": "/__manifold/exports/9ba0ef5d-1fe6-4367-806a-a98cd1816f53/receipt.json"
+  },
+  "sourcePreserved": true,
+  "signalPreserved": true,
+  "archiveBytes": 15177050
+}

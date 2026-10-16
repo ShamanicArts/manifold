@@ -1,0 +1,21 @@
+{
+  "rustWorkspacePassed": 502,
+  "webTestsPassed": 70,
+  "nativeProbe": "web/public/native-samples/2026-09-30-native-samples-v1/publication-report.json",
+  "browserProbe": "docs/rearchitecture/evidence/2026-09-30-shared-sample-browser-v1.json",
+  "checks": {
+    "workspace": {
+      "path": "docs/rearchitecture/evidence/2026-09-30-native-samples-workspace.txt",
+      "sha256": "99335abe070db852f7e9dc006e28b05bc2168bfd4406664e664c15ea7dc952d7"
+    },
+    "web-tests": {
+      "path": "docs/rearchitecture/evidence/2026-09-30-native-samples-web-tests.txt",
+      "sha256": "9655cf72c81fb1ee88bcc49956d473a506e43a15160f730c5782362e212cec36"
+    },
+    "web-build": {
+      "path": "docs/rearchitecture/evidence/2026-09-30-native-samples-web-build.txt",
+      "sha256": "32ea8c9a70a0a39b6c0a62d4d1dfdc219bc5bd8b2e6171473eb9543ad0c60052"
+    }
+  },
+  "scope": "Current source checks and native debug callback recordings; no new release DAW lifecycle or C++ performance claim."
+}

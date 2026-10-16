@@ -1,0 +1,75 @@
+{
+  "base": "https://wubulon.tailfac9f9.ts.net:4174/prepared-loops/2026-09-30-prepared-loops-bounded-validation/",
+  "sourceCapsule": [
+    {
+      "source": "crates/manifold-core/src/graph.rs",
+      "sha256": "801da94141753be6f73816fb7c3e0ae6599f2f41bf9a55e64790869a5fd4e381"
+    },
+    {
+      "source": "crates/manifold-core/src/loop_capture.rs",
+      "sha256": "d79f37aa6ca8fe9625dcc780ab2ba095c5bdb493d9b0b976e0584a2864982290"
+    },
+    {
+      "source": "crates/manifold-web/src/prepared_worklet.rs",
+      "sha256": "51f5d7fec70ea38cef393559b405c0a2ce376b4f0c52431708c7024e563c0e35"
+    },
+    {
+      "source": "packages/manifold-author/prepared-runtime.js",
+      "sha256": "975a52a84b7d4d7abb6596fffffad6b6626abe43a14e866b260cdd22776f779a"
+    },
+    {
+      "source": "packages/manifold-author/prepared-compiler.js",
+      "sha256": "a484dc89c4b5cabec14f534fe6190260581253cdead87b19de87a0a68acdf060"
+    },
+    {
+      "source": "packages/manifold-author/prepared-processor.js",
+      "sha256": "97a6cd0a67aeb3fd82aa643c22c73295d05aeabff6c02f36ca05c0d1b68458b7"
+    },
+    {
+      "source": "packages/manifold-author/browser.js",
+      "sha256": "fd1608e389fbd640438005c29de2e127e5663c14b99fce8ccf23635781f5fbe3"
+    },
+    {
+      "source": "packages/manifold-author/index.js",
+      "sha256": "b98549f0561eab161abc139d74e7e56d81828a8647d13dc3a4ac339d6b993655"
+    },
+    {
+      "source": "packages/manifold-author/sample-assets.js",
+      "sha256": "7bce09230a445265c5d19f1be0e2c4427eef95481315c8ffee240a7135bf81c4"
+    },
+    {
+      "source": "packages/manifold-author/examples/four-layer-loops.mjs",
+      "sha256": "be4fd71ea0bbc411badb1bc2223721a9c0325b4aadbe617b386127ec28920e9c"
+    },
+    {
+      "source": "packages/manifold-author/examples/loop-authoring.mjs",
+      "sha256": "0fbd507774e71d543936175d1757db88d403cdd023d51fadfd6e69e2fea4c909"
+    },
+    {
+      "source": "packages/manifold-author/runtime/manifold_prepared.wasm",
+      "sha256": "66eacaaceb4e03a4dfd195a0592963a266ba087427bc7c387326ff7f5f48fdec"
+    },
+    {
+      "source": "web/src/prepared-loops.js",
+      "sha256": "d39a9fc43df2706a30bf84325f31ea49065892134e6f622d51b3b0dbe7750234"
+    }
+  ],
+  "recordings": [
+    {
+      "name": "edited.wav",
+      "frames": 73472,
+      "sha256": "1cd5f2f3466fd796bee8f22d419ca9826cf9b10a2a88ae782efdf599f5d681f2"
+    },
+    {
+      "name": "reference.wav",
+      "frames": 73472,
+      "sha256": "1cd5f2f3466fd796bee8f22d419ca9826cf9b10a2a88ae782efdf599f5d681f2"
+    }
+  ],
+  "savedTakeFrames": [
+    20864,
+    20864,
+    20864,
+    20864
+  ]
+}

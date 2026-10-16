@@ -1,0 +1,31 @@
+{
+  "recordedAt": "2026-09-29T23:14:16.331Z",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174",
+  "pageErrors": [],
+  "audioDurations": [
+    2,
+    2,
+    2,
+    2
+  ],
+  "vst3FxReopenedNodes": 14,
+  "browserFxEditNodes": 14,
+  "fxSelectionAfterEdit": [
+    0,
+    1
+  ],
+  "fxRms": 0.0554,
+  "fxDiagnostics": {
+    "audioBlocks": 52,
+    "underruns": 0,
+    "activeSlot": 1,
+    "outputLatencyBlocks": 4,
+    "lastPreparationMs": 2.5149999856948853,
+    "lastPublicationMs": 35.12999999523163,
+    "lastTransferredNodes": 10
+  },
+  "vst3DspGain": 0.4,
+  "vst3DspOutputFrom": 4,
+  "dspRms": 0.0115,
+  "browserDspEditNodes": 5
+}

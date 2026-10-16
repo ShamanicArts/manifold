@@ -1,0 +1,25 @@
+{
+  "recordedAt": "2026-09-30T05:21:13.184526+00:00",
+  "sourceDirectory": "/tmp/manifold-prepared-midi-consumer",
+  "installedFrom": "/tmp/manifold-prepared-midi-pack/manifold-author-0.1.0.tgz",
+  "strictTypeScriptCheck": "passed",
+  "buildTool": "Vite 7.3.6, repository tool executable; consumer imports installed tarball outside checkout",
+  "sha256": {
+    "index.html": "dde59884b5585a9f16dc16fb41633163b7cdad47e3043db11ee09a27b20bbb10",
+    "manifold-author-0.1.0.tgz": "37bd509960ddf16072126612e7f4396dc827966d17e07e2af8cbd0e6f4aad109",
+    "assets/index-yxUkwHYn.js": "71ad3dd6fdf71c4f393597874bf70bce6ecd0219d225cad8bd8a6d34adf4e8c4",
+    "assets/manifold_prepared-BSBm6sJ4.wasm": "d5114af9a62d41e8a2553c705584d1e1242ea799f16d91624bd3ffceebdb0a5a",
+    "assets/manifold_filter-CsY-KPeO.wasm": "aea4b6a55c91e6aaccc5a01cd2e2258789f43bf113a964a276756dbcab778f69",
+    "assets/shared-graph-processor-Dm6y4SJs.js": "6fd78f3d46ff1134cea2d1079b96fe1a8006a54cea96a25c591aa4bd41f7eee8",
+    "assets/prepared-compiler-20_cA4JT.js": "cc64d9ba4603b104f89891f5aa7ab5e84f411cd0ff4af8186957678c1f21431a",
+    "assets/graph-worker-CEaNXC64.js": "e427c22e00f9dc5f931bba280574be90d4a19605f34692fdc46f05d3aa9a3d76",
+    "assets/prepared-processor-Dv1LnpBr.js": "30e277f94cfd9bf814ff58186b9540384fffe7ca3893c082c4061fdf92a48f3d",
+    "assets/filter-processor-CX7wR-19.js": "6f8a9ee38533cb009cf904cc6305c4c1ada5878cbe3d3bb0511cd6c9e3eb560c",
+    "source/index.html": "0faf4a53ebf7c583ea33a098459a321c41f11592b053c16e29a12d7ba9c1fd94",
+    "source/app.js": "889622d53f2485ad24b5eb388cec934ad4d5656875aeef772368ff1fc8056f8b",
+    "source/package.json": "f8ae862c825abfb22c019f928aa73f1ac0fa28157fd63f6b7411a3d34f12fd48",
+    "source/package-lock.json": "a8b0856b517371ab23af19b9b06de3253b7a30fa1b526f21ce9410ba1fd87ae7",
+    "source/vite.config.mjs": "bb65567561fc6343dbad2abe7693a2533973a90b2cb72e36a3557424b1bf57be",
+    "source/types.ts": "2d6110ebeca4ce55d75cdbffbecd9f1a8da57f06147e9c120c834517854f634f"
+  }
+}

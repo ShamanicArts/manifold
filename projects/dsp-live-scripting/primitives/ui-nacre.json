@@ -1,0 +1,916 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "io": {
+      "version": 1,
+      "inputs": [
+        {
+          "id": "audio",
+          "name": "audio",
+          "channels": 2,
+          "optional": false
+        }
+      ],
+      "outputs": [
+        {
+          "id": "audio",
+          "name": "audio",
+          "channels": 2,
+          "optional": false
+        }
+      ],
+      "inputBindings": [
+        {
+          "nodeId": 1,
+          "channels": [
+            null,
+            null
+          ]
+        },
+        {
+          "nodeId": 4,
+          "channels": [
+            {
+              "bus": 0,
+              "channel": 0
+            },
+            {
+              "bus": 0,
+              "channel": 1
+            }
+          ]
+        }
+      ],
+      "outputBindings": [
+        {
+          "nodeId": 9,
+          "outputPort": 0,
+          "channel": 0
+        },
+        {
+          "nodeId": 9,
+          "outputPort": 0,
+          "channel": 1
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "input.raw"
+      },
+      {
+        "id": 5,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 6,
+        "type": "svf"
+      },
+      {
+        "id": 7,
+        "type": "granulator"
+      },
+      {
+        "id": 8,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 9,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 10,
+        "type": "svf"
+      },
+      {
+        "id": 11,
+        "type": "wave-shaper"
+      },
+      {
+        "id": 12,
+        "type": "wave-shaper"
+      },
+      {
+        "id": 13,
+        "type": "phase-vocoder"
+      }
+    ],
+    "connections": [
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 5,
+        "inputPort": 0
+      },
+      {
+        "from": 8,
+        "outputPort": 0,
+        "to": 5,
+        "inputPort": 1
+      },
+      {
+        "from": 13,
+        "outputPort": 0,
+        "to": 6,
+        "inputPort": 0
+      },
+      {
+        "from": 11,
+        "outputPort": 0,
+        "to": 7,
+        "inputPort": 0
+      },
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 8,
+        "inputPort": 0
+      },
+      {
+        "from": 7,
+        "outputPort": 0,
+        "to": 8,
+        "inputPort": 1
+      },
+      {
+        "from": 5,
+        "outputPort": 0,
+        "to": 9,
+        "inputPort": 0
+      },
+      {
+        "from": 12,
+        "outputPort": 0,
+        "to": 10,
+        "inputPort": 0
+      },
+      {
+        "from": 10,
+        "outputPort": 0,
+        "to": 11,
+        "inputPort": 0
+      },
+      {
+        "from": 6,
+        "outputPort": 0,
+        "to": 12,
+        "inputPort": 0
+      },
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 13,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 5,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 5,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 5,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 1,
+        "value": 2400
+      },
+      {
+        "nodeId": 6,
+        "id": 2,
+        "value": 0.58
+      },
+      {
+        "nodeId": 7,
+        "id": 0,
+        "value": 85
+      },
+      {
+        "nodeId": 7,
+        "id": 1,
+        "value": 32
+      },
+      {
+        "nodeId": 7,
+        "id": 2,
+        "value": 0.04
+      },
+      {
+        "nodeId": 7,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 7,
+        "id": 4,
+        "value": 0.28
+      },
+      {
+        "nodeId": 7,
+        "id": 5,
+        "value": 0.22
+      },
+      {
+        "nodeId": 7,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 7,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 7,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 7,
+        "id": 9,
+        "value": 0
+      },
+      {
+        "nodeId": 7,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 8,
+        "id": 0,
+        "value": 0.64
+      },
+      {
+        "nodeId": 8,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 8,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 9,
+        "id": 0,
+        "value": 0.64
+      },
+      {
+        "nodeId": 10,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 10,
+        "id": 1,
+        "value": 4800
+      },
+      {
+        "nodeId": 10,
+        "id": 2,
+        "value": 0.75
+      },
+      {
+        "nodeId": 11,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 11,
+        "id": 1,
+        "value": 8
+      },
+      {
+        "nodeId": 11,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 11,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 11,
+        "id": 4,
+        "value": 0
+      },
+      {
+        "nodeId": 11,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 11,
+        "id": 6,
+        "value": 1
+      },
+      {
+        "nodeId": 11,
+        "id": 7,
+        "value": 2
+      },
+      {
+        "nodeId": 12,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 12,
+        "id": 1,
+        "value": 18
+      },
+      {
+        "nodeId": 12,
+        "id": 2,
+        "value": -8
+      },
+      {
+        "nodeId": 12,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 12,
+        "id": 4,
+        "value": 10000
+      },
+      {
+        "nodeId": 12,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 12,
+        "id": 6,
+        "value": 1
+      },
+      {
+        "nodeId": 12,
+        "id": 7,
+        "value": 2
+      },
+      {
+        "nodeId": 13,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 13,
+        "id": 1,
+        "value": 7
+      },
+      {
+        "nodeId": 13,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 13,
+        "id": 3,
+        "value": 1
+      },
+      {
+        "nodeId": 13,
+        "id": 4,
+        "value": 11
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/active",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 0,
+      "min": -1,
+      "max": 1,
+      "default": 1
+    },
+    {
+      "path": "/afterimage",
+      "kind": "parameter",
+      "nodeId": 7,
+      "id": 5,
+      "min": 0,
+      "max": 1,
+      "default": 0.22
+    },
+    {
+      "path": "/curve",
+      "kind": "parameter",
+      "nodeId": 12,
+      "id": 0,
+      "min": 0,
+      "max": 6,
+      "default": 0
+    },
+    {
+      "path": "/drive",
+      "kind": "parameter",
+      "nodeId": 12,
+      "id": 1,
+      "min": 0,
+      "max": 40,
+      "default": 18
+    },
+    {
+      "path": "/focus",
+      "kind": "parameter",
+      "nodeId": 6,
+      "id": 1,
+      "min": 160,
+      "max": 10000,
+      "default": 2400
+    },
+    {
+      "path": "/grain-size",
+      "kind": "parameter",
+      "nodeId": 7,
+      "id": 0,
+      "min": 15,
+      "max": 300,
+      "default": 85
+    },
+    {
+      "path": "/hold",
+      "kind": "parameter",
+      "nodeId": 7,
+      "id": 6,
+      "min": 0,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "path": "/mix",
+      "kind": "parameter",
+      "nodeId": 8,
+      "id": 0,
+      "min": -1,
+      "max": 1,
+      "default": 0.64
+    },
+    {
+      "path": "/output",
+      "kind": "parameter",
+      "nodeId": 9,
+      "id": 0,
+      "min": 0,
+      "max": 1,
+      "default": 0.64
+    },
+    {
+      "path": "/prism-bend/edge",
+      "kind": "parameter",
+      "nodeId": 10,
+      "id": 1,
+      "min": 100,
+      "max": 12000,
+      "default": 4800
+    },
+    {
+      "path": "/prism-bend/heat",
+      "kind": "parameter",
+      "nodeId": 11,
+      "id": 1,
+      "min": 0,
+      "max": 40,
+      "default": 8
+    },
+    {
+      "path": "/resonance",
+      "kind": "parameter",
+      "nodeId": 6,
+      "id": 2,
+      "min": 0.1,
+      "max": 1,
+      "default": 0.58
+    },
+    {
+      "path": "/scatter",
+      "kind": "parameter",
+      "nodeId": 7,
+      "id": 4,
+      "min": 0,
+      "max": 1,
+      "default": 0.28
+    },
+    {
+      "path": "/shift",
+      "kind": "parameter",
+      "nodeId": 13,
+      "id": 1,
+      "min": -12,
+      "max": 12,
+      "default": 7
+    }
+  ],
+  "hostBindings": [
+    {
+      "slot": 0,
+      "nodeId": 5,
+      "id": 0
+    },
+    {
+      "slot": 1,
+      "nodeId": 7,
+      "id": 5
+    },
+    {
+      "slot": 2,
+      "nodeId": 12,
+      "id": 0
+    },
+    {
+      "slot": 3,
+      "nodeId": 12,
+      "id": 1
+    },
+    {
+      "slot": 4,
+      "nodeId": 6,
+      "id": 1
+    },
+    {
+      "slot": 5,
+      "nodeId": 7,
+      "id": 0
+    },
+    {
+      "slot": 6,
+      "nodeId": 7,
+      "id": 6
+    },
+    {
+      "slot": 7,
+      "nodeId": 8,
+      "id": 0
+    },
+    {
+      "slot": 8,
+      "nodeId": 9,
+      "id": 0
+    },
+    {
+      "slot": 9,
+      "nodeId": 6,
+      "id": 2
+    },
+    {
+      "slot": 10,
+      "nodeId": 7,
+      "id": 4
+    },
+    {
+      "slot": 11,
+      "nodeId": 13,
+      "id": 1
+    },
+    {
+      "slot": 12,
+      "nodeId": 10,
+      "id": 1
+    },
+    {
+      "slot": 13,
+      "nodeId": 11,
+      "id": 1
+    }
+  ],
+  "hostAssignments": [
+    {
+      "slot": 0,
+      "path": "/active"
+    },
+    {
+      "slot": 1,
+      "path": "/afterimage"
+    },
+    {
+      "slot": 2,
+      "path": "/curve"
+    },
+    {
+      "slot": 3,
+      "path": "/drive"
+    },
+    {
+      "slot": 4,
+      "path": "/focus"
+    },
+    {
+      "slot": 5,
+      "path": "/grain-size"
+    },
+    {
+      "slot": 6,
+      "path": "/hold"
+    },
+    {
+      "slot": 7,
+      "path": "/mix"
+    },
+    {
+      "slot": 8,
+      "path": "/output"
+    },
+    {
+      "slot": 9,
+      "path": "/resonance"
+    },
+    {
+      "slot": 10,
+      "path": "/scatter"
+    },
+    {
+      "slot": 11,
+      "path": "/shift"
+    },
+    {
+      "slot": 12,
+      "path": "/prism-bend/edge"
+    },
+    {
+      "slot": 13,
+      "path": "/prism-bend/heat"
+    }
+  ],
+  "instances": [
+    {
+      "path": "/device/nacre/inputs/audio",
+      "nodeId": 4
+    },
+    {
+      "path": "/device/nacre/processors/bypass",
+      "nodeId": 5
+    },
+    {
+      "path": "/device/nacre/processors/focus",
+      "nodeId": 6
+    },
+    {
+      "path": "/device/nacre/processors/memory",
+      "nodeId": 7
+    },
+    {
+      "path": "/device/nacre/processors/mix",
+      "nodeId": 8
+    },
+    {
+      "path": "/device/nacre/processors/output",
+      "nodeId": 9
+    },
+    {
+      "path": "/device/nacre/processors/prism-bend/processors/contour",
+      "nodeId": 10
+    },
+    {
+      "path": "/device/nacre/processors/prism-bend/processors/exciter",
+      "nodeId": 11
+    },
+    {
+      "path": "/device/nacre/processors/shaper",
+      "nodeId": 12
+    },
+    {
+      "path": "/device/nacre/processors/spectral",
+      "nodeId": 13
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// Nacre processes incoming audio. Studio's separate Input graph supplies test sounds.\nimport {\n  createEffect,\n  phaseVocoder,\n  svf,\n  waveShaper,\n  granulator,\n  crossfader,\n  gain,\n} from 'manifold';\n\n// Prism Bend is a reusable Device. Enter its node in Studio to inspect the filter and exciter.\nconst prismBend = createEffect({ id: 'prism-bend', name: 'Prism Bend' });\nconst contour = prismBend.add('contour', svf);\nconst exciter = prismBend.add('exciter', waveShaper);\ncontour.configure({ mode: 0, resonance: 0.75 });\nprismBend.control('edge', contour.parameters.cutoff, {\n  label: 'Prism edge · Hz',\n  min: 100,\n  max: 12000,\n  default: 4800,\n  unit: 'Hz',\n  style: {\n    accent: '#7cf2e4',\n    background: '#123f4b',\n    text: '#edfffc',\n  },\n});\nprismBend.control('heat', exciter.parameters.driveDb, {\n  label: 'Prism heat · dB',\n  min: 0,\n  max: 40,\n  default: 8,\n  unit: 'dB',\n  style: {\n    accent: '#ff9c6f',\n    background: '#632943',\n    text: '#fff0e8',\n  },\n});\n\nprismBend.connect(prismBend.inputs.audio, contour.inputs.audio);\nprismBend.connect(contour.outputs.out, exciter.inputs.audio);\nprismBend.connect(exciter.outputs.out, prismBend.outputs.audio);\nprismBend.place(contour, { x: 240, y: 0 });\nprismBend.place(exciter, { x: 480, y: 0 });\n\n// 'effect' is our JavaScript name for this Device; 'nacre' is its stable authored identity.\nconst effect = createEffect({ id: 'nacre', name: 'Nacre' });\nconst spectral = effect.add('spectral', phaseVocoder);\nconst focus = effect.add('focus', svf);\nconst shaper = effect.add('shaper', waveShaper);\nconst prism = effect.add('prism-bend', prismBend);\nconst memory = effect.add('memory', granulator);\nconst mix = effect.add('mix', crossfader);\nconst bypass = effect.add('bypass', crossfader);\nconst output = effect.add('output', gain);\n\n// Initial sound: FFT pitch displacement, bandpass focus, excitation and granular memory.\nspectral.configure({ wetMix: 1, fftOrder: 11 });\nfocus.configure({ mode: 1 }); // Bandpass selects the material to excite.\nshaper.configure({ postFilterHz: 10000, outputDb: -8 });\nmemory.configure({ density: 32, position: 0.04, pitch: 0, enabled: 1 });\nmix.configure({ curve: 0 });\nbypass.configure({ curve: 0 });\n\n// Public controls feed the Inspector, physical panel and visual parameter references.\neffect.control('focus', focus.parameters.cutoff, {\n  label: 'Spectral focus · Hz',\n  min: 160,\n  max: 10000,\n  default: 2400,\n  unit: 'Hz',\n  style: {\n    accent: '#62dce5',\n    background: '#123958',\n    text: '#edf8f6',\n  },\n});\neffect.control('shift', spectral.parameters.pitchSemitones, {\n  label: 'Displacement · semitones',\n  min: -12,\n  max: 12,\n  default: 7,\n  unit: 'semitones',\n  style: {\n    accent: '#f295d8',\n    background: '#402b6c',\n    text: '#f9edf8',\n  },\n});\neffect.control('drive', shaper.parameters.driveDb, {\n  label: 'Excitation · dB',\n  min: 0,\n  max: 40,\n  default: 18,\n  unit: 'dB',\n  style: {\n    accent: '#f78d68',\n    background: '#63203e',\n    text: '#fff0e8',\n  },\n});\neffect.control('resonance', focus.parameters.resonance, {\n  label: 'Coherence',\n  min: 0.1,\n  max: 1,\n  default: 0.58,\n  style: {\n    accent: '#eaca71',\n    background: '#485230',\n    text: '#fff5d8',\n  },\n});\neffect.control('mix', mix.parameters.position, {\n  label: 'Transmutation · dry / wet',\n  min: -1,\n  max: 1,\n  default: 0.64,\n  style: {\n    accent: '#a6a0fa',\n    background: '#2b315e',\n    text: '#f1f0fc',\n  },\n});\neffect.control('output', output.parameters.level, {\n  label: 'Output',\n  min: 0,\n  max: 1,\n  default: 0.64,\n  style: {\n    accent: '#cbd6f3',\n    background: '#40466d',\n    text: '#f3f6fa',\n  },\n});\neffect.control('afterimage', memory.parameters.wetMix, {\n  label: 'Afterimage · dry / memory',\n  min: 0,\n  max: 1,\n  default: 0.22,\n  style: {\n    accent: '#ef79c5',\n    background: '#4b244e',\n    text: '#fff0fa',\n  },\n});\neffect.control('hold', memory.parameters.freeze, {\n  label: 'Memory · capture / hold',\n  min: 0,\n  max: 1,\n  default: 0,\n  style: {\n    accent: '#deb7e6',\n    background: '#35243f',\n    text: '#f5edf5',\n  },\n});\neffect.control('grain-size', memory.parameters.grainSize, {\n  label: 'Memory grain · ms',\n  min: 15,\n  max: 300,\n  default: 85,\n  unit: 'ms',\n  style: {\n    accent: '#8de5d7',\n    background: '#174149',\n    text: '#effffd',\n  },\n});\neffect.control('scatter', memory.parameters.spray, {\n  label: 'Memory scatter',\n  min: 0,\n  max: 1,\n  default: 0.28,\n  style: {\n    accent: '#f2a6e6',\n    background: '#47274b',\n    text: '#fff0fc',\n  },\n});\neffect.control('active', bypass.parameters.position, {\n  label: 'Processor · bypass / engaged',\n  min: -1,\n  max: 1,\n  default: 1,\n  style: {\n    accent: '#deb7e6',\n    background: '#35243f',\n    text: '#f5edf5',\n  },\n});\neffect.control('curve', shaper.parameters.curve, {\n  label: 'Nonlinearity',\n  min: 0,\n  max: 6,\n  default: 0,\n  style: {\n    accent: '#deb7e6',\n    background: '#35243f',\n    text: '#f5edf5',\n  },\n});\n\n// Wet path. The same Rust processors execute this graph in every audio host.\neffect.connect(effect.inputs.audio, spectral.inputs.audio);\neffect.connect(spectral.outputs.out, focus.inputs.audio);\neffect.connect(focus.outputs.out, shaper.inputs.audio);\neffect.connect(shaper.outputs.out, prism.inputs.audio);\neffect.connect(prism.outputs.audio, memory.inputs.audio);\n\n// Blend with the dry input, then provide bypass and output level.\neffect.connect(effect.inputs.audio, mix.inputs.a);\neffect.connect(memory.outputs.out, mix.inputs.b);\neffect.connect(effect.inputs.audio, bypass.inputs.a);\neffect.connect(mix.outputs.out, bypass.inputs.b);\neffect.connect(bypass.outputs.out, output.inputs.audio);\neffect.connect(output.outputs.out, effect.outputs.audio);\n\n// Authored canvas positions remain editable in Studio.\neffect.place(spectral, { x: 240, y: 0 });\neffect.place(focus, { x: 480, y: 0 });\neffect.place(shaper, { x: 720, y: 0 });\neffect.place(prism, { x: 960, y: 0 });\neffect.place(memory, { x: 1200, y: 0 });\neffect.place(mix, { x: 720, y: 350 });\neffect.place(bypass, { x: 960, y: 350 });\neffect.place(output, { x: 1200, y: 350 });\n\nexport default effect;\n",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "active",
+        "type": "parameter",
+        "path": "/active",
+        "label": "Processor · bypass / engaged",
+        "style": {
+          "accent": "#deb7e6",
+          "background": "#35243f",
+          "text": "#f5edf5"
+        }
+      },
+      {
+        "id": "afterimage",
+        "type": "parameter",
+        "path": "/afterimage",
+        "label": "Afterimage · dry / memory",
+        "style": {
+          "accent": "#ef79c5",
+          "background": "#4b244e",
+          "text": "#fff0fa"
+        }
+      },
+      {
+        "id": "curve",
+        "type": "parameter",
+        "path": "/curve",
+        "label": "Nonlinearity",
+        "choices": [
+          "Tanh",
+          "Asymmetric",
+          "Arctangent",
+          "Hard clip",
+          "Fold",
+          "Soft clip",
+          "Diode"
+        ],
+        "choiceValues": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "disabledChoices": [],
+        "style": {
+          "accent": "#deb7e6",
+          "background": "#35243f",
+          "text": "#f5edf5"
+        }
+      },
+      {
+        "id": "drive",
+        "type": "parameter",
+        "path": "/drive",
+        "label": "Excitation · dB",
+        "unit": "dB",
+        "style": {
+          "accent": "#f78d68",
+          "background": "#63203e",
+          "text": "#fff0e8"
+        }
+      },
+      {
+        "id": "focus",
+        "type": "parameter",
+        "path": "/focus",
+        "label": "Spectral focus · Hz",
+        "unit": "Hz",
+        "style": {
+          "accent": "#62dce5",
+          "background": "#123958",
+          "text": "#edf8f6"
+        }
+      },
+      {
+        "id": "grain-size",
+        "type": "parameter",
+        "path": "/grain-size",
+        "label": "Memory grain · ms",
+        "unit": "ms",
+        "style": {
+          "accent": "#8de5d7",
+          "background": "#174149",
+          "text": "#effffd"
+        }
+      },
+      {
+        "id": "hold",
+        "type": "parameter",
+        "path": "/hold",
+        "label": "Memory · capture / hold",
+        "choices": [
+          "Capture",
+          "Freeze"
+        ],
+        "choiceValues": [
+          0,
+          1
+        ],
+        "disabledChoices": [],
+        "style": {
+          "accent": "#deb7e6",
+          "background": "#35243f",
+          "text": "#f5edf5"
+        }
+      },
+      {
+        "id": "mix",
+        "type": "parameter",
+        "path": "/mix",
+        "label": "Transmutation · dry / wet",
+        "style": {
+          "accent": "#a6a0fa",
+          "background": "#2b315e",
+          "text": "#f1f0fc"
+        }
+      },
+      {
+        "id": "output",
+        "type": "parameter",
+        "path": "/output",
+        "label": "Output",
+        "style": {
+          "accent": "#cbd6f3",
+          "background": "#40466d",
+          "text": "#f3f6fa"
+        }
+      },
+      {
+        "id": "resonance",
+        "type": "parameter",
+        "path": "/resonance",
+        "label": "Coherence",
+        "style": {
+          "accent": "#eaca71",
+          "background": "#485230",
+          "text": "#fff5d8"
+        }
+      },
+      {
+        "id": "scatter",
+        "type": "parameter",
+        "path": "/scatter",
+        "label": "Memory scatter",
+        "style": {
+          "accent": "#f2a6e6",
+          "background": "#47274b",
+          "text": "#fff0fc"
+        }
+      },
+      {
+        "id": "shift",
+        "type": "parameter",
+        "path": "/shift",
+        "label": "Displacement · semitones",
+        "unit": "semitones",
+        "style": {
+          "accent": "#f295d8",
+          "background": "#402b6c",
+          "text": "#f9edf8"
+        }
+      },
+      {
+        "id": "/prism-bend/edge",
+        "type": "parameter",
+        "path": "/prism-bend/edge",
+        "label": "Prism edge · Hz",
+        "unit": "Hz",
+        "style": {
+          "accent": "#7cf2e4",
+          "background": "#123f4b",
+          "text": "#edfffc"
+        }
+      },
+      {
+        "id": "/prism-bend/heat",
+        "type": "parameter",
+        "path": "/prism-bend/heat",
+        "label": "Prism heat · dB",
+        "unit": "dB",
+        "style": {
+          "accent": "#ff9c6f",
+          "background": "#632943",
+          "text": "#fff0e8"
+        }
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

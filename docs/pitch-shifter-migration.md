@@ -1,0 +1,7 @@
+# PitchShifter migration boundary
+
+The original `dsp/core/nodes/PitchShifterNode.cpp` uses two overlapping read heads per stereo channel over a two-second prepared delay ring. The heads advance at `2^(semitones/12)`, use triangular windows, normalize their combined gain, and feed a portion of the wet output back into the ring. Rust graph kind 49 ports this behavior with per-sample 10 ms parameter smoothing. The [workbench](../projects/pitch-shifter/project.json) exposes pitch (`−24…24` semitones), head window (`20…200 ms`), feedback (`0…0.95`), and wet mix (`0…1`).
+
+Generation stamps clear the audible ring state in constant time on a type switch or dormant reset. When target and current mix and feedback are all near zero, both versions copy dry stereo input and reset the heads and ring once. Returning to an active setting starts with a fresh delay history.
+
+Eight checked-in C++ captures cover unshifted, octave up/down, pitch and window sweeps, feedback, dormant bypass, and 64-frame blocks. All eight show **Match** against Rust/Wasm with zero maximum sample difference in these cases; their C++ outputs differ substantially from dry input. Standalone FX type 10 maps normalized `p/0` to `−12…12` semitones, `p/1` to `30…180 ms`, and `p/2` to feedback `0…0.75`; `p/3` and `p/4` are unused. The old Lua slot keeps internal mix fully wet. Four new slot cases compare native Rust with Rust/Wasm. Shimmer is a separate original delay kernel and does not call this PitchShifterNode. Project-level routing and preset roundtrips remain separate work.

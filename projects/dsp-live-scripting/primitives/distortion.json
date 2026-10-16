@@ -1,0 +1,129 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "external",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "distortion",
+        "a": 4,
+        "b": 0.7
+      }
+    ],
+    "connections": [
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 4,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 4
+      },
+      {
+        "nodeId": 4,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 4,
+        "id": 2,
+        "value": 0.5
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/primitives/distortion/node/0",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 0,
+      "min": 1,
+      "max": 30,
+      "default": 4
+    },
+    {
+      "path": "/primitives/distortion/node/1",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 1,
+      "min": 0,
+      "max": 1,
+      "default": 1
+    },
+    {
+      "path": "/primitives/distortion/node/2",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 2,
+      "min": 0,
+      "max": 2,
+      "default": 0.5
+    }
+  ],
+  "instances": [
+    {
+      "path": "/primitives/distortion/node",
+      "nodeId": 4
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// Distortion: Drive, wet mix and output level. This is the Distortion primitive, distinct from legacy WaveShaper.\n// Audition composition of public Rust primitives; not an instrument parity claim.\n// Examples name imports so you can trace each tool to its module.\n// Alternative: import * as manifold from '@manifold/author';\n// Then use manifold.createGraphWorkspace(), manifold.gain, etc.\n// Imports — each definition can be inspected in Manifold's primitive catalog.\nimport { createGraphWorkspace } from '@manifold/author';\nimport {\n  distortion as distortionDefinition,\n} from '@manifold/author/primitives';\n\nexport default function createProject() {\n  // Interface — public paths and stable IDs preserve saved controls.\n  const controls = {\n    distortion_drive: {\n      \"path\": \"/primitives/distortion/node/0\",\n      \"label\": \"Drive\",\n      \"group\": \"Distortion\",\n      \"min\": 1,\n      \"max\": 30,\n      \"default\": 4\n    },\n    distortion_wetMix: {\n      \"path\": \"/primitives/distortion/node/1\",\n      \"label\": \"Wet mix\",\n      \"group\": \"Distortion\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 1\n    },\n    distortion_output: {\n      \"path\": \"/primitives/distortion/node/2\",\n      \"label\": \"Output\",\n      \"group\": \"Distortion\",\n      \"min\": 0,\n      \"max\": 2,\n      \"default\": 0.5\n    },\n  };\n\n  // Audio inputs and outputs — the host supplies the external audio input.\n  const graph = createGraphWorkspace().setInputSource('external');\n  const input = graph.input.output('out');\n  const output = graph.output.input('in');\n\n  // DSP instances — parameters belong to these named instances.\n  const distortion = graph.add(distortionDefinition.type, {\"id\":4});\n  graph.registerInstance('/primitives/distortion/node', distortion);\n  distortion.parameter('drive').expose(controls.distortion_drive);\n  distortion.parameter('wetMix').expose(controls.distortion_wetMix);\n  distortion.parameter('output').expose(controls.distortion_output);\n\n  // Composition — named ports make the audio and control paths visible.\n  graph.connect(input, distortion.input('audio'));\n  graph.connect(distortion.output('out'), output);\n\n  // Presentation — both renderers bind to the controls declared above.\n  const view = [\n    controls.distortion_drive,\n    controls.distortion_wetMix,\n    controls.distortion_output\n  ].map(control => ({\n    id: control.path, type: 'parameter', path: control.path,\n    label: control.label, group: control.group,\n    ...(control.choices ? { choices: control.choices } : {}),\n  }));\n  function paint(ui) {\n    for (const component of view) {\n      if (component.type === 'label') ui.label(component.label, component.id);\n      else ui.parameter(component.path, component);\n    }\n  }\n\n  // The host uses this project declaration for audio, UI, save and live edits.\n  return { graph, view, paint };\n}",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "/primitives/distortion/node/0",
+        "type": "parameter",
+        "path": "/primitives/distortion/node/0",
+        "label": "Drive",
+        "group": "Distortion"
+      },
+      {
+        "id": "/primitives/distortion/node/1",
+        "type": "parameter",
+        "path": "/primitives/distortion/node/1",
+        "label": "Wet mix",
+        "group": "Distortion"
+      },
+      {
+        "id": "/primitives/distortion/node/2",
+        "type": "parameter",
+        "path": "/primitives/distortion/node/2",
+        "label": "Output",
+        "group": "Distortion"
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

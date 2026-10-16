@@ -1,0 +1,1004 @@
+{
+  "recordedAt": "2026-09-30T05:27:56.344Z",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174",
+  "chromiumVersion": "152.0.7977.82",
+  "tarballSha256": "37bd509960ddf16072126612e7f4396dc827966d17e07e2af8cbd0e6f4aad109",
+  "steps": [
+    {
+      "name": "installed-note-on",
+      "peak": 0.09552938491106033,
+      "rms": 0.06490781373856583,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 88,
+        "rustProcessedBlocks": 76,
+        "publications": 1,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 0,
+        "lastPublicationContextFrame": 3584,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 2.8149999380111694,
+        "lastPublicationMs": 11.849999904632568,
+        "compilerFailed": false,
+        "processorFailed": false,
+        "eventsAdmitted": 1,
+        "eventsConsumed": 1,
+        "eventsCancelled": 0,
+        "eventsRejected": 0,
+        "eventsPending": 0,
+        "lastEventContextFrame": 5632,
+        "renderQuantum": 128
+      },
+      "graph": {
+        "format": "manifold.project",
+        "schemaVersion": 1,
+        "projectId": "manifold.graph-workspace",
+        "signal": {
+          "inputs": 2,
+          "outputs": 2,
+          "inputSource": "none",
+          "nodes": [
+            {
+              "id": 1,
+              "type": "input.raw"
+            },
+            {
+              "id": 3,
+              "type": "output"
+            },
+            {
+              "id": 4,
+              "type": "midi-input"
+            },
+            {
+              "id": 5,
+              "type": "midi-transpose",
+              "a": 0
+            },
+            {
+              "id": 6,
+              "type": "voice-synth"
+            }
+          ],
+          "connections": [
+            {
+              "from": 6,
+              "outputPort": 0,
+              "to": 3,
+              "inputPort": 0
+            },
+            {
+              "from": 4,
+              "outputPort": 0,
+              "to": 5,
+              "inputPort": 0
+            },
+            {
+              "from": 5,
+              "outputPort": 0,
+              "to": 6,
+              "inputPort": 0
+            }
+          ],
+          "initialParameters": [
+            {
+              "nodeId": 5,
+              "id": 0,
+              "value": 0
+            },
+            {
+              "nodeId": 6,
+              "id": 0,
+              "value": 0
+            },
+            {
+              "nodeId": 6,
+              "id": 1,
+              "value": 0.01
+            },
+            {
+              "nodeId": 6,
+              "id": 2,
+              "value": 0.12
+            },
+            {
+              "nodeId": 6,
+              "id": 3,
+              "value": 0.65
+            },
+            {
+              "nodeId": 6,
+              "id": 4,
+              "value": 0.18
+            },
+            {
+              "nodeId": 6,
+              "id": 5,
+              "value": 0.25
+            }
+          ]
+        },
+        "endpoints": [
+          {
+            "path": "/midi/synth/rack/transpose/1/semitones",
+            "kind": "parameter",
+            "nodeId": 5,
+            "id": 0,
+            "min": -24,
+            "max": 24,
+            "default": 0
+          }
+        ],
+        "hostBindings": [
+          {
+            "slot": 0,
+            "nodeId": 5,
+            "id": 0
+          }
+        ],
+        "instances": [
+          {
+            "path": "/midi/synth/rack/transpose/1/nodes/effect",
+            "nodeId": 5
+          },
+          {
+            "path": "/transpose/audition/nodes/midi_input",
+            "nodeId": 4
+          },
+          {
+            "path": "/transpose/audition/nodes/voice",
+            "nodeId": 6
+          }
+        ]
+      }
+    },
+    {
+      "name": "installed-insert-interval-bend",
+      "peak": 0.24308589100837708,
+      "rms": 0.12349137602751342,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 160,
+        "rustProcessedBlocks": 148,
+        "publications": 2,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 2,
+        "lastPublicationContextFrame": 15360,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.35500001907348633,
+        "lastPublicationMs": 20.830000042915344,
+        "compilerFailed": false,
+        "processorFailed": false,
+        "eventsAdmitted": 2,
+        "eventsConsumed": 2,
+        "eventsCancelled": 0,
+        "eventsRejected": 0,
+        "eventsPending": 0,
+        "lastEventContextFrame": 17408,
+        "renderQuantum": 128
+      },
+      "graph": {
+        "format": "manifold.project",
+        "schemaVersion": 1,
+        "projectId": "manifold.graph-workspace",
+        "signal": {
+          "inputs": 2,
+          "outputs": 2,
+          "inputSource": "none",
+          "nodes": [
+            {
+              "id": 1,
+              "type": "input.raw"
+            },
+            {
+              "id": 3,
+              "type": "output"
+            },
+            {
+              "id": 4,
+              "type": "midi-input"
+            },
+            {
+              "id": 5,
+              "type": "midi-transpose",
+              "a": 0
+            },
+            {
+              "id": 6,
+              "type": "voice-synth"
+            },
+            {
+              "id": 7,
+              "type": "distortion",
+              "a": 4,
+              "b": 0.7
+            }
+          ],
+          "connections": [
+            {
+              "from": 7,
+              "outputPort": 0,
+              "to": 3,
+              "inputPort": 0
+            },
+            {
+              "from": 4,
+              "outputPort": 0,
+              "to": 5,
+              "inputPort": 0
+            },
+            {
+              "from": 5,
+              "outputPort": 0,
+              "to": 6,
+              "inputPort": 0
+            },
+            {
+              "from": 6,
+              "outputPort": 0,
+              "to": 7,
+              "inputPort": 0
+            }
+          ],
+          "initialParameters": [
+            {
+              "nodeId": 5,
+              "id": 0,
+              "value": 7
+            },
+            {
+              "nodeId": 6,
+              "id": 0,
+              "value": 0
+            },
+            {
+              "nodeId": 6,
+              "id": 1,
+              "value": 0.009999999776482582
+            },
+            {
+              "nodeId": 6,
+              "id": 2,
+              "value": 0.11999999731779099
+            },
+            {
+              "nodeId": 6,
+              "id": 3,
+              "value": 0.6499999761581421
+            },
+            {
+              "nodeId": 6,
+              "id": 4,
+              "value": 0.18000000715255737
+            },
+            {
+              "nodeId": 6,
+              "id": 5,
+              "value": 0.25
+            },
+            {
+              "nodeId": 7,
+              "id": 0,
+              "value": 4
+            },
+            {
+              "nodeId": 7,
+              "id": 1,
+              "value": 0.4000000059604645
+            },
+            {
+              "nodeId": 7,
+              "id": 2,
+              "value": 1
+            }
+          ]
+        },
+        "endpoints": [
+          {
+            "path": "/midi/synth/rack/transpose/1/semitones",
+            "kind": "parameter",
+            "nodeId": 5,
+            "id": 0,
+            "min": -24,
+            "max": 24,
+            "default": 0
+          }
+        ],
+        "hostBindings": [
+          {
+            "slot": 0,
+            "nodeId": 5,
+            "id": 0
+          }
+        ],
+        "instances": [
+          {
+            "path": "/midi/synth/rack/transpose/1/nodes/effect",
+            "nodeId": 5
+          },
+          {
+            "path": "/transpose/audition/nodes/insert",
+            "nodeId": 7
+          },
+          {
+            "path": "/transpose/audition/nodes/midi_input",
+            "nodeId": 4
+          },
+          {
+            "path": "/transpose/audition/nodes/voice",
+            "nodeId": 6
+          }
+        ]
+      }
+    },
+    {
+      "name": "installed-original-key-release",
+      "peak": 0,
+      "rms": 0,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 516,
+        "rustProcessedBlocks": 504,
+        "publications": 2,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 2,
+        "lastPublicationContextFrame": 15360,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.35500001907348633,
+        "lastPublicationMs": 20.830000042915344,
+        "compilerFailed": false,
+        "processorFailed": false,
+        "eventsAdmitted": 3,
+        "eventsConsumed": 3,
+        "eventsCancelled": 0,
+        "eventsRejected": 0,
+        "eventsPending": 0,
+        "lastEventContextFrame": 29184,
+        "renderQuantum": 128
+      },
+      "graph": {
+        "format": "manifold.project",
+        "schemaVersion": 1,
+        "projectId": "manifold.graph-workspace",
+        "signal": {
+          "inputs": 2,
+          "outputs": 2,
+          "inputSource": "none",
+          "nodes": [
+            {
+              "id": 1,
+              "type": "input.raw"
+            },
+            {
+              "id": 3,
+              "type": "output"
+            },
+            {
+              "id": 4,
+              "type": "midi-input"
+            },
+            {
+              "id": 5,
+              "type": "midi-transpose",
+              "a": 0
+            },
+            {
+              "id": 6,
+              "type": "voice-synth"
+            },
+            {
+              "id": 7,
+              "type": "distortion",
+              "a": 4,
+              "b": 0.7
+            }
+          ],
+          "connections": [
+            {
+              "from": 7,
+              "outputPort": 0,
+              "to": 3,
+              "inputPort": 0
+            },
+            {
+              "from": 4,
+              "outputPort": 0,
+              "to": 5,
+              "inputPort": 0
+            },
+            {
+              "from": 5,
+              "outputPort": 0,
+              "to": 6,
+              "inputPort": 0
+            },
+            {
+              "from": 6,
+              "outputPort": 0,
+              "to": 7,
+              "inputPort": 0
+            }
+          ],
+          "initialParameters": [
+            {
+              "nodeId": 5,
+              "id": 0,
+              "value": 7
+            },
+            {
+              "nodeId": 6,
+              "id": 0,
+              "value": 0
+            },
+            {
+              "nodeId": 6,
+              "id": 1,
+              "value": 0.009999999776482582
+            },
+            {
+              "nodeId": 6,
+              "id": 2,
+              "value": 0.11999999731779099
+            },
+            {
+              "nodeId": 6,
+              "id": 3,
+              "value": 0.6499999761581421
+            },
+            {
+              "nodeId": 6,
+              "id": 4,
+              "value": 0.18000000715255737
+            },
+            {
+              "nodeId": 6,
+              "id": 5,
+              "value": 0.25
+            },
+            {
+              "nodeId": 7,
+              "id": 0,
+              "value": 4
+            },
+            {
+              "nodeId": 7,
+              "id": 1,
+              "value": 0.4000000059604645
+            },
+            {
+              "nodeId": 7,
+              "id": 2,
+              "value": 1
+            }
+          ]
+        },
+        "endpoints": [
+          {
+            "path": "/midi/synth/rack/transpose/1/semitones",
+            "kind": "parameter",
+            "nodeId": 5,
+            "id": 0,
+            "min": -24,
+            "max": 24,
+            "default": 0
+          }
+        ],
+        "hostBindings": [
+          {
+            "slot": 0,
+            "nodeId": 5,
+            "id": 0
+          }
+        ],
+        "instances": [
+          {
+            "path": "/midi/synth/rack/transpose/1/nodes/effect",
+            "nodeId": 5
+          },
+          {
+            "path": "/transpose/audition/nodes/insert",
+            "nodeId": 7
+          },
+          {
+            "path": "/transpose/audition/nodes/midi_input",
+            "nodeId": 4
+          },
+          {
+            "path": "/transpose/audition/nodes/voice",
+            "nodeId": 6
+          }
+        ]
+      }
+    },
+    {
+      "name": "installed-midi-route-publication",
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 524,
+        "rustProcessedBlocks": 512,
+        "publications": 3,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 2,
+        "lastPublicationContextFrame": 68608,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.20500004291534424,
+        "lastPublicationMs": 5.200000047683716,
+        "compilerFailed": false,
+        "processorFailed": false,
+        "eventsAdmitted": 4,
+        "eventsConsumed": 4,
+        "eventsCancelled": 0,
+        "eventsRejected": 0,
+        "eventsPending": 0,
+        "lastEventContextFrame": 68096,
+        "renderQuantum": 128
+      },
+      "graph": {
+        "format": "manifold.project",
+        "schemaVersion": 1,
+        "projectId": "manifold.graph-workspace",
+        "signal": {
+          "inputs": 2,
+          "outputs": 2,
+          "inputSource": "none",
+          "nodes": [
+            {
+              "id": 1,
+              "type": "input.raw"
+            },
+            {
+              "id": 3,
+              "type": "output"
+            },
+            {
+              "id": 4,
+              "type": "midi-input"
+            },
+            {
+              "id": 5,
+              "type": "midi-transpose",
+              "a": 0
+            },
+            {
+              "id": 6,
+              "type": "voice-synth"
+            },
+            {
+              "id": 7,
+              "type": "distortion",
+              "a": 4,
+              "b": 0.7
+            }
+          ],
+          "connections": [
+            {
+              "from": 7,
+              "outputPort": 0,
+              "to": 3,
+              "inputPort": 0
+            },
+            {
+              "from": 4,
+              "outputPort": 0,
+              "to": 5,
+              "inputPort": 0
+            },
+            {
+              "from": 4,
+              "outputPort": 0,
+              "to": 6,
+              "inputPort": 0
+            },
+            {
+              "from": 6,
+              "outputPort": 0,
+              "to": 7,
+              "inputPort": 0
+            }
+          ],
+          "initialParameters": [
+            {
+              "nodeId": 5,
+              "id": 0,
+              "value": 7
+            },
+            {
+              "nodeId": 6,
+              "id": 0,
+              "value": 0
+            },
+            {
+              "nodeId": 6,
+              "id": 1,
+              "value": 0.009999999776482582
+            },
+            {
+              "nodeId": 6,
+              "id": 2,
+              "value": 0.11999999731779099
+            },
+            {
+              "nodeId": 6,
+              "id": 3,
+              "value": 0.6499999761581421
+            },
+            {
+              "nodeId": 6,
+              "id": 4,
+              "value": 0.18000000715255737
+            },
+            {
+              "nodeId": 6,
+              "id": 5,
+              "value": 0.25
+            },
+            {
+              "nodeId": 7,
+              "id": 0,
+              "value": 4
+            },
+            {
+              "nodeId": 7,
+              "id": 1,
+              "value": 0.4000000059604645
+            },
+            {
+              "nodeId": 7,
+              "id": 2,
+              "value": 1
+            }
+          ]
+        },
+        "endpoints": [
+          {
+            "path": "/midi/synth/rack/transpose/1/semitones",
+            "kind": "parameter",
+            "nodeId": 5,
+            "id": 0,
+            "min": -24,
+            "max": 24,
+            "default": 0
+          }
+        ],
+        "hostBindings": [
+          {
+            "slot": 0,
+            "nodeId": 5,
+            "id": 0
+          }
+        ],
+        "instances": [
+          {
+            "path": "/midi/synth/rack/transpose/1/nodes/effect",
+            "nodeId": 5
+          },
+          {
+            "path": "/transpose/audition/nodes/insert",
+            "nodeId": 7
+          },
+          {
+            "path": "/transpose/audition/nodes/midi_input",
+            "nodeId": 4
+          },
+          {
+            "path": "/transpose/audition/nodes/voice",
+            "nodeId": 6
+          }
+        ]
+      }
+    },
+    {
+      "name": "installed-midi-route-resets-old-voice",
+      "peak": 0,
+      "rms": 0,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 560,
+        "rustProcessedBlocks": 548,
+        "publications": 3,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 2,
+        "lastPublicationContextFrame": 68608,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.20500004291534424,
+        "lastPublicationMs": 5.200000047683716,
+        "compilerFailed": false,
+        "processorFailed": false,
+        "eventsAdmitted": 4,
+        "eventsConsumed": 4,
+        "eventsCancelled": 0,
+        "eventsRejected": 0,
+        "eventsPending": 0,
+        "lastEventContextFrame": 68096,
+        "renderQuantum": 128
+      },
+      "graph": {
+        "format": "manifold.project",
+        "schemaVersion": 1,
+        "projectId": "manifold.graph-workspace",
+        "signal": {
+          "inputs": 2,
+          "outputs": 2,
+          "inputSource": "none",
+          "nodes": [
+            {
+              "id": 1,
+              "type": "input.raw"
+            },
+            {
+              "id": 3,
+              "type": "output"
+            },
+            {
+              "id": 4,
+              "type": "midi-input"
+            },
+            {
+              "id": 5,
+              "type": "midi-transpose",
+              "a": 0
+            },
+            {
+              "id": 6,
+              "type": "voice-synth"
+            },
+            {
+              "id": 7,
+              "type": "distortion",
+              "a": 4,
+              "b": 0.7
+            }
+          ],
+          "connections": [
+            {
+              "from": 7,
+              "outputPort": 0,
+              "to": 3,
+              "inputPort": 0
+            },
+            {
+              "from": 4,
+              "outputPort": 0,
+              "to": 5,
+              "inputPort": 0
+            },
+            {
+              "from": 4,
+              "outputPort": 0,
+              "to": 6,
+              "inputPort": 0
+            },
+            {
+              "from": 6,
+              "outputPort": 0,
+              "to": 7,
+              "inputPort": 0
+            }
+          ],
+          "initialParameters": [
+            {
+              "nodeId": 5,
+              "id": 0,
+              "value": 7
+            },
+            {
+              "nodeId": 6,
+              "id": 0,
+              "value": 0
+            },
+            {
+              "nodeId": 6,
+              "id": 1,
+              "value": 0.009999999776482582
+            },
+            {
+              "nodeId": 6,
+              "id": 2,
+              "value": 0.11999999731779099
+            },
+            {
+              "nodeId": 6,
+              "id": 3,
+              "value": 0.6499999761581421
+            },
+            {
+              "nodeId": 6,
+              "id": 4,
+              "value": 0.18000000715255737
+            },
+            {
+              "nodeId": 6,
+              "id": 5,
+              "value": 0.25
+            },
+            {
+              "nodeId": 7,
+              "id": 0,
+              "value": 4
+            },
+            {
+              "nodeId": 7,
+              "id": 1,
+              "value": 0.4000000059604645
+            },
+            {
+              "nodeId": 7,
+              "id": 2,
+              "value": 1
+            }
+          ]
+        },
+        "endpoints": [
+          {
+            "path": "/midi/synth/rack/transpose/1/semitones",
+            "kind": "parameter",
+            "nodeId": 5,
+            "id": 0,
+            "min": -24,
+            "max": 24,
+            "default": 0
+          }
+        ],
+        "hostBindings": [
+          {
+            "slot": 0,
+            "nodeId": 5,
+            "id": 0
+          }
+        ],
+        "instances": [
+          {
+            "path": "/midi/synth/rack/transpose/1/nodes/effect",
+            "nodeId": 5
+          },
+          {
+            "path": "/transpose/audition/nodes/insert",
+            "nodeId": 7
+          },
+          {
+            "path": "/transpose/audition/nodes/midi_input",
+            "nodeId": 4
+          },
+          {
+            "path": "/transpose/audition/nodes/voice",
+            "nodeId": 6
+          }
+        ]
+      }
+    },
+    {
+      "name": "served-pcm-source-and-player-policy",
+      "buffers": [
+        {
+          "name": "edited.wav",
+          "byteLength": 446508,
+          "frames": 55808,
+          "channels": 2,
+          "sampleRate": 48000,
+          "sha256": "7a85a7757f2025ec987eb6b4508de4989e3aa226c01ee626b66b55c01d60c75d"
+        },
+        {
+          "name": "reference.wav",
+          "byteLength": 446508,
+          "frames": 55808,
+          "channels": 2,
+          "sampleRate": 48000,
+          "sha256": "7a85a7757f2025ec987eb6b4508de4989e3aa226c01ee626b66b55c01d60c75d"
+        }
+      ],
+      "capsule": [
+        {
+          "path": "crates/manifold-core/src/graph.rs",
+          "expected": "4fbd298718f3677504c86a19a9c53039538ac2fe1bae422866458cf713defb0b",
+          "actual": "4fbd298718f3677504c86a19a9c53039538ac2fe1bae422866458cf713defb0b",
+          "status": 200
+        },
+        {
+          "path": "crates/manifold-core/src/voice.rs",
+          "expected": "a859e163da4a397dce4e4cd85b81295f0d7423c025742a4d821732b2f13232ac",
+          "actual": "a859e163da4a397dce4e4cd85b81295f0d7423c025742a4d821732b2f13232ac",
+          "status": 200
+        },
+        {
+          "path": "crates/manifold-core/src/midi_transpose.rs",
+          "expected": "712809826432603a7f985cacf8c14fdb0f32f8f16db406c9aaaeef96a48f90c8",
+          "actual": "712809826432603a7f985cacf8c14fdb0f32f8f16db406c9aaaeef96a48f90c8",
+          "status": 200
+        },
+        {
+          "path": "crates/manifold-core/src/midi_note_router.rs",
+          "expected": "cfb775b2004b98e5bd21e21b3f4067bfd9231d67174c4ef69f2cb1707d834aed",
+          "actual": "cfb775b2004b98e5bd21e21b3f4067bfd9231d67174c4ef69f2cb1707d834aed",
+          "status": 200
+        },
+        {
+          "path": "crates/manifold-web/src/lib.rs",
+          "expected": "728a42162d7adfa0ebd824627939e3ac764180d483ab00af4188bc11f59e4c66",
+          "actual": "728a42162d7adfa0ebd824627939e3ac764180d483ab00af4188bc11f59e4c66",
+          "status": 200
+        },
+        {
+          "path": "crates/manifold-web/src/prepared_worklet.rs",
+          "expected": "231eb3917f8d26ba527827dbcefd04ebd81bd27a55fee1a86d1ca3464d96f278",
+          "actual": "231eb3917f8d26ba527827dbcefd04ebd81bd27a55fee1a86d1ca3464d96f278",
+          "status": 200
+        },
+        {
+          "path": "packages/manifold-author/prepared-runtime.js",
+          "expected": "88e0f0efdcf26b41deab7af5a98366694369ba69f0ef03e68925d47d7f23bb2f",
+          "actual": "88e0f0efdcf26b41deab7af5a98366694369ba69f0ef03e68925d47d7f23bb2f",
+          "status": 200
+        },
+        {
+          "path": "packages/manifold-author/prepared-processor.js",
+          "expected": "30e277f94cfd9bf814ff58186b9540384fffe7ca3893c082c4061fdf92a48f3d",
+          "actual": "30e277f94cfd9bf814ff58186b9540384fffe7ca3893c082c4061fdf92a48f3d",
+          "status": 200
+        },
+        {
+          "path": "packages/manifold-author/prepared-compiler.js",
+          "expected": "a00f5885232504173dc206f5d4f5e223228c538c431c6f49a1ad8de284e1dd93",
+          "actual": "a00f5885232504173dc206f5d4f5e223228c538c431c6f49a1ad8de284e1dd93",
+          "status": 200
+        },
+        {
+          "path": "packages/manifold-author/browser.js",
+          "expected": "125e8d29cc1ebab4b7196d6b6406edc51168549eb33a7f37feb74336d8883365",
+          "actual": "125e8d29cc1ebab4b7196d6b6406edc51168549eb33a7f37feb74336d8883365",
+          "status": 200
+        },
+        {
+          "path": "packages/manifold-author/examples/transpose-audition.mjs",
+          "expected": "4b2078e844aea8740cf8c42dc1617ace29e58f6b84938cdffda3c051991dcf76",
+          "actual": "4b2078e844aea8740cf8c42dc1617ace29e58f6b84938cdffda3c051991dcf76",
+          "status": 200
+        },
+        {
+          "path": "packages/manifold-author/runtime/manifold_prepared.wasm",
+          "expected": "d5114af9a62d41e8a2553c705584d1e1242ea799f16d91624bd3ffceebdb0a5a",
+          "actual": "d5114af9a62d41e8a2553c705584d1e1242ea799f16d91624bd3ffceebdb0a5a",
+          "status": 200
+        },
+        {
+          "path": "packages/manifold-author/catalog.generated.js",
+          "expected": "901ed0fc6a48edb592d74394d5f6124ae2a62ebdacca992cdcfad5c607e7258b",
+          "actual": "901ed0fc6a48edb592d74394d5f6124ae2a62ebdacca992cdcfad5c607e7258b",
+          "status": 200
+        },
+        {
+          "path": "web/src/prepared-midi.js",
+          "expected": "a89e2c046b7aa4fbbed5623660e9b9ecd735159cfcc83590bc10a01b93b5b449",
+          "actual": "a89e2c046b7aa4fbbed5623660e9b9ecd735159cfcc83590bc10a01b93b5b449",
+          "status": 200
+        }
+      ],
+      "players": [
+        {
+          "autoplay": false,
+          "paused": true
+        },
+        {
+          "autoplay": false,
+          "paused": true
+        }
+      ]
+    }
+  ],
+  "workersAfterClose": [],
+  "pageErrors": []
+}

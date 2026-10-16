@@ -1,0 +1,1234 @@
+{
+  "recordedAt": "2026-09-30T05:05:00.596Z",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174",
+  "chromiumVersion": "152.0.7977.82",
+  "hashes": {
+    "crates/manifold-core/src/graph.rs": "4fbd298718f3677504c86a19a9c53039538ac2fe1bae422866458cf713defb0b",
+    "crates/manifold-core/src/voice.rs": "a859e163da4a397dce4e4cd85b81295f0d7423c025742a4d821732b2f13232ac",
+    "crates/manifold-core/src/midi_transpose.rs": "712809826432603a7f985cacf8c14fdb0f32f8f16db406c9aaaeef96a48f90c8",
+    "crates/manifold-core/src/midi_note_router.rs": "cfb775b2004b98e5bd21e21b3f4067bfd9231d67174c4ef69f2cb1707d834aed",
+    "crates/manifold-web/src/lib.rs": "728a42162d7adfa0ebd824627939e3ac764180d483ab00af4188bc11f59e4c66",
+    "crates/manifold-web/src/prepared_worklet.rs": "231eb3917f8d26ba527827dbcefd04ebd81bd27a55fee1a86d1ca3464d96f278",
+    "packages/manifold-author/prepared-runtime.js": "88e0f0efdcf26b41deab7af5a98366694369ba69f0ef03e68925d47d7f23bb2f",
+    "packages/manifold-author/prepared-processor.js": "30e277f94cfd9bf814ff58186b9540384fffe7ca3893c082c4061fdf92a48f3d",
+    "packages/manifold-author/prepared-compiler.js": "a00f5885232504173dc206f5d4f5e223228c538c431c6f49a1ad8de284e1dd93",
+    "packages/manifold-author/browser.js": "125e8d29cc1ebab4b7196d6b6406edc51168549eb33a7f37feb74336d8883365",
+    "packages/manifold-author/examples/transpose-audition.mjs": "eda3b182b44b2f9399041edd6f254b08fe81e2ab5514adea7997bab5331a4e95",
+    "packages/manifold-author/runtime/manifold_prepared.wasm": "d5114af9a62d41e8a2553c705584d1e1242ea799f16d91624bd3ffceebdb0a5a",
+    "web/src/prepared-midi.js": "a89e2c046b7aa4fbbed5623660e9b9ecd735159cfcc83590bc10a01b93b5b449"
+  },
+  "ui": {
+    "graph": {
+      "format": "manifold.project",
+      "schemaVersion": 1,
+      "projectId": "manifold.graph-workspace",
+      "signal": {
+        "inputs": 2,
+        "outputs": 2,
+        "inputSource": "none",
+        "nodes": [
+          {
+            "id": 1,
+            "type": "input.raw"
+          },
+          {
+            "id": 3,
+            "type": "output"
+          },
+          {
+            "id": 4,
+            "type": "midi-input"
+          },
+          {
+            "id": 5,
+            "type": "midi-transpose",
+            "a": 0
+          },
+          {
+            "id": 6,
+            "type": "voice-synth"
+          },
+          {
+            "id": 7,
+            "type": "distortion",
+            "a": 4,
+            "b": 0.7
+          }
+        ],
+        "connections": [
+          {
+            "from": 7,
+            "outputPort": 0,
+            "to": 3,
+            "inputPort": 0
+          },
+          {
+            "from": 4,
+            "outputPort": 0,
+            "to": 5,
+            "inputPort": 0
+          },
+          {
+            "from": 5,
+            "outputPort": 0,
+            "to": 6,
+            "inputPort": 0
+          },
+          {
+            "from": 6,
+            "outputPort": 0,
+            "to": 7,
+            "inputPort": 0
+          }
+        ],
+        "initialParameters": [
+          {
+            "nodeId": 5,
+            "id": 0,
+            "value": 7
+          },
+          {
+            "nodeId": 6,
+            "id": 0,
+            "value": 0
+          },
+          {
+            "nodeId": 6,
+            "id": 1,
+            "value": 0.009999999776482582
+          },
+          {
+            "nodeId": 6,
+            "id": 2,
+            "value": 0.11999999731779099
+          },
+          {
+            "nodeId": 6,
+            "id": 3,
+            "value": 0.6499999761581421
+          },
+          {
+            "nodeId": 6,
+            "id": 4,
+            "value": 0.18000000715255737
+          },
+          {
+            "nodeId": 6,
+            "id": 5,
+            "value": 0.25
+          },
+          {
+            "nodeId": 7,
+            "id": 0,
+            "value": 4
+          },
+          {
+            "nodeId": 7,
+            "id": 1,
+            "value": 0.4000000059604645
+          },
+          {
+            "nodeId": 7,
+            "id": 2,
+            "value": 0.800000011920929
+          }
+        ]
+      },
+      "endpoints": [
+        {
+          "path": "/midi/synth/rack/transpose/1/semitones",
+          "kind": "parameter",
+          "nodeId": 5,
+          "id": 0,
+          "min": -24,
+          "max": 24,
+          "default": 0
+        }
+      ],
+      "hostBindings": [
+        {
+          "slot": 0,
+          "nodeId": 5,
+          "id": 0
+        }
+      ],
+      "instances": [
+        {
+          "path": "/midi/synth/rack/transpose/1/nodes/effect",
+          "nodeId": 5
+        },
+        {
+          "path": "/transpose/audition/nodes/insert",
+          "nodeId": 7
+        },
+        {
+          "path": "/transpose/audition/nodes/midi_input",
+          "nodeId": 4
+        },
+        {
+          "path": "/transpose/audition/nodes/voice",
+          "nodeId": 6
+        }
+      ]
+    },
+    "diagnostics": {
+      "execution": "prepared",
+      "audioBlocks": 80,
+      "rustProcessedBlocks": 64,
+      "publications": 2,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 2,
+      "lastPublicationContextFrame": 9728,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 16777216,
+      "lastPreparationMs": 0.39499998092651367,
+      "lastPublicationMs": 16.475000023841858,
+      "compilerFailed": false,
+      "processorFailed": false,
+      "eventsAdmitted": 2,
+      "eventsConsumed": 2,
+      "eventsCancelled": 0,
+      "eventsRejected": 0,
+      "eventsPending": 0,
+      "lastEventContextFrame": 11776,
+      "renderQuantum": 128
+    },
+    "held": "true"
+  },
+  "pair": {
+    "frames": 56832,
+    "firstContextFrame": 0,
+    "overflow": false,
+    "maxDifference": 0.02227107435464859,
+    "mismatchedSamples": 26624,
+    "firstNonzeroFrame": 65,
+    "tailPeak": 0,
+    "rms": 0.095454212246813,
+    "admissionA": {
+      "type": "events-admitted",
+      "requestId": 8,
+      "admittedEvents": 1,
+      "pendingEvents": 1,
+      "publicationId": 1
+    },
+    "admissionB": {
+      "type": "events-admitted",
+      "requestId": 8,
+      "admittedEvents": 1,
+      "pendingEvents": 1,
+      "publicationId": 1
+    },
+    "pending": {
+      "primary": {
+        "execution": "prepared",
+        "audioBlocks": 0,
+        "rustProcessedBlocks": 0,
+        "publications": 1,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 0,
+        "lastPublicationContextFrame": 0,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.2200000286102295,
+        "lastPublicationMs": 2.6399999856948853,
+        "compilerFailed": false,
+        "processorFailed": false,
+        "eventsAdmitted": 1,
+        "eventsConsumed": 0,
+        "eventsCancelled": 0,
+        "eventsRejected": 0,
+        "eventsPending": 1,
+        "lastEventContextFrame": 0,
+        "renderQuantum": 128
+      },
+      "reference": {
+        "execution": "prepared",
+        "audioBlocks": 0,
+        "rustProcessedBlocks": 0,
+        "publications": 1,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 0,
+        "lastPublicationContextFrame": 0,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.2049999237060547,
+        "lastPublicationMs": 2.600000023841858,
+        "compilerFailed": false,
+        "processorFailed": false,
+        "eventsAdmitted": 1,
+        "eventsConsumed": 0,
+        "eventsCancelled": 0,
+        "eventsRejected": 0,
+        "eventsPending": 1,
+        "lastEventContextFrame": 0,
+        "renderQuantum": 128
+      }
+    },
+    "beforeRename": {
+      "execution": "prepared",
+      "audioBlocks": 364,
+      "rustProcessedBlocks": 364,
+      "publications": 10,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 2,
+      "lastPublicationContextFrame": 40960,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 16777216,
+      "lastPreparationMs": 0.4750000238418579,
+      "lastPublicationMs": 3.0799999237060547,
+      "compilerFailed": false,
+      "processorFailed": false,
+      "eventsAdmitted": 3,
+      "eventsConsumed": 2,
+      "eventsCancelled": 0,
+      "eventsRejected": 0,
+      "eventsPending": 1,
+      "lastEventContextFrame": 35401,
+      "renderQuantum": 128
+    },
+    "afterRename": {
+      "execution": "prepared",
+      "audioBlocks": 364,
+      "rustProcessedBlocks": 364,
+      "publications": 11,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 2,
+      "lastPublicationContextFrame": 46592,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 16777216,
+      "lastPreparationMs": 0.07999992370605469,
+      "lastPublicationMs": 2.450000047683716,
+      "compilerFailed": false,
+      "processorFailed": false,
+      "eventsAdmitted": 3,
+      "eventsConsumed": 2,
+      "eventsCancelled": 0,
+      "eventsRejected": 0,
+      "eventsPending": 1,
+      "lastEventContextFrame": 35401,
+      "renderQuantum": 128
+    },
+    "invalidOffset": "Invalid next-block event",
+    "invalidEdit": "Project has an unknown, duplicate, or invalid graph node",
+    "edits": [
+      {
+        "index": 0,
+        "totalMs": 9.330000042915344,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 68,
+          "rustProcessedBlocks": 68,
+          "publications": 2,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 2,
+          "lastPublicationContextFrame": 8192,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 16777216,
+          "lastPreparationMs": 0.22999989986419678,
+          "lastPublicationMs": 7.259999990463257,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 1,
+          "eventsConsumed": 1,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 64,
+          "renderQuantum": 128
+        }
+      },
+      {
+        "index": 1,
+        "totalMs": 4.850000023841858,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 92,
+          "rustProcessedBlocks": 92,
+          "publications": 3,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 2,
+          "lastPublicationContextFrame": 11264,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 16777216,
+          "lastPreparationMs": 0.14499998092651367,
+          "lastPublicationMs": 2.6750000715255737,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 1,
+          "eventsConsumed": 1,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 64,
+          "renderQuantum": 128
+        }
+      },
+      {
+        "index": 2,
+        "totalMs": 14.835000038146973,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 120,
+          "rustProcessedBlocks": 120,
+          "publications": 4,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 2,
+          "lastPublicationContextFrame": 14848,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 16777216,
+          "lastPreparationMs": 0.12000000476837158,
+          "lastPublicationMs": 13.019999980926514,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 1,
+          "eventsConsumed": 1,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 64,
+          "renderQuantum": 128
+        }
+      },
+      {
+        "index": 3,
+        "totalMs": 14.954999923706055,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 148,
+          "rustProcessedBlocks": 148,
+          "publications": 5,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 2,
+          "lastPublicationContextFrame": 18432,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 16777216,
+          "lastPreparationMs": 0.1799999475479126,
+          "lastPublicationMs": 13.144999980926514,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 1,
+          "eventsConsumed": 1,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 64,
+          "renderQuantum": 128
+        }
+      },
+      {
+        "index": 4,
+        "totalMs": 13.100000023841858,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 176,
+          "rustProcessedBlocks": 176,
+          "publications": 6,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 2,
+          "lastPublicationContextFrame": 22016,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 16777216,
+          "lastPreparationMs": 0.10000002384185791,
+          "lastPublicationMs": 11.075000047683716,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 1,
+          "eventsConsumed": 1,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 64,
+          "renderQuantum": 128
+        }
+      },
+      {
+        "index": 5,
+        "totalMs": 4.490000009536743,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 200,
+          "rustProcessedBlocks": 200,
+          "publications": 7,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 2,
+          "lastPublicationContextFrame": 25088,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 16777216,
+          "lastPreparationMs": 0.09500002861022949,
+          "lastPublicationMs": 2.7049999237060547,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 1,
+          "eventsConsumed": 1,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 64,
+          "renderQuantum": 128
+        }
+      },
+      {
+        "index": 6,
+        "totalMs": 14.475000023841858,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 228,
+          "rustProcessedBlocks": 228,
+          "publications": 8,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 2,
+          "lastPublicationContextFrame": 28672,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 16777216,
+          "lastPreparationMs": 0.13499999046325684,
+          "lastPublicationMs": 12.110000014305115,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 1,
+          "eventsConsumed": 1,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 64,
+          "renderQuantum": 128
+        }
+      },
+      {
+        "index": 7,
+        "totalMs": 15.15499997138977,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 256,
+          "rustProcessedBlocks": 256,
+          "publications": 9,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 2,
+          "lastPublicationContextFrame": 32256,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 16777216,
+          "lastPreparationMs": 0.12999999523162842,
+          "lastPublicationMs": 13.144999980926514,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 1,
+          "eventsConsumed": 1,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 64,
+          "renderQuantum": 128
+        }
+      }
+    ],
+    "after": {
+      "primary": {
+        "execution": "prepared",
+        "audioBlocks": 444,
+        "rustProcessedBlocks": 444,
+        "publications": 11,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 2,
+        "lastPublicationContextFrame": 46592,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.07999992370605469,
+        "lastPublicationMs": 2.450000047683716,
+        "compilerFailed": false,
+        "processorFailed": false,
+        "eventsAdmitted": 3,
+        "eventsConsumed": 3,
+        "eventsCancelled": 0,
+        "eventsRejected": 0,
+        "eventsPending": 0,
+        "lastEventContextFrame": 46685,
+        "renderQuantum": 128
+      },
+      "reference": {
+        "execution": "prepared",
+        "audioBlocks": 444,
+        "rustProcessedBlocks": 444,
+        "publications": 1,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 0,
+        "lastPublicationContextFrame": 0,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.2049999237060547,
+        "lastPublicationMs": 2.600000023841858,
+        "compilerFailed": false,
+        "processorFailed": false,
+        "eventsAdmitted": 3,
+        "eventsConsumed": 3,
+        "eventsCancelled": 0,
+        "eventsRejected": 0,
+        "eventsPending": 0,
+        "lastEventContextFrame": 46685,
+        "renderQuantum": 128
+      }
+    },
+    "finalGraph": {
+      "format": "manifold.project",
+      "schemaVersion": 1,
+      "projectId": "manifold.graph-workspace",
+      "signal": {
+        "inputs": 2,
+        "outputs": 2,
+        "inputSource": "none",
+        "nodes": [
+          {
+            "id": 1,
+            "type": "input.raw"
+          },
+          {
+            "id": 3,
+            "type": "output"
+          },
+          {
+            "id": 6,
+            "type": "voice-synth"
+          },
+          {
+            "id": 14,
+            "type": "midi-input"
+          },
+          {
+            "id": 15,
+            "type": "midi-transpose",
+            "a": 0
+          }
+        ],
+        "connections": [
+          {
+            "from": 6,
+            "outputPort": 0,
+            "to": 3,
+            "inputPort": 0
+          },
+          {
+            "from": 15,
+            "outputPort": 0,
+            "to": 6,
+            "inputPort": 0
+          },
+          {
+            "from": 14,
+            "outputPort": 0,
+            "to": 15,
+            "inputPort": 0
+          }
+        ],
+        "initialParameters": [
+          {
+            "nodeId": 6,
+            "id": 0,
+            "value": 2
+          },
+          {
+            "nodeId": 6,
+            "id": 1,
+            "value": 0.0010000000474974513
+          },
+          {
+            "nodeId": 6,
+            "id": 2,
+            "value": 0.0010000000474974513
+          },
+          {
+            "nodeId": 6,
+            "id": 3,
+            "value": 1
+          },
+          {
+            "nodeId": 6,
+            "id": 4,
+            "value": 0.009999999776482582
+          },
+          {
+            "nodeId": 6,
+            "id": 5,
+            "value": 0.20000000298023224
+          },
+          {
+            "nodeId": 15,
+            "id": 0,
+            "value": 7
+          }
+        ]
+      },
+      "endpoints": [
+        {
+          "path": "/midi/synth/rack/transpose/1/semitones",
+          "kind": "parameter",
+          "nodeId": 15,
+          "id": 0,
+          "min": -24,
+          "max": 24,
+          "default": 0
+        }
+      ],
+      "hostBindings": [
+        {
+          "slot": 0,
+          "nodeId": 15,
+          "id": 0
+        }
+      ],
+      "instances": [
+        {
+          "path": "/midi/synth/rack/transpose/1/nodes/effect",
+          "nodeId": 15
+        },
+        {
+          "path": "/transpose/audition/nodes/midi_input",
+          "nodeId": 14
+        },
+        {
+          "path": "/transpose/audition/nodes/voice",
+          "nodeId": 6
+        }
+      ]
+    }
+  },
+  "queue": {
+    "full": {
+      "execution": "prepared",
+      "audioBlocks": 0,
+      "rustProcessedBlocks": 0,
+      "publications": 1,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 0,
+      "lastPublicationContextFrame": 0,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 16777216,
+      "lastPreparationMs": 0.20500004291534424,
+      "lastPublicationMs": 2.609999895095825,
+      "compilerFailed": false,
+      "processorFailed": false,
+      "eventsAdmitted": 256,
+      "eventsConsumed": 0,
+      "eventsCancelled": 0,
+      "eventsRejected": 0,
+      "eventsPending": 256,
+      "lastEventContextFrame": 0,
+      "renderQuantum": 128
+    },
+    "overflow": "Error: Prepared event queue is full",
+    "rejected": {
+      "execution": "prepared",
+      "audioBlocks": 0,
+      "rustProcessedBlocks": 0,
+      "publications": 1,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 0,
+      "lastPublicationContextFrame": 0,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 16777216,
+      "lastPreparationMs": 0.20500004291534424,
+      "lastPublicationMs": 2.609999895095825,
+      "compilerFailed": false,
+      "processorFailed": false,
+      "eventsAdmitted": 256,
+      "eventsConsumed": 0,
+      "eventsCancelled": 0,
+      "eventsRejected": 1,
+      "eventsPending": 256,
+      "lastEventContextFrame": 0,
+      "renderQuantum": 128
+    },
+    "stopped": {
+      "execution": "prepared",
+      "audioBlocks": 0,
+      "rustProcessedBlocks": 0,
+      "publications": 1,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 0,
+      "lastPublicationContextFrame": 0,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 16777216,
+      "lastPreparationMs": 0.20500004291534424,
+      "lastPublicationMs": 2.609999895095825,
+      "compilerFailed": false,
+      "processorFailed": false,
+      "eventsAdmitted": 257,
+      "eventsConsumed": 0,
+      "eventsCancelled": 256,
+      "eventsRejected": 1,
+      "eventsPending": 1,
+      "lastEventContextFrame": 0,
+      "renderQuantum": 128
+    },
+    "consumedFullQueue": {
+      "execution": "prepared",
+      "audioBlocks": 16,
+      "rustProcessedBlocks": 16,
+      "publications": 1,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 0,
+      "lastPublicationContextFrame": 0,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 16777216,
+      "lastPreparationMs": 0.20500004291534424,
+      "lastPublicationMs": 2.609999895095825,
+      "compilerFailed": false,
+      "processorFailed": false,
+      "eventsAdmitted": 513,
+      "eventsConsumed": 257,
+      "eventsCancelled": 256,
+      "eventsRejected": 1,
+      "eventsPending": 0,
+      "lastEventContextFrame": 1151,
+      "renderQuantum": 128
+    },
+    "retiredTarget": {
+      "execution": "prepared",
+      "audioBlocks": 60,
+      "rustProcessedBlocks": 60,
+      "publications": 2,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 0,
+      "lastPublicationContextFrame": 2048,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 16777216,
+      "lastPreparationMs": 0.23500001430511475,
+      "lastPublicationMs": 2.805000066757202,
+      "compilerFailed": false,
+      "processorFailed": false,
+      "eventsAdmitted": 514,
+      "eventsConsumed": 257,
+      "eventsCancelled": 257,
+      "eventsRejected": 1,
+      "eventsPending": 0,
+      "lastEventContextFrame": 1151,
+      "renderQuantum": 128
+    },
+    "beforeClose": {
+      "execution": "prepared",
+      "audioBlocks": 60,
+      "rustProcessedBlocks": 60,
+      "publications": 2,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 0,
+      "lastPublicationContextFrame": 2048,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 16777216,
+      "lastPreparationMs": 0.23500001430511475,
+      "lastPublicationMs": 2.805000066757202,
+      "compilerFailed": false,
+      "processorFailed": false,
+      "eventsAdmitted": 515,
+      "eventsConsumed": 257,
+      "eventsCancelled": 257,
+      "eventsRejected": 1,
+      "eventsPending": 1,
+      "lastEventContextFrame": 1151,
+      "renderQuantum": 128
+    },
+    "afterClose": {
+      "execution": "prepared",
+      "audioBlocks": 60,
+      "rustProcessedBlocks": 60,
+      "publications": 2,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 0,
+      "lastPublicationContextFrame": 2048,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 0,
+      "lastPreparationMs": 0.23500001430511475,
+      "lastPublicationMs": 2.805000066757202,
+      "compilerFailed": false,
+      "processorFailed": false,
+      "eventsAdmitted": 515,
+      "eventsConsumed": 257,
+      "eventsCancelled": 258,
+      "eventsRejected": 1,
+      "eventsPending": 0,
+      "lastEventContextFrame": 1151,
+      "renderQuantum": 128
+    }
+  },
+  "oracle": {
+    "trace": {
+      "type": "midi-trace",
+      "requestId": 21,
+      "publicationId": 1,
+      "entries": [
+        {
+          "sequence": 1,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 0,
+          "channel": 2,
+          "note": 67,
+          "velocity": 96,
+          "emitted": true
+        },
+        {
+          "sequence": 2,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 1,
+          "channel": 2,
+          "note": 67,
+          "velocity": 0,
+          "emitted": true
+        },
+        {
+          "sequence": 3,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 0,
+          "channel": 2,
+          "note": 48,
+          "velocity": 96,
+          "emitted": true
+        },
+        {
+          "sequence": 4,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 1,
+          "channel": 2,
+          "note": 48,
+          "velocity": 0,
+          "emitted": true
+        },
+        {
+          "sequence": 5,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 0,
+          "channel": 0,
+          "note": 127,
+          "velocity": 100,
+          "emitted": true
+        },
+        {
+          "sequence": 6,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 1,
+          "channel": 0,
+          "note": 127,
+          "velocity": 0,
+          "emitted": true
+        },
+        {
+          "sequence": 7,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 0,
+          "channel": 0,
+          "note": 60,
+          "velocity": 100,
+          "emitted": true
+        },
+        {
+          "sequence": 8,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 0,
+          "channel": 0,
+          "note": 61,
+          "velocity": 100,
+          "emitted": true
+        },
+        {
+          "sequence": 9,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 0,
+          "channel": 0,
+          "note": 62,
+          "velocity": 100,
+          "emitted": true
+        },
+        {
+          "sequence": 10,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 0,
+          "channel": 0,
+          "note": 63,
+          "velocity": 100,
+          "emitted": true
+        },
+        {
+          "sequence": 11,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 0,
+          "channel": 0,
+          "note": 64,
+          "velocity": 100,
+          "emitted": true
+        },
+        {
+          "sequence": 12,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 0,
+          "channel": 0,
+          "note": 65,
+          "velocity": 100,
+          "emitted": true
+        },
+        {
+          "sequence": 13,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 0,
+          "channel": 0,
+          "note": 66,
+          "velocity": 100,
+          "emitted": true
+        },
+        {
+          "sequence": 14,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 0,
+          "channel": 0,
+          "note": 67,
+          "velocity": 100,
+          "emitted": true
+        },
+        {
+          "sequence": 15,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 1,
+          "channel": 0,
+          "note": 60,
+          "velocity": 0,
+          "emitted": true
+        },
+        {
+          "sequence": 16,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 0,
+          "channel": 0,
+          "note": 68,
+          "velocity": 100,
+          "emitted": true
+        },
+        {
+          "sequence": 17,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 1,
+          "channel": 0,
+          "note": 68,
+          "velocity": 0,
+          "emitted": true
+        },
+        {
+          "sequence": 18,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 1,
+          "channel": 0,
+          "note": 61,
+          "velocity": 0,
+          "emitted": true
+        },
+        {
+          "sequence": 19,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 1,
+          "channel": 0,
+          "note": 62,
+          "velocity": 0,
+          "emitted": true
+        },
+        {
+          "sequence": 20,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 1,
+          "channel": 0,
+          "note": 63,
+          "velocity": 0,
+          "emitted": true
+        },
+        {
+          "sequence": 21,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 1,
+          "channel": 0,
+          "note": 64,
+          "velocity": 0,
+          "emitted": true
+        },
+        {
+          "sequence": 22,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 1,
+          "channel": 0,
+          "note": 65,
+          "velocity": 0,
+          "emitted": true
+        },
+        {
+          "sequence": 23,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 1,
+          "channel": 0,
+          "note": 66,
+          "velocity": 0,
+          "emitted": true
+        },
+        {
+          "sequence": 24,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 1,
+          "channel": 0,
+          "note": 67,
+          "velocity": 0,
+          "emitted": true
+        },
+        {
+          "sequence": 25,
+          "nodeId": 5,
+          "offset": 0,
+          "kind": 3,
+          "channel": 0,
+          "note": 0,
+          "velocity": 64,
+          "emitted": true
+        }
+      ]
+    },
+    "diagnostics": {
+      "execution": "prepared",
+      "audioBlocks": 72,
+      "rustProcessedBlocks": 64,
+      "publications": 1,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 0,
+      "lastPublicationContextFrame": 2560,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 16777216,
+      "lastPreparationMs": 0.25,
+      "lastPublicationMs": 2.625,
+      "compilerFailed": false,
+      "processorFailed": false,
+      "eventsAdmitted": 15,
+      "eventsConsumed": 15,
+      "eventsCancelled": 0,
+      "eventsRejected": 0,
+      "eventsPending": 0,
+      "lastEventContextFrame": 10240,
+      "renderQuantum": 128
+    },
+    "events": [
+      "on,2,67,96",
+      "off,2,67",
+      "on,2,48,96",
+      "off,2,48",
+      "on,0,127,100",
+      "off,0,127",
+      "on,0,60,100",
+      "on,0,61,100",
+      "on,0,62,100",
+      "on,0,63,100",
+      "on,0,64,100",
+      "on,0,65,100",
+      "on,0,66,100",
+      "on,0,67,100",
+      "off,0,60",
+      "on,0,68,100",
+      "off,0,68",
+      "off,0,61",
+      "off,0,62",
+      "off,0,63",
+      "off,0,64",
+      "off,0,65",
+      "off,0,66",
+      "off,0,67",
+      "bend,0,8192"
+    ]
+  },
+  "legacyEvents": [
+    "on,2,67,96",
+    "off,2,67",
+    "on,2,48,96",
+    "off,2,48",
+    "on,0,127,100",
+    "off,0,127",
+    "on,0,60,100",
+    "on,0,61,100",
+    "on,0,62,100",
+    "on,0,63,100",
+    "on,0,64,100",
+    "on,0,65,100",
+    "on,0,66,100",
+    "on,0,67,100",
+    "off,0,60",
+    "on,0,68,100",
+    "off,0,68",
+    "off,0,61",
+    "off,0,62",
+    "off,0,63",
+    "off,0,64",
+    "off,0,65",
+    "off,0,66",
+    "off,0,67",
+    "bend,0,8192"
+  ],
+  "audio": "/prepared-midi/2026-09-30-prepared-midi/edited.wav",
+  "referenceAudio": "/prepared-midi/2026-09-30-prepared-midi/reference.wav",
+  "workersAfterClose": [],
+  "pageErrors": []
+}

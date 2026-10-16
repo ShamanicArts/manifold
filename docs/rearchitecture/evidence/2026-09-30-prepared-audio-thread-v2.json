@@ -1,0 +1,2171 @@
+{
+  "site": "https://wubulon.tailfac9f9.ts.net:4174",
+  "chromiumVersion": "152.0.7977.82",
+  "allocationNegativeControl": {
+    "before": {
+      "audioBlocks": 12,
+      "publishedRequest": 1,
+      "rustProcessingFailures": 0,
+      "transferredNodes": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "memoryBytes": 16777216,
+      "bridgeLatencyBlocks": 0
+    },
+    "after": {
+      "audioBlocks": 17,
+      "publishedRequest": 1,
+      "rustProcessingFailures": 0,
+      "transferredNodes": 0,
+      "rustCallbackAllocations": 1,
+      "rustCallbackDeallocations": 1,
+      "memoryBytes": 16777216,
+      "bridgeLatencyBlocks": 0
+    }
+  },
+  "runs": [
+    {
+      "recordedAt": "2026-09-30T02:48:34.082Z",
+      "runtime": "experimental-prepared-audio-thread",
+      "example": "dsp-live-scripting",
+      "editCount": 24,
+      "sourceHz": 220,
+      "sourceGain": 0.08,
+      "hostGain": 0.375,
+      "sampleRate": 48000,
+      "renderQuantum": 128,
+      "mainThreadWorkMs": 12,
+      "bridgeLatencyBlocks": 0,
+      "contextBaseLatencySeconds": 0.010666666666666666,
+      "before": {
+        "primary": {
+          "audioBlocks": 416,
+          "publishedRequest": 1,
+          "rustProcessingFailures": 0,
+          "transferredNodes": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "memoryBytes": 16777216,
+          "bridgeLatencyBlocks": 0
+        },
+        "secondary": {
+          "audioBlocks": 400,
+          "publishedRequest": 1,
+          "rustProcessingFailures": 0,
+          "transferredNodes": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "memoryBytes": 16777216,
+          "bridgeLatencyBlocks": 0
+        }
+      },
+      "after": {
+        "primary": {
+          "audioBlocks": 1852,
+          "publishedRequest": 52,
+          "rustProcessingFailures": 0,
+          "transferredNodes": 2,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "memoryBytes": 16777216,
+          "bridgeLatencyBlocks": 0
+        },
+        "secondary": {
+          "audioBlocks": 1836,
+          "publishedRequest": 1,
+          "rustProcessingFailures": 0,
+          "transferredNodes": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "memoryBytes": 16777216,
+          "bridgeLatencyBlocks": 0
+        }
+      },
+      "edits": [
+        {
+          "index": 1,
+          "preparationMs": 0.2749999761581421,
+          "totalMs": 23.919999957084656,
+          "transferredNodes": 2,
+          "nodes": 5,
+          "primary": {
+            "audioBlocks": 428,
+            "publishedRequest": 3,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 412,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 2,
+          "preparationMs": 0.10500001907348633,
+          "totalMs": 17.049999952316284,
+          "transferredNodes": 2,
+          "nodes": 4,
+          "primary": {
+            "audioBlocks": 472,
+            "publishedRequest": 5,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 456,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 3,
+          "preparationMs": 0.13499999046325684,
+          "totalMs": 17.28500008583069,
+          "transferredNodes": 2,
+          "nodes": 5,
+          "primary": {
+            "audioBlocks": 516,
+            "publishedRequest": 7,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 500,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 4,
+          "preparationMs": 0.21499991416931152,
+          "totalMs": 16.625,
+          "transferredNodes": 2,
+          "nodes": 4,
+          "primary": {
+            "audioBlocks": 560,
+            "publishedRequest": 9,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 544,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 5,
+          "preparationMs": 0.11000001430511475,
+          "totalMs": 17.289999961853027,
+          "transferredNodes": 2,
+          "nodes": 5,
+          "primary": {
+            "audioBlocks": 604,
+            "publishedRequest": 11,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 588,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 6,
+          "preparationMs": 0.10000002384185791,
+          "totalMs": 16.770000100135803,
+          "transferredNodes": 2,
+          "nodes": 4,
+          "primary": {
+            "audioBlocks": 648,
+            "publishedRequest": 13,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 632,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 7,
+          "preparationMs": 0.1799999475479126,
+          "totalMs": 17.100000023841858,
+          "transferredNodes": 2,
+          "nodes": 5,
+          "primary": {
+            "audioBlocks": 692,
+            "publishedRequest": 15,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 676,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 8,
+          "preparationMs": 0.09499990940093994,
+          "totalMs": 16.764999985694885,
+          "transferredNodes": 2,
+          "nodes": 4,
+          "primary": {
+            "audioBlocks": 736,
+            "publishedRequest": 17,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 720,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 9,
+          "preparationMs": 0.08000004291534424,
+          "totalMs": 16.74500000476837,
+          "transferredNodes": 2,
+          "nodes": 5,
+          "primary": {
+            "audioBlocks": 780,
+            "publishedRequest": 19,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 764,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 10,
+          "preparationMs": 0.3999999761581421,
+          "totalMs": 18.384999990463257,
+          "transferredNodes": 2,
+          "nodes": 4,
+          "primary": {
+            "audioBlocks": 824,
+            "publishedRequest": 21,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 808,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 11,
+          "preparationMs": 0.0700000524520874,
+          "totalMs": 16.03000009059906,
+          "transferredNodes": 2,
+          "nodes": 5,
+          "primary": {
+            "audioBlocks": 868,
+            "publishedRequest": 23,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 852,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 12,
+          "preparationMs": 0.08000004291534424,
+          "totalMs": 18.31499993801117,
+          "transferredNodes": 2,
+          "nodes": 4,
+          "primary": {
+            "audioBlocks": 912,
+            "publishedRequest": 25,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 896,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 13,
+          "preparationMs": 0.060000061988830566,
+          "totalMs": 16.00499999523163,
+          "transferredNodes": 2,
+          "nodes": 5,
+          "primary": {
+            "audioBlocks": 956,
+            "publishedRequest": 27,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 940,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 14,
+          "preparationMs": 0.059999942779541016,
+          "totalMs": 18.509999990463257,
+          "transferredNodes": 2,
+          "nodes": 4,
+          "primary": {
+            "audioBlocks": 1000,
+            "publishedRequest": 29,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 984,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 15,
+          "preparationMs": 0.10500001907348633,
+          "totalMs": 16.735000014305115,
+          "transferredNodes": 2,
+          "nodes": 5,
+          "primary": {
+            "audioBlocks": 1044,
+            "publishedRequest": 31,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1028,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 16,
+          "preparationMs": 0.07500004768371582,
+          "totalMs": 16.289999961853027,
+          "transferredNodes": 2,
+          "nodes": 4,
+          "primary": {
+            "audioBlocks": 1088,
+            "publishedRequest": 33,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1072,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 17,
+          "preparationMs": 0.07500004768371582,
+          "totalMs": 18.759999990463257,
+          "transferredNodes": 2,
+          "nodes": 5,
+          "primary": {
+            "audioBlocks": 1132,
+            "publishedRequest": 35,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1116,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 18,
+          "preparationMs": 0.07999992370605469,
+          "totalMs": 16.085000038146973,
+          "transferredNodes": 2,
+          "nodes": 4,
+          "primary": {
+            "audioBlocks": 1176,
+            "publishedRequest": 37,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1160,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 19,
+          "preparationMs": 0.08999991416931152,
+          "totalMs": 16.43500006198883,
+          "transferredNodes": 2,
+          "nodes": 5,
+          "primary": {
+            "audioBlocks": 1220,
+            "publishedRequest": 39,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1204,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 20,
+          "preparationMs": 0.06500005722045898,
+          "totalMs": 18.389999985694885,
+          "transferredNodes": 2,
+          "nodes": 4,
+          "primary": {
+            "audioBlocks": 1264,
+            "publishedRequest": 41,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1248,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 21,
+          "preparationMs": 0.09500002861022949,
+          "totalMs": 16.27500009536743,
+          "transferredNodes": 2,
+          "nodes": 5,
+          "primary": {
+            "audioBlocks": 1308,
+            "publishedRequest": 43,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1292,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 22,
+          "preparationMs": 0.07500004768371582,
+          "totalMs": 18.31499993801117,
+          "transferredNodes": 2,
+          "nodes": 4,
+          "primary": {
+            "audioBlocks": 1352,
+            "publishedRequest": 45,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1336,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 23,
+          "preparationMs": 0.0700000524520874,
+          "totalMs": 16.74500000476837,
+          "transferredNodes": 2,
+          "nodes": 5,
+          "primary": {
+            "audioBlocks": 1396,
+            "publishedRequest": 47,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1380,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 24,
+          "preparationMs": 0.06499993801116943,
+          "totalMs": 16.24500000476837,
+          "transferredNodes": 2,
+          "nodes": 4,
+          "primary": {
+            "audioBlocks": 1440,
+            "publishedRequest": 49,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1424,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        }
+      ],
+      "recovery": {
+        "rejected": "Project has an unknown, duplicate, or invalid graph node",
+        "preflight": true,
+        "compilerFailure": {
+          "rejected": "Error: Rust rejected graph preparation",
+          "injectedCycle": true,
+          "diagnostics": {
+            "audioBlocks": 1476,
+            "publishedRequest": 49,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        "lastEdit": {
+          "preparationMs": 0.05000007152557373,
+          "totalMs": 4.489999890327454,
+          "transferredNodes": 2
+        },
+        "diagnostics": {
+          "audioBlocks": 1480,
+          "publishedRequest": 52,
+          "rustProcessingFailures": 0,
+          "transferredNodes": 2,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "memoryBytes": 16777216,
+          "bridgeLatencyBlocks": 0
+        }
+      },
+      "compilerStall": {
+        "durationMs": 250.05000007152557,
+        "before": {
+          "primary": {
+            "audioBlocks": 1480,
+            "publishedRequest": 52,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1464,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        "after": {
+          "primary": {
+            "audioBlocks": 1572,
+            "publishedRequest": 52,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 2,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1556,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        }
+      },
+      "latency": {
+        "p50Ms": 16.764999985694885,
+        "p95Ms": 18.759999990463257,
+        "maxMs": 23.919999957084656
+      },
+      "primaryRecording": {
+        "signal": {
+          "frames": 183808,
+          "seconds": 3.8293333333333335,
+          "rms": 0.05397628091521721,
+          "peak": 0.11974047124385834,
+          "zeroRunsAtLeast128Frames": []
+        },
+        "overflow": false,
+        "firstContextFrame": 56832,
+        "lastContextFrame": 240640
+      },
+      "secondaryRecording": {
+        "signal": {
+          "frames": 183808,
+          "seconds": 3.8293333333333335,
+          "rms": 0.056569751579127865,
+          "peak": 0.07999999076128006,
+          "zeroRunsAtLeast128Frames": []
+        },
+        "overflow": false,
+        "firstContextFrame": 56832,
+        "lastContextFrame": 240640
+      },
+      "finalGraph": {
+        "format": "manifold.project",
+        "schemaVersion": 1,
+        "projectId": "manifold.graph-workspace",
+        "signal": {
+          "inputs": 2,
+          "outputs": 2,
+          "inputSource": "external",
+          "nodes": [
+            {
+              "id": 1,
+              "type": "input.raw"
+            },
+            {
+              "id": 3,
+              "type": "output"
+            },
+            {
+              "id": 4,
+              "type": "gain",
+              "a": 0.7
+            },
+            {
+              "id": 5,
+              "type": "stereo-widener"
+            }
+          ],
+          "connections": [
+            {
+              "from": 5,
+              "outputPort": 0,
+              "to": 3,
+              "inputPort": 0
+            },
+            {
+              "from": 1,
+              "outputPort": 0,
+              "to": 4,
+              "inputPort": 0
+            },
+            {
+              "from": 4,
+              "outputPort": 0,
+              "to": 5,
+              "inputPort": 0
+            }
+          ],
+          "initialParameters": [
+            {
+              "nodeId": 4,
+              "id": 0,
+              "value": 0.375
+            },
+            {
+              "nodeId": 5,
+              "id": 0,
+              "value": 0.25
+            },
+            {
+              "nodeId": 5,
+              "id": 1,
+              "value": 120
+            },
+            {
+              "nodeId": 5,
+              "id": 2,
+              "value": 1
+            }
+          ]
+        },
+        "endpoints": [
+          {
+            "path": "/dsp/live/input_gain",
+            "kind": "parameter",
+            "nodeId": 4,
+            "id": 0,
+            "min": 0,
+            "max": 2,
+            "default": 1
+          },
+          {
+            "path": "/dsp/live/width",
+            "kind": "parameter",
+            "nodeId": 5,
+            "id": 0,
+            "min": 0,
+            "max": 1,
+            "default": 0.25
+          }
+        ],
+        "hostBindings": [
+          {
+            "slot": 0,
+            "nodeId": 4,
+            "id": 0
+          },
+          {
+            "slot": 1,
+            "nodeId": 5,
+            "id": 0
+          }
+        ],
+        "instances": [
+          {
+            "path": "/dsp/live/nodes/input_trim",
+            "nodeId": 4
+          },
+          {
+            "path": "/dsp/live/nodes/width",
+            "nodeId": 5
+          }
+        ]
+      },
+      "hashes": {
+        "crates/manifold-web/src/prepared_worklet.rs": "6b8c7a64472b6bc824dcd7bca28b14eb9dc29195a6adc718c8bbffb336e5c115",
+        "crates/manifold-web/src/lib.rs": "05561f326808015253f5139b3c1b68a0d3f52a99cda5390b395916d44694774d",
+        "packages/manifold-author/experimental/prepared-host-prototype.js": "709a08e7c54eca1f3390d6a83edfe834b9a8fae14f23a3d7a56a119620b874d8",
+        "packages/manifold-author/experimental/prepared-processor-prototype.js": "5c9377c00dcccce499721c65e06b002a6afd14befc41c4e044907cefedbcf599",
+        "packages/manifold-author/experimental/prepared-compiler-prototype.js": "0b63988bde996459da21b7ea0eade54e3a30bdaeb48662aed2918e83ee17ef45",
+        "web/src/prepared-worklet-prototype.js": "5c1430f26e1768d4f8755282c9cd78c5d224ae5741f53e1ed99c5d31c42b795c",
+        "web/public/prepared-worklet-prototype/manifold-prepared.wasm": "6634f1bfda84dbcf2951ddcef77812ddc0b963c10e1994fb1d9b110cef245ea3",
+        "web/public/packages/dsp-live-scripting.manifold.json": "815fdd25bc4e706644e3830d55828f080ff62e4ca1544014371da38568bb5df4",
+        "web/public/packages/fx-slot-swap.manifold.json": "58ebdf136835779961f9eb6bb04366aea1869f28abafb21ca516b12eb25e423d"
+      },
+      "workersAfterClose": [],
+      "pageErrors": [],
+      "audio": "/prepared-worklet-prototype/2026-09-30-prepared-audio-thread-v2/dsp-live-scripting.wav",
+      "secondaryAudio": "/prepared-worklet-prototype/2026-09-30-prepared-audio-thread-v2/dsp-live-scripting-secondary.wav",
+      "report": "/prepared-worklet-prototype/2026-09-30-prepared-audio-thread-v2/dsp-live-scripting.json",
+      "package": "/prepared-worklet-prototype/2026-09-30-prepared-audio-thread-v2/dsp-live-scripting.manifold.json"
+    },
+    {
+      "recordedAt": "2026-09-30T02:48:39.679Z",
+      "runtime": "experimental-prepared-audio-thread",
+      "example": "fx-slot-swap",
+      "editCount": 24,
+      "sourceHz": 220,
+      "sourceGain": 0.08,
+      "hostGain": 0.375,
+      "sampleRate": 48000,
+      "renderQuantum": 128,
+      "mainThreadWorkMs": 12,
+      "bridgeLatencyBlocks": 0,
+      "contextBaseLatencySeconds": 0.010666666666666666,
+      "before": {
+        "primary": {
+          "audioBlocks": 416,
+          "publishedRequest": 1,
+          "rustProcessingFailures": 0,
+          "transferredNodes": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "memoryBytes": 16777216,
+          "bridgeLatencyBlocks": 0
+        },
+        "secondary": {
+          "audioBlocks": 400,
+          "publishedRequest": 1,
+          "rustProcessingFailures": 0,
+          "transferredNodes": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "memoryBytes": 16777216,
+          "bridgeLatencyBlocks": 0
+        }
+      },
+      "after": {
+        "primary": {
+          "audioBlocks": 1924,
+          "publishedRequest": 52,
+          "rustProcessingFailures": 0,
+          "transferredNodes": 10,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "memoryBytes": 16777216,
+          "bridgeLatencyBlocks": 0
+        },
+        "secondary": {
+          "audioBlocks": 1908,
+          "publishedRequest": 1,
+          "rustProcessingFailures": 0,
+          "transferredNodes": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "memoryBytes": 16777216,
+          "bridgeLatencyBlocks": 0
+        }
+      },
+      "edits": [
+        {
+          "index": 1,
+          "preparationMs": 0.3200000524520874,
+          "totalMs": 27.4099999666214,
+          "transferredNodes": 6,
+          "nodes": 12,
+          "primary": {
+            "audioBlocks": 428,
+            "publishedRequest": 3,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 6,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 412,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 2,
+          "preparationMs": 0.3299999237060547,
+          "totalMs": 28.5349999666214,
+          "transferredNodes": 8,
+          "nodes": 12,
+          "primary": {
+            "audioBlocks": 476,
+            "publishedRequest": 5,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 8,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 460,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 3,
+          "preparationMs": 0.20000004768371582,
+          "totalMs": 26.679999947547913,
+          "transferredNodes": 8,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 524,
+            "publishedRequest": 7,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 8,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 508,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 4,
+          "preparationMs": 0.1799999475479126,
+          "totalMs": 28.90000009536743,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 572,
+            "publishedRequest": 9,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 556,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 5,
+          "preparationMs": 0.36500000953674316,
+          "totalMs": 26.774999976158142,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 620,
+            "publishedRequest": 11,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 604,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 6,
+          "preparationMs": 0.1400001049041748,
+          "totalMs": 27.75,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 668,
+            "publishedRequest": 13,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 652,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 7,
+          "preparationMs": 0.10000002384185791,
+          "totalMs": 28.4099999666214,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 716,
+            "publishedRequest": 15,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 700,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 8,
+          "preparationMs": 0.10500001907348633,
+          "totalMs": 26.55999994277954,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 764,
+            "publishedRequest": 17,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 748,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 9,
+          "preparationMs": 0.13499999046325684,
+          "totalMs": 18.350000023841858,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 808,
+            "publishedRequest": 19,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 792,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 10,
+          "preparationMs": 0.12999999523162842,
+          "totalMs": 26.91000008583069,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 856,
+            "publishedRequest": 21,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 840,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 11,
+          "preparationMs": 0.12999999523162842,
+          "totalMs": 28.725000023841858,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 904,
+            "publishedRequest": 23,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 888,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 12,
+          "preparationMs": 0.13999998569488525,
+          "totalMs": 26.455000042915344,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 952,
+            "publishedRequest": 25,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 936,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 13,
+          "preparationMs": 0.13999998569488525,
+          "totalMs": 18.109999895095825,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 996,
+            "publishedRequest": 27,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 980,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 14,
+          "preparationMs": 0.11500000953674316,
+          "totalMs": 26.540000081062317,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 1044,
+            "publishedRequest": 29,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1028,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 15,
+          "preparationMs": 0.12000000476837158,
+          "totalMs": 18.615000009536743,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 1088,
+            "publishedRequest": 31,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1072,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 16,
+          "preparationMs": 0.12999999523162842,
+          "totalMs": 26.914999961853027,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 1136,
+            "publishedRequest": 33,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1120,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 17,
+          "preparationMs": 0.09000003337860107,
+          "totalMs": 28.615000009536743,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 1184,
+            "publishedRequest": 35,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1168,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 18,
+          "preparationMs": 0.12999999523162842,
+          "totalMs": 27.240000009536743,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 1232,
+            "publishedRequest": 37,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1216,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 19,
+          "preparationMs": 0.125,
+          "totalMs": 28.62000000476837,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 1280,
+            "publishedRequest": 39,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1264,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 20,
+          "preparationMs": 0.10000002384185791,
+          "totalMs": 26.389999985694885,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 1328,
+            "publishedRequest": 41,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1312,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 21,
+          "preparationMs": 0.10000002384185791,
+          "totalMs": 18.55999994277954,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 1372,
+            "publishedRequest": 43,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1356,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 22,
+          "preparationMs": 0.09999990463256836,
+          "totalMs": 26.414999961853027,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 1420,
+            "publishedRequest": 45,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1404,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 23,
+          "preparationMs": 0.13499999046325684,
+          "totalMs": 18,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 1464,
+            "publishedRequest": 47,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1448,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        {
+          "index": 24,
+          "preparationMs": 0.10500001907348633,
+          "totalMs": 26.264999985694885,
+          "transferredNodes": 10,
+          "nodes": 14,
+          "primary": {
+            "audioBlocks": 1512,
+            "publishedRequest": 49,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1496,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        }
+      ],
+      "recovery": {
+        "rejected": "Project has an unknown, duplicate, or invalid graph node",
+        "preflight": true,
+        "compilerFailure": {
+          "rejected": "Error: Rust rejected graph preparation",
+          "injectedCycle": true,
+          "diagnostics": {
+            "audioBlocks": 1548,
+            "publishedRequest": 49,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        "lastEdit": {
+          "preparationMs": 0.07499992847442627,
+          "totalMs": 2.4649999141693115,
+          "transferredNodes": 10
+        },
+        "diagnostics": {
+          "audioBlocks": 1552,
+          "publishedRequest": 52,
+          "rustProcessingFailures": 0,
+          "transferredNodes": 10,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "memoryBytes": 16777216,
+          "bridgeLatencyBlocks": 0
+        }
+      },
+      "compilerStall": {
+        "durationMs": 250.20499992370605,
+        "before": {
+          "primary": {
+            "audioBlocks": 1552,
+            "publishedRequest": 52,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1536,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        },
+        "after": {
+          "primary": {
+            "audioBlocks": 1644,
+            "publishedRequest": 52,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 10,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          },
+          "secondary": {
+            "audioBlocks": 1628,
+            "publishedRequest": 1,
+            "rustProcessingFailures": 0,
+            "transferredNodes": 0,
+            "rustCallbackAllocations": 0,
+            "rustCallbackDeallocations": 0,
+            "memoryBytes": 16777216,
+            "bridgeLatencyBlocks": 0
+          }
+        }
+      },
+      "latency": {
+        "p50Ms": 26.679999947547913,
+        "p95Ms": 28.725000023841858,
+        "maxMs": 28.90000009536743
+      },
+      "primaryRecording": {
+        "signal": {
+          "frames": 193024,
+          "seconds": 4.021333333333334,
+          "rms": 0.014952091500684913,
+          "peak": 0.024000221863389015,
+          "zeroRunsAtLeast128Frames": []
+        },
+        "overflow": false,
+        "firstContextFrame": 57344,
+        "lastContextFrame": 250368
+      },
+      "secondaryRecording": {
+        "signal": {
+          "frames": 193024,
+          "seconds": 4.021333333333334,
+          "rms": 0.05656518094814267,
+          "peak": 0.07999999076128006,
+          "zeroRunsAtLeast128Frames": []
+        },
+        "overflow": false,
+        "firstContextFrame": 57344,
+        "lastContextFrame": 250368
+      },
+      "finalGraph": {
+        "format": "manifold.project",
+        "schemaVersion": 1,
+        "projectId": "manifold.graph-workspace",
+        "signal": {
+          "inputs": 2,
+          "outputs": 2,
+          "inputSource": "external",
+          "nodes": [
+            {
+              "id": 1,
+              "type": "input.raw"
+            },
+            {
+              "id": 3,
+              "type": "output"
+            },
+            {
+              "id": 4,
+              "type": "gain",
+              "a": 0.7
+            },
+            {
+              "id": 6,
+              "type": "gain",
+              "a": 0.7
+            },
+            {
+              "id": 7,
+              "type": "gain",
+              "a": 0.7
+            },
+            {
+              "id": 8,
+              "type": "sum2",
+              "a": 1,
+              "b": 1
+            },
+            {
+              "id": 10,
+              "type": "gain",
+              "a": 0.7
+            },
+            {
+              "id": 11,
+              "type": "gain",
+              "a": 0.7
+            },
+            {
+              "id": 12,
+              "type": "sum2",
+              "a": 1,
+              "b": 1
+            },
+            {
+              "id": 13,
+              "type": "gain",
+              "a": 0.7
+            },
+            {
+              "id": 14,
+              "type": "stereo-widener"
+            },
+            {
+              "id": 15,
+              "type": "gain",
+              "a": 0.7
+            },
+            {
+              "id": 16,
+              "type": "stereo-widener"
+            },
+            {
+              "id": 17,
+              "type": "gain",
+              "a": 0.7
+            }
+          ],
+          "connections": [
+            {
+              "from": 13,
+              "outputPort": 0,
+              "to": 3,
+              "inputPort": 0
+            },
+            {
+              "from": 1,
+              "outputPort": 0,
+              "to": 4,
+              "inputPort": 0
+            },
+            {
+              "from": 4,
+              "outputPort": 0,
+              "to": 6,
+              "inputPort": 0
+            },
+            {
+              "from": 6,
+              "outputPort": 0,
+              "to": 7,
+              "inputPort": 0
+            },
+            {
+              "from": 7,
+              "outputPort": 0,
+              "to": 8,
+              "inputPort": 0
+            },
+            {
+              "from": 15,
+              "outputPort": 0,
+              "to": 8,
+              "inputPort": 1
+            },
+            {
+              "from": 8,
+              "outputPort": 0,
+              "to": 10,
+              "inputPort": 0
+            },
+            {
+              "from": 10,
+              "outputPort": 0,
+              "to": 11,
+              "inputPort": 0
+            },
+            {
+              "from": 11,
+              "outputPort": 0,
+              "to": 12,
+              "inputPort": 0
+            },
+            {
+              "from": 17,
+              "outputPort": 0,
+              "to": 12,
+              "inputPort": 1
+            },
+            {
+              "from": 12,
+              "outputPort": 0,
+              "to": 13,
+              "inputPort": 0
+            },
+            {
+              "from": 4,
+              "outputPort": 0,
+              "to": 14,
+              "inputPort": 0
+            },
+            {
+              "from": 14,
+              "outputPort": 0,
+              "to": 15,
+              "inputPort": 0
+            },
+            {
+              "from": 8,
+              "outputPort": 0,
+              "to": 16,
+              "inputPort": 0
+            },
+            {
+              "from": 16,
+              "outputPort": 0,
+              "to": 17,
+              "inputPort": 0
+            }
+          ],
+          "initialParameters": [
+            {
+              "nodeId": 4,
+              "id": 0,
+              "value": 0.375
+            },
+            {
+              "nodeId": 6,
+              "id": 0,
+              "value": 0.8
+            },
+            {
+              "nodeId": 7,
+              "id": 0,
+              "value": 1
+            },
+            {
+              "nodeId": 10,
+              "id": 0,
+              "value": 0.8
+            },
+            {
+              "nodeId": 11,
+              "id": 0,
+              "value": 1
+            },
+            {
+              "nodeId": 13,
+              "id": 0,
+              "value": 1
+            },
+            {
+              "nodeId": 14,
+              "id": 0,
+              "value": 1.6
+            },
+            {
+              "nodeId": 14,
+              "id": 1,
+              "value": 160
+            },
+            {
+              "nodeId": 14,
+              "id": 2,
+              "value": 1
+            },
+            {
+              "nodeId": 15,
+              "id": 0,
+              "value": 0
+            },
+            {
+              "nodeId": 16,
+              "id": 0,
+              "value": 1.6
+            },
+            {
+              "nodeId": 16,
+              "id": 1,
+              "value": 160
+            },
+            {
+              "nodeId": 16,
+              "id": 2,
+              "value": 1
+            },
+            {
+              "nodeId": 17,
+              "id": 0,
+              "value": 0
+            }
+          ]
+        },
+        "endpoints": [
+          {
+            "path": "/test/fxslot/input_gain",
+            "kind": "parameter",
+            "nodeId": 4,
+            "id": 0,
+            "min": 0,
+            "max": 2,
+            "default": 1
+          }
+        ],
+        "hostBindings": [
+          {
+            "slot": 0,
+            "nodeId": 4,
+            "id": 0
+          }
+        ],
+        "controls": [
+          {
+            "path": "/test/fxslot/slotA/gain/amount",
+            "min": 0,
+            "max": 2,
+            "default": 0.8,
+            "value": 0.8,
+            "discrete": false
+          },
+          {
+            "path": "/test/fxslot/slotA/select",
+            "min": 0,
+            "max": 1,
+            "default": 0,
+            "value": 0,
+            "discrete": true
+          },
+          {
+            "path": "/test/fxslot/slotA/width/amount",
+            "min": 0,
+            "max": 2,
+            "default": 1.6,
+            "value": 1.6,
+            "discrete": false
+          },
+          {
+            "path": "/test/fxslot/slotB/gain/amount",
+            "min": 0,
+            "max": 2,
+            "default": 0.8,
+            "value": 0.8,
+            "discrete": false
+          },
+          {
+            "path": "/test/fxslot/slotB/select",
+            "min": 0,
+            "max": 1,
+            "default": 0,
+            "value": 0,
+            "discrete": true
+          },
+          {
+            "path": "/test/fxslot/slotB/width/amount",
+            "min": 0,
+            "max": 2,
+            "default": 1.6,
+            "value": 1.6,
+            "discrete": false
+          }
+        ],
+        "instances": [
+          {
+            "path": "/test/fxslot/nodes/input_trim",
+            "nodeId": 4
+          },
+          {
+            "path": "/test/fxslot/nodes/master",
+            "nodeId": 13
+          },
+          {
+            "path": "/test/fxslot/slotA/nodes/gain",
+            "nodeId": 6
+          },
+          {
+            "path": "/test/fxslot/slotA/nodes/gain_gate",
+            "nodeId": 7
+          },
+          {
+            "path": "/test/fxslot/slotA/nodes/mix",
+            "nodeId": 8
+          },
+          {
+            "path": "/test/fxslot/slotA/nodes/width",
+            "nodeId": 14
+          },
+          {
+            "path": "/test/fxslot/slotA/nodes/width_gate",
+            "nodeId": 15
+          },
+          {
+            "path": "/test/fxslot/slotB/nodes/gain",
+            "nodeId": 10
+          },
+          {
+            "path": "/test/fxslot/slotB/nodes/gain_gate",
+            "nodeId": 11
+          },
+          {
+            "path": "/test/fxslot/slotB/nodes/mix",
+            "nodeId": 12
+          },
+          {
+            "path": "/test/fxslot/slotB/nodes/width",
+            "nodeId": 16
+          },
+          {
+            "path": "/test/fxslot/slotB/nodes/width_gate",
+            "nodeId": 17
+          }
+        ]
+      },
+      "hashes": {
+        "crates/manifold-web/src/prepared_worklet.rs": "6b8c7a64472b6bc824dcd7bca28b14eb9dc29195a6adc718c8bbffb336e5c115",
+        "crates/manifold-web/src/lib.rs": "05561f326808015253f5139b3c1b68a0d3f52a99cda5390b395916d44694774d",
+        "packages/manifold-author/experimental/prepared-host-prototype.js": "709a08e7c54eca1f3390d6a83edfe834b9a8fae14f23a3d7a56a119620b874d8",
+        "packages/manifold-author/experimental/prepared-processor-prototype.js": "5c9377c00dcccce499721c65e06b002a6afd14befc41c4e044907cefedbcf599",
+        "packages/manifold-author/experimental/prepared-compiler-prototype.js": "0b63988bde996459da21b7ea0eade54e3a30bdaeb48662aed2918e83ee17ef45",
+        "web/src/prepared-worklet-prototype.js": "5c1430f26e1768d4f8755282c9cd78c5d224ae5741f53e1ed99c5d31c42b795c",
+        "web/public/prepared-worklet-prototype/manifold-prepared.wasm": "6634f1bfda84dbcf2951ddcef77812ddc0b963c10e1994fb1d9b110cef245ea3",
+        "web/public/packages/dsp-live-scripting.manifold.json": "815fdd25bc4e706644e3830d55828f080ff62e4ca1544014371da38568bb5df4",
+        "web/public/packages/fx-slot-swap.manifold.json": "58ebdf136835779961f9eb6bb04366aea1869f28abafb21ca516b12eb25e423d"
+      },
+      "workersAfterClose": [],
+      "pageErrors": [],
+      "audio": "/prepared-worklet-prototype/2026-09-30-prepared-audio-thread-v2/fx-slot-swap.wav",
+      "secondaryAudio": "/prepared-worklet-prototype/2026-09-30-prepared-audio-thread-v2/fx-slot-swap-secondary.wav",
+      "report": "/prepared-worklet-prototype/2026-09-30-prepared-audio-thread-v2/fx-slot-swap.json",
+      "package": "/prepared-worklet-prototype/2026-09-30-prepared-audio-thread-v2/fx-slot-swap.manifold.json"
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-29T08:46:12.872Z",
+  "fixture": "projects/graph-workspace/authored-rack-noise.json",
+  "fixtureSha256": "4eebcbee423a53c139681293eefa76ed99ca8b4f0b59c70e2f5f7e4b0d046609",
+  "wasmSha256": "25e23370127b0e8bfbc4ff9e2cb6ea89fa1b988780ee870210662832c91aef51",
+  "nativeBinarySha256": "62c3e571b534e1fa66a823db21993a7968c20443d88d4d9ab96812714ccda04b",
+  "platform": "linux",
+  "arch": "x64",
+  "cpu": "AMD Ryzen 9 3900X 12-Core Processor",
+  "node": "v25.2.1",
+  "deadlineUs": 2666.6666666666665,
+  "patchable": true,
+  "runs": [
+    {
+      "native": {
+        "blockFrames": 128,
+        "maxUs": 22.38,
+        "measuredBlocks": 2048,
+        "method": "release Rust patchable NativeProcessor::process, offline",
+        "outputChecksum": 909.2107751406729,
+        "overDeadline": 0,
+        "p50Us": 6.22,
+        "p95Us": 6.24,
+        "p99Us": 8.399999999999999,
+        "parseMs": 0.363825,
+        "prepareMs": 0.5794809999999999,
+        "sampleRate": 48000,
+        "warmupBlocks": 128
+      },
+      "wasm": {
+        "method": "Node/V8 simulated patchable AudioWorklet process, offline",
+        "sampleRate": 48000,
+        "blockFrames": 128,
+        "warmupBlocks": 128,
+        "measuredBlocks": 2048,
+        "initMs": 20.516345,
+        "p50Us": 10.24,
+        "p95Us": 18.869,
+        "p99Us": 23.21,
+        "maxUs": 1439.788,
+        "overDeadline": 0,
+        "outputChecksum": 909.2107747140944,
+        "memoryBeforeBytes": 24182784,
+        "memoryAfterBytes": 24182784
+      }
+    },
+    {
+      "native": {
+        "blockFrames": 128,
+        "maxUs": 36.498999999999995,
+        "measuredBlocks": 2048,
+        "method": "release Rust patchable NativeProcessor::process, offline",
+        "outputChecksum": 909.2107751406729,
+        "overDeadline": 0,
+        "p50Us": 6.2299999999999995,
+        "p95Us": 6.28,
+        "p99Us": 8.1,
+        "parseMs": 0.369105,
+        "prepareMs": 0.5378409999999999,
+        "sampleRate": 48000,
+        "warmupBlocks": 128
+      },
+      "wasm": {
+        "method": "Node/V8 simulated patchable AudioWorklet process, offline",
+        "sampleRate": 48000,
+        "blockFrames": 128,
+        "warmupBlocks": 128,
+        "measuredBlocks": 2048,
+        "initMs": 14.030654,
+        "p50Us": 10.23,
+        "p95Us": 12.45,
+        "p99Us": 17.61,
+        "maxUs": 141.898,
+        "overDeadline": 0,
+        "outputChecksum": 909.2107747140944,
+        "memoryBeforeBytes": 24182784,
+        "memoryAfterBytes": 24182784
+      }
+    },
+    {
+      "native": {
+        "blockFrames": 128,
+        "maxUs": 33.528999999999996,
+        "measuredBlocks": 2048,
+        "method": "release Rust patchable NativeProcessor::process, offline",
+        "outputChecksum": 909.2107751406729,
+        "overDeadline": 0,
+        "p50Us": 6.22,
+        "p95Us": 7.7700000000000005,
+        "p99Us": 12.989999999999998,
+        "parseMs": 0.362525,
+        "prepareMs": 0.556381,
+        "sampleRate": 48000,
+        "warmupBlocks": 128
+      },
+      "wasm": {
+        "method": "Node/V8 simulated patchable AudioWorklet process, offline",
+        "sampleRate": 48000,
+        "blockFrames": 128,
+        "warmupBlocks": 128,
+        "measuredBlocks": 2048,
+        "initMs": 19.915014,
+        "p50Us": 10.579,
+        "p95Us": 16.729,
+        "p99Us": 22.799,
+        "maxUs": 94.439,
+        "overDeadline": 0,
+        "outputChecksum": 909.2107747140944,
+        "memoryBeforeBytes": 24182784,
+        "memoryAfterBytes": 24182784
+      }
+    }
+  ],
+  "medianOfRuns": {
+    "native": {
+      "p50Us": 6.22,
+      "p95Us": 6.28,
+      "p99Us": 8.399999999999999,
+      "maxUs": 33.528999999999996
+    },
+    "wasm": {
+      "p50Us": 10.24,
+      "p95Us": 16.729,
+      "p99Us": 22.799,
+      "maxUs": 141.898
+    }
+  },
+  "limits": "Offline sequential runs; native and Wasm adapters differ; no actual browser/DAW callback scheduling or old C++ graph measured."
+}

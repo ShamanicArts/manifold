@@ -1,0 +1,201 @@
+{
+  "records": [
+    {
+      "i": 0,
+      "targets": [
+        {
+          "id": "B3DA3A80DEDC52453307C3B06B667161",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-ChMePZb7.js"
+        }
+      ],
+      "state": {
+        "diagnostics": {
+          "audioBlocks": 40,
+          "underruns": 0,
+          "pendingRetirements": 0,
+          "lastRetirementMs": 4.134999990463257,
+          "deferredPublicationBlocks": 0,
+          "publications": 1,
+          "lastPublicationTarget": 29,
+          "maxRenderLagBlocks": 12,
+          "workerLateBlocks": 0,
+          "missingOutputBlocks": 0,
+          "frameMismatchBlocks": 0,
+          "startupMutedBlocks": 12,
+          "recentUnderruns": [],
+          "activeSlot": 1,
+          "outputLatencyBlocks": 4,
+          "lastPreparationMs": 4.479999899864197,
+          "lastPublicationMs": 43.80999994277954,
+          "lastTransferredNodes": 2
+        },
+        "profile": {
+          "blocks": 12,
+          "p50Us": 15,
+          "p95Us": 160,
+          "p99Us": 160,
+          "maxUs": 160,
+          "service": null
+        }
+      }
+    },
+    {
+      "i": 1,
+      "targets": [
+        {
+          "id": "87DFD2FE28BD2FEDFF271AF72365B13D",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-ChMePZb7.js"
+        }
+      ],
+      "state": {
+        "diagnostics": {
+          "audioBlocks": 64,
+          "underruns": 0,
+          "pendingRetirements": 0,
+          "lastRetirementMs": 4.319999933242798,
+          "deferredPublicationBlocks": 0,
+          "publications": 2,
+          "lastPublicationTarget": 49,
+          "maxRenderLagBlocks": 12,
+          "workerLateBlocks": 0,
+          "missingOutputBlocks": 0,
+          "frameMismatchBlocks": 0,
+          "startupMutedBlocks": 12,
+          "recentUnderruns": [],
+          "activeSlot": 0,
+          "outputLatencyBlocks": 4,
+          "lastPreparationMs": 3.5700000524520874,
+          "lastPublicationMs": 39.41499996185303,
+          "lastTransferredNodes": 2
+        },
+        "profile": {
+          "blocks": 16,
+          "p50Us": 5,
+          "p95Us": 65,
+          "p99Us": 65,
+          "maxUs": 65,
+          "service": null
+        }
+      }
+    },
+    {
+      "i": 2,
+      "targets": [
+        {
+          "id": "56C2205CCCB7DDC1D18F033F7C325874",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-ChMePZb7.js"
+        }
+      ],
+      "state": {
+        "diagnostics": {
+          "audioBlocks": 80,
+          "underruns": 0,
+          "pendingRetirements": 0,
+          "lastRetirementMs": 4.1549999713897705,
+          "deferredPublicationBlocks": 0,
+          "publications": 3,
+          "lastPublicationTarget": 73,
+          "maxRenderLagBlocks": 12,
+          "workerLateBlocks": 0,
+          "missingOutputBlocks": 0,
+          "frameMismatchBlocks": 0,
+          "startupMutedBlocks": 12,
+          "recentUnderruns": [],
+          "activeSlot": 1,
+          "outputLatencyBlocks": 4,
+          "lastPreparationMs": 3.2699999809265137,
+          "lastPublicationMs": 37.269999980926514,
+          "lastTransferredNodes": 2
+        },
+        "profile": {
+          "blocks": 8,
+          "p50Us": 15,
+          "p95Us": 35,
+          "p99Us": 35,
+          "maxUs": 35,
+          "service": null
+        }
+      }
+    },
+    {
+      "i": 3,
+      "targets": [
+        {
+          "id": "45ACF315583C4A5BFB1A1B063510F825",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-ChMePZb7.js"
+        }
+      ],
+      "state": {
+        "diagnostics": {
+          "audioBlocks": 96,
+          "underruns": 0,
+          "pendingRetirements": 0,
+          "lastRetirementMs": 4.170000076293945,
+          "deferredPublicationBlocks": 0,
+          "publications": 4,
+          "lastPublicationTarget": 89,
+          "maxRenderLagBlocks": 12,
+          "workerLateBlocks": 0,
+          "missingOutputBlocks": 0,
+          "frameMismatchBlocks": 0,
+          "startupMutedBlocks": 12,
+          "recentUnderruns": [],
+          "activeSlot": 0,
+          "outputLatencyBlocks": 4,
+          "lastPreparationMs": 2.6699999570846558,
+          "lastPublicationMs": 32.235000014305115,
+          "lastTransferredNodes": 2
+        },
+        "profile": {
+          "blocks": 8,
+          "p50Us": 10,
+          "p95Us": 25,
+          "p99Us": 25,
+          "maxUs": 25,
+          "service": null
+        }
+      }
+    },
+    {
+      "i": "tail",
+      "targets": [
+        {
+          "id": "45ACF315583C4A5BFB1A1B063510F825",
+          "url": "https://wubulon.tailfac9f9.ts.net:4174/assets/graph-worker-ChMePZb7.js"
+        }
+      ],
+      "state": {
+        "diagnostics": {
+          "audioBlocks": 380,
+          "underruns": 0,
+          "pendingRetirements": 0,
+          "lastRetirementMs": 4.170000076293945,
+          "deferredPublicationBlocks": 0,
+          "publications": 4,
+          "lastPublicationTarget": 89,
+          "maxRenderLagBlocks": 12,
+          "workerLateBlocks": 0,
+          "missingOutputBlocks": 0,
+          "frameMismatchBlocks": 0,
+          "startupMutedBlocks": 12,
+          "recentUnderruns": [],
+          "activeSlot": 0,
+          "outputLatencyBlocks": 4,
+          "lastPreparationMs": 2.6699999570846558,
+          "lastPublicationMs": 32.235000014305115,
+          "lastTransferredNodes": 2
+        },
+        "profile": {
+          "blocks": 292,
+          "p50Us": 5,
+          "p95Us": 20,
+          "p99Us": 45,
+          "maxUs": 80,
+          "service": null
+        }
+      }
+    }
+  ],
+  "afterClose": [],
+  "errors": []
+}

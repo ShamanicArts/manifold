@@ -1,0 +1,5 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling manifold-core v0.1.0 (/home/shamanic/dev/Manifold-v2/crates/manifold-core)
+   Compiling manifold-web v0.1.0 (/home/shamanic/dev/Manifold-v2/crates/manifold-web)
+    Finished `release` profile [optimized] target(s) in 5.50s

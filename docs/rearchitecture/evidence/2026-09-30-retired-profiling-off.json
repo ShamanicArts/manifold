@@ -1,0 +1,345 @@
+{
+  "recordedAt": "2026-09-30T01:04:37.680Z",
+  "status": "complete",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174",
+  "chromiumVersion": "152.0.7977.82",
+  "audioRouting": "scripts/with-private-null-audio.py disposable null sink",
+  "hashes": {
+    "packages/manifold-author/browser.js": "39c03c00635e13dc0855e3c018275543647a19f23d07001f0cbc142cf63b4158",
+    "packages/manifold-author/shared-graph-processor.js": "6fd78f3d46ff1134cea2d1079b96fe1a8006a54cea96a25c591aa4bd41f7eee8",
+    "packages/manifold-author/worker-transport.js": "c8f5cc1223703f2ebe0f3c6d918988c7fa69ca3a49cf0341995d1bb279815347",
+    "packages/manifold-author/graph-worker.js": "136e7a29b67ac1472b98bd4079ce25f6f433db3c379f758ac5c432b78c2cb28f",
+    "web/src/graph-runtime-review.js": "832ebb49cf1fa718e59ac524d680215a73fd665b60503f2952133596fa0473de",
+    "web/src/runtime-review-recorder.js": "2b2ee9f85c3b4712fb7937c47911c97f295638210a02848ed7453c445e01fbc6",
+    "packages/manifold-author/runtime/manifold_filter.wasm": "15eb5f0f174f276b68dd98280dbad101701701ff07eaefe1cdda3f510205058f"
+  },
+  "pageErrors": [],
+  "runs": [
+    {
+      "example": "dsp-live-scripting",
+      "profiling": false,
+      "signal": {
+        "frames": 208896,
+        "seconds": 4.352,
+        "rms": 0.056896773866202746,
+        "peak": 0.12521691620349884,
+        "zeroRunsAtLeast128Frames": []
+      },
+      "secondarySignal": {
+        "frames": 208896,
+        "seconds": 4.352,
+        "rms": 0.036202937677993395,
+        "peak": 0.05119999870657921,
+        "zeroRunsAtLeast128Frames": []
+      },
+      "latency": {
+        "p50Ms": 48.44500005245209,
+        "p95Ms": 51.99500000476837,
+        "maxMs": 55.81499993801117
+      },
+      "cadence": {
+        "clock": "Date.now",
+        "resolutionMs": 1,
+        "clockOriginUnixMs": 1790730263101,
+        "overflow": false,
+        "callbacks": 1632,
+        "gapP50Ms": 0,
+        "gapP95Ms": 11,
+        "maxGapMs": 12,
+        "maxSameMillisecondCallbacks": 4
+      },
+      "secondaryCadence": {
+        "clock": "Date.now",
+        "resolutionMs": 1,
+        "clockOriginUnixMs": 1790730263101,
+        "overflow": false,
+        "callbacks": 1632,
+        "gapP50Ms": 0,
+        "gapP95Ms": 11,
+        "maxGapMs": 12,
+        "maxSameMillisecondCallbacks": 4
+      },
+      "finalWorkerProfiles": {
+        "primary": {
+          "blocks": 328,
+          "p50Us": 5,
+          "p95Us": 15,
+          "p99Us": 20,
+          "maxUs": 30,
+          "service": null
+        },
+        "secondary": {
+          "blocks": 2012,
+          "p50Us": 5,
+          "p95Us": 20,
+          "p99Us": 30,
+          "maxUs": 75,
+          "service": null
+        }
+      },
+      "before": {
+        "primary": {
+          "audioBlocks": 408,
+          "underruns": 0,
+          "pendingRetirements": 0,
+          "lastRetirementMs": null,
+          "deferredPublicationBlocks": 0,
+          "publications": 0,
+          "lastPublicationTarget": 0,
+          "maxRenderLagBlocks": 12,
+          "workerLateBlocks": 0,
+          "missingOutputBlocks": 0,
+          "frameMismatchBlocks": 0,
+          "startupMutedBlocks": 12,
+          "recentUnderruns": [],
+          "activeSlot": 0,
+          "outputLatencyBlocks": 4,
+          "lastPreparationMs": 5.480000019073486,
+          "lastPublicationMs": null,
+          "lastTransferredNodes": null
+        },
+        "secondary": {
+          "audioBlocks": 384,
+          "underruns": 0,
+          "pendingRetirements": 0,
+          "lastRetirementMs": null,
+          "deferredPublicationBlocks": 0,
+          "publications": 0,
+          "lastPublicationTarget": 0,
+          "maxRenderLagBlocks": 7,
+          "workerLateBlocks": 0,
+          "missingOutputBlocks": 0,
+          "frameMismatchBlocks": 0,
+          "startupMutedBlocks": 8,
+          "recentUnderruns": [],
+          "activeSlot": 0,
+          "outputLatencyBlocks": 4,
+          "lastPreparationMs": 3.174999952316284,
+          "lastPublicationMs": null,
+          "lastTransferredNodes": null
+        }
+      },
+      "after": {
+        "primary": {
+          "audioBlocks": 2040,
+          "underruns": 0,
+          "pendingRetirements": 0,
+          "lastRetirementMs": 4.105000019073486,
+          "deferredPublicationBlocks": 0,
+          "publications": 24,
+          "lastPublicationTarget": 1713,
+          "maxRenderLagBlocks": 12,
+          "workerLateBlocks": 0,
+          "missingOutputBlocks": 0,
+          "frameMismatchBlocks": 0,
+          "startupMutedBlocks": 12,
+          "recentUnderruns": [],
+          "activeSlot": 0,
+          "outputLatencyBlocks": 4,
+          "lastPreparationMs": 1.9950000047683716,
+          "lastPublicationMs": 31.420000076293945,
+          "lastTransferredNodes": 2
+        },
+        "secondary": {
+          "audioBlocks": 2016,
+          "underruns": 0,
+          "pendingRetirements": 0,
+          "lastRetirementMs": null,
+          "deferredPublicationBlocks": 0,
+          "publications": 0,
+          "lastPublicationTarget": 0,
+          "maxRenderLagBlocks": 7,
+          "workerLateBlocks": 0,
+          "missingOutputBlocks": 0,
+          "frameMismatchBlocks": 0,
+          "startupMutedBlocks": 8,
+          "recentUnderruns": [],
+          "activeSlot": 0,
+          "outputLatencyBlocks": 4,
+          "lastPreparationMs": 3.174999952316284,
+          "lastPublicationMs": null,
+          "lastTransferredNodes": null
+        }
+      },
+      "workersAfterClose": [],
+      "audioSha256": "6c7e29e8d37425e1c3d917f19e73695177e7d2859e457794ce89118f0edc416f",
+      "secondaryAudioSha256": "6673a5c8db24a863907e3659760e0c5058b985c82c012cacb25eeb32b407ca08",
+      "secondaryAudio": "/runtime-graph-proof/2026-09-30-retired-profiling-off/dsp-live-scripting-secondary.wav",
+      "report": "/runtime-graph-proof/2026-09-30-retired-profiling-off/dsp-live-scripting.json",
+      "audio": "/runtime-graph-proof/2026-09-30-retired-profiling-off/dsp-live-scripting.wav",
+      "package": "/runtime-graph-proof/2026-09-30-retired-profiling-off/dsp-live-scripting.manifold.json"
+    },
+    {
+      "example": "fx-slot-swap",
+      "profiling": false,
+      "signal": {
+        "frames": 223744,
+        "seconds": 4.661333333333333,
+        "rms": 0.015221892483010955,
+        "peak": 0.05119926854968071,
+        "zeroRunsAtLeast128Frames": []
+      },
+      "secondarySignal": {
+        "frames": 223744,
+        "seconds": 4.661333333333333,
+        "rms": 0.05655220647355063,
+        "peak": 0.07999999076128006,
+        "zeroRunsAtLeast128Frames": [
+          {
+            "startFrame": 147840,
+            "frames": 128,
+            "seconds": 0.0026666666666666666,
+            "contextFrame": 203136
+          }
+        ]
+      },
+      "latency": {
+        "p50Ms": 50.550000071525574,
+        "p95Ms": 91.60000002384186,
+        "maxMs": 111.66500008106232
+      },
+      "cadence": {
+        "clock": "Date.now",
+        "resolutionMs": 1,
+        "clockOriginUnixMs": 1790730270070,
+        "overflow": false,
+        "callbacks": 1748,
+        "gapP50Ms": 0,
+        "gapP95Ms": 11,
+        "maxGapMs": 15,
+        "maxSameMillisecondCallbacks": 4
+      },
+      "secondaryCadence": {
+        "clock": "Date.now",
+        "resolutionMs": 1,
+        "clockOriginUnixMs": 1790730270070,
+        "overflow": false,
+        "callbacks": 1748,
+        "gapP50Ms": 0,
+        "gapP95Ms": 11,
+        "maxGapMs": 15,
+        "maxSameMillisecondCallbacks": 4
+      },
+      "finalWorkerProfiles": {
+        "primary": {
+          "blocks": 328,
+          "p50Us": 10,
+          "p95Us": 50,
+          "p99Us": 130,
+          "maxUs": 430,
+          "service": null
+        },
+        "secondary": {
+          "blocks": 2124,
+          "p50Us": 5,
+          "p95Us": 20,
+          "p99Us": 25,
+          "maxUs": 1620,
+          "service": null
+        }
+      },
+      "before": {
+        "primary": {
+          "audioBlocks": 400,
+          "underruns": 0,
+          "pendingRetirements": 0,
+          "lastRetirementMs": null,
+          "deferredPublicationBlocks": 0,
+          "publications": 0,
+          "lastPublicationTarget": 0,
+          "maxRenderLagBlocks": 12,
+          "workerLateBlocks": 0,
+          "missingOutputBlocks": 0,
+          "frameMismatchBlocks": 0,
+          "startupMutedBlocks": 12,
+          "recentUnderruns": [],
+          "activeSlot": 0,
+          "outputLatencyBlocks": 4,
+          "lastPreparationMs": 4.25,
+          "lastPublicationMs": null,
+          "lastTransferredNodes": null
+        },
+        "secondary": {
+          "audioBlocks": 384,
+          "underruns": 0,
+          "pendingRetirements": 0,
+          "lastRetirementMs": null,
+          "deferredPublicationBlocks": 0,
+          "publications": 0,
+          "lastPublicationTarget": 0,
+          "maxRenderLagBlocks": 12,
+          "workerLateBlocks": 0,
+          "missingOutputBlocks": 0,
+          "frameMismatchBlocks": 0,
+          "startupMutedBlocks": 12,
+          "recentUnderruns": [],
+          "activeSlot": 0,
+          "outputLatencyBlocks": 4,
+          "lastPreparationMs": 2.1549999713897705,
+          "lastPublicationMs": null,
+          "lastTransferredNodes": null
+        }
+      },
+      "after": {
+        "primary": {
+          "audioBlocks": 2148,
+          "underruns": 0,
+          "pendingRetirements": 0,
+          "lastRetirementMs": 4.764999985694885,
+          "deferredPublicationBlocks": 0,
+          "publications": 24,
+          "lastPublicationTarget": 1821,
+          "maxRenderLagBlocks": 12,
+          "workerLateBlocks": 0,
+          "missingOutputBlocks": 0,
+          "frameMismatchBlocks": 0,
+          "startupMutedBlocks": 12,
+          "recentUnderruns": [],
+          "activeSlot": 0,
+          "outputLatencyBlocks": 4,
+          "lastPreparationMs": 12.425000071525574,
+          "lastPublicationMs": 51.34499990940094,
+          "lastTransferredNodes": 10
+        },
+        "secondary": {
+          "audioBlocks": 2132,
+          "underruns": 1,
+          "pendingRetirements": 0,
+          "lastRetirementMs": null,
+          "deferredPublicationBlocks": 0,
+          "publications": 0,
+          "lastPublicationTarget": 0,
+          "maxRenderLagBlocks": 12,
+          "workerLateBlocks": 1,
+          "missingOutputBlocks": 0,
+          "frameMismatchBlocks": 0,
+          "startupMutedBlocks": 12,
+          "recentUnderruns": [
+            {
+              "audioSequence": 1540,
+              "target": 1536,
+              "activeSlot": 0,
+              "outputTag": 1520,
+              "renderedSequence": 1535,
+              "reason": "worker-late",
+              "pendingPublication": 0,
+              "contextFrame": 203136
+            }
+          ],
+          "activeSlot": 0,
+          "outputLatencyBlocks": 4,
+          "lastPreparationMs": 2.1549999713897705,
+          "lastPublicationMs": null,
+          "lastTransferredNodes": null
+        }
+      },
+      "workersAfterClose": [],
+      "audioSha256": "d141436f9bbc25e1f770c685da6f82cf63ab7226c4667acd8544693d233dd3ea",
+      "secondaryAudioSha256": "48f0addff1c6f08bc7c2a09f4556fe5e083f8db4a122cd590e8775e42911676a",
+      "secondaryAudio": "/runtime-graph-proof/2026-09-30-retired-profiling-off/fx-slot-swap-secondary.wav",
+      "report": "/runtime-graph-proof/2026-09-30-retired-profiling-off/fx-slot-swap.json",
+      "audio": "/runtime-graph-proof/2026-09-30-retired-profiling-off/fx-slot-swap.wav",
+      "package": "/runtime-graph-proof/2026-09-30-retired-profiling-off/fx-slot-swap.manifold.json"
+    }
+  ]
+}

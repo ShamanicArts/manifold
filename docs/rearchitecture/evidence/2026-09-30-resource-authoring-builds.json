@@ -1,0 +1,11 @@
+{
+  "scope": "Current release binaries and Wasm artifacts. New constructor and Rust resource scenarios have offline/native and browser evidence; exported plug-in/actual DAW scenarios remain open.",
+  "sha256": {
+    "target/clap/ManifoldFX.clap": "04e768949325cdc1738aae7fbc27e4d26b891c2b7464f527427474ff24953b25",
+    "target/clap/ManifoldFX-editor": "fe4af0bcb7222e10d4580d8200794bba0949c5c051229cd1f965bf193e8a9227",
+    "target/vst3/ManifoldFX.vst3/Contents/x86_64-linux/ManifoldFX.so": "91d129dc65b4d659ba759d551fa8b4bc59b87b25a95b1825bdbc8c952130d05b",
+    "target/vst3/ManifoldFX.vst3/Contents/x86_64-linux/ManifoldFX-editor": "fe4af0bcb7222e10d4580d8200794bba0949c5c051229cd1f965bf193e8a9227",
+    "web/public/manifold_filter.wasm": "a8b2ae1eeb1eaa6983ded30e10d4ffa63cfe6509b8521beeb29b85bdd191f173",
+    "web/public/manifold_prepared.wasm": "3b71c88bbeca43711e27b3323c5e4fe3518bc13b1d2fb7630ffc37fa948676c6"
+  }
+}

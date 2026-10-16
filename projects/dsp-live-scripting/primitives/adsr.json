@@ -1,0 +1,258 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "oscillator",
+        "a": 220,
+        "b": 0.4
+      },
+      {
+        "id": 5,
+        "type": "adsr"
+      }
+    ],
+    "connections": [
+      {
+        "from": 5,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 5,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 4,
+        "id": 2,
+        "value": 0.16
+      },
+      {
+        "nodeId": 5,
+        "id": 0,
+        "value": 0.05
+      },
+      {
+        "nodeId": 5,
+        "id": 1,
+        "value": 0.2
+      },
+      {
+        "nodeId": 5,
+        "id": 2,
+        "value": 0.7
+      },
+      {
+        "nodeId": 5,
+        "id": 3,
+        "value": 0.4
+      },
+      {
+        "nodeId": 5,
+        "id": 4,
+        "value": 0
+      },
+      {
+        "nodeId": 5,
+        "id": 5,
+        "value": 0
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/primitives/adsr/envelope/0",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 0,
+      "min": 0.001,
+      "max": 5,
+      "default": 0.05
+    },
+    {
+      "path": "/primitives/adsr/envelope/1",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 1,
+      "min": 0.001,
+      "max": 5,
+      "default": 0.2
+    },
+    {
+      "path": "/primitives/adsr/envelope/2",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 2,
+      "min": 0,
+      "max": 1,
+      "default": 0.7
+    },
+    {
+      "path": "/primitives/adsr/envelope/3",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 3,
+      "min": 0.001,
+      "max": 10,
+      "default": 0.4
+    },
+    {
+      "path": "/primitives/adsr/envelope/4",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 4,
+      "min": 0,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "path": "/primitives/adsr/node/0",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 0,
+      "min": 0,
+      "max": 4,
+      "default": 0
+    },
+    {
+      "path": "/primitives/adsr/node/1",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 1,
+      "min": 20,
+      "max": 16000,
+      "default": 220
+    },
+    {
+      "path": "/primitives/adsr/node/2",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 2,
+      "min": 0,
+      "max": 1,
+      "default": 0.16
+    }
+  ],
+  "instances": [
+    {
+      "path": "/primitives/adsr/envelope",
+      "nodeId": 5
+    },
+    {
+      "path": "/primitives/adsr/node",
+      "nodeId": 4
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// ADSR envelope: Gate a constant tone through the core audio-rate envelope. Switch Gate on and off to hear attack and release.\n// Audition composition of public Rust primitives; not an instrument parity claim.\n// Examples name imports so you can trace each tool to its module.\n// Alternative: import * as manifold from '@manifold/author';\n// Then use manifold.createGraphWorkspace(), manifold.gain, etc.\n// Imports — each definition can be inspected in Manifold's primitive catalog.\nimport { createGraphWorkspace } from '@manifold/author';\nimport {\n  oscillator as oscillatorDefinition,\n  adsr as adsrDefinition,\n} from '@manifold/author/primitives';\n\nexport default function createProject() {\n  // Interface — public paths and stable IDs preserve saved controls.\n  const controls = {\n    oscillator_waveform: {\n      \"path\": \"/primitives/adsr/node/0\",\n      \"label\": \"Waveform\",\n      \"group\": \"Oscillator\",\n      \"min\": 0,\n      \"max\": 4,\n      \"default\": 0,\n      \"choices\": [\n        \"Sine\",\n        \"Saw\",\n        \"Square\",\n        \"Triangle\",\n        \"Blend\"\n      ]\n    },\n    oscillator_frequency: {\n      \"path\": \"/primitives/adsr/node/1\",\n      \"label\": \"Frequency\",\n      \"group\": \"Oscillator\",\n      \"min\": 20,\n      \"max\": 16000,\n      \"default\": 220\n    },\n    oscillator_level: {\n      \"path\": \"/primitives/adsr/node/2\",\n      \"label\": \"Level\",\n      \"group\": \"Oscillator\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0.16\n    },\n    envelope_attack: {\n      \"path\": \"/primitives/adsr/envelope/0\",\n      \"label\": \"Attack\",\n      \"group\": \"ADSR\",\n      \"min\": 0.001,\n      \"max\": 5,\n      \"default\": 0.05\n    },\n    envelope_decay: {\n      \"path\": \"/primitives/adsr/envelope/1\",\n      \"label\": \"Decay\",\n      \"group\": \"ADSR\",\n      \"min\": 0.001,\n      \"max\": 5,\n      \"default\": 0.2\n    },\n    envelope_sustain: {\n      \"path\": \"/primitives/adsr/envelope/2\",\n      \"label\": \"Sustain\",\n      \"group\": \"ADSR\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0.7\n    },\n    envelope_release: {\n      \"path\": \"/primitives/adsr/envelope/3\",\n      \"label\": \"Release\",\n      \"group\": \"ADSR\",\n      \"min\": 0.001,\n      \"max\": 10,\n      \"default\": 0.4\n    },\n    envelope_gate: {\n      \"path\": \"/primitives/adsr/envelope/4\",\n      \"label\": \"Gate\",\n      \"group\": \"ADSR\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0,\n      \"choices\": [\n        \"Off\",\n        \"On\"\n      ]\n    },\n  };\n\n  // Audio inputs and outputs — generated sound; no audio input is needed.\n  const graph = createGraphWorkspace().setInputSource('none');\n  const output = graph.output.input('in');\n\n  // DSP instances — parameters belong to these named instances.\n  const oscillator = graph.add(oscillatorDefinition.type, {\"id\":4});\n  graph.registerInstance('/primitives/adsr/node', oscillator);\n  oscillator.parameter('waveform').expose(controls.oscillator_waveform);\n  oscillator.parameter('frequency').expose(controls.oscillator_frequency);\n  oscillator.parameter('level').expose(controls.oscillator_level);\n\n  const envelope = graph.add(adsrDefinition.type, {\"id\":5});\n  graph.registerInstance('/primitives/adsr/envelope', envelope);\n  envelope.parameter('attack').expose(controls.envelope_attack);\n  envelope.parameter('decay').expose(controls.envelope_decay);\n  envelope.parameter('sustain').expose(controls.envelope_sustain);\n  envelope.parameter('release').expose(controls.envelope_release);\n  envelope.parameter('gate').expose(controls.envelope_gate);\n\n  // Composition — named ports make the audio and control paths visible.\n  graph.connect(oscillator.output('out'), envelope.input('audio'));\n  graph.connect(envelope.output('out'), output);\n\n  // Presentation — both renderers bind to the controls declared above.\n  const view = [\n    controls.oscillator_waveform,\n    controls.oscillator_frequency,\n    controls.oscillator_level,\n    controls.envelope_attack,\n    controls.envelope_decay,\n    controls.envelope_sustain,\n    controls.envelope_release,\n    controls.envelope_gate\n  ].map(control => ({\n    id: control.path, type: 'parameter', path: control.path,\n    label: control.label, group: control.group,\n    ...(control.choices ? { choices: control.choices } : {}),\n  }));\n  function paint(ui) {\n    for (const component of view) {\n      if (component.type === 'label') ui.label(component.label, component.id);\n      else ui.parameter(component.path, component);\n    }\n  }\n\n  // The host uses this project declaration for audio, UI, save and live edits.\n  return { graph, view, paint };\n}",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "/primitives/adsr/node/0",
+        "type": "parameter",
+        "path": "/primitives/adsr/node/0",
+        "label": "Waveform",
+        "group": "Oscillator",
+        "choices": [
+          "Sine",
+          "Saw",
+          "Square",
+          "Triangle",
+          "Blend"
+        ]
+      },
+      {
+        "id": "/primitives/adsr/node/1",
+        "type": "parameter",
+        "path": "/primitives/adsr/node/1",
+        "label": "Frequency",
+        "group": "Oscillator"
+      },
+      {
+        "id": "/primitives/adsr/node/2",
+        "type": "parameter",
+        "path": "/primitives/adsr/node/2",
+        "label": "Level",
+        "group": "Oscillator"
+      },
+      {
+        "id": "/primitives/adsr/envelope/0",
+        "type": "parameter",
+        "path": "/primitives/adsr/envelope/0",
+        "label": "Attack",
+        "group": "ADSR"
+      },
+      {
+        "id": "/primitives/adsr/envelope/1",
+        "type": "parameter",
+        "path": "/primitives/adsr/envelope/1",
+        "label": "Decay",
+        "group": "ADSR"
+      },
+      {
+        "id": "/primitives/adsr/envelope/2",
+        "type": "parameter",
+        "path": "/primitives/adsr/envelope/2",
+        "label": "Sustain",
+        "group": "ADSR"
+      },
+      {
+        "id": "/primitives/adsr/envelope/3",
+        "type": "parameter",
+        "path": "/primitives/adsr/envelope/3",
+        "label": "Release",
+        "group": "ADSR"
+      },
+      {
+        "id": "/primitives/adsr/envelope/4",
+        "type": "parameter",
+        "path": "/primitives/adsr/envelope/4",
+        "label": "Gate",
+        "group": "ADSR",
+        "choices": [
+          "Off",
+          "On"
+        ]
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

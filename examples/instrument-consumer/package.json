@@ -1,0 +1,17 @@
+{
+  "name": "manifold-instrument-consumer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build --base /examples/instrument-import/"
+  },
+  "dependencies": {
+    "@manifold/author": "file:../../packages/manifold-author",
+    "@manifold/ui-web": "file:../../packages/manifold-ui-web",
+    "three": "0.184.0"
+  },
+  "devDependencies": {
+    "vite": "7.3.6"
+  }
+}

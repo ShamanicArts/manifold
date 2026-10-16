@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.noise-workbench",
+  "name": "Noise generator",
+  "source": "dsp/core/nodes/NoiseGeneratorNode.cpp",
+  "signal": {
+    "inputs": 0,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      { "id": 1, "type": "noise", "a": 0.2, "b": 0 },
+      { "id": 2, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 1, "nodeParameterId": 0, "hostId": "level", "label": "Level", "kind": "float", "min": 0, "max": 1, "default": 0.2 },
+    { "id": 1, "nodeId": 1, "nodeParameterId": 1, "hostId": "color", "label": "Color · bright → dark", "kind": "float", "min": 0, "max": 1, "default": 0 }
+  ]
+}

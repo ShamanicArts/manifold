@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.phase-vocoder",
+  "name": "Phase vocoder",
+  "source": "PhaseVocoderNode.cpp: stereo bin mapping and time-stretch/resample modes; HQ cursor corrected in v2",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "oscillator",
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 2, "type": "phase-vocoder" },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ],
+    "initialParameters": [
+      { "nodeId": 2, "id": 0, "value": 0 },
+      { "nodeId": 2, "id": 1, "value": 7 },
+      { "nodeId": 2, "id": 2, "value": 1 },
+      { "nodeId": 2, "id": 3, "value": 1 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "mode", "label": "Algorithm", "kind": "select", "choices": ["Bin mapping", "Stretch + resample"], "default": 0 },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "pitch", "label": "Pitch shift", "kind": "float", "min": -24, "max": 24, "default": 7, "unit": "st" },
+    { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "time-stretch", "label": "Time stretch", "kind": "float", "min": 0.25, "max": 4, "default": 1 },
+    { "id": 3, "nodeId": 2, "nodeParameterId": 3, "hostId": "mix", "label": "Wet mix", "kind": "float", "min": 0, "max": 1, "default": 1 },
+    { "id": 4, "nodeId": 2, "nodeParameterId": 4, "hostId": "fft-order", "label": "FFT size", "kind": "select", "choices": ["512", "1024", "2048", "4096"], "choiceValues": [9, 10, 11, 12], "default": 11, "prepareOnly": true }
+  ]
+}

@@ -1,0 +1,3975 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "external",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "oscillator",
+        "a": 220,
+        "b": 0.4
+      },
+      {
+        "id": 5,
+        "type": "svf"
+      },
+      {
+        "id": 6,
+        "type": "eq8"
+      },
+      {
+        "id": 7,
+        "type": "effect-slot-legacy",
+        "a": 0,
+        "b": 0
+      },
+      {
+        "id": 8,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 9,
+        "type": "noise",
+        "a": 0.08,
+        "b": 0.5
+      },
+      {
+        "id": 10,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 11,
+        "type": "pulse-oscillator",
+        "a": 220,
+        "b": 0.4
+      },
+      {
+        "id": 12,
+        "type": "oscillator",
+        "a": 220,
+        "b": 0.4
+      },
+      {
+        "id": 13,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 14,
+        "type": "noise",
+        "a": 0.08,
+        "b": 0.5
+      },
+      {
+        "id": 15,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 16,
+        "type": "pulse-oscillator",
+        "a": 220,
+        "b": 0.4
+      },
+      {
+        "id": 17,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 18,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 19,
+        "type": "ring-modulator"
+      },
+      {
+        "id": 20,
+        "type": "ring-modulator"
+      },
+      {
+        "id": 21,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 22,
+        "type": "audio-fm"
+      },
+      {
+        "id": 23,
+        "type": "audio-fm"
+      },
+      {
+        "id": 24,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 25,
+        "type": "audio-sync"
+      },
+      {
+        "id": 26,
+        "type": "audio-sync"
+      },
+      {
+        "id": 27,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 28,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      },
+      {
+        "id": 29,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      },
+      {
+        "id": 30,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      },
+      {
+        "id": 31,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      },
+      {
+        "id": 32,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      },
+      {
+        "id": 33,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      },
+      {
+        "id": 34,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      },
+      {
+        "id": 35,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      },
+      {
+        "id": 36,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      },
+      {
+        "id": 37,
+        "type": "mixer9",
+        "a": 9,
+        "b": 1
+      },
+      {
+        "id": 38,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 39,
+        "type": "sample-region"
+      },
+      {
+        "id": 40,
+        "type": "phase-vocoder"
+      },
+      {
+        "id": 41,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 42,
+        "type": "sample-region"
+      },
+      {
+        "id": 43,
+        "type": "phase-vocoder"
+      },
+      {
+        "id": 44,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 45,
+        "type": "sample-region"
+      },
+      {
+        "id": 46,
+        "type": "phase-vocoder"
+      },
+      {
+        "id": 47,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 48,
+        "type": "sample-region"
+      },
+      {
+        "id": 49,
+        "type": "phase-vocoder"
+      },
+      {
+        "id": 50,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 51,
+        "type": "sample-region"
+      },
+      {
+        "id": 52,
+        "type": "phase-vocoder"
+      },
+      {
+        "id": 53,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 54,
+        "type": "sample-region"
+      },
+      {
+        "id": 55,
+        "type": "phase-vocoder"
+      },
+      {
+        "id": 56,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 57,
+        "type": "sample-region"
+      },
+      {
+        "id": 58,
+        "type": "phase-vocoder"
+      },
+      {
+        "id": 59,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 60,
+        "type": "sample-region"
+      },
+      {
+        "id": 61,
+        "type": "phase-vocoder"
+      },
+      {
+        "id": 62,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 63,
+        "type": "mixer9",
+        "a": 9,
+        "b": 1
+      },
+      {
+        "id": 64,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 65,
+        "type": "retrospective-capture",
+        "a": 30,
+        "b": 0
+      },
+      {
+        "id": 66,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 67,
+        "type": "input.sidechain"
+      },
+      {
+        "id": 68,
+        "type": "retrospective-capture",
+        "a": 30,
+        "b": 0
+      },
+      {
+        "id": 69,
+        "type": "sum2",
+        "a": 1,
+        "b": 1
+      }
+    ],
+    "connections": [
+      {
+        "from": 64,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 8,
+        "outputPort": 0,
+        "to": 5,
+        "inputPort": 0
+      },
+      {
+        "from": 8,
+        "outputPort": 0,
+        "to": 6,
+        "inputPort": 0
+      },
+      {
+        "from": 8,
+        "outputPort": 0,
+        "to": 7,
+        "inputPort": 0
+      },
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 8,
+        "inputPort": 0
+      },
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 10,
+        "inputPort": 0
+      },
+      {
+        "from": 12,
+        "outputPort": 0,
+        "to": 13,
+        "inputPort": 0
+      },
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 15,
+        "inputPort": 0
+      },
+      {
+        "from": 8,
+        "outputPort": 0,
+        "to": 17,
+        "inputPort": 0
+      },
+      {
+        "from": 13,
+        "outputPort": 0,
+        "to": 17,
+        "inputPort": 1
+      },
+      {
+        "from": 17,
+        "outputPort": 0,
+        "to": 18,
+        "inputPort": 0
+      },
+      {
+        "from": 8,
+        "outputPort": 0,
+        "to": 19,
+        "inputPort": 0
+      },
+      {
+        "from": 13,
+        "outputPort": 0,
+        "to": 19,
+        "inputPort": 1
+      },
+      {
+        "from": 13,
+        "outputPort": 0,
+        "to": 20,
+        "inputPort": 0
+      },
+      {
+        "from": 8,
+        "outputPort": 0,
+        "to": 20,
+        "inputPort": 1
+      },
+      {
+        "from": 19,
+        "outputPort": 0,
+        "to": 21,
+        "inputPort": 0
+      },
+      {
+        "from": 20,
+        "outputPort": 0,
+        "to": 21,
+        "inputPort": 1
+      },
+      {
+        "from": 8,
+        "outputPort": 0,
+        "to": 22,
+        "inputPort": 0
+      },
+      {
+        "from": 13,
+        "outputPort": 0,
+        "to": 22,
+        "inputPort": 1
+      },
+      {
+        "from": 13,
+        "outputPort": 0,
+        "to": 23,
+        "inputPort": 0
+      },
+      {
+        "from": 8,
+        "outputPort": 0,
+        "to": 23,
+        "inputPort": 1
+      },
+      {
+        "from": 22,
+        "outputPort": 0,
+        "to": 24,
+        "inputPort": 0
+      },
+      {
+        "from": 23,
+        "outputPort": 0,
+        "to": 24,
+        "inputPort": 1
+      },
+      {
+        "from": 8,
+        "outputPort": 0,
+        "to": 25,
+        "inputPort": 0
+      },
+      {
+        "from": 13,
+        "outputPort": 0,
+        "to": 25,
+        "inputPort": 1
+      },
+      {
+        "from": 13,
+        "outputPort": 0,
+        "to": 26,
+        "inputPort": 0
+      },
+      {
+        "from": 8,
+        "outputPort": 0,
+        "to": 26,
+        "inputPort": 1
+      },
+      {
+        "from": 25,
+        "outputPort": 0,
+        "to": 27,
+        "inputPort": 0
+      },
+      {
+        "from": 26,
+        "outputPort": 0,
+        "to": 27,
+        "inputPort": 1
+      },
+      {
+        "from": 28,
+        "outputPort": 0,
+        "to": 37,
+        "inputPort": 0
+      },
+      {
+        "from": 29,
+        "outputPort": 0,
+        "to": 37,
+        "inputPort": 1
+      },
+      {
+        "from": 30,
+        "outputPort": 0,
+        "to": 37,
+        "inputPort": 2
+      },
+      {
+        "from": 31,
+        "outputPort": 0,
+        "to": 37,
+        "inputPort": 3
+      },
+      {
+        "from": 32,
+        "outputPort": 0,
+        "to": 37,
+        "inputPort": 4
+      },
+      {
+        "from": 33,
+        "outputPort": 0,
+        "to": 37,
+        "inputPort": 5
+      },
+      {
+        "from": 34,
+        "outputPort": 0,
+        "to": 37,
+        "inputPort": 6
+      },
+      {
+        "from": 35,
+        "outputPort": 0,
+        "to": 37,
+        "inputPort": 7
+      },
+      {
+        "from": 36,
+        "outputPort": 0,
+        "to": 37,
+        "inputPort": 8
+      },
+      {
+        "from": 37,
+        "outputPort": 0,
+        "to": 38,
+        "inputPort": 0
+      },
+      {
+        "from": 39,
+        "outputPort": 0,
+        "to": 40,
+        "inputPort": 0
+      },
+      {
+        "from": 40,
+        "outputPort": 0,
+        "to": 41,
+        "inputPort": 0
+      },
+      {
+        "from": 42,
+        "outputPort": 0,
+        "to": 43,
+        "inputPort": 0
+      },
+      {
+        "from": 43,
+        "outputPort": 0,
+        "to": 44,
+        "inputPort": 0
+      },
+      {
+        "from": 45,
+        "outputPort": 0,
+        "to": 46,
+        "inputPort": 0
+      },
+      {
+        "from": 46,
+        "outputPort": 0,
+        "to": 47,
+        "inputPort": 0
+      },
+      {
+        "from": 48,
+        "outputPort": 0,
+        "to": 49,
+        "inputPort": 0
+      },
+      {
+        "from": 49,
+        "outputPort": 0,
+        "to": 50,
+        "inputPort": 0
+      },
+      {
+        "from": 51,
+        "outputPort": 0,
+        "to": 52,
+        "inputPort": 0
+      },
+      {
+        "from": 52,
+        "outputPort": 0,
+        "to": 53,
+        "inputPort": 0
+      },
+      {
+        "from": 54,
+        "outputPort": 0,
+        "to": 55,
+        "inputPort": 0
+      },
+      {
+        "from": 55,
+        "outputPort": 0,
+        "to": 56,
+        "inputPort": 0
+      },
+      {
+        "from": 57,
+        "outputPort": 0,
+        "to": 58,
+        "inputPort": 0
+      },
+      {
+        "from": 58,
+        "outputPort": 0,
+        "to": 59,
+        "inputPort": 0
+      },
+      {
+        "from": 60,
+        "outputPort": 0,
+        "to": 61,
+        "inputPort": 0
+      },
+      {
+        "from": 61,
+        "outputPort": 0,
+        "to": 62,
+        "inputPort": 0
+      },
+      {
+        "from": 41,
+        "outputPort": 0,
+        "to": 63,
+        "inputPort": 0
+      },
+      {
+        "from": 44,
+        "outputPort": 0,
+        "to": 63,
+        "inputPort": 1
+      },
+      {
+        "from": 47,
+        "outputPort": 0,
+        "to": 63,
+        "inputPort": 2
+      },
+      {
+        "from": 50,
+        "outputPort": 0,
+        "to": 63,
+        "inputPort": 3
+      },
+      {
+        "from": 53,
+        "outputPort": 0,
+        "to": 63,
+        "inputPort": 4
+      },
+      {
+        "from": 56,
+        "outputPort": 0,
+        "to": 63,
+        "inputPort": 5
+      },
+      {
+        "from": 59,
+        "outputPort": 0,
+        "to": 63,
+        "inputPort": 6
+      },
+      {
+        "from": 62,
+        "outputPort": 0,
+        "to": 63,
+        "inputPort": 7
+      },
+      {
+        "from": 66,
+        "outputPort": 0,
+        "to": 63,
+        "inputPort": 8
+      },
+      {
+        "from": 63,
+        "outputPort": 0,
+        "to": 64,
+        "inputPort": 0
+      },
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 65,
+        "inputPort": 0
+      },
+      {
+        "from": 69,
+        "outputPort": 0,
+        "to": 66,
+        "inputPort": 0
+      },
+      {
+        "from": 67,
+        "outputPort": 0,
+        "to": 68,
+        "inputPort": 0
+      },
+      {
+        "from": 65,
+        "outputPort": 0,
+        "to": 69,
+        "inputPort": 0
+      },
+      {
+        "from": 68,
+        "outputPort": 0,
+        "to": 69,
+        "inputPort": 1
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 1,
+        "value": 261.6255653005986
+      },
+      {
+        "nodeId": 4,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 5,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 5,
+        "id": 1,
+        "value": 3200
+      },
+      {
+        "nodeId": 5,
+        "id": 2,
+        "value": 0.75
+      },
+      {
+        "nodeId": 6,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 2,
+        "value": 60
+      },
+      {
+        "nodeId": 6,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 4,
+        "value": 0.8
+      },
+      {
+        "nodeId": 6,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 7,
+        "value": 120
+      },
+      {
+        "nodeId": 6,
+        "id": 8,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 10,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 12,
+        "value": 250
+      },
+      {
+        "nodeId": 6,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 14,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 17,
+        "value": 500
+      },
+      {
+        "nodeId": 6,
+        "id": 18,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 19,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 20,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 21,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 22,
+        "value": 1000
+      },
+      {
+        "nodeId": 6,
+        "id": 23,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 24,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 25,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 26,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 27,
+        "value": 2500
+      },
+      {
+        "nodeId": 6,
+        "id": 28,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 29,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 30,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 31,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 32,
+        "value": 6000
+      },
+      {
+        "nodeId": 6,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 34,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 36,
+        "value": 2
+      },
+      {
+        "nodeId": 6,
+        "id": 37,
+        "value": 12000
+      },
+      {
+        "nodeId": 6,
+        "id": 38,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 39,
+        "value": 0.8
+      },
+      {
+        "nodeId": 6,
+        "id": 40,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 41,
+        "value": 1
+      },
+      {
+        "nodeId": 7,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 7,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 7,
+        "id": 2,
+        "value": 0.5
+      },
+      {
+        "nodeId": 7,
+        "id": 3,
+        "value": 0.5
+      },
+      {
+        "nodeId": 7,
+        "id": 4,
+        "value": 0.2
+      },
+      {
+        "nodeId": 7,
+        "id": 5,
+        "value": 0.6
+      },
+      {
+        "nodeId": 7,
+        "id": 6,
+        "value": 0.4
+      },
+      {
+        "nodeId": 8,
+        "id": 0,
+        "value": 0.65
+      },
+      {
+        "nodeId": 9,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 9,
+        "id": 1,
+        "value": 0.1
+      },
+      {
+        "nodeId": 10,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 11,
+        "id": 1,
+        "value": 261.6255653005986
+      },
+      {
+        "nodeId": 11,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 11,
+        "id": 4,
+        "value": 0.25
+      },
+      {
+        "nodeId": 12,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 12,
+        "id": 1,
+        "value": 391.99543598174927
+      },
+      {
+        "nodeId": 12,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 13,
+        "id": 0,
+        "value": 0.5
+      },
+      {
+        "nodeId": 14,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 14,
+        "id": 1,
+        "value": 0.1
+      },
+      {
+        "nodeId": 15,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 16,
+        "id": 1,
+        "value": 391.99543598174927
+      },
+      {
+        "nodeId": 16,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 16,
+        "id": 4,
+        "value": 0.25
+      },
+      {
+        "nodeId": 17,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 17,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 17,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 18,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 19,
+        "id": 0,
+        "value": 120
+      },
+      {
+        "nodeId": 19,
+        "id": 1,
+        "value": 0.5
+      },
+      {
+        "nodeId": 19,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 19,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 19,
+        "id": 4,
+        "value": 1
+      },
+      {
+        "nodeId": 20,
+        "id": 0,
+        "value": 120
+      },
+      {
+        "nodeId": 20,
+        "id": 1,
+        "value": 0.5
+      },
+      {
+        "nodeId": 20,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 20,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 20,
+        "id": 4,
+        "value": 1
+      },
+      {
+        "nodeId": 21,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 21,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 21,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 22,
+        "id": 0,
+        "value": 0.5
+      },
+      {
+        "nodeId": 22,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 23,
+        "id": 0,
+        "value": 0.5
+      },
+      {
+        "nodeId": 23,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 24,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 24,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 24,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 25,
+        "id": 0,
+        "value": 0.5
+      },
+      {
+        "nodeId": 25,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 26,
+        "id": 0,
+        "value": 0.5
+      },
+      {
+        "nodeId": 26,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 27,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 27,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 27,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 28,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 28,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 28,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 28,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 28,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 28,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 28,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 12,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 28,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 29,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 29,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 29,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 29,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 29,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 29,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 29,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 29,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 29,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 29,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 29,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 29,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 29,
+        "id": 12,
+        "value": 0
+      },
+      {
+        "nodeId": 29,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 29,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 29,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 29,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 30,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 30,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 30,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 30,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 30,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 30,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 30,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 30,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 30,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 30,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 30,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 30,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 30,
+        "id": 12,
+        "value": 0
+      },
+      {
+        "nodeId": 30,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 30,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 30,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 30,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 31,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 31,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 31,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 31,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 31,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 31,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 31,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 31,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 31,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 31,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 31,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 31,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 31,
+        "id": 12,
+        "value": 0
+      },
+      {
+        "nodeId": 31,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 31,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 31,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 31,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 32,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 32,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 32,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 32,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 32,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 32,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 32,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 32,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 32,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 32,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 32,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 32,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 32,
+        "id": 12,
+        "value": 0
+      },
+      {
+        "nodeId": 32,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 32,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 32,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 32,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 33,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 33,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 33,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 33,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 33,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 33,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 33,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 33,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 33,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 33,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 33,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 33,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 33,
+        "id": 12,
+        "value": 0
+      },
+      {
+        "nodeId": 33,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 33,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 33,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 33,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 34,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 34,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 34,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 34,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 34,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 34,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 12,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 34,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 35,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 35,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 35,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 35,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 35,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 35,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 35,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 35,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 35,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 35,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 35,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 35,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 35,
+        "id": 12,
+        "value": 0
+      },
+      {
+        "nodeId": 35,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 35,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 35,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 35,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 36,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 36,
+        "id": 1,
+        "value": 261.6255653005986
+      },
+      {
+        "nodeId": 36,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 36,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 36,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 36,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 36,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 36,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 36,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 36,
+        "id": 9,
+        "value": 0
+      },
+      {
+        "nodeId": 36,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 36,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 36,
+        "id": 12,
+        "value": 0
+      },
+      {
+        "nodeId": 36,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 36,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 36,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 36,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 37,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 38,
+        "id": 0,
+        "value": 0.2
+      },
+      {
+        "nodeId": 39,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 39,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 39,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 39,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 39,
+        "id": 4,
+        "value": 0
+      },
+      {
+        "nodeId": 39,
+        "id": 5,
+        "value": 1
+      },
+      {
+        "nodeId": 39,
+        "id": 8,
+        "value": 0.1
+      },
+      {
+        "nodeId": 39,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 39,
+        "id": 10,
+        "value": 0
+      },
+      {
+        "nodeId": 39,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 40,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 40,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 40,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 40,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 40,
+        "id": 4,
+        "value": 11
+      },
+      {
+        "nodeId": 41,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 42,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 42,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 42,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 42,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 42,
+        "id": 4,
+        "value": 0
+      },
+      {
+        "nodeId": 42,
+        "id": 5,
+        "value": 1
+      },
+      {
+        "nodeId": 42,
+        "id": 8,
+        "value": 0.1
+      },
+      {
+        "nodeId": 42,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 42,
+        "id": 10,
+        "value": 0
+      },
+      {
+        "nodeId": 42,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 43,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 43,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 43,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 43,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 43,
+        "id": 4,
+        "value": 11
+      },
+      {
+        "nodeId": 44,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 45,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 45,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 45,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 45,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 45,
+        "id": 4,
+        "value": 0
+      },
+      {
+        "nodeId": 45,
+        "id": 5,
+        "value": 1
+      },
+      {
+        "nodeId": 45,
+        "id": 8,
+        "value": 0.1
+      },
+      {
+        "nodeId": 45,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 45,
+        "id": 10,
+        "value": 0
+      },
+      {
+        "nodeId": 45,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 46,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 46,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 46,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 46,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 46,
+        "id": 4,
+        "value": 11
+      },
+      {
+        "nodeId": 47,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 48,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 48,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 48,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 48,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 48,
+        "id": 4,
+        "value": 0
+      },
+      {
+        "nodeId": 48,
+        "id": 5,
+        "value": 1
+      },
+      {
+        "nodeId": 48,
+        "id": 8,
+        "value": 0.1
+      },
+      {
+        "nodeId": 48,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 48,
+        "id": 10,
+        "value": 0
+      },
+      {
+        "nodeId": 48,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 49,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 49,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 49,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 49,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 49,
+        "id": 4,
+        "value": 11
+      },
+      {
+        "nodeId": 50,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 51,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 51,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 51,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 51,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 51,
+        "id": 4,
+        "value": 0
+      },
+      {
+        "nodeId": 51,
+        "id": 5,
+        "value": 1
+      },
+      {
+        "nodeId": 51,
+        "id": 8,
+        "value": 0.1
+      },
+      {
+        "nodeId": 51,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 51,
+        "id": 10,
+        "value": 0
+      },
+      {
+        "nodeId": 51,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 52,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 52,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 52,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 52,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 52,
+        "id": 4,
+        "value": 11
+      },
+      {
+        "nodeId": 53,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 54,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 54,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 54,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 54,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 54,
+        "id": 4,
+        "value": 0
+      },
+      {
+        "nodeId": 54,
+        "id": 5,
+        "value": 1
+      },
+      {
+        "nodeId": 54,
+        "id": 8,
+        "value": 0.1
+      },
+      {
+        "nodeId": 54,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 54,
+        "id": 10,
+        "value": 0
+      },
+      {
+        "nodeId": 54,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 55,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 55,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 55,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 55,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 55,
+        "id": 4,
+        "value": 11
+      },
+      {
+        "nodeId": 56,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 57,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 57,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 57,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 57,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 57,
+        "id": 4,
+        "value": 0
+      },
+      {
+        "nodeId": 57,
+        "id": 5,
+        "value": 1
+      },
+      {
+        "nodeId": 57,
+        "id": 8,
+        "value": 0.1
+      },
+      {
+        "nodeId": 57,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 57,
+        "id": 10,
+        "value": 0
+      },
+      {
+        "nodeId": 57,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 58,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 58,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 58,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 58,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 58,
+        "id": 4,
+        "value": 11
+      },
+      {
+        "nodeId": 59,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 60,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 60,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 60,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 60,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 60,
+        "id": 4,
+        "value": 0
+      },
+      {
+        "nodeId": 60,
+        "id": 5,
+        "value": 1
+      },
+      {
+        "nodeId": 60,
+        "id": 8,
+        "value": 0.1
+      },
+      {
+        "nodeId": 60,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 60,
+        "id": 10,
+        "value": 0
+      },
+      {
+        "nodeId": 60,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 61,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 61,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 61,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 61,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 61,
+        "id": 4,
+        "value": 11
+      },
+      {
+        "nodeId": 62,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 63,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 64,
+        "id": 0,
+        "value": 0.2
+      },
+      {
+        "nodeId": 66,
+        "id": 0,
+        "value": 0
+      }
+    ],
+    "captureSources": [
+      {
+        "id": 0,
+        "nodeId": 65,
+        "name": "Rack Sample input",
+        "kind": "input"
+      },
+      {
+        "id": 1,
+        "nodeId": 68,
+        "name": "Rack Sample sidechain",
+        "kind": "sidechain"
+      }
+    ],
+    "defaultCaptureSourceId": 0,
+    "selectedCaptureSourceId": 0,
+    "selectedCaptureNodeId": 65
+  },
+  "endpoints": [
+    {
+      "path": "/midi/synth/rack/blend_simple/1/output",
+      "kind": "parameter",
+      "nodeId": 18,
+      "id": 0,
+      "min": 0,
+      "max": 1,
+      "default": 1
+    },
+    {
+      "path": "/midi/synth/rack/eq/1/mix",
+      "kind": "parameter",
+      "nodeId": 6,
+      "id": 41,
+      "min": 0,
+      "max": 1,
+      "default": 1
+    },
+    {
+      "path": "/midi/synth/rack/eq/1/output",
+      "kind": "parameter",
+      "nodeId": 6,
+      "id": 40,
+      "min": -24,
+      "max": 24,
+      "default": 0
+    },
+    {
+      "path": "/midi/synth/rack/filter/1/cutoff",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 1,
+      "min": 20,
+      "max": 20000,
+      "default": 3200
+    },
+    {
+      "path": "/midi/synth/rack/filter/1/resonance",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 2,
+      "min": 0.1,
+      "max": 1,
+      "default": 0.75
+    },
+    {
+      "path": "/midi/synth/rack/filter/1/type",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 0,
+      "min": 0,
+      "max": 3,
+      "default": 0
+    },
+    {
+      "path": "/midi/synth/rack/fx/1/mix",
+      "kind": "parameter",
+      "nodeId": 7,
+      "id": 1,
+      "min": 0,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "path": "/midi/synth/rack/fx/1/p/0",
+      "kind": "parameter",
+      "nodeId": 7,
+      "id": 2,
+      "min": 0,
+      "max": 1,
+      "default": 0.5
+    },
+    {
+      "path": "/midi/synth/rack/fx/1/p/1",
+      "kind": "parameter",
+      "nodeId": 7,
+      "id": 3,
+      "min": 0,
+      "max": 1,
+      "default": 0.5
+    },
+    {
+      "path": "/midi/synth/rack/fx/1/p/2",
+      "kind": "parameter",
+      "nodeId": 7,
+      "id": 4,
+      "min": 0,
+      "max": 1,
+      "default": 0.2
+    },
+    {
+      "path": "/midi/synth/rack/fx/1/p/3",
+      "kind": "parameter",
+      "nodeId": 7,
+      "id": 5,
+      "min": 0,
+      "max": 1,
+      "default": 0.6
+    },
+    {
+      "path": "/midi/synth/rack/fx/1/p/4",
+      "kind": "parameter",
+      "nodeId": 7,
+      "id": 6,
+      "min": 0,
+      "max": 1,
+      "default": 0.4
+    },
+    {
+      "path": "/midi/synth/rack/fx/1/type",
+      "kind": "parameter",
+      "nodeId": 7,
+      "id": 0,
+      "min": 0,
+      "max": 20,
+      "default": 0
+    },
+    {
+      "path": "/rack_host/input_a/level",
+      "kind": "parameter",
+      "nodeId": 8,
+      "id": 0,
+      "min": 0,
+      "max": 1,
+      "default": 0.65
+    },
+    {
+      "path": "/rack_host/input_b/level",
+      "kind": "parameter",
+      "nodeId": 13,
+      "id": 0,
+      "min": 0,
+      "max": 1,
+      "default": 0.5
+    }
+  ],
+  "hostBindings": [
+    {
+      "slot": 0,
+      "nodeId": 5,
+      "id": 0
+    },
+    {
+      "slot": 1,
+      "nodeId": 5,
+      "id": 1
+    },
+    {
+      "slot": 2,
+      "nodeId": 5,
+      "id": 2
+    },
+    {
+      "slot": 3,
+      "nodeId": 6,
+      "id": 40
+    },
+    {
+      "slot": 4,
+      "nodeId": 6,
+      "id": 41
+    },
+    {
+      "slot": 5,
+      "nodeId": 7,
+      "id": 0
+    },
+    {
+      "slot": 6,
+      "nodeId": 7,
+      "id": 1
+    },
+    {
+      "slot": 7,
+      "nodeId": 7,
+      "id": 2
+    },
+    {
+      "slot": 8,
+      "nodeId": 7,
+      "id": 3
+    },
+    {
+      "slot": 9,
+      "nodeId": 7,
+      "id": 4
+    },
+    {
+      "slot": 10,
+      "nodeId": 7,
+      "id": 5
+    },
+    {
+      "slot": 11,
+      "nodeId": 7,
+      "id": 6
+    },
+    {
+      "slot": 12,
+      "nodeId": 8,
+      "id": 0
+    },
+    {
+      "slot": 13,
+      "nodeId": 13,
+      "id": 0
+    },
+    {
+      "slot": 14,
+      "nodeId": 18,
+      "id": 0
+    }
+  ],
+  "controls": [
+    {
+      "path": "/midi/synth/rack/blend_simple/1/blendAmount",
+      "min": 0,
+      "max": 1,
+      "default": 0.5,
+      "value": 0.5,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/blend_simple/1/blendModAmount",
+      "min": 0,
+      "max": 1,
+      "default": 0.5,
+      "value": 0.5,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/blend_simple/1/mode",
+      "min": 0,
+      "max": 3,
+      "default": 0,
+      "value": 0,
+      "discrete": true
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/additiveDrift",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/additivePartials",
+      "min": 1,
+      "max": 32,
+      "default": 8,
+      "value": 8,
+      "discrete": true
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/additiveTilt",
+      "min": -1,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/detune",
+      "min": 0,
+      "max": 100,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/drive",
+      "min": 0,
+      "max": 20,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/driveBias",
+      "min": -1,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/driveShape",
+      "min": 0,
+      "max": 3,
+      "default": 0,
+      "value": 0,
+      "discrete": true
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/manualLevel",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/manualPitch",
+      "min": 0,
+      "max": 127,
+      "default": 60,
+      "value": 60,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/output",
+      "min": 0,
+      "max": 2,
+      "default": 0.8,
+      "value": 0.8,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/pulseWidth",
+      "min": 0.01,
+      "max": 0.99,
+      "default": 0.5,
+      "value": 0.5,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/renderMode",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": true
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/spread",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/unison",
+      "min": 1,
+      "max": 8,
+      "default": 1,
+      "value": 1,
+      "discrete": true
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/1/fm",
+      "min": -1,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/1/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/1/pwCv",
+      "min": 0,
+      "max": 1,
+      "default": 0.5,
+      "value": 0.5,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/1/vOct",
+      "min": 0,
+      "max": 127,
+      "default": 60,
+      "value": 60,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/2/fm",
+      "min": -1,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/2/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/2/pwCv",
+      "min": 0,
+      "max": 1,
+      "default": 0.5,
+      "value": 0.5,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/2/vOct",
+      "min": 0,
+      "max": 127,
+      "default": 60,
+      "value": 60,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/3/fm",
+      "min": -1,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/3/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/3/pwCv",
+      "min": 0,
+      "max": 1,
+      "default": 0.5,
+      "value": 0.5,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/3/vOct",
+      "min": 0,
+      "max": 127,
+      "default": 60,
+      "value": 60,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/4/fm",
+      "min": -1,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/4/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/4/pwCv",
+      "min": 0,
+      "max": 1,
+      "default": 0.5,
+      "value": 0.5,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/4/vOct",
+      "min": 0,
+      "max": 127,
+      "default": 60,
+      "value": 60,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/5/fm",
+      "min": -1,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/5/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/5/pwCv",
+      "min": 0,
+      "max": 1,
+      "default": 0.5,
+      "value": 0.5,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/5/vOct",
+      "min": 0,
+      "max": 127,
+      "default": 60,
+      "value": 60,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/6/fm",
+      "min": -1,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/6/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/6/pwCv",
+      "min": 0,
+      "max": 1,
+      "default": 0.5,
+      "value": 0.5,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/6/vOct",
+      "min": 0,
+      "max": 127,
+      "default": 60,
+      "value": 60,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/7/fm",
+      "min": -1,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/7/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/7/pwCv",
+      "min": 0,
+      "max": 1,
+      "default": 0.5,
+      "value": 0.5,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/7/vOct",
+      "min": 0,
+      "max": 127,
+      "default": 60,
+      "value": 60,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/8/fm",
+      "min": -1,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/8/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/8/pwCv",
+      "min": 0,
+      "max": 1,
+      "default": 0.5,
+      "value": 0.5,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/voice/8/vOct",
+      "min": 0,
+      "max": 127,
+      "default": 60,
+      "value": 60,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/waveform",
+      "min": 0,
+      "max": 7,
+      "default": 1,
+      "value": 1,
+      "discrete": true
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/crossfade",
+      "min": 0,
+      "max": 0.5,
+      "default": 0.1,
+      "value": 0.1,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/detune",
+      "min": 0,
+      "max": 100,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/loopLen",
+      "min": 0.05,
+      "max": 1,
+      "default": 1,
+      "value": 1,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/loopStart",
+      "min": 0,
+      "max": 0.95,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/output",
+      "min": 0,
+      "max": 2,
+      "default": 0.8,
+      "value": 0.8,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/pitchMode",
+      "min": 0,
+      "max": 2,
+      "default": 0,
+      "value": 0,
+      "discrete": true
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/playStart",
+      "min": 0,
+      "max": 0.95,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/pvocTimeStretch",
+      "min": 0.25,
+      "max": 4,
+      "default": 1,
+      "value": 1,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/rootNote",
+      "min": 12,
+      "max": 96,
+      "default": 60,
+      "value": 60,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/spread",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/unison",
+      "min": 1,
+      "max": 8,
+      "default": 1,
+      "value": 1,
+      "discrete": true
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/voice/1/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/voice/1/vOct",
+      "min": 0,
+      "max": 127,
+      "default": 60,
+      "value": 60,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/voice/2/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/voice/2/vOct",
+      "min": 0,
+      "max": 127,
+      "default": 60,
+      "value": 60,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/voice/3/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/voice/3/vOct",
+      "min": 0,
+      "max": 127,
+      "default": 60,
+      "value": 60,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/voice/4/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/voice/4/vOct",
+      "min": 0,
+      "max": 127,
+      "default": 60,
+      "value": 60,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/voice/5/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/voice/5/vOct",
+      "min": 0,
+      "max": 127,
+      "default": 60,
+      "value": 60,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/voice/6/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/voice/6/vOct",
+      "min": 0,
+      "max": 127,
+      "default": 60,
+      "value": 60,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/voice/7/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/voice/7/vOct",
+      "min": 0,
+      "max": 127,
+      "default": 60,
+      "value": 60,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/voice/8/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/voice/8/vOct",
+      "min": 0,
+      "max": 127,
+      "default": 60,
+      "value": 60,
+      "discrete": false
+    },
+    {
+      "path": "/rack_host/input_a/mode",
+      "min": 1,
+      "max": 7,
+      "default": 3,
+      "value": 3,
+      "discrete": true
+    },
+    {
+      "path": "/rack_host/input_a/pitch",
+      "min": 24,
+      "max": 84,
+      "default": 60,
+      "value": 60,
+      "discrete": true
+    },
+    {
+      "path": "/rack_host/input_b/mode",
+      "min": 1,
+      "max": 7,
+      "default": 4,
+      "value": 4,
+      "discrete": true
+    },
+    {
+      "path": "/rack_host/input_b/pitch",
+      "min": 24,
+      "max": 84,
+      "default": 67,
+      "value": 67,
+      "discrete": true
+    },
+    {
+      "path": "/rack_host/module/index",
+      "min": 1,
+      "max": 19,
+      "default": 2,
+      "value": 2,
+      "discrete": true
+    }
+  ],
+  "instances": [
+    {
+      "path": "/midi/synth/rack/osc/1/nodes/manual",
+      "nodeId": 36
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/nodes/mixer",
+      "nodeId": 37
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/nodes/output",
+      "nodeId": 38
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/nodes/voice_1",
+      "nodeId": 28
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/nodes/voice_2",
+      "nodeId": 29
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/nodes/voice_3",
+      "nodeId": 30
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/nodes/voice_4",
+      "nodeId": 31
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/nodes/voice_5",
+      "nodeId": 32
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/nodes/voice_6",
+      "nodeId": 33
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/nodes/voice_7",
+      "nodeId": 34
+    },
+    {
+      "path": "/midi/synth/rack/osc/1/nodes/voice_8",
+      "nodeId": 35
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/capture_input",
+      "nodeId": 65
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/capture_merge",
+      "nodeId": 69
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/capture_silent_send",
+      "nodeId": 66
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/mixer",
+      "nodeId": 63
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/output",
+      "nodeId": 64
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/sidechain_capture",
+      "nodeId": 68
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/sidechain_input",
+      "nodeId": 67
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_1/gain",
+      "nodeId": 41
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_1/playback",
+      "nodeId": 39
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_1/vocoder",
+      "nodeId": 40
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_2/gain",
+      "nodeId": 44
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_2/playback",
+      "nodeId": 42
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_2/vocoder",
+      "nodeId": 43
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_3/gain",
+      "nodeId": 47
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_3/playback",
+      "nodeId": 45
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_3/vocoder",
+      "nodeId": 46
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_4/gain",
+      "nodeId": 50
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_4/playback",
+      "nodeId": 48
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_4/vocoder",
+      "nodeId": 49
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_5/gain",
+      "nodeId": 53
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_5/playback",
+      "nodeId": 51
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_5/vocoder",
+      "nodeId": 52
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_6/gain",
+      "nodeId": 56
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_6/playback",
+      "nodeId": 54
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_6/vocoder",
+      "nodeId": 55
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_7/gain",
+      "nodeId": 59
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_7/playback",
+      "nodeId": 57
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_7/vocoder",
+      "nodeId": 58
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_8/gain",
+      "nodeId": 62
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_8/playback",
+      "nodeId": 60
+    },
+    {
+      "path": "/midi/synth/rack/sample/1/nodes/voice_8/vocoder",
+      "nodeId": 61
+    },
+    {
+      "path": "/rack_host/input_a/nodes/bus",
+      "nodeId": 8
+    },
+    {
+      "path": "/rack_host/input_a/nodes/external",
+      "nodeId": 10
+    },
+    {
+      "path": "/rack_host/input_a/nodes/noise",
+      "nodeId": 9
+    },
+    {
+      "path": "/rack_host/input_a/nodes/oscillator",
+      "nodeId": 4
+    },
+    {
+      "path": "/rack_host/input_a/nodes/pulse",
+      "nodeId": 11
+    },
+    {
+      "path": "/rack_host/input_b/nodes/bus",
+      "nodeId": 13
+    },
+    {
+      "path": "/rack_host/input_b/nodes/external",
+      "nodeId": 15
+    },
+    {
+      "path": "/rack_host/input_b/nodes/noise",
+      "nodeId": 14
+    },
+    {
+      "path": "/rack_host/input_b/nodes/oscillator",
+      "nodeId": 12
+    },
+    {
+      "path": "/rack_host/input_b/nodes/pulse",
+      "nodeId": 16
+    },
+    {
+      "path": "/rack_host/modules/blend_simple/nodes/crossfader",
+      "nodeId": 17
+    },
+    {
+      "path": "/rack_host/modules/blend_simple/nodes/fm_a_to_b",
+      "nodeId": 22
+    },
+    {
+      "path": "/rack_host/modules/blend_simple/nodes/fm_b_to_a",
+      "nodeId": 23
+    },
+    {
+      "path": "/rack_host/modules/blend_simple/nodes/fm_crossfader",
+      "nodeId": 24
+    },
+    {
+      "path": "/rack_host/modules/blend_simple/nodes/output",
+      "nodeId": 18
+    },
+    {
+      "path": "/rack_host/modules/blend_simple/nodes/ring_a_to_b",
+      "nodeId": 19
+    },
+    {
+      "path": "/rack_host/modules/blend_simple/nodes/ring_b_to_a",
+      "nodeId": 20
+    },
+    {
+      "path": "/rack_host/modules/blend_simple/nodes/ring_crossfader",
+      "nodeId": 21
+    },
+    {
+      "path": "/rack_host/modules/blend_simple/nodes/sync_a_to_b",
+      "nodeId": 25
+    },
+    {
+      "path": "/rack_host/modules/blend_simple/nodes/sync_b_to_a",
+      "nodeId": 26
+    },
+    {
+      "path": "/rack_host/modules/blend_simple/nodes/sync_crossfader",
+      "nodeId": 27
+    },
+    {
+      "path": "/rack_host/modules/eq/nodes/processor",
+      "nodeId": 6
+    },
+    {
+      "path": "/rack_host/modules/filter/nodes/processor",
+      "nodeId": 5
+    },
+    {
+      "path": "/rack_host/modules/fx/nodes/processor",
+      "nodeId": 7
+    }
+  ],
+  "assets": [
+    {
+      "nodeId": 39,
+      "sourceRate": 48000,
+      "frames": 4800,
+      "label": "RackModuleHost Sample source",
+      "pcmF32Base64": "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"
+    }
+  ],
+  "sampleBindings": [
+    {
+      "sourceNodeId": 39,
+      "nodeId": 42
+    },
+    {
+      "sourceNodeId": 39,
+      "nodeId": 45
+    },
+    {
+      "sourceNodeId": 39,
+      "nodeId": 48
+    },
+    {
+      "sourceNodeId": 39,
+      "nodeId": 51
+    },
+    {
+      "sourceNodeId": 39,
+      "nodeId": 54
+    },
+    {
+      "sourceNodeId": 39,
+      "nodeId": 57
+    },
+    {
+      "sourceNodeId": 39,
+      "nodeId": 60
+    }
+  ],
+  "hostAssignments": [
+    {
+      "slot": 0,
+      "path": "/midi/synth/rack/filter/1/type"
+    },
+    {
+      "slot": 1,
+      "path": "/midi/synth/rack/filter/1/cutoff"
+    },
+    {
+      "slot": 2,
+      "path": "/midi/synth/rack/filter/1/resonance"
+    },
+    {
+      "slot": 3,
+      "path": "/midi/synth/rack/eq/1/output"
+    },
+    {
+      "slot": 4,
+      "path": "/midi/synth/rack/eq/1/mix"
+    },
+    {
+      "slot": 5,
+      "path": "/midi/synth/rack/fx/1/type"
+    },
+    {
+      "slot": 6,
+      "path": "/midi/synth/rack/fx/1/mix"
+    },
+    {
+      "slot": 7,
+      "path": "/midi/synth/rack/fx/1/p/0"
+    },
+    {
+      "slot": 8,
+      "path": "/midi/synth/rack/fx/1/p/1"
+    },
+    {
+      "slot": 9,
+      "path": "/midi/synth/rack/fx/1/p/2"
+    },
+    {
+      "slot": 10,
+      "path": "/midi/synth/rack/fx/1/p/3"
+    },
+    {
+      "slot": 11,
+      "path": "/midi/synth/rack/fx/1/p/4"
+    },
+    {
+      "slot": 12,
+      "path": "/rack_host/input_a/level"
+    },
+    {
+      "slot": 13,
+      "path": "/rack_host/input_b/level"
+    },
+    {
+      "slot": 14,
+      "path": "/midi/synth/rack/blend_simple/1/output"
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Manifold · Packaged graph project</title>
+    <style>
+      :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #121318; color: #e8e9f0; }
+      body { max-width: 820px; margin: 5vh auto; padding: 0 1.5rem; }
+      h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.1; }
+      p { color: #b9bbc8; }
+      button, select, input { font: inherit; }
+      button, select { cursor: pointer; background: #6246ea; color: white; border: 0; border-radius: .5rem; padding: .65rem 1rem; }
+      button.secondary { background: #333747; }
+      button:disabled { opacity: .5; cursor: default; }
+      .controls { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
+      section { margin: 1.5rem 0; padding: 1.4rem; background: #1d202a; border-radius: .8rem; }
+      label.parameter { display: grid; grid-template-columns: 1fr 3fr 3em; gap: 1rem; align-items: center; margin: 1rem 0; }
+      input[type=range] { width: 100%; accent-color: #9f87ff; }
+      pre { overflow: auto; max-height: 28rem; font-size: .75rem; background: #0c0e13; padding: 1rem; border-radius: .5rem; }
+      #status { color: #9ae0bb; min-height: 1.5rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Run a packaged graph</h1>
+    <p>One versioned package contains the authored JavaScript controller and saved graph. The browser imports that controller; Rust/Wasm processes its graph. The same file opens in the native render host.</p>
+    <div class="controls">
+      <select id="example" aria-label="Example package">
+        <option value="dsp-live-scripting">DspLiveScripting</option>
+        <option value="fx-slot-swap">FX slot swap</option>
+        <option value="vst3-automated-fx" data-url="/vst3-package-proof/automation-fx/step-2.manifold.json">FX slots — host-automated VST3 save</option>
+        <option value="vst3-fx-both" data-url="/vst3-package-proof/fx/step-2.manifold.json">FX slots — saved by VST3</option>
+        <option value="vst3-dsp-route" data-url="/vst3-package-proof/dsp/step-2.manifold.json">DspLiveScripting — saved by VST3</option>
+      </select>
+      <button id="load">Load package</button>
+      <button id="stop" class="secondary" disabled>Stop</button>
+      <button id="download" class="secondary" disabled>Download package</button>
+      <input id="import" type="file" accept=".json,.manifold.json,application/json" aria-label="Import a Manifold package" />
+    </div>
+    <p id="status" role="status">Choose a package and load it.</p>
+    <p>Output level: <output id="audio-level">—</output> · <output id="bridge-health">—</output></p>
+    <section><h2>Authored controls</h2><div id="parameters"></div><button id="bypass" class="secondary" disabled>Route output from input trim</button> <button id="distortion" class="secondary" disabled>Insert distortion</button></section>
+    <section><h2>Host automation</h2><p>Change the running input gain through the host, then insert distortion or switch an FX slot. The authored graph and downloaded package retain the accepted gain.</p>
+      <label class="parameter"><span>Input gain</span><input id="host-gain" type="range" min="0" max="2" step="0.025" value="0.375" disabled /><output id="host-gain-value">0.375</output></label>
+      <button id="automate" class="secondary" disabled>Apply host gain</button><p id="automation-status">Load a package to automate its input gain.</p>
+    </section>
+    <section><h2>Package and saved graph</h2><p id="identity"></p><pre id="document"></pre></section>
+    <script type="module" src="/src/package-project.js"></script>
+  </body>
+</html>

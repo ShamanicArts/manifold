@@ -1,0 +1,20 @@
+[workspace]
+members = ["crates/manifold-services", "crates/manifold-core", "crates/manifold-web", "crates/manifold-native", "crates/manifold-project-js", "crates/manifold-clap", "crates/manifold-editor", "crates/manifold-vst3", "crates/manifold-ui", "projects/fx-slot-swap-rust"]
+resolver = "2"
+
+# Networking and Link are native host services, separate from Wasm DSP.
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+
+# QuickJS 0.16.2 double-frees a search item when a timeout interrupts the
+# following iteration. Keep the two-line fix reproducible until upstream ships it.
+[patch.crates-io]
+rquickjs-sys = { path = "vendor/rquickjs-sys" }
+
+# The interpreter must meet the same bounded script budgets in development.
+# Keep Manifold itself debuggable; optimize the embedded C interpreter.
+[profile.dev.package.rquickjs-sys]
+opt-level = 2

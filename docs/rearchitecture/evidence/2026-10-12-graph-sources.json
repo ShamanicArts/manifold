@@ -1,0 +1,357 @@
+{
+  "date": "2026-10-12",
+  "workingChange": "wouyskwo",
+  "ownership": "Generators, source routing and signal parameters belong to the project; hardware selection and final Studio listening level belong to the host.",
+  "checks": {
+    "rustWorkspace": 572,
+    "webSuite": 191,
+    "additionalSourceWrappingRegression": true,
+    "nativeAppTests": 5,
+    "nativeReleaseBuild": true,
+    "uiWasmBuild": true,
+    "dspWasmBuild": true,
+    "productionWebsiteBuild": true
+  },
+  "browser": {
+    "measurements": [
+      {
+        "label": "saw 220 Hz",
+        "diagnostics": {
+          "audioBlocks": 292,
+          "compilerFailed": false,
+          "eventsAdmitted": 0,
+          "eventsCancelled": 0,
+          "eventsConsumed": 0,
+          "eventsPending": 0,
+          "eventsRejected": 0,
+          "execution": "prepared",
+          "lastEventContextFrame": 0,
+          "lastPreparationMs": 4.475000023841858,
+          "lastPublicationContextFrame": 512,
+          "lastPublicationMs": 5.990000009536743,
+          "lastTransferredNodes": 0,
+          "memoryBytes": 16777216,
+          "outputLatencyBlocks": 0,
+          "processorFailed": false,
+          "publications": 1,
+          "renderQuantum": 128,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "rustProcessedBlocks": 292,
+          "rustProcessingFailures": 0
+        },
+        "frequency": 222.65625,
+        "rms": 0.03963857722527567,
+        "sink": "none"
+      },
+      {
+        "label": "saw 440 Hz",
+        "diagnostics": {
+          "audioBlocks": 564,
+          "compilerFailed": false,
+          "eventsAdmitted": 0,
+          "eventsCancelled": 0,
+          "eventsConsumed": 0,
+          "eventsPending": 0,
+          "eventsRejected": 0,
+          "execution": "prepared",
+          "lastEventContextFrame": 0,
+          "lastPreparationMs": 4.475000023841858,
+          "lastPublicationContextFrame": 512,
+          "lastPublicationMs": 5.990000009536743,
+          "lastTransferredNodes": 0,
+          "memoryBytes": 16777216,
+          "outputLatencyBlocks": 0,
+          "processorFailed": false,
+          "publications": 1,
+          "renderQuantum": 128,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "rustProcessedBlocks": 564,
+          "rustProcessingFailures": 0
+        },
+        "frequency": 445.3125,
+        "rms": 0.03978036152907526,
+        "sink": "none"
+      },
+      {
+        "label": "noise",
+        "diagnostics": {
+          "audioBlocks": 836,
+          "compilerFailed": false,
+          "eventsAdmitted": 0,
+          "eventsCancelled": 0,
+          "eventsConsumed": 0,
+          "eventsPending": 0,
+          "eventsRejected": 0,
+          "execution": "prepared",
+          "lastEventContextFrame": 0,
+          "lastPreparationMs": 4.475000023841858,
+          "lastPublicationContextFrame": 512,
+          "lastPublicationMs": 5.990000009536743,
+          "lastTransferredNodes": 0,
+          "memoryBytes": 16777216,
+          "outputLatencyBlocks": 0,
+          "processorFailed": false,
+          "publications": 1,
+          "renderQuantum": 128,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "rustProcessedBlocks": 836,
+          "rustProcessingFailures": 0
+        },
+        "frequency": 8343.75,
+        "rms": 0.023496924467766925,
+        "sink": "none"
+      },
+      {
+        "label": "live mock microphone",
+        "diagnostics": {
+          "audioBlocks": 1156,
+          "compilerFailed": false,
+          "eventsAdmitted": 0,
+          "eventsCancelled": 0,
+          "eventsConsumed": 0,
+          "eventsPending": 0,
+          "eventsRejected": 0,
+          "execution": "prepared",
+          "lastEventContextFrame": 0,
+          "lastPreparationMs": 4.475000023841858,
+          "lastPublicationContextFrame": 512,
+          "lastPublicationMs": 5.990000009536743,
+          "lastTransferredNodes": 0,
+          "memoryBytes": 16777216,
+          "outputLatencyBlocks": 0,
+          "processorFailed": false,
+          "publications": 1,
+          "renderQuantum": 128,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "rustProcessedBlocks": 1156,
+          "rustProcessingFailures": 0
+        },
+        "frequency": 328.125,
+        "rms": 0.45902838379800315,
+        "sink": "none"
+      },
+      {
+        "label": "live disconnected",
+        "diagnostics": {
+          "audioBlocks": 1432,
+          "compilerFailed": false,
+          "eventsAdmitted": 0,
+          "eventsCancelled": 0,
+          "eventsConsumed": 0,
+          "eventsPending": 0,
+          "eventsRejected": 0,
+          "execution": "prepared",
+          "lastEventContextFrame": 0,
+          "lastPreparationMs": 4.475000023841858,
+          "lastPublicationContextFrame": 512,
+          "lastPublicationMs": 5.990000009536743,
+          "lastTransferredNodes": 0,
+          "memoryBytes": 16777216,
+          "outputLatencyBlocks": 0,
+          "processorFailed": false,
+          "publications": 1,
+          "renderQuantum": 128,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "rustProcessedBlocks": 1432,
+          "rustProcessingFailures": 0
+        },
+        "frequency": 8162.109375,
+        "rms": 1.684165824038933e-07,
+        "sink": "none"
+      },
+      {
+        "label": "live reconnected",
+        "diagnostics": {
+          "audioBlocks": 1704,
+          "compilerFailed": false,
+          "eventsAdmitted": 0,
+          "eventsCancelled": 0,
+          "eventsConsumed": 0,
+          "eventsPending": 0,
+          "eventsRejected": 0,
+          "execution": "prepared",
+          "lastEventContextFrame": 0,
+          "lastPreparationMs": 4.475000023841858,
+          "lastPublicationContextFrame": 512,
+          "lastPublicationMs": 5.990000009536743,
+          "lastTransferredNodes": 0,
+          "memoryBytes": 16777216,
+          "outputLatencyBlocks": 0,
+          "processorFailed": false,
+          "publications": 1,
+          "renderQuantum": 128,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "rustProcessedBlocks": 1704,
+          "rustProcessingFailures": 0
+        },
+        "frequency": 333.984375,
+        "rms": 0.4591133763364571,
+        "sink": "none"
+      },
+      {
+        "label": "patch muted",
+        "diagnostics": {
+          "audioBlocks": 1976,
+          "compilerFailed": false,
+          "eventsAdmitted": 0,
+          "eventsCancelled": 0,
+          "eventsConsumed": 0,
+          "eventsPending": 0,
+          "eventsRejected": 0,
+          "execution": "prepared",
+          "lastEventContextFrame": 0,
+          "lastPreparationMs": 4.475000023841858,
+          "lastPublicationContextFrame": 512,
+          "lastPublicationMs": 5.990000009536743,
+          "lastTransferredNodes": 0,
+          "memoryBytes": 16777216,
+          "outputLatencyBlocks": 0,
+          "processorFailed": false,
+          "publications": 1,
+          "renderQuantum": 128,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "rustProcessedBlocks": 1976,
+          "rustProcessingFailures": 0
+        },
+        "frequency": 328.125,
+        "rms": 2.6553088229261124e-25,
+        "sink": "none"
+      },
+      {
+        "label": "returned to saw",
+        "diagnostics": {
+          "audioBlocks": 2264,
+          "compilerFailed": false,
+          "eventsAdmitted": 0,
+          "eventsCancelled": 0,
+          "eventsConsumed": 0,
+          "eventsPending": 0,
+          "eventsRejected": 0,
+          "execution": "prepared",
+          "lastEventContextFrame": 0,
+          "lastPreparationMs": 4.475000023841858,
+          "lastPublicationContextFrame": 512,
+          "lastPublicationMs": 5.990000009536743,
+          "lastTransferredNodes": 0,
+          "memoryBytes": 16777216,
+          "outputLatencyBlocks": 0,
+          "processorFailed": false,
+          "publications": 1,
+          "renderQuantum": 128,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "rustProcessedBlocks": 2264,
+          "rustProcessingFailures": 0
+        },
+        "frequency": 216.796875,
+        "rms": 0.03994434112474097,
+        "sink": "none"
+      }
+    ],
+    "errors": []
+  },
+  "wiki": {
+    "saw": 0.039595409765940885,
+    "noise": 0.023201803739052944,
+    "silent": 1.8893198643599912e-34,
+    "errors": []
+  },
+  "native": {
+    "sink": "manifold_review_null",
+    "source": "manifold_review_null.monitor",
+    "measurements": [
+      {
+        "label": "saw",
+        "rms": 0.04249449074268341,
+        "peak": 0.06888037174940109,
+        "audioBlocks": 464,
+        "failed": false,
+        "monitorEnabled": false
+      },
+      {
+        "label": "noise",
+        "rms": 0.035349827259778976,
+        "peak": 0.08648858219385147,
+        "audioBlocks": 776,
+        "failed": false,
+        "monitorEnabled": false
+      },
+      {
+        "label": "live disconnected",
+        "rms": 2.2856237080759456e-07,
+        "peak": 5.502170665749873e-07,
+        "audioBlocks": 1068,
+        "failed": false,
+        "monitorEnabled": false
+      },
+      {
+        "label": "native captured live",
+        "rms": 0.07354629039764404,
+        "peak": 0.12999902665615082,
+        "audioBlocks": 2200,
+        "failed": false,
+        "monitorEnabled": false
+      },
+      {
+        "label": "native disconnected",
+        "rms": 2.2223079554350988e-07,
+        "peak": 5.454710390040418e-07,
+        "audioBlocks": 2856,
+        "failed": false,
+        "monitorEnabled": false
+      },
+      {
+        "label": "native reconnected",
+        "rms": 0.07181457430124283,
+        "peak": 0.12999917566776276,
+        "audioBlocks": 3620,
+        "failed": false,
+        "monitorEnabled": false
+      },
+      {
+        "label": "returned to saw",
+        "rms": 0.039627283811569214,
+        "peak": 0.06887959688901901,
+        "audioBlocks": 4208,
+        "failed": false,
+        "monitorEnabled": false
+      }
+    ]
+  },
+  "artifacts": "/home/shamanic/.cache/manifold/graph-sources-20261012",
+  "limits": [
+    "Native capture currently needs float32 at the output device sample rate; no adaptive resampling.",
+    "Native output device selection is configured at launch; live switching is not implemented.",
+    "Unselected source generators continue processing.",
+    "Dedicated legacy DSP live scripting host audition pages are outside this Studio correction.",
+    "Device wrap transient state continuity remains separate."
+  ],
+  "wikiMigratedLessons": {
+    "results": [
+      {
+        "slug": "embed-a-gain-stage",
+        "rms": 0.03913853706670559
+      },
+      {
+        "slug": "spectral-pitch",
+        "rms": 0.03243495577779212
+      },
+      {
+        "slug": "reusable-devices",
+        "rms": 0.024181235092014447
+      },
+      {
+        "slug": "sound-into-surface",
+        "rms": 0.030025180052668254
+      }
+    ],
+    "errors": []
+  }
+}

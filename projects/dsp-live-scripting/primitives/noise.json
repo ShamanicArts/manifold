@@ -1,0 +1,102 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "noise",
+        "a": 0.08,
+        "b": 0.5
+      }
+    ],
+    "connections": [
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 0.16
+      },
+      {
+        "nodeId": 4,
+        "id": 1,
+        "value": 0.5
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/primitives/noise/node/0",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 0,
+      "min": 0,
+      "max": 1,
+      "default": 0.16
+    },
+    {
+      "path": "/primitives/noise/node/1",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 1,
+      "min": 0,
+      "max": 1,
+      "default": 0.5
+    }
+  ],
+  "instances": [
+    {
+      "path": "/primitives/noise/node",
+      "nodeId": 4
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// Noise generator: The core deterministic stereo noise source, with live level and color.\n// Audition composition of public Rust primitives; not an instrument parity claim.\n// Examples name imports so you can trace each tool to its module.\n// Alternative: import * as manifold from '@manifold/author';\n// Then use manifold.createGraphWorkspace(), manifold.gain, etc.\n// Imports — each definition can be inspected in Manifold's primitive catalog.\nimport { createGraphWorkspace } from '@manifold/author';\nimport {\n  noise as noiseDefinition,\n} from '@manifold/author/primitives';\n\nexport default function createProject() {\n  // Interface — public paths and stable IDs preserve saved controls.\n  const controls = {\n    noise_level: {\n      \"path\": \"/primitives/noise/node/0\",\n      \"label\": \"Level\",\n      \"group\": \"Noise\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0.16\n    },\n    noise_color: {\n      \"path\": \"/primitives/noise/node/1\",\n      \"label\": \"Color\",\n      \"group\": \"Noise\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0.5\n    },\n  };\n\n  // Audio inputs and outputs — generated sound; no audio input is needed.\n  const graph = createGraphWorkspace().setInputSource('none');\n  const output = graph.output.input('in');\n\n  // DSP instances — parameters belong to these named instances.\n  const noise = graph.add(noiseDefinition.type, {\"id\":4});\n  graph.registerInstance('/primitives/noise/node', noise);\n  noise.parameter('level').expose(controls.noise_level);\n  noise.parameter('color').expose(controls.noise_color);\n\n  // Composition — named ports make the audio and control paths visible.\n  graph.connect(noise.output('out'), output);\n\n  // Presentation — both renderers bind to the controls declared above.\n  const view = [\n    controls.noise_level,\n    controls.noise_color\n  ].map(control => ({\n    id: control.path, type: 'parameter', path: control.path,\n    label: control.label, group: control.group,\n    ...(control.choices ? { choices: control.choices } : {}),\n  }));\n  function paint(ui) {\n    for (const component of view) {\n      if (component.type === 'label') ui.label(component.label, component.id);\n      else ui.parameter(component.path, component);\n    }\n  }\n\n  // The host uses this project declaration for audio, UI, save and live edits.\n  return { graph, view, paint };\n}",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "/primitives/noise/node/0",
+        "type": "parameter",
+        "path": "/primitives/noise/node/0",
+        "label": "Level",
+        "group": "Noise"
+      },
+      {
+        "id": "/primitives/noise/node/1",
+        "type": "parameter",
+        "path": "/primitives/noise/node/1",
+        "label": "Color",
+        "group": "Noise"
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

@@ -1,0 +1,221 @@
+{
+  "format": "manifold.live-project",
+  "version": 1,
+  "source": "import { createGraphWorkspace } from '@manifold/author';\nimport { gain } from '@manifold/author/primitives';\nimport { applyStudioGraph } from '@manifold/author/studio-graph';\n\n// Audio flows left to right. Both visual nodes observe the output after gain.\nconst studioGraph = {\n  nodes: [],\n  connections: [],\n  removed: [],\n  layout: [\n    { path: '/input.raw/1', x: 0, y: 80, space: 'world' },\n    { path: '/probe/outputGain', x: 220, y: 80, space: 'world' },\n    { path: '/output/3', x: 440, y: 80, space: 'world' },\n  ],\n};\nconst studioParameters = [];\n\nexport default function createProject() {\n  const graph = createGraphWorkspace().setInputSource('external');\n  const outputGain = graph.add(gain.type, { id: 4 });\n  graph.registerInstance('/probe/outputGain', outputGain);\n  outputGain.parameter('level').expose({\n    path: '/probe/gain',\n    label: 'Output gain',\n    min: 0,\n    max: 2,\n    default: 0.5,\n  });\n  graph.connect(graph.input.output('out'), outputGain.input('audio'));\n  graph.connect(outputGain.output('out'), graph.output.input('in'));\n  applyStudioGraph(graph, studioGraph);\n  for (const definition of studioParameters) {\n    graph.findInstance(definition.instance).parameter(definition.parameter).expose(definition);\n  }\n  const view = [{ id: 'gain', type: 'parameter', path: '/probe/gain', label: 'Output gain' }];\n  return { graph, view, editorGraph: studioGraph };\n}\n",
+  "files": [
+    {
+      "path": "/nodes/levels.mjs",
+      "mediaType": "text/javascript",
+      "encoding": "utf8",
+      "content": "// Shared by both custom nodes. Levels are RMS observations, not audio samples.\nexport function decibels(rms) {\n  return rms > 0 ? 20 * Math.log10(rms) : -Infinity;\n}\nexport function normalizedLevel(db, floor) {\n  return Math.min(1, Math.max(0, (db - floor) / -floor));\n}\nexport function formatLevel(db) {\n  return Number.isFinite(db) ? db.toFixed(1) : '−∞';\n}\nexport function surface(element, title, detail) {\n  const root = document.createElement('section');\n  root.style.cssText =\n    'box-sizing:border-box;height:100%;padding:18px;display:flex;flex-direction:column;gap:12px;background:oklch(21% .012 245);color:oklch(92% .01 245);font:13px system-ui;overflow:auto';\n  const heading = document.createElement('strong');\n  heading.textContent = title;\n  heading.style.cssText = 'font-size:15px;font-weight:600';\n  const note = document.createElement('span');\n  note.textContent = detail;\n  note.style.cssText = 'color:oklch(73% .02 245);font-size:12px;line-height:1.5';\n  const status = document.createElement('span');\n  status.style.cssText = 'font-size:12px;color:oklch(73% .02 245)';\n  root.append(heading, note);\n  element.append(root);\n  return { root, status };\n}\n"
+    },
+    {
+      "path": "/nodes/meter.mjs",
+      "mediaType": "text/javascript",
+      "encoding": "utf8",
+      "content": "import { decibels, normalizedLevel, formatLevel, surface } from './levels.mjs';\n\nexport default function createLevelMeter() {\n  return {\n    mount(element, api) {\n      const { root, status } = surface(element, 'Output level', 'RMS · after output gain');\n      const reading = document.createElement('output');\n      reading.style.cssText =\n        'font:28px ui-monospace,monospace;font-variant-numeric:tabular-nums;margin-top:auto';\n      const track = document.createElement('div');\n      track.setAttribute('role', 'meter');\n      track.setAttribute('aria-label', 'Output RMS in dBFS');\n      track.style.cssText = 'height:32px;background:oklch(28% .014 245);overflow:hidden;flex:none';\n      const fill = document.createElement('div');\n      fill.style.cssText = 'height:100%;transform-origin:left;background:oklch(76% .1 205)';\n      track.append(fill);\n      const scale = document.createElement('div');\n      scale.style.cssText =\n        'display:flex;justify-content:space-between;font:11px ui-monospace,monospace;color:oklch(73% .02 245)';\n      const low = document.createElement('span'),\n        middle = document.createElement('span'),\n        high = document.createElement('span');\n      scale.append(low, middle, high);\n      status.style.marginBottom = 'auto';\n      root.append(reading, track, scale, status);\n      let frame;\n      function draw() {\n        const signal = api.input('analysis');\n        const floor = api.parameter('floorDb');\n        const db = decibels(signal?.rms ?? 0);\n        reading.textContent = signal ? `${formatLevel(db)} dBFS` : 'No analysis';\n        fill.style.transform = `scaleX(${signal ? normalizedLevel(db, floor) : 0})`;\n        fill.style.background = db >= 0 ? 'oklch(74% .13 35)' : 'oklch(76% .1 205)';\n        low.textContent = String(floor);\n        middle.textContent = String(floor / 2);\n        high.textContent = '0 dBFS';\n        track.setAttribute('aria-valuemin', String(floor));\n        track.setAttribute('aria-valuemax', '0');\n        track.setAttribute('aria-valuenow', String(Math.max(floor, Math.min(0, db))));\n        track.setAttribute('aria-valuetext', reading.textContent);\n        status.textContent = signal\n          ? `RMS ${signal.rms.toFixed(4)}`\n          : 'Connect Output.analysis and start audio.';\n        root.dataset.rms = String(signal?.rms ?? 0);\n        root.dataset.db = String(db);\n        frame = requestAnimationFrame(draw);\n      }\n      draw();\n      return {\n        dispose() {\n          cancelAnimationFrame(frame);\n          root.remove();\n        },\n      };\n    },\n  };\n}\n"
+    },
+    {
+      "path": "/nodes/history.mjs",
+      "mediaType": "text/javascript",
+      "encoding": "utf8",
+      "content": "import { decibels, normalizedLevel, surface } from './levels.mjs';\n\nexport default function createLevelHistory() {\n  return {\n    mount(element, api) {\n      const { root, status } = surface(\n        element,\n        'Level history',\n        'Output RMS over time · not an audio waveform',\n      );\n      const canvas = document.createElement('canvas');\n      canvas.setAttribute('role', 'img');\n      canvas.setAttribute('aria-label', 'Recent output RMS level in dBFS');\n      canvas.style.cssText = 'width:100%;min-height:100px;flex:1;min-width:0';\n      root.append(canvas, status);\n      const context = canvas.getContext('2d');\n      const points = [];\n      let frame,\n        lastSample = -Infinity;\n      function draw() {\n        const signal = api.input('analysis');\n        const now = performance.now(),\n          seconds = api.parameter('seconds'),\n          floor = api.parameter('floorDb');\n        if (signal && now - lastSample >= 40) {\n          points.push({ time: now, db: decibels(signal.rms) });\n          lastSample = now;\n        }\n        if (!signal) points.length = 0;\n        while (points.length && points[0].time < now - seconds * 1000) points.shift();\n        const ratio = Math.min(devicePixelRatio || 1, 2);\n        const width = Math.max(1, canvas.clientWidth),\n          height = Math.max(1, canvas.clientHeight);\n        if (\n          canvas.width !== Math.round(width * ratio) ||\n          canvas.height !== Math.round(height * ratio)\n        ) {\n          canvas.width = Math.round(width * ratio);\n          canvas.height = Math.round(height * ratio);\n        }\n        context.setTransform(ratio, 0, 0, ratio, 0, 0);\n        context.clearRect(0, 0, width, height);\n        const left = 32,\n          top = 16,\n          right = width - 8,\n          bottom = height - 24;\n        context.font = '11px system-ui';\n        context.lineWidth = 1;\n        for (const db of [0, floor / 2, floor]) {\n          const y = bottom - normalizedLevel(db, floor) * (bottom - top);\n          context.strokeStyle = '#38434c';\n          context.beginPath();\n          context.moveTo(left, y);\n          context.lineTo(right, y);\n          context.stroke();\n          context.fillStyle = '#abb7c1';\n          context.fillText(String(db), 0, y + 4);\n        }\n        context.fillStyle = '#abb7c1';\n        context.fillText(`−${seconds.toFixed(0)} s`, left, height - 4);\n        context.textAlign = 'right';\n        context.fillText('now', right, height - 4);\n        context.textAlign = 'left';\n        context.strokeStyle = '#88cad9';\n        context.lineWidth = 2;\n        context.beginPath();\n        points.forEach((point, index) => {\n          const x = right - ((now - point.time) / (seconds * 1000)) * (right - left);\n          const y = bottom - normalizedLevel(point.db, floor) * (bottom - top);\n          if (index === 0) context.moveTo(x, y);\n          else context.lineTo(x, y);\n        });\n        context.stroke();\n        status.textContent = signal\n          ? 'Change Output gain to trace a level change.'\n          : 'Connect Output.analysis and start audio.';\n        root.dataset.samples = String(points.length);\n        root.dataset.rms = String(signal?.rms ?? 0);\n        frame = requestAnimationFrame(draw);\n      }\n      draw();\n      return {\n        dispose() {\n          cancelAnimationFrame(frame);\n          root.remove();\n        },\n      };\n    },\n  };\n}\n"
+    }
+  ],
+  "composition": {
+    "version": 1,
+    "definitions": [
+      {
+        "id": "level-meter",
+        "version": 1,
+        "label": "Output level meter",
+        "implementation": {
+          "kind": "web-surface",
+          "entry": "/nodes/meter.mjs",
+          "dependencies": {},
+          "targets": [
+            "browser",
+            "webview"
+          ]
+        },
+        "inputs": [
+          {
+            "name": "analysis",
+            "type": "analysis"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "floorDb",
+            "label": "Floor · dBFS",
+            "min": -96,
+            "max": -24,
+            "default": -60
+          }
+        ]
+      },
+      {
+        "id": "level-history",
+        "version": 1,
+        "label": "Output level history",
+        "implementation": {
+          "kind": "web-surface",
+          "entry": "/nodes/history.mjs",
+          "dependencies": {},
+          "targets": [
+            "browser",
+            "webview"
+          ]
+        },
+        "inputs": [
+          {
+            "name": "analysis",
+            "type": "analysis"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "floorDb",
+            "label": "Floor · dBFS",
+            "min": -96,
+            "max": -24,
+            "default": -60
+          },
+          {
+            "name": "seconds",
+            "label": "History · seconds",
+            "min": 2,
+            "max": 20,
+            "default": 8
+          }
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "id": 2147483648,
+        "definition": "level-meter",
+        "label": "Level meter",
+        "parameters": {
+          "floorDb": -60
+        },
+        "position": [
+          670,
+          0
+        ],
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 40,
+          "height": 100
+        }
+      },
+      {
+        "id": 2147483649,
+        "definition": "level-history",
+        "label": "Level history",
+        "parameters": {
+          "floorDb": -60,
+          "seconds": 8
+        },
+        "position": [
+          670,
+          155
+        ],
+        "bounds": {
+          "x": 41,
+          "y": 0,
+          "width": 59,
+          "height": 100
+        }
+      }
+    ],
+    "connections": [
+      {
+        "from": 3,
+        "output": "analysis",
+        "to": 2147483648,
+        "input": "analysis"
+      },
+      {
+        "from": 3,
+        "output": "analysis",
+        "to": 2147483649,
+        "input": "analysis"
+      }
+    ]
+  },
+  "graph": {
+    "format": "manifold.project",
+    "schemaVersion": 1,
+    "projectId": "manifold.graph-workspace",
+    "signal": {
+      "inputs": 2,
+      "outputs": 2,
+      "inputSource": "external",
+      "nodes": [
+        {
+          "id": 1,
+          "type": "input.raw"
+        },
+        {
+          "id": 3,
+          "type": "output"
+        },
+        {
+          "id": 4,
+          "type": "gain",
+          "a": 0.7
+        }
+      ],
+      "connections": [
+        {
+          "from": 4,
+          "outputPort": 0,
+          "to": 3,
+          "inputPort": 0
+        },
+        {
+          "from": 1,
+          "outputPort": 0,
+          "to": 4,
+          "inputPort": 0
+        }
+      ],
+      "initialParameters": [
+        {
+          "nodeId": 4,
+          "id": 0,
+          "value": 0.5
+        }
+      ]
+    },
+    "endpoints": [
+      {
+        "path": "/probe/gain",
+        "kind": "parameter",
+        "nodeId": 4,
+        "id": 0,
+        "min": 0,
+        "max": 2,
+        "default": 0.5
+      }
+    ],
+    "instances": [
+      {
+        "path": "/probe/outputGain",
+        "nodeId": 4
+      }
+    ]
+  },
+  "view": [
+    {
+      "id": "gain",
+      "type": "parameter",
+      "path": "/probe/gain",
+      "label": "Output gain"
+    }
+  ],
+  "eventState": null,
+  "eventStateSchema": null
+}

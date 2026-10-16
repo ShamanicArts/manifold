@@ -1,0 +1,282 @@
+{
+  "name": "@manifold/author",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "prepack": "../../scripts/build-wasm.sh && bash ../../scripts/build-prepared-wasm.sh"
+  },
+  "exports": {
+    "./device-browser": {
+      "types": "./device-browser.d.ts",
+      "default": "./device-browser.js"
+    },
+    "./examples/oscillator-preview": {
+      "types": "./examples/oscillator-preview.d.mts",
+      "default": "./examples/oscillator-preview.mjs"
+    },
+    "./examples/filter-instrument": {
+      "types": "./examples/filter-instrument.d.mts",
+      "default": "./examples/filter-instrument.mjs"
+    },
+    "./examples/network-instrument": {
+      "types": "./examples/network-instrument.d.mts",
+      "default": "./examples/network-instrument.mjs"
+    },
+    "./primitives": {
+      "types": "./primitives.d.ts",
+      "default": "./primitives.js"
+    },
+    "./live-project": {
+      "types": "./live-project.d.ts",
+      "default": "./live-project.js"
+    },
+    "./examples/standalone-filter": {
+      "types": "./examples/standalone-filter.d.mts",
+      "default": "./examples/standalone-filter.mjs"
+    },
+    "./examples/arbitrary-io": {
+      "types": "./examples/arbitrary-io.d.mts",
+      "default": "./examples/arbitrary-io.mjs"
+    },
+    ".": {
+      "types": "./author.d.ts",
+      "default": "./author.js"
+    },
+    "./catalog": {
+      "types": "./catalog.generated.d.ts",
+      "default": "./catalog.generated.js"
+    },
+    "./workspace-types": {
+      "types": "./workspace-types.d.ts",
+      "default": "./workspace-types.js"
+    },
+    "./examples/dsp-live-scripting": {
+      "types": "./examples/dsp-live-scripting.d.mts",
+      "default": "./examples/dsp-live-scripting.mjs"
+    },
+    "./examples/transpose-audition": {
+      "types": "./examples/transpose-audition.d.mts",
+      "default": "./examples/transpose-audition.mjs"
+    },
+    "./examples/fx-slot-swap": {
+      "types": "./examples/fx-slot-swap.d.mts",
+      "default": "./examples/fx-slot-swap.mjs"
+    },
+    "./examples/rack-filter-eq": {
+      "types": "./examples/rack-filter-eq.d.mts",
+      "default": "./examples/rack-filter-eq.mjs"
+    },
+    "./examples/rack-oscillator": {
+      "types": "./examples/rack-oscillator.d.mts",
+      "default": "./examples/rack-oscillator.mjs"
+    },
+    "./examples/rack-module-host": {
+      "types": "./examples/rack-module-host.d.mts",
+      "default": "./examples/rack-module-host.mjs"
+    },
+    "./examples/four-layer-loops": {
+      "types": "./examples/four-layer-loops.d.mts",
+      "default": "./examples/four-layer-loops.mjs"
+    },
+    "./examples/loop-authoring": {
+      "types": "./examples/loop-authoring.d.mts",
+      "default": "./examples/loop-authoring.mjs"
+    },
+    "./examples/phase-vocoder-chain": {
+      "types": "./examples/phase-vocoder-chain.d.mts",
+      "default": "./examples/phase-vocoder-chain.mjs"
+    },
+    "./examples/sample-voice-chain": {
+      "types": "./examples/sample-voice-chain.d.mts",
+      "default": "./examples/sample-voice-chain.mjs"
+    },
+    "./examples/rack-sample-eight-voice": {
+      "types": "./examples/rack-sample-eight-voice.d.mts",
+      "default": "./examples/rack-sample-eight-voice.mjs"
+    },
+    "./browser": {
+      "types": "./browser.d.ts",
+      "default": "./browser.js"
+    },
+    "./package": {
+      "types": "./package.d.ts",
+      "default": "./package.js"
+    },
+    "./analysis": {
+      "types": "./analysis.d.ts",
+      "default": "./analysis.js"
+    },
+    "./examples/main-wave-graph": {
+      "types": "./examples/main-wave-graph.d.mts",
+      "default": "./examples/main-wave-graph.mjs"
+    },
+    "./examples/main-voice-control": {
+      "types": "./examples/main-voice-control.d.mts",
+      "default": "./examples/main-voice-control.mjs"
+    },
+    "./examples/live-filter-controller": "./examples/live-filter-controller.mjs",
+    "./examples/standalone-oscillator": {
+      "types": "./examples/standalone-oscillator.d.mts",
+      "default": "./examples/standalone-oscillator.mjs"
+    },
+    "./examples/live-oscillator-controller": "./examples/live-oscillator-controller.mjs",
+    "./examples/main-wave-creator": {
+      "types": "./examples/main-wave-creator.d.mts",
+      "default": "./examples/main-wave-creator.mjs"
+    },
+    "./examples/live-main-wave-controller": "./examples/live-main-wave-controller.mjs",
+    "./midi-control": {
+      "types": "./midi-control.d.ts",
+      "default": "./midi-control.js"
+    },
+    "./examples/primitive-library": {
+      "types": "./examples/primitive-library.d.mts",
+      "default": "./examples/primitive-library.mjs"
+    },
+    "./examples/live-primitives-controller": "./examples/live-primitives-controller.mjs",
+    "./host-services": {
+      "types": "./host-services.d.ts",
+      "default": "./host-services.js"
+    },
+    "./examples/ui-styled-tone": {
+      "types": "./examples/ui-styled-tone.d.mts",
+      "default": "./examples/ui-styled-tone.mjs"
+    },
+    "./examples/ui-reactive-tone": {
+      "types": "./examples/ui-reactive-tone.d.mts",
+      "default": "./examples/ui-reactive-tone.mjs"
+    },
+    "./web-view": {
+      "types": "./web-view.d.ts",
+      "default": "./web-view.js"
+    },
+    "./project-source": "./project-source.js",
+    "./project-files": {
+      "types": "./project-files.d.ts",
+      "default": "./project-files.js"
+    },
+    "./studio-graph": {
+      "types": "./studio-graph.d.ts",
+      "default": "./studio-graph.js"
+    },
+    "./studio-source": {
+      "types": "./studio-source.d.ts",
+      "default": "./studio-source.js"
+    },
+    "./examples/ui-three-tone": {
+      "types": "./examples/ui-three-tone.d.mts",
+      "default": "./examples/ui-three-tone.mjs"
+    },
+    "./examples/ui-orbit": {
+      "types": "./examples/ui-orbit.d.mts",
+      "default": "./examples/ui-orbit.mjs"
+    },
+    "./examples/ui-nacre": {
+      "types": "./examples/ui-nacre.d.mts",
+      "default": "./examples/ui-nacre.mjs"
+    },
+    "./composition": {
+      "types": "./composition.d.ts",
+      "default": "./composition.js"
+    },
+    "./project-modules": {
+      "types": "./project-modules.d.ts",
+      "default": "./project-modules.js"
+    },
+    "./node-sources": {
+      "types": "./node-sources.d.ts",
+      "default": "./node-sources.js"
+    },
+    "./creative": {
+      "types": "./creative.d.ts",
+      "default": "./creative.js"
+    },
+    "./creative-graph": {
+      "types": "./creative-graph.d.ts",
+      "default": "./creative-graph.js"
+    },
+    "./audio-routing": "./audio-routing.js",
+    "./presentation-types": "./presentation-types.js",
+    "./visual-primitives": "./visual-primitives.js"
+  },
+  "files": [
+    "device-browser.js",
+    "device-browser.d.ts",
+    "author.js",
+    "author.d.ts",
+    "primitives.js",
+    "primitives.d.ts",
+    "project-source.js",
+    "project-files.js",
+    "project-files.d.ts",
+    "studio-graph.js",
+    "audio-graphs.js",
+    "studio-graph.d.ts",
+    "studio-source.js",
+    "studio-source.d.ts",
+    "host-services.js",
+    "network-definition.js",
+    "parameter-names.js",
+    "parameter-names.generated.d.ts",
+    "host-services.d.ts",
+    "index.js",
+    "index.d.ts",
+    "live-project.js",
+    "live-project.d.ts",
+    "browser.js",
+    "browser.d.ts",
+    "package.js",
+    "package.d.ts",
+    "analysis.js",
+    "analysis.d.ts",
+    "analysis-worker.js",
+    "graph-worker.js",
+    "prepared-runtime.js",
+    "resource-history.js",
+    "prepared-compiler.js",
+    "prepared-processor.js",
+    "shared-graph-processor.js",
+    "worker-transport.js",
+    "sample-assets.js",
+    "catalog.generated.js",
+    "catalog.generated.d.ts",
+    "workspace-types.js",
+    "workspace-types.d.ts",
+    "examples",
+    "runtime",
+    "README.md",
+    "midi-control.js",
+    "midi-control.d.ts",
+    "web-view.js",
+    "web-view.d.ts",
+    "composition.js",
+    "composition-graph.js",
+    "project-modules.js",
+    "project-modules.d.ts",
+    "composition.d.ts",
+    "node-sources.js",
+    "node-sources.d.ts",
+    "creative.js",
+    "creative.d.ts",
+    "creative-graph.js",
+    "creative-graph.d.ts",
+    "device.js",
+    "device-source.js",
+    "native-project.js",
+    "device-presentation.js",
+    "device.d.ts",
+    "audio-routing.js",
+    "device-midi.js",
+    "midi-event.js",
+    "presentation-types.js",
+    "visual-metadata.js",
+    "additional-nodes.js",
+    "node-metadata.js",
+    "visual-primitives.js",
+    "visual-primitives.d.ts"
+  ],
+  "dependencies": {
+    "acorn": "8.15.0"
+  }
+}

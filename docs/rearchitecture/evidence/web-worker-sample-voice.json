@@ -1,0 +1,47 @@
+{
+  "recordedAt": "2026-09-29T20:33:37.405Z",
+  "isolated": true,
+  "graphNodes": 6,
+  "assetFrames": 4800,
+  "beforeRms": 0,
+  "soundingRms": 0.018706839734516027,
+  "meter": "0.0491 RMS · peak 0.0491 · 0 missed / 248 blocks",
+  "batchRollback": true,
+  "pitchMode": 2,
+  "pitchNote": 67,
+  "rack": {
+    "graphNodes": 28,
+    "sharedBindings": 7,
+    "maxRms": 0.04429391581668903,
+    "diagnostics": {
+      "audioBlocks": 124,
+      "underruns": 0,
+      "activeSlot": 0,
+      "outputLatencyBlocks": 4,
+      "lastPreparationMs": 11.225000023841858,
+      "lastPublicationMs": null,
+      "lastTransferredNodes": null
+    },
+    "profile": {
+      "blocks": 116,
+      "p50Us": 50,
+      "p95Us": 85,
+      "p99Us": 95,
+      "maxUs": 120
+    }
+  },
+  "rackPage": {
+    "peakRms": 0.04307345041923201,
+    "diagnostics": {
+      "audioBlocks": 68,
+      "underruns": 0,
+      "activeSlot": 0,
+      "outputLatencyBlocks": 4,
+      "lastPreparationMs": 11.794999957084656,
+      "lastPublicationMs": null,
+      "lastTransferredNodes": null
+    },
+    "mode": 2
+  },
+  "pageErrors": []
+}

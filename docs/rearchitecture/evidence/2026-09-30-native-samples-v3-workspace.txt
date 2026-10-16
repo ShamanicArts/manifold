@@ -1,0 +1,668 @@
+   Compiling manifold-project-js v0.1.0 (/home/shamanic/dev/Manifold-v2/crates/manifold-project-js)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.49s
+     Running unittests src/lib.rs (target/debug/deps/manifold_clap-259e8a266dca7a38)
+
+running 36 tests
+test graph::tests::original_graph_widget_gestures_reach_clap_and_saved_state ... ok
+test graph::tests::inactive_graph_automation_survives_activation_and_state_save ... ok
+test graph::tests::dense_automation_and_wildcard_release_stay_inside_prepared_buffers ... ok
+test graph::tests::javascript_authored_graph_matches_native_in_clap_callback ... ok
+test graph::tests::graph_clap_note_and_automation_match_native_and_state_reopens ... ok
+test graph::tests::queued_route_survives_clap_deactivation_as_next_activation_state ... ok
+test graph::tests::live_named_route_changes_clap_callback_and_published_host_save ... ok
+test graph::tests::host_save_waits_for_published_graph_generation ... ok
+test main_gui::tests::truncated_editor_file_import_preserves_main_state ... ok
+test graph::tests::authored_cv_chains_match_native_in_clap_callback ... ok
+test graph::tests::pending_clap_loop_route_keeps_newer_take_on_host_stop ... ok
+test tests::gui_messages_flush_as_host_gesture_and_parameter_events ... ok
+test tests::clap_audio_matches_native_project_with_host_automation ... ok
+test tests::inactive_host_flush_retains_each_effects_controls ... ok
+test graph::tests::project_import_save_ignores_snapshots_from_the_retired_generation ... ok
+test main_product::tests::browser_compare_rack_state_reopens_in_main_clap ... ok
+test main_product::tests::browser_atv_rack_state_reopens_in_main_clap ... ok
+test main_product::tests::browser_sample_hold_rack_state_reopens_in_main_clap ... ok
+test graph::tests::clap_owned_loop_publication_matches_native_through_staging_races_stop_and_reopen ... ok
+test main_product::tests::browser_slew_rack_state_reopens_in_main_clap ... ok
+test graph::tests::browser_two_source_capture_reopens_and_plays_in_clap ... ok
+test graph::tests::packaged_js_parameter_and_route_publish_in_clap_and_survive_host_reopen ... ok
+test graph::tests::live_state_saves_keep_automated_controls_from_one_block ... ok
+test graph::tests::fixed_value_bank_never_exposes_a_mixed_audio_snapshot ... ok
+test graph::tests::standalone_sample_browser_take_reopens_and_plays_in_clap ... ok
+test main_gui::tests::original_sample_widget_ipc_requests_native_capture ... ok
+test main_product::tests::bounded_editor_status_reflects_audio_thread_record_commands ... ok
+test main_gui::tests::editor_layout_message_persists_while_inactive_and_active ... ok
+test graph::tests::clap_audio_callback_captures_sidechain_and_publishes_portable_sample ... ok
+test main_gui::tests::editor_ipc_controls_the_actual_main_audio_runtime ... ok
+test main_product::tests::editor_parameter_waits_for_host_output_capacity_then_reaches_audio_and_state ... ok
+test graph::tests::packaged_js_fx_controller_survives_closed_editor_clap_save_and_reopen ... ok
+test graph::tests::clap_host_automation_survives_script_composition_and_stop_during_preparation ... ok
+test graph::tests::legacy_authored_graph_and_fx_swap_publish_while_clap_audio_runs ... ok
+test graph::tests::active_clap_state_save_reopens_authored_loop_pcm ... ok
+test graph::tests::deactivated_clap_graph_saves_recorded_loop_pcm ... ok
+
+test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+
+     Running unittests src/lib.rs (target/debug/deps/manifold_core-ab50d9ef307cb66f)
+
+running 238 tests
+test bitcrusher::tests::held_sample_and_external_logic_work_across_blocks ... ok
+test audio_fm::tests::audio_modulation_changes_delayed_carrier_and_amount_zero_passes_through ... ok
+test audio_sync::tests::crossings_restart_carrier_replay_and_zero_hardness_passes_through ... ok
+test capture_timing::tests::old_transport_fallback_and_bar_rounding ... ok
+test capture_timing::tests::old_lua_free_capture_trace ... ok
+test cv_utilities::tests::amount_inverts_biases_and_clamps ... ok
+test compressor::tests::compresses_stereo_and_reports_reduction ... ok
+test cv_utilities::tests::mixer_uses_four_independent_inputs_and_offset ... ok
+test cv_utilities::tests::sample_track_and_quantize_follow_trigger_semantics ... ok
+test envelope::tests::release_during_attack_falls_from_current_level ... ok
+test chorus::tests::delayed_voices_survive_block_boundary_and_stay_finite ... ok
+test effect_slot::tests::returning_to_delay_discards_its_old_tail ... ok
+test eq8::tests::reset_clears_filter_history_at_current_controls ... ok
+test formant_filter::tests::dry_bypass_and_vowel_change_preserve_stereo ... ok
+test fft_spectrum::tests::reset_clears_meter_and_prepared_window_history ... ok
+test envelope::tests::retrigger_during_release_starts_at_current_level ... ok
+test granulator::tests::preloaded_source_resamples_to_graph_rate_before_processing ... ok
+test chorus::tests::reset_clears_delay_at_current_settings_without_reallocating ... ok
+test graph::tests::branch_sum_and_linear_blend_route_explicit_sources ... ok
+test graph::tests::control_ports_are_typed_and_modulate_audio_per_sample ... ok
+test graph::tests::crossfader_uses_stereo_sources_and_smooths_position ... ok
+test graph::tests::compare_and_range_use_control_block_ticks_and_distinct_trigger_port ... ok
+test graph::tests::disconnected_retrospective_root_records_without_audible_input ... ok
+test envelope_follower::tests::tracks_signal_then_releases_and_preserves_audio ... ok
+test eq8::tests::disabled_bands_pass_stereo_and_enabled_band_changes_one_frequency ... ok
+test graph::tests::gain_smooths_parameter_and_mute_changes ... ok
+test granulator::tests::preloaded_source_generates_grains_without_live_capture ... ok
+test graph::tests::envelope_control_routes_audio_detector_to_cv_without_host_messages ... ok
+test graph::tests::gain_filter_chain_matches_standalone_filter ... ok
+test graph::tests::host_input_has_no_implicit_output_route ... ok
+test graph::tests::monitor_input_is_an_explicit_gain_controlled_route ... ok
+test graph::tests::mixer_routes_first_and_last_of_thirty_two_stereo_busses ... ok
+test graph::tests::midi_trace_distinguishes_suppressed_and_emitted_notes_at_their_offsets ... ok
+test graph::tests::lfo_output_ports_render_distinct_cv_and_reject_invalid_routes ... ok
+test graph::tests::note_events_take_effect_at_sample_offsets ... ok
+test chorus::tests::reconfigure_discards_old_delay_without_reallocating ... ok
+test effect_slot::tests::limiter_slot_applies_smoothed_pre_gain_before_peak_detection ... ok
+test fft_spectrum::tests::passes_stereo_audio_and_finds_tone_after_first_window ... ok
+test graph::tests::rejects_cycles_and_duplicate_input_ports ... ok
+test graph::tests::patchable_route_reorders_later_source_and_rejects_a_real_cycle ... ok
+test graph::tests::patchable_ring_audio_route_switches_modulator_and_resumes_phase ... ok
+test graph::tests::oscillator_phase_continues_across_block_boundaries ... ok
+test graph::tests::patchable_routes_preserve_kernels_and_recompute_reachability ... ok
+test graph::tests::scalar_cv_chain_routes_hold_transform_and_four_input_mix ... ok
+test graph::tests::sidechain_capture_reads_only_the_second_stereo_bus ... ok
+test graph::tests::scalar_live_records_continue_renamed_gain_and_widener ... ok
+test graph::tests::slew_control_preserves_cv_type_and_changes_modulation_shape ... ok
+test graph::tests::stopped_loop_take_publishes_to_running_instrument ... ok
+test effect_slot::tests::compressor_slot_maps_normalized_controls_to_legacy_node ... ok
+test graph::tests::typed_midi_chain_matches_direct_timed_voice_events_and_held_remap ... ok
+test lfo::tests::phase_continues_across_calls ... ok
+test lfo::tests::reset_restarts_phase_at_current_rate ... ok
+test extended_additive::tests::prepared_lookup_tracks_direct_legacy_recipe_for_all_waveforms ... ok
+test limiter::tests::clamps_stereo_peak_and_reports_block_average_reduction ... ok
+test loop_capture::tests::full_buffer_keeps_the_most_recent_frames ... ok
+test graph::tests::main_directional_updates_sample_cursor_and_sync_retrigger_before_each_block ... ok
+test loop_capture::tests::host_processing_reset_restarts_playback_without_erasing_the_take ... ok
+test loop_capture::tests::live_snapshot_tracks_wrapped_ring_without_stopping ... ok
+test legacy_filter::tests::lowpass_rejects_alternating_signal_and_dry_mix_restores_it ... ok
+test effect_slot::tests::selection_rejects_unsupported_types_and_keeps_dry_path ... ok
+test legacy_eq::tests::dry_bypass_preserves_stereo_and_wet_shelves_change_it ... ok
+test granulator::tests::disabled_clears_grains_and_output ... ok
+test loop_capture::tests::recording_take_cannot_be_exported_until_stopped ... ok
+test eq8::tests::response_query_tracks_enabled_low_shelf_and_mix ... ok
+test loop_capture::tests::prepared_stage_reuses_storage_and_rejects_oversized_callback_request ... ok
+test loop_capture::tests::reset_discards_take_without_reallocating_ring_or_changing_controls ... ok
+test loop_capture::tests::retrospective_capture_runs_without_record_control_and_pads_early_history ... ok
+test loop_capture::tests::reverse_and_overdub_update_the_playing_loop ... ok
+test graph::tests::route_reorder_keeps_oscillator_phase_when_reactivated ... ok
+test effect_slot::tests::phaser_slot_preserves_legacy_spread_units ... ok
+test loop_capture::tests::take_revision_invalidates_snapshots_on_record_and_overdub_changes ... ok
+test main_arpeggiator::tests::captures_chord_and_copies_source_amplitude_to_timed_lanes ... ok
+test loop_capture::tests::records_then_repeats_across_blocks ... ok
+test main_compare::tests::both_mode_triggers_on_each_crossing_and_restores_state ... ok
+test main_arpeggiator::tests::sorted_down_bounce_and_seeded_random_follow_main_modes ... ok
+test main_arpeggiator::tests::same_pitch_lanes_have_independent_gate_close ... ok
+test loop_capture::tests::staged_snapshot_survives_ring_overwrite_and_record_restart_cancels_it ... ok
+test effect_slot::tests::chorus_slot_maps_normalized_controls_and_wet_gain ... ok
+test main_control_slew::tests::original_lua_rise_fall_trace_and_shape_curves ... ok
+test main_directional::tests::fm_uses_block_phase_and_previous_sample_position ... ok
+test main_directional::tests::normal_mode_keeps_the_fm_phase_clock_running ... ok
+test main_directional::tests::sync_retriggers_on_phase_wrap_and_only_hard_syncs_wave_facing_blends ... ok
+test main_arpeggiator::tests::hold_and_octaves_survive_source_release_until_hold_clears ... ok
+test loop_capture::tests::restored_pcm_plays_and_stages_at_a_different_host_rate ... ok
+test main_compare::tests::rising_hysteresis_and_two_tick_pulse_follow_lua ... ok
+test extended_additive::tests::recipes_are_finite_and_nyquist_bounded ... ok
+test graph::tests::main_pitch_binding_routes_note_to_wave_sample_and_vocoder_then_restores_manual_targets ... ok
+test fft_spectrum::tests::partition_preserves_meter_and_silence_clears_it ... ok
+test graph::tests::prepared_graph_reset_discards_reverb_tail_and_preserves_route ... ok
+test graph::tests::arpeggiator_deadlines_and_audio_do_not_depend_on_block_size ... ok
+test main_lfo::tests::deterministic_shapes_match_legacy_quarter_cycle_values ... ok
+test effect_slot::tests::legacy_route_can_visit_every_effect_without_resetting_the_graph ... ok
+test graph::tests::live_midi_chain_retains_original_note_ownership_and_resets_rewired_voices ... ok
+test main_lfo::tests::hold_and_noise_are_finite_and_sync_pauses_phase ... ok
+test main_lfo::tests::legacy_sine_outputs_and_retriggered_phase ... ok
+test main_looper::tests::capture_peak_keeps_single_frame_transients_through_wrap_and_partial_overwrite ... ok
+test main_looper::tests::capture_peak_index_agrees_with_every_sample_across_ring_edges ... ok
+test main_looper::tests::exported_loop_reopens_without_touching_live_capture_or_previous_audio_until_complete ... ok
+test main_looper::tests::first_loop_infers_tempo_and_commits_recorded_input ... ok
+test main_looper::tests::free_mode_quantizes_recorded_span_at_existing_tempo ... ok
+test graph::tests::two_bus_mixer_links_depth_and_restores_independent_gains ... ok
+test main_looper::tests::playback_uses_original_integer_step_and_seek_crossfade ... ok
+test main_note_filter::tests::reversed_limits_and_outside_mode_preserve_rejected_voice_identity ... ok
+test main_pitch::tests::classic_sample_keytrack_uses_note_ratio ... ok
+test main_pitch::tests::vocoder_carries_pitch_until_its_twenty_four_semitone_limit ... ok
+test main_range_mapper::tests::clamp_and_remap_match_lua_with_reversed_limits ... ok
+test main_looper::tests::traditional_arms_then_fires_and_overdub_respects_length_policy ... ok
+test main_looper::tests::overdub_length_wins_can_shorten_existing_loop ... ok
+test main_scale_quantizer::tests::maps_each_voice_pitch_without_changing_ownership_or_amplitude ... ok
+test main_transpose::tests::rounded_shift_clamps_pitch_and_preserves_source_payload ... ok
+test main_velocity_mapper::tests::runtime_curves_blend_and_offset_without_changing_voice_identity ... ok
+test main_voice_allocator::tests::duplicate_note_uses_another_idle_slot_and_releases_both ... ok
+test main_voice_allocator::tests::idle_then_quietest_release_then_oldest_active ... ok
+test graph::tests::main_voice_bank_renders_timed_chord_and_releases_one_note ... ok
+test main_instrument::tests::separate_lfo_modules_route_to_filter_and_fx_mix_then_restore_base ... ok
+test main_instrument::tests::main_sample_hold_tracks_trigger_edges_and_routes_both_polarities ... ok
+test graph::tests::live_identity_transfer_continues_oscillator_lfo_mixer_and_distortion ... ok
+test main_instrument::tests::atv_uses_a_typed_lfo_input_and_routes_its_clamped_output ... ok
+test main_instrument::tests::main_compare_routes_hysteretic_gate_and_both_edge_trigger ... ok
+test main_instrument::tests::shared_target_routes_compose_in_stable_slot_order ... ok
+test main_instrument::tests::live_sample_is_dry_input_and_plays_through_main_voice_bank ... ok
+test main_instrument::tests::main_range_remaps_cv_mix_output_into_fx_route ... ok
+test main_instrument::tests::prepared_sample_swap_keeps_displaced_pcm_alive_for_control_retirement ... ok
+test main_instrument::tests::main_cv_mix_combines_four_typed_inputs_and_routes_out_inv ... ok
+test main_instrument::tests::lfo_route_modulates_filter_without_overwriting_its_base_control ... ok
+test main_instrument::tests::layer_sample_source_taps_playback_gate_before_volume ... ok
+test main_looper::tests::retrospective_commit_without_recording_and_four_independent_layers ... ok
+test main_instrument::tests::free_sample_spans_only_audio_after_start_from_the_pinned_layer ... ok
+test main_instrument::tests::main_slew_smooths_atv_output_before_a_typed_fx_route ... ok
+test midi_arpeggiator::tests::captures_chord_then_steps_and_closes_gate_at_sample_deadlines ... ok
+test midi_arpeggiator::tests::enabling_hold_captures_keys_already_pressed ... ok
+test midi_arpeggiator::tests::hold_latches_released_key_until_switched_off ... ok
+test midi_arpeggiator::tests::modes_and_octaves_follow_sorted_legacy_sequence ... ok
+test midi_note_filter::tests::blocked_notes_remain_owned_and_can_sound_after_range_change ... ok
+test midi_note_filter::tests::crossing_the_range_releases_before_restarting_held_notes ... ok
+test midi_scale_quantizer::tests::chromatic_passes_and_legacy_nearest_stays_within_current_octave ... ok
+test midi_scale_quantizer::tests::major_c_sharp_nearest_up_and_down_match_old_rack ... ok
+test midi_transpose::tests::clamps_output_and_passes_pitch_bend ... ok
+test midi_transpose::tests::held_note_remaps_and_releases_original_key ... ok
+test midi_transpose::tests::oldest_voice_is_released_before_ninth_note ... ok
+test midi_transpose::tests::reset_forgets_held_note_but_retains_transposition ... ok
+test midi_velocity_mapper::tests::curve_change_restarts_a_held_key_with_mapped_velocity ... ok
+test midi_velocity_mapper::tests::hard_curve_remaps_velocity_and_held_notes ... ok
+test midi_velocity_mapper::tests::zero_output_is_silent_but_held_input_can_restart ... ok
+test multitap_delay::tests::tap_arrives_after_block_boundary_and_reset_clears_tail ... ok
+test main_instrument::tests::synth_note_is_audible_and_can_be_committed_from_every_layer_capture ... ok
+test noise::tests::reset_restarts_noise_at_current_level_and_color ... ok
+test noise::tests::seeded_noise_is_repeatable_and_stereo_independent ... ok
+test oscillator::tests::additive_render_changes_spectrum_and_accepts_live_shape_controls ... ok
+test oscillator::tests::deterministic_detune_approximates_cents_ratio ... ok
+test oscillator::tests::authored_controls_settle_before_first_audio_frame ... ok
+test oscillator::tests::optional_voice_level_rise_resets_phase_without_restarting_amplitude_smoothing ... ok
+test oscillator::tests::extended_standard_waveforms_and_drive_are_audible_and_reproducible ... ok
+test oscillator::tests::quarter_width_pulse_matches_legacy_high_phase_fraction ... ok
+test oscillator::tests::raw_audio_rising_edge_resets_phase_only_when_sync_is_enabled ... ok
+test oscillator::tests::reset_restarts_phase_with_the_current_frequency_and_level ... ok
+test parameter_catalog::tests::every_workspace_parameter_has_a_valid_unique_default ... ok
+test main_voice_bank::tests::entering_add_or_morph_clears_previous_fm_sync_motion ... ok
+test phase_vocoder::tests::dry_bypass_is_exact_and_order_is_prepare_only ... ok
+test main_instrument::tests::fourth_layer_sample_source_uses_its_own_loop_playback ... ok
+test phrase_gain::tests::live_amount_change_smooths_the_first_sample ... ok
+test phrase_gain::tests::phrase_formula_preserves_bypass_and_full_contour ... ok
+test phaser::tests::stages_spread_and_feedback_produce_finite_stereo ... ok
+test resonator::tests::impulse_rings_and_parameters_reach_target_after_block ... ok
+test pitch_shifter::tests::dormant_bypass_discards_old_delay_history ... ok
+test reverse_delay::tests::dormant_bypass_clears_history_without_allocating ... ok
+test ring_modulator::tests::external_bus_bypasses_oscillator_and_enable_gates_output ... ok
+test ring_modulator::tests::silent_legacy_bus_differs_from_internal_oscillator ... ok
+test main_sample_capture::tests::free_capture_over_ring_capacity_uses_newest_frames_in_order ... ok
+test sample_analysis::tests::last_visual_bin_includes_final_frame ... ok
+test main_voice_bank::tests::chords_release_independently_and_duplicate_notes_share_release ... ok
+test reverb::tests::preallocated_tail_survives_blocks_and_reset_clears_it ... ok
+test sample_instrument::tests::invalid_midi_channel_does_not_panic_in_core ... ok
+test sample_instrument::tests::new_note_reuses_a_releasing_slot_before_stealing_a_held_note ... ok
+test sample_instrument::tests::ninth_note_steals_oldest_voice ... ok
+test sample_instrument::tests::note_release_fades_over_configured_samples_and_can_be_disabled ... ok
+test sample_instrument::tests::notes_have_independent_voices_and_note_off_targets_one_key ... ok
+test sample_instrument::tests::pitch_bend_retunes_only_matching_sample_channel ... ok
+test sample_instrument::tests::published_source_changes_new_notes_without_cutting_held_notes ... ok
+test sample_instrument::tests::reset_silences_voices_and_reuses_prepared_new_source ... ok
+test sample_instrument::tests::root_note_changes_resampling_speed ... ok
+test sample_instrument::tests::spread_pan_separates_detuned_subvoices_and_one_shot_waits_for_last ... ok
+test sample_instrument::tests::unison_count_is_captured_at_note_on_and_detune_moves_subvoices_apart ... ok
+test sample_region::tests::bounded_upload_requires_ordered_finite_complete_pcm ... ok
+test oscillator::tests::unison_spread_separates_channels_and_returns_to_one_voice_without_phase_reset ... ok
+test sample_region::tests::crossfade_blends_the_seam_and_skips_the_overlapped_head ... ok
+test sample_region::tests::display_peaks_follow_uploaded_sample_head_to_tail ... ok
+test sample_region::tests::loops_and_plays_once_in_both_directions ... ok
+test main_sample_capture::tests::full_ring_snapshot_finishes_before_new_writes_can_replace_its_head ... ok
+test sample_region::tests::secondary_unison_voices_ramp_from_zero_after_each_trigger ... ok
+test sample_region::tests::one_voice_uses_legacy_equal_power_center_pan ... ok
+test sample_analysis::tests::silence_and_transient_have_no_pitch ... ok
+test main_voice_bank::tests::note_filter_reads_raw_scale_or_transpose_voice_note ... ok
+test sample_region::tests::source_rate_and_region_are_respected ... ok
+test sine_bank::tests::manual_bank_is_stereo_and_audible ... ok
+test sine_bank::tests::partial_upload_is_atomic_and_bounded ... ok
+test slew_limiter::tests::rise_and_fall_are_independent_and_direct_below_one ... ok
+test sample_region::tests::unison_uses_independent_detuned_cursors_and_stereo_spread ... ok
+test spectral_targets::tests::add_and_morph_have_useful_missing_source_behavior ... ok
+test spectral_targets::tests::all_wave_recipes_produce_bounded_targets ... ok
+test spectrum_analyzer::tests::passes_audio_unchanged_and_exposes_bounded_bands ... ok
+test shimmer::tests::reset_discards_old_delay_contents ... ok
+test temporal_partials::tests::rejects_invalid_regions_and_samples ... ok
+test stereo_delay::tests::impulse_survives_block_boundaries ... ok
+test tests::block_partition_preserves_state ... ok
+test stereo_widener::tests::width_and_mono_low_change_stereo_difference ... ok
+test tests::control_cutoff_changes_filter_without_changing_unmodulated_path ... ok
+test tests::public_resonance_range_retains_legacy_dsp_clamp ... ok
+test transient_shaper::tests::transient_gain_and_meter_follow_an_attack ... ok
+test main_voice_bank::tests::ninth_note_uses_original_oldest_slot_rule ... ok
+test voice::tests::invalid_midi_channel_does_not_panic_in_core ... ok
+test main_voice_bank::tests::main_arp_route_changes_preserve_held_source_and_clear_old_output_lanes ... ok
+test voice::tests::ninth_note_steals_oldest_voice ... ok
+test voice::tests::note_off_during_attack_releases_without_stuck_voice ... ok
+test voice::tests::pitch_bend_follows_channel_and_applies_to_future_notes ... ok
+test tests::modes_produce_distinct_finite_signals ... ok
+test main_voice_bank::tests::sample_player_center_pan_precedes_the_voice_branches ... ok
+test voice::tests::reset_silences_held_voice_and_retains_current_sound_controls ... ok
+test stutter::tests::probability_zero_is_dry_and_pattern_zero_disables_repeats ... ok
+test waveshaper::tests::seven_curves_stay_finite_and_bypass_preserves_stereo ... ok
+test main_voice_bank::tests::scale_quantizer_retones_held_voices_and_releases_by_source_note ... ok
+test main_voice_bank::tests::transpose_selects_raw_or_scale_voice_and_retains_source_release ... ok
+test main_voice_bank::tests::velocity_mapper_changes_held_audio_and_preserves_source_note_release ... ok
+test main_voice_bank::tests::note_filter_mutes_held_voice_reopens_on_range_change_and_releases_source_note ... ok
+test main_voice_bank::tests::velocity_mapper_current_source_preserves_filter_gate_and_raw_source_can_bypass_it ... ok
+test main_voice_bank::tests::temporal_targets_follow_each_voice_and_manual_upload_disables_follow ... ok
+test sample_analysis::tests::detects_a_stereo_tone_and_preserves_channel_peaks ... ok
+test main_voice_bank::tests::main_arp_renders_sample_timed_chord_at_two_host_block_sizes ... ok
+test main_voice_bank::tests::reset_silences_held_main_voice_and_retains_wave_controls ... ok
+test sample_analysis::tests::opposite_phase_stereo_still_yields_pitch ... ok
+test phase_vocoder::tests::both_modes_make_finite_wet_audio_without_stereo_cursor_split ... ok
+test main_voice_bank::tests::ring_uses_both_live_sources_and_depth_changes_the_held_note ... ok
+test temporal_partials::tests::transient_uses_peaks_and_silence_is_empty ... ok
+test temporal_partials::tests::follows_a_tone_across_a_region ... ok
+test main_voice_bank::tests::add_morph_targets_are_independent_and_depth_zero_keeps_the_base ... ok
+test main_instrument::tests::main_eq_changes_synth_monitor_and_capture_but_not_dry_input ... ok
+test main_instrument::tests::shared_svf_filters_the_synth_before_main_capture_without_filtering_dry_input ... ok
+test main_instrument::tests::main_fx_slots_process_in_series_before_eq_and_capture ... ok
+
+test result: ok. 238 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.78s
+
+     Running tests/realtime_route_allocation.rs (target/debug/deps/realtime_route_allocation-d86b2d71a547e7bf)
+
+running 3 tests
+test backward_live_routes_and_audio_blocks_do_not_allocate ... ok
+test owned_capture_ring_retains_cursor_and_rejects_capacity_rate_or_active_stage_changes ... ok
+test loop_record_play_overdub_and_control_intent_survive_owned_publication_without_heap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/manifold_editor-51fd0e420304b234)
+
+running 1 test
+test linux::tests::asset_path_stays_within_bundle ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/manifold_fx_slot_swap-eff90b1e6752fbbd)
+
+running 6 tests
+test tests::authored_gain_values_apply_on_the_first_native_sample ... ok
+test tests::selected_width_applies_from_the_first_native_sample ... ok
+test tests::pre_instance_fx_slot_save_restores_names_before_next_event ... ok
+test tests::a_published_width_edit_carries_the_existing_filter_history ... ok
+test tests::editor_free_events_publish_the_same_graph_as_javascript_and_resume_after_save ... ok
+test tests::saved_instance_paths_survive_node_renumbering_and_id_collisions ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (target/debug/deps/manifold_native-b61d1b97b7f6da2a)
+
+running 134 tests
+test author::tests::named_ports_and_parameters_reject_invalid_edits ... ok
+test host_buffers::tests::rejected_host_block_does_not_touch_output ... ok
+test host_buffers::tests::in_place_host_buffers_and_missing_channels_are_safe ... ok
+test author::tests::rust_and_javascript_author_the_same_cv_decision_chain ... ok
+test author::tests::rust_and_javascript_author_the_same_cv_utility_chain ... ok
+test author::tests::rust_and_javascript_authoring_export_the_same_graph_and_audio ... ok
+test host_transport::tests::host_meter_and_tempo_define_a_bounded_window ... ok
+test author::tests::named_legacy_instances_survive_native_state_and_author_reopen ... ok
+test author::tests::changing_a_name_prevents_history_transfer_even_when_id_is_reused ... ok
+test author::tests::rust_route_control_commits_selection_with_the_accepted_audio_edge ... ok
+test author::tests::named_widener_keeps_its_filter_history_when_numeric_id_changes ... ok
+test author::tests::native_structural_transaction_adds_and_removes_a_legacy_primitive_between_blocks ... ok
+test author::tests::rust_and_javascript_author_the_legacy_live_script_graph ... ok
+test author::tests::native_live_session_switches_an_authored_output_and_commits_only_on_acceptance ... ok
+test author::tests::rust_and_javascript_author_the_lazy_fx_swap_graph_and_saved_controls ... ok
+test main_host_parameters::tests::every_described_host_id_uses_the_same_bounds_as_audio_validation ... ok
+test main_host_parameters::tests::host_id_ranges_match_the_authored_main_project ... ok
+test main_host_parameters::tests::lfo_host_ids_validate_each_slot_and_route_target ... ok
+test main_host_parameters::tests::reserved_or_invalid_host_values_never_reach_audio_state ... ok
+test main_host_parameters::tests::accepted_eq_and_fx_ids_apply_to_the_prepared_main_instrument ... ok
+test main_host::tests::recording_rejects_a_snapshot_until_the_take_is_finished ... ok
+test main_host_state::tests::browser_default_and_native_save_supply_valid_values_for_every_host_id ... ok
+test main_host_state::tests::transport_host_ids_follow_the_authored_project_control_map ... ok
+test main_host::tests::control_side_layout_edit_saves_without_replacing_audio_generation ... ok
+test capture_mailbox::tests::retiring_a_runtime_returns_its_capture_buffer ... ok
+test capture_mailbox::tests::free_start_stop_uses_audio_block_cursors_and_reopens_as_a_sample ... ok
+test main_host_parameters::tests::utility_ids_accept_authored_ranges_and_reject_invalid_connections ... ok
+test capture_mailbox::tests::running_graph_transfers_two_sources_through_one_prepared_buffer ... ok
+test main_host_parameters::tests::voice_stage_ids_accept_authored_values_and_reject_fractional_enums ... ok
+test main_host::tests::fresh_native_main_saves_browser_v15_and_reopens_with_matching_audio ... ok
+test main_host::tests::loop_command_cancels_snapshot_without_blocking_audio ... ok
+test main_presentation::tests::peak_bins_follow_pcm_start_to_end_for_short_loops ... ok
+test main_instrument::tests::bad_host_queue_preserves_audio_and_zero_frame_flush_applies_controls ... ok
+test main_host::tests::control_thread_assembles_pcm_while_audio_thread_keeps_rendering ... ok
+test main_presentation::tests::legacy_session_keeps_its_layer_and_gains_the_current_rack ... ok
+test main_presentation::tests::populated_browser_session_becomes_a_small_left_to_right_editor_document ... ok
+test main_instrument::tests::main_host_offset_feeds_sample_clocked_arp_and_missing_bus_is_silent ... ok
+test main_host::tests::pcm_snapshot_uses_bounded_chunks_and_preserves_loop_and_sample_order ... ok
+test main_instrument::tests::native_main_first_loop_records_host_input_and_plays_the_committed_layer ... ok
+test loop_state_mailbox::tests::revisions_replace_stale_ready_takes_without_allocating_in_service ... ok
+test main_instrument::tests::invalid_host_event_does_not_advance_main_or_touch_output ... ok
+test main_host::tests::host_values_are_frozen_with_the_first_pcm_header ... ok
+test main_host::tests::edited_audio_cable_survives_native_session_export ... ok
+test main_rack_document::tests::moved_main_shells_keep_the_saved_audio_route ... ok
+test main_rack_document::tests::compact_filter_keeps_audio_route_and_other_faces_retain_supported_sizes ... ok
+test main_instrument::tests::timed_first_loop_and_layer_volume_share_host_action_queue ... ok
+test main_host::tests::control_thread_can_prepare_while_audio_thread_keeps_processing ... ok
+test main_host::tests::lfo_host_slot_activation_exports_browser_state_and_clears_removed_memory ... ok
+test loop_state_mailbox::tests::failed_state_encode_retries_and_new_take_replaces_equal_length_pcm ... ok
+test main_host_buffers::tests::in_place_main_host_audio_matches_separate_planar_buffers ... ok
+test main_host::tests::live_main_session_saves_pcm_automated_controls_and_inactive_fx_memories ... ok
+test main_instrument::tests::timed_note_filter_automation_changes_voice_after_its_offset ... ok
+test main_host::tests::session_publication_cancels_old_pcm_snapshot ... ok
+test main_instrument::tests::host_master_change_and_arp_connection_land_at_their_frame_offsets ... ok
+test main_host::tests::prepared_session_publishes_at_boundary_and_old_runtime_retires_off_callback ... ok
+test main_session_export::tests::native_compare_selector_reconciles_input_and_gate_output ... ok
+test main_session_export::tests::native_route_changes_keep_the_saved_cable_in_step ... ok
+test main_sample_handoff::tests::cancelled_transfer_releases_audio_capture_and_accepts_the_next_gesture ... ok
+test main_session_export::tests::native_atv_source_and_input_selector_reconcile_distinct_cables ... ok
+test author::tests::rust_and_js_author_the_rack_filter_fx_eq_blend_selection_through_public_primitives ... ok
+test main_session_export::tests::native_sample_hold_reconciles_signal_and_trigger_inputs ... ok
+test main_session_export::tests::native_slew_selector_reconciles_its_input_and_output_cables ... ok
+test main_sample_handoff::tests::timed_host_splits_keep_frozen_sample_copy_at_one_chunk_per_block ... ok
+test main_host::tests::latest_pending_session_wins_without_ever_entering_the_audio_callback ... ok
+test main_rack_document::tests::browser_exported_layout_prepares_and_survives_native_save_template ... ok
+test main_rack_document::tests::browser_compact_filter_session_prepares_and_reopens_in_native_main ... ok
+test main_sample_handoff::tests::accepted_session_replacement_cancels_a_waiting_capture ... ok
+test project::tests::authored_phase_vocoder_fft_order_is_prepared_before_native_audio ... ok
+test project::tests::authored_sample_voice_asset_and_event_render_in_native_graph ... ok
+test main_session::tests::browser_v15_fixture_prepares_an_actual_native_main_instrument ... ok
+test project::tests::automation_changes_gain_after_exact_offset_and_rejects_bad_queues ... ok
+test main_session::tests::browser_v15_pcm_and_voice_controls_restore_before_publication ... ok
+test main_visual::tests::host_capture_and_new_first_loop_reach_ordered_editor_bins ... ok
+test project::tests::browser_authored_lfo_output_port_survives_native_load_and_changes_audio ... ok
+test main_sample_handoff::tests::retro_and_free_host_captures_publish_validated_sample_without_restarting_looper ... ok
+test project::tests::authored_graphs_reset_to_fresh_audio_without_losing_controls ... ok
+test project::tests::browser_note_voice_and_sample_voice_prepare_natively ... ok
+test project::tests::browser_region_and_granular_projects_prepare_natively ... ok
+test project::tests::browser_sidechain_template_restores_its_main_level ... ok
+test main_rack_document::tests::browser_exported_cable_session_prepares_and_renders_in_native_main ... ok
+test project::tests::browser_tone_texture_cv_graph_renders_natively ... ok
+test project::tests::authored_rack_selection_two_plays_eighth_sample_voice ... ok
+test project::tests::capture_source_registry_requires_unique_ids_and_matching_selection ... ok
+test project::tests::browser_pcm_asset_restores_and_plays_through_midi ... ok
+test project::tests::browser_main_bank_restores_both_partial_targets_and_renders_note ... ok
+test project::tests::authored_rack_sample_capture_source_records_host_input_natively ... ok
+test project::tests::javascript_authored_distortion_renders_and_saves_in_native ... ok
+test project::tests::authored_rack_graph_above_64_nodes_prepares_and_renders_natively ... ok
+test project::tests::javascript_authored_graph_renders_and_roundtrips_in_native_processor ... ok
+test project::tests::host_ids_and_normalization_are_stable_across_parameter_order ... ok
+test project::tests::javascript_forked_graph_changes_native_audio_and_preserves_port_on_save ... ok
+test project::tests::explicit_fixed_slot_drives_graph_gain_and_rejects_duplicates ... ok
+test project::tests::authored_main_cv_cable_roundtrips_through_native_state ... ok
+test project::tests::main_bank_rejects_missing_or_invalid_spectral_state ... ok
+test project::tests::malformed_or_unrestorable_state_is_rejected ... ok
+test project::tests::prepared_host_import_carries_named_widener_history_across_node_renumbering ... ok
+test project::tests::native_reader_accepts_every_shared_workspace_type_and_legacy_fixed_gain ... ok
+test project::tests::fx_type_switch_restores_per_effect_controls_to_public_state ... ok
+test project::tests::browser_free_capture_accepts_one_frame_and_rejects_zero_duration ... ok
+test project::tests::one_asset_feeds_eight_authored_sample_voices_in_native_graph ... ok
+test project::tests::prepared_sample_replacement_publishes_only_after_validation ... ok
+test project::tests::retrospective_bar_timing_requires_a_bounded_complete_recipe ... ok
+test project::tests::route_loop_state_merge_rejects_a_different_node_table ... ok
+test project::tests::saved_host_state_reopens_edited_controls_and_keeps_project_content ... ok
+test project::tests::staged_named_route_retains_the_portable_project_and_prepared_order ... ok
+test project::tests::fx_host_reset_clears_reverb_tail_and_keeps_controls ... ok
+test project::tests::restored_region_and_granular_assets_render_audio ... ok
+test project::tests::authored_rack_capture_publishes_one_source_to_eight_native_voices ... ok
+test project::tests::main_bank_embedded_sample_restores_sample_voice_route ... ok
+test project::tests::structural_edit_inherits_latest_unchanged_targets_by_path_and_keeps_explicit_edits ... ok
+test project::tests::authored_loop_asset_reopens_playing_and_feeds_rack_capture ... ok
+test project::tests::standalone_fx_module_loads_the_authored_project_and_roundtrips_host_state ... ok
+test tests::rejects_bad_buffers_before_touching_output ... ok
+test tests::separate_buses_and_missing_buses_render_at_variable_block_sizes ... ok
+test tests::timed_midi_event_enters_native_graph_at_its_frame ... ok
+test project::tests::browser_live_sampler_template_is_accepted ... ok
+test project::tests::standalone_sample_browser_take_reopens_in_native_graph ... ok
+test main_session::tests::malformed_pcm_or_sample_rate_never_prepares_a_runtime ... ok
+test project::tests::prepared_main_target_replacement_changes_audio_and_saved_state ... ok
+test project::tests::main_bank_temporal_recipe_analyzes_embedded_pcm_before_prepare ... ok
+test main_host::tests::legacy_main_imports_upgrade_to_complete_v15_saves ... ok
+test project::tests::replacing_rack_sample_source_rebinds_all_eight_prepared_voices ... ok
+test project::tests::native_sidechain_ring_stages_to_portable_sample_and_reopens ... ok
+test main_rack_document::tests::browser_compare_cable_reopens_and_drives_the_native_filter ... ok
+test main_rack_document::tests::browser_sample_hold_cable_reopens_and_drives_the_native_filter ... ok
+test project::tests::authored_four_layer_loop_records_then_feeds_rack_capture_in_native_graph ... ok
+test main_rack_document::tests::browser_slew_cable_reopens_and_drives_the_native_filter ... ok
+test main_rack_document::tests::browser_lfo_cable_uses_the_existing_main_route_in_native_audio ... ok
+test main_rack_document::tests::accepts_authored_audio_bypass_and_rejects_unmapped_ports ... ok
+test main_rack_document::tests::browser_atv_cable_uses_the_prepared_control_chain_in_native_audio ... ok
+test project::tests::authored_main_rack_audio_edges_compile_and_change_note_output ... ok
+test project::tests::four_authored_rack_layer_sources_capture_distinct_audio_in_native_graph ... ok
+test project::tests::saved_main_state_retains_source_targets_and_temporal_recipe ... ok
+test main_session::tests::browser_legacy_versions_prepare_with_later_modules_defaulted ... ok
+
+test result: ok. 134 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.92s
+
+     Running tests/configured_resources.rs (target/debug/deps/configured_resources-3b39a1a9ad820b8f)
+
+running 3 tests
+test excessive_capture_resources_fail_before_kernel_allocation ... ok
+test configured_capture_wraps_at_its_authored_capacity_and_reopens_pcm ... ok
+test rust_imports_the_actual_eight_voice_rack_sample_graph_and_shared_pcm ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/main_rack_insert.rs (target/debug/deps/main_rack_insert-41fa387a87113d1d)
+
+running 3 tests
+test main_controls_reach_the_prepared_insert_and_bad_preparation_keeps_the_old_plan ... ok
+test existing_main_lfo_route_stays_audible_through_the_default_insert ... ok
+test authored_insert_reuses_main_voice_and_changes_the_looper_monitor ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s
+
+     Running tests/owned_loop_publication.rs (target/debug/deps/owned_loop_publication-ec15beda51ac96b7)
+
+running 4 tests
+test staging_defers_compatible_publication_and_empty_play_readback_reports_dsp_state ... ok
+test explicit_clip_replacement_keeps_its_pcm_and_transport_while_old_recording_changes ... ok
+test rust_authoring_returns_busy_candidate_for_retry_without_losing_the_recording ... ok
+test native_owned_record_play_overdub_renumber_and_racing_targets_are_exact_without_heap_work ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests/owned_sample_publication.rs (target/debug/deps/owned_sample_publication-b8d39318be2c06ae)
+
+running 4 tests
+test instrument_resource_replacement_keeps_old_voice_pcm_until_release_and_uses_new_pcm_for_new_notes ... ok
+test held_and_releasing_instrument_voices_keep_pcm_and_fft_and_changed_midi_ownership_resets ... ok
+test new_shared_pcm_does_not_restore_old_playback_or_spectral_tails ... ok
+test actual_eight_voice_sample_unison_wet_fft_history_survives_repeated_renumbering_without_heap_work ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.77s
+
+     Running unittests src/lib.rs (target/debug/deps/manifold_project_js-751be5d27c836c82)
+
+running 2 tests
+test native_host::tests::prepared_action_is_safe_to_transfer_to_the_audio_thread ... ok
+test native_host::tests::native_parameter_readback_never_merges_targets_from_different_blocks ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/dsp_live.rs (target/debug/deps/dsp_live-3b49957f07ebae46)
+
+running 5 tests
+test editor_closed_script_rewires_the_prepared_graph_after_host_acknowledgement ... ok
+test native_executes_the_shipped_js_project_and_controls_audio_without_an_editor ... ok
+test instances_are_isolated_and_host_rejection_keeps_the_authored_state ... ok
+test restored_js_controller_edits_the_saved_graph_with_no_editor ... ok
+test invalid_or_runaway_script_fails_before_publication ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.00s
+
+     Running tests/fx_swap.rs (target/debug/deps/fx_swap-3bc906c0e5035463)
+
+running 3 tests
+test rejected_fx_swap_keeps_the_authored_graph_and_can_retry ... ok
+test authored_fx_swap_prepares_then_publishes_only_after_host_acceptance ... ok
+test restored_fx_controller_adds_another_slot_to_the_saved_graph ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/native_audio_readback.rs (target/debug/deps/native_audio_readback-b9996e59e2df744b)
+
+running 1 test
+test native_library_automatically_adopts_host_targets_before_edit_save_and_reopen_without_callback_heap_work ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/native_host.rs (target/debug/deps/native_host-c78dec5df4e066f3)
+
+running 4 tests
+test a_script_cannot_change_the_saved_graph_without_host_publication ... ok
+test stopped_audio_host_rejects_a_queued_edit_without_changing_saved_state ... ok
+test native_audio_thread_applies_scripted_controls_and_reopens_saved_state ... ok
+test native_audio_thread_publishes_authored_structural_fx_swap ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests/native_owned_loops.rs (target/debug/deps/native_owned_loops-0d4daa0fc254fc03)
+
+running 1 test
+test actual_importable_loop_author_runs_native_js_edits_and_reopens_owned_pcm_without_callback_heap_work ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.64s
+
+     Running tests/native_samples.rs (target/debug/deps/native_samples-f0c9b986012edb01)
+
+running 5 tests
+test intermediate_script_snapshot_cannot_smuggle_an_unpublished_graph_mutation ... ok
+test events_merge_at_actual_offsets_reject_bad_targets_and_survive_empty_or_malformed_blocks ... ok
+test canceled_second_step_keeps_accepted_gate_intent_and_controller_remains_usable ... ok
+test native_js_instrument_keeps_held_pcm_uses_new_sources_and_reuses_retired_idle_slots ... ok
+test public_rack_controller_runs_native_batches_events_pcm_edits_and_restore_without_callback_heap ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.14s
+
+     Running tests/package.rs (target/debug/deps/package-3ca514bcfeab989a)
+
+running 3 tests
+test package_rejects_modified_code_before_running_it ... ok
+test one_package_restores_both_js_control_and_native_audio_state ... ok
+test packaged_fx_script_adds_effect_instances_after_state_reopen ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests/worker.rs (target/debug/deps/worker-e06d5671a714cbc4)
+
+running 5 tests
+test worker_rejects_a_script_that_mutates_project_without_a_host_command ... ok
+test parameter_adoption_preserves_script_local_state_and_rejects_unpublished_commands ... ok
+test rejected_worker_edit_can_retry_and_shutdown_with_an_outstanding_command ... ok
+test accepted_host_parameters_survive_script_composition_without_recreating_controller ... ok
+test packaged_script_runs_on_its_own_thread_until_host_publication ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running unittests src/lib.rs (target/debug/deps/manifold_vst3-749b52d4b22dc950)
+
+running 43 tests
+test editor::tests::widget_messages_reach_vst3_handler_on_host_timer ... ok
+test editor::tests::host_float_for_discrete_type_stays_an_integer_in_browser_snapshot ... ok
+test graph_contract::tests::fixed_slots_map_the_authored_note_project ... ok
+test graph_controller::assignment_tests::assignment_moves_and_swaps_fixed_slots_with_current_control_values ... ok
+test graph_processor::tests::vst3_note_event_matches_native_graph_output ... ok
+test main_controller::tests::main_controller_advertises_only_authored_ids_and_sparse_steps ... ok
+test graph_processor::tests::vst3_editor_route_message_returns_generation_and_published_status ... ok
+test main_values::tests::main_host_values_roundtrip_through_vst3_normalization ... ok
+test main_values::tests::every_main_vst3_parameter_decodes_at_normalized_endpoints ... ok
+test graph_processor::tests::queued_route_survives_vst3_deactivation_as_next_activation_state ... ok
+test preset::tests::malformed_project_cannot_be_exported ... ok
+test preset::tests::preset_contains_exact_project_state_for_the_graph_component ... ok
+test graph_processor::tests::javascript_authored_graph_matches_native_in_vst3_callback ... ok
+test graph_processor::tests::repeated_project_imports_before_a_process_block_keep_the_latest_graph ... ok
+test graph_processor::tests::host_save_waits_for_published_graph_generation ... ok
+test tests::graph_state_restores_a_sidechain_route_and_controller ... ok
+test processor::tests::vst3_process_matches_prepared_native_fx ... ok
+test graph_processor::tests::pending_vst3_loop_route_keeps_newer_take_on_host_stop ... ok
+test tests::exported_factory_creates_processor_and_controller ... ok
+test graph_processor::tests::authored_cv_chains_match_native_in_vst3_callback ... ok
+test tests::processor_state_roundtrips_to_controller ... ok
+test preset::tests::preset_keeps_the_packaged_controller_and_graph_bytes ... ok
+test tests::main_controller_state_preserves_host_edit_after_component_state ... ok
+test main_processor::tests::main_vst3_note_starts_at_host_offset_and_invalid_event_preserves_output ... ok
+test graph_processor::tests::vst3_owned_loop_publication_matches_native_through_staging_races_stop_and_reopen ... ok
+test graph_processor::tests::browser_two_source_capture_reopens_and_plays_in_vst3 ... ok
+test graph_processor::tests::pending_script_parameter_becomes_reopen_state_when_vst3_host_stops ... ok
+test graph_processor::tests::vst3_package_identity_changes_with_the_published_graph_and_controller_accepts_it ... ok
+test graph_processor::tests::packaged_js_parameter_and_route_survive_vst3_save_and_reopen ... ok
+test graph_processor::tests::standalone_sample_browser_take_reopens_and_plays_in_vst3 ... ok
+test main_processor::tests::main_vst3_component_renders_the_shared_native_runtime ... ok
+test graph_processor::tests::live_saves_keep_one_value_block_and_one_imported_generation ... ok
+test graph_processor::tests::packaged_js_fx_controller_publishes_and_reopens_through_vst3_state ... ok
+test graph_processor::tests::vst3_audio_callback_captures_sidechain_and_publishes_portable_sample ... ok
+test main_processor::tests::chunked_main_file_import_preserves_state_on_rejection_and_reopens_audio ... ok
+test tests::main_vst3_saves_a_live_session_while_host_blocks_continue ... ok
+test tests::main_vst3_component_and_controller_reopen_portable_loop_and_sample_pcm ... ok
+test tests::main_vst3_editor_layout_edit_updates_component_state ... ok
+test graph_processor::tests::legacy_graph_bypass_and_fx_swap_publish_during_vst3_audio ... ok
+test graph_processor::tests::vst3_host_automation_survives_script_composition_and_stop_during_preparation ... ok
+test graph_processor::tests::active_vst3_state_save_reopens_authored_loop_pcm ... ok
+test graph_processor::tests::deactivated_vst3_graph_saves_recorded_loop_pcm ... ok
+test tests::main_vst3_state_roundtrips_browser_audio_cables_and_shell_layout ... ok
+
+test result: ok. 43 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.10s
+
+     Running unittests src/lib.rs (target/debug/deps/manifold_web-771d9246d1ee329f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests manifold_clap
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests manifold_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests manifold_fx_slot_swap
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests manifold_native
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests manifold_project_js
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests manifold_vst3
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

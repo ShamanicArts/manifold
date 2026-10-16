@@ -1,0 +1,67 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "external",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "fixed-gain",
+        "a": 4
+      }
+    ],
+    "connections": [
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 4,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": []
+  },
+  "instances": [
+    {
+      "path": "/primitives/fixed-gain/node",
+      "nodeId": 4
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// Fixed gain: Constant ×4 gain; edit config.gain to change it.\n// Audition composition of public Rust primitives; not an instrument parity claim.\n// Examples name imports so you can trace each tool to its module.\n// Alternative: import * as manifold from '@manifold/author';\n// Then use manifold.createGraphWorkspace(), manifold.gain, etc.\n// Imports — each definition can be inspected in Manifold's primitive catalog.\nimport { createGraphWorkspace } from '@manifold/author';\nimport {\n  fixedGain as fixedGainDefinition,\n} from '@manifold/author/primitives';\n\nexport default function createProject() {\n  // Interface — public paths and stable IDs preserve saved controls.\n  const controls = {\n\n  };\n\n  // Audio inputs and outputs — the host supplies the external audio input.\n  const graph = createGraphWorkspace().setInputSource('external');\n  const input = graph.input.output('out');\n  const output = graph.output.input('in');\n\n  // DSP instances — parameters belong to these named instances.\n  const fixedGain = graph.add(fixedGainDefinition.type, {\"id\":4,\"config\":{\"gain\":4}});\n  graph.registerInstance('/primitives/fixed-gain/node', fixedGain);\n\n  // Composition — named ports make the audio and control paths visible.\n  graph.connect(input, fixedGain.input('audio'));\n  graph.connect(fixedGain.output('out'), output);\n\n  // Presentation — both renderers bind to the controls declared above.\n  const view = [{ id: 'constructor', type: 'label', label: 'Edit fixedGain config.gain and Apply live to change the multiplier.' }];\n  function paint(ui) {\n    for (const component of view) {\n      if (component.type === 'label') ui.label(component.label, component.id);\n      else ui.parameter(component.path, component);\n    }\n  }\n\n  // The host uses this project declaration for audio, UI, save and live edits.\n  return { graph, view, paint };\n}",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "constructor",
+        "type": "label",
+        "label": "Edit fixedGain config.gain and Apply live to change the multiplier."
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

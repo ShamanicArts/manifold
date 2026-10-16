@@ -1,0 +1,341 @@
+{
+  "recordedAt": "2026-09-30T03:48:57.617Z",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174",
+  "chromiumVersion": "152.0.7977.82",
+  "packageSha256": "b7d530f403a4be888e593accaa86037e7d76fc243187f1c8cd12cdccffc68508",
+  "before": {
+    "state": {
+      "format": "manifold.project",
+      "schemaVersion": 1,
+      "projectId": "manifold.graph-workspace",
+      "signal": {
+        "inputs": 2,
+        "outputs": 2,
+        "inputSource": "external",
+        "nodes": [
+          {
+            "id": 1,
+            "type": "input.raw"
+          },
+          {
+            "id": 3,
+            "type": "output"
+          },
+          {
+            "id": 4,
+            "type": "gain",
+            "a": 0.7
+          },
+          {
+            "id": 5,
+            "type": "stereo-widener"
+          }
+        ],
+        "connections": [
+          {
+            "from": 5,
+            "outputPort": 0,
+            "to": 3,
+            "inputPort": 0
+          },
+          {
+            "from": 1,
+            "outputPort": 0,
+            "to": 4,
+            "inputPort": 0
+          },
+          {
+            "from": 4,
+            "outputPort": 0,
+            "to": 5,
+            "inputPort": 0
+          }
+        ],
+        "initialParameters": [
+          {
+            "nodeId": 4,
+            "id": 0,
+            "value": 0.375
+          },
+          {
+            "nodeId": 5,
+            "id": 0,
+            "value": 0.25
+          },
+          {
+            "nodeId": 5,
+            "id": 1,
+            "value": 120
+          },
+          {
+            "nodeId": 5,
+            "id": 2,
+            "value": 1
+          }
+        ]
+      },
+      "endpoints": [
+        {
+          "path": "/dsp/live/input_gain",
+          "kind": "parameter",
+          "nodeId": 4,
+          "id": 0,
+          "min": 0,
+          "max": 2,
+          "default": 1
+        },
+        {
+          "path": "/dsp/live/width",
+          "kind": "parameter",
+          "nodeId": 5,
+          "id": 0,
+          "min": 0,
+          "max": 1,
+          "default": 0.25
+        }
+      ],
+      "hostBindings": [
+        {
+          "slot": 0,
+          "nodeId": 4,
+          "id": 0
+        },
+        {
+          "slot": 1,
+          "nodeId": 5,
+          "id": 0
+        }
+      ],
+      "instances": [
+        {
+          "path": "/dsp/live/nodes/input_trim",
+          "nodeId": 4
+        },
+        {
+          "path": "/dsp/live/nodes/width",
+          "nodeId": 5
+        }
+      ]
+    },
+    "diagnostics": {
+      "execution": "prepared",
+      "audioBlocks": 24,
+      "rustProcessedBlocks": 12,
+      "publications": 1,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 0,
+      "lastPublicationContextFrame": 3584,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 16777216,
+      "lastPreparationMs": 2.4199999570846558,
+      "lastPublicationMs": 7.120000004768372,
+      "compilerFailed": false,
+      "processorFailed": false
+    }
+  },
+  "after": {
+    "state": {
+      "format": "manifold.project",
+      "schemaVersion": 1,
+      "projectId": "manifold.graph-workspace",
+      "signal": {
+        "inputs": 2,
+        "outputs": 2,
+        "inputSource": "external",
+        "nodes": [
+          {
+            "id": 1,
+            "type": "input.raw"
+          },
+          {
+            "id": 3,
+            "type": "output"
+          },
+          {
+            "id": 4,
+            "type": "gain",
+            "a": 0.7
+          },
+          {
+            "id": 5,
+            "type": "stereo-widener"
+          },
+          {
+            "id": 6,
+            "type": "distortion",
+            "a": 4,
+            "b": 0.7
+          }
+        ],
+        "connections": [
+          {
+            "from": 5,
+            "outputPort": 0,
+            "to": 3,
+            "inputPort": 0
+          },
+          {
+            "from": 1,
+            "outputPort": 0,
+            "to": 4,
+            "inputPort": 0
+          },
+          {
+            "from": 6,
+            "outputPort": 0,
+            "to": 5,
+            "inputPort": 0
+          },
+          {
+            "from": 4,
+            "outputPort": 0,
+            "to": 6,
+            "inputPort": 0
+          }
+        ],
+        "initialParameters": [
+          {
+            "nodeId": 4,
+            "id": 0,
+            "value": 0.375
+          },
+          {
+            "nodeId": 5,
+            "id": 0,
+            "value": 0.25
+          },
+          {
+            "nodeId": 5,
+            "id": 1,
+            "value": 120
+          },
+          {
+            "nodeId": 5,
+            "id": 2,
+            "value": 1
+          },
+          {
+            "nodeId": 6,
+            "id": 0,
+            "value": 4
+          },
+          {
+            "nodeId": 6,
+            "id": 1,
+            "value": 1
+          },
+          {
+            "nodeId": 6,
+            "id": 2,
+            "value": 1
+          }
+        ]
+      },
+      "endpoints": [
+        {
+          "path": "/dsp/live/input_gain",
+          "kind": "parameter",
+          "nodeId": 4,
+          "id": 0,
+          "min": 0,
+          "max": 2,
+          "default": 1
+        },
+        {
+          "path": "/dsp/live/width",
+          "kind": "parameter",
+          "nodeId": 5,
+          "id": 0,
+          "min": 0,
+          "max": 1,
+          "default": 0.25
+        }
+      ],
+      "hostBindings": [
+        {
+          "slot": 0,
+          "nodeId": 4,
+          "id": 0
+        },
+        {
+          "slot": 1,
+          "nodeId": 5,
+          "id": 0
+        }
+      ],
+      "instances": [
+        {
+          "path": "/dsp/live/nodes/distortion",
+          "nodeId": 6
+        },
+        {
+          "path": "/dsp/live/nodes/input_trim",
+          "nodeId": 4
+        },
+        {
+          "path": "/dsp/live/nodes/width",
+          "nodeId": 5
+        }
+      ]
+    },
+    "parameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 0.375
+      },
+      {
+        "nodeId": 5,
+        "id": 0,
+        "value": 0.25
+      },
+      {
+        "nodeId": 5,
+        "id": 1,
+        "value": 120
+      },
+      {
+        "nodeId": 5,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 0,
+        "value": 4
+      },
+      {
+        "nodeId": 6,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 2,
+        "value": 1
+      }
+    ],
+    "diagnostics": {
+      "execution": "prepared",
+      "audioBlocks": 144,
+      "rustProcessedBlocks": 132,
+      "publications": 2,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 2,
+      "lastPublicationContextFrame": 7680,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 16777216,
+      "lastPreparationMs": 0.35500001907348633,
+      "lastPublicationMs": 16.34500002861023,
+      "compilerFailed": false,
+      "processorFailed": false
+    },
+    "rms": 0.07932040061436567
+  },
+  "workersAfterClose": [],
+  "pageErrors": []
+}

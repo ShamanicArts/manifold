@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.graph-workspace",
+  "name": "Graph workspace",
+  "source": "Authored v2 topology workspace compiled by the Rust graph engine",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 2, "type": "gain", "a": 0.7 },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ],
+    "initialParameters": [
+      { "nodeId": 2, "id": 0, "value": 0.7 }
+    ]
+  },
+  "parameters": []
+}

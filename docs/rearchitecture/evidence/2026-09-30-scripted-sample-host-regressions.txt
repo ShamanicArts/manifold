@@ -1,0 +1,107 @@
+   Compiling manifold-project-js v0.1.0 (/home/shamanic/dev/Manifold-v2/crates/manifold-project-js)
+   Compiling manifold-vst3 v0.1.0 (/home/shamanic/dev/Manifold-v2/crates/manifold-vst3)
+   Compiling manifold-clap v0.1.0 (/home/shamanic/dev/Manifold-v2/crates/manifold-clap)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.19s
+     Running unittests src/lib.rs (target/debug/deps/manifold_clap-81d3c3714bfec8d0)
+
+running 36 tests
+test graph::tests::original_graph_widget_gestures_reach_clap_and_saved_state ... ok
+test graph::tests::inactive_graph_automation_survives_activation_and_state_save ... ok
+test graph::tests::dense_automation_and_wildcard_release_stay_inside_prepared_buffers ... ok
+test graph::tests::host_save_waits_for_published_graph_generation ... ok
+test graph::tests::javascript_authored_graph_matches_native_in_clap_callback ... ok
+test graph::tests::live_named_route_changes_clap_callback_and_published_host_save ... ok
+test graph::tests::graph_clap_note_and_automation_match_native_and_state_reopens ... ok
+test graph::tests::queued_route_survives_clap_deactivation_as_next_activation_state ... ok
+test graph::tests::authored_cv_chains_match_native_in_clap_callback ... ok
+test graph::tests::pending_clap_loop_route_keeps_newer_take_on_host_stop ... ok
+test main_gui::tests::truncated_editor_file_import_preserves_main_state ... ok
+test tests::gui_messages_flush_as_host_gesture_and_parameter_events ... ok
+test graph::tests::project_import_save_ignores_snapshots_from_the_retired_generation ... ok
+test tests::clap_audio_matches_native_project_with_host_automation ... ok
+test tests::inactive_host_flush_retains_each_effects_controls ... ok
+test main_product::tests::browser_sample_hold_rack_state_reopens_in_main_clap ... ok
+test main_product::tests::browser_slew_rack_state_reopens_in_main_clap ... ok
+test main_product::tests::browser_compare_rack_state_reopens_in_main_clap ... ok
+test main_product::tests::browser_atv_rack_state_reopens_in_main_clap ... ok
+test graph::tests::clap_owned_loop_publication_matches_native_through_staging_races_stop_and_reopen ... ok
+test graph::tests::browser_two_source_capture_reopens_and_plays_in_clap ... ok
+test graph::tests::fixed_value_bank_never_exposes_a_mixed_audio_snapshot ... ok
+test graph::tests::live_state_saves_keep_automated_controls_from_one_block ... ok
+test graph::tests::standalone_sample_browser_take_reopens_and_plays_in_clap ... ok
+test main_gui::tests::editor_ipc_controls_the_actual_main_audio_runtime ... ok
+test graph::tests::clap_audio_callback_captures_sidechain_and_publishes_portable_sample ... ok
+test main_gui::tests::original_sample_widget_ipc_requests_native_capture ... ok
+test main_gui::tests::editor_layout_message_persists_while_inactive_and_active ... ok
+test graph::tests::packaged_js_parameter_and_route_publish_in_clap_and_survive_host_reopen ... ok
+test main_product::tests::bounded_editor_status_reflects_audio_thread_record_commands ... ok
+test main_product::tests::editor_parameter_waits_for_host_output_capacity_then_reaches_audio_and_state ... ok
+test graph::tests::packaged_js_fx_controller_survives_closed_editor_clap_save_and_reopen ... ok
+test graph::tests::clap_host_automation_survives_script_composition_and_stop_during_preparation ... ok
+test graph::tests::deactivated_clap_graph_saves_recorded_loop_pcm ... ok
+test graph::tests::active_clap_state_save_reopens_authored_loop_pcm ... ok
+test graph::tests::legacy_authored_graph_and_fx_swap_publish_while_clap_audio_runs ... ok
+
+test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.48s
+
+     Running unittests src/lib.rs (target/debug/deps/manifold_vst3-92e1cd0d8684af40)
+
+running 43 tests
+test editor::tests::widget_messages_reach_vst3_handler_on_host_timer ... ok
+test editor::tests::host_float_for_discrete_type_stays_an_integer_in_browser_snapshot ... ok
+test graph_contract::tests::fixed_slots_map_the_authored_note_project ... ok
+test graph_processor::tests::vst3_note_event_matches_native_graph_output ... ok
+test graph_controller::assignment_tests::assignment_moves_and_swaps_fixed_slots_with_current_control_values ... ok
+test main_controller::tests::main_controller_advertises_only_authored_ids_and_sparse_steps ... ok
+test graph_processor::tests::queued_route_survives_vst3_deactivation_as_next_activation_state ... ok
+test main_values::tests::main_host_values_roundtrip_through_vst3_normalization ... ok
+test preset::tests::malformed_project_cannot_be_exported ... ok
+test graph_processor::tests::repeated_project_imports_before_a_process_block_keep_the_latest_graph ... ok
+test graph_processor::tests::javascript_authored_graph_matches_native_in_vst3_callback ... ok
+test main_values::tests::every_main_vst3_parameter_decodes_at_normalized_endpoints ... ok
+test preset::tests::preset_contains_exact_project_state_for_the_graph_component ... ok
+test graph_processor::tests::vst3_editor_route_message_returns_generation_and_published_status ... ok
+test tests::graph_state_restores_a_sidechain_route_and_controller ... ok
+test tests::exported_factory_creates_processor_and_controller ... ok
+test graph_processor::tests::host_save_waits_for_published_graph_generation ... ok
+test graph_processor::tests::authored_cv_chains_match_native_in_vst3_callback ... ok
+test processor::tests::vst3_process_matches_prepared_native_fx ... ok
+test graph_processor::tests::pending_vst3_loop_route_keeps_newer_take_on_host_stop ... ok
+test preset::tests::preset_keeps_the_packaged_controller_and_graph_bytes ... ok
+test tests::processor_state_roundtrips_to_controller ... ok
+test tests::main_controller_state_preserves_host_edit_after_component_state ... ok
+test main_processor::tests::main_vst3_note_starts_at_host_offset_and_invalid_event_preserves_output ... ok
+test graph_processor::tests::vst3_owned_loop_publication_matches_native_through_staging_races_stop_and_reopen ... ok
+test graph_processor::tests::browser_two_source_capture_reopens_and_plays_in_vst3 ... ok
+test graph_processor::tests::standalone_sample_browser_take_reopens_and_plays_in_vst3 ... ok
+test graph_processor::tests::pending_script_parameter_becomes_reopen_state_when_vst3_host_stops ... ok
+test graph_processor::tests::packaged_js_parameter_and_route_survive_vst3_save_and_reopen ... ok
+test main_processor::tests::main_vst3_component_renders_the_shared_native_runtime ... ok
+test graph_processor::tests::vst3_package_identity_changes_with_the_published_graph_and_controller_accepts_it ... ok
+test graph_processor::tests::live_saves_keep_one_value_block_and_one_imported_generation ... ok
+test graph_processor::tests::vst3_audio_callback_captures_sidechain_and_publishes_portable_sample ... ok
+test graph_processor::tests::packaged_js_fx_controller_publishes_and_reopens_through_vst3_state ... ok
+test main_processor::tests::chunked_main_file_import_preserves_state_on_rejection_and_reopens_audio ... ok
+test tests::main_vst3_saves_a_live_session_while_host_blocks_continue ... ok
+test tests::main_vst3_editor_layout_edit_updates_component_state ... ok
+test graph_processor::tests::legacy_graph_bypass_and_fx_swap_publish_during_vst3_audio ... ok
+test tests::main_vst3_component_and_controller_reopen_portable_loop_and_sample_pcm ... ok
+test graph_processor::tests::active_vst3_state_save_reopens_authored_loop_pcm ... ok
+test graph_processor::tests::vst3_host_automation_survives_script_composition_and_stop_during_preparation ... ok
+test graph_processor::tests::deactivated_vst3_graph_saves_recorded_loop_pcm ... ok
+test tests::main_vst3_state_roundtrips_browser_audio_cables_and_shell_layout ... ok
+
+test result: ok. 43 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.18s
+
+   Doc-tests manifold_clap
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests manifold_vst3
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

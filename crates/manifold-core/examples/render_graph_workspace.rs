@@ -1,0 +1,609 @@
+//! Native output for graphs assembled by the browser topology editor.
+use manifold_core::events::{EventKind, TimedEvent};
+use manifold_core::granulator;
+use manifold_core::graph::{Connection, GraphDescription, NodeKind, NodeSpec};
+use manifold_core::main_voice_bank::MainTemporalRecipe;
+use manifold_core::sine_bank::{Partial, PartialSet};
+use manifold_core::spectral_targets::{AddFlavor, MorphRecipe, SpectralShape};
+use manifold_core::temporal_partials::TemporalFrame;
+use std::io::Write;
+
+fn tone_texture() -> GraphDescription {
+    let nodes = vec![
+        NodeSpec {
+            id: 1,
+            kind: NodeKind::InputRaw,
+        },
+        NodeSpec {
+            id: 3,
+            kind: NodeKind::Output,
+        },
+        NodeSpec {
+            id: 4,
+            kind: NodeKind::Oscillator {
+                frequency: 220.0,
+                amplitude: 0.4,
+                waveform: 0,
+            },
+        },
+        NodeSpec {
+            id: 5,
+            kind: NodeKind::NoiseGenerator {
+                level: 0.08,
+                color: 0.5,
+            },
+        },
+        NodeSpec {
+            id: 6,
+            kind: NodeKind::Sum2 {
+                gain_a: 1.0,
+                gain_b: 1.0,
+            },
+        },
+        NodeSpec {
+            id: 7,
+            kind: NodeKind::Svf,
+        },
+        NodeSpec {
+            id: 8,
+            kind: NodeKind::ModulatedGain {
+                base: 0.5,
+                depth: 0.4,
+            },
+        },
+        NodeSpec {
+            id: 9,
+            kind: NodeKind::Lfo {
+                waveform: 0,
+                rate: 2.0,
+            },
+        },
+    ];
+    let connections = [
+        (4, 6, 0),
+        (5, 6, 1),
+        (6, 7, 0),
+        (7, 8, 0),
+        (9, 8, 1),
+        (8, 3, 0),
+    ]
+    .map(|(from, to, input_port)| Connection {
+        from,
+        to,
+        input_port,
+        output_port: 0,
+    })
+    .to_vec();
+    GraphDescription { nodes, connections }
+}
+
+fn note_voice() -> GraphDescription {
+    let nodes = vec![
+        NodeSpec {
+            id: 1,
+            kind: NodeKind::InputRaw,
+        },
+        NodeSpec {
+            id: 3,
+            kind: NodeKind::Output,
+        },
+        NodeSpec {
+            id: 4,
+            kind: NodeKind::MidiInput,
+        },
+        NodeSpec {
+            id: 5,
+            kind: NodeKind::MidiTranspose { semitones: 0.0 },
+        },
+        NodeSpec {
+            id: 6,
+            kind: NodeKind::VoiceSynth,
+        },
+        NodeSpec {
+            id: 7,
+            kind: NodeKind::Svf,
+        },
+    ];
+    let connections = [(4, 5, 0), (5, 6, 0), (6, 7, 0), (7, 3, 0)]
+        .map(|(from, to, input_port)| Connection {
+            from,
+            to,
+            input_port,
+            output_port: 0,
+        })
+        .to_vec();
+    GraphDescription { nodes, connections }
+}
+
+fn sample_voice() -> GraphDescription {
+    let nodes = vec![
+        NodeSpec {
+            id: 1,
+            kind: NodeKind::InputRaw,
+        },
+        NodeSpec {
+            id: 3,
+            kind: NodeKind::Output,
+        },
+        NodeSpec {
+            id: 4,
+            kind: NodeKind::MidiInput,
+        },
+        NodeSpec {
+            id: 5,
+            kind: NodeKind::SampleInstrument,
+        },
+        NodeSpec {
+            id: 6,
+            kind: NodeKind::Svf,
+        },
+    ];
+    let connections = [(4, 5, 0), (5, 6, 0), (6, 3, 0)]
+        .map(|(from, to, input_port)| Connection {
+            from,
+            to,
+            input_port,
+            output_port: 0,
+        })
+        .to_vec();
+    GraphDescription { nodes, connections }
+}
+
+fn region_voice() -> GraphDescription {
+    let mut description = sample_voice();
+    description
+        .nodes
+        .iter_mut()
+        .find(|node| node.id == 5)
+        .unwrap()
+        .kind = NodeKind::SampleRegion;
+    description
+}
+
+fn granular_source() -> GraphDescription {
+    let mut params = granulator::DEFAULTS;
+    params[1] = 50.0;
+    params[2] = 0.01;
+    params[4] = 0.0;
+    let nodes = vec![
+        NodeSpec {
+            id: 1,
+            kind: NodeKind::InputRaw,
+        },
+        NodeSpec {
+            id: 3,
+            kind: NodeKind::Output,
+        },
+        NodeSpec {
+            id: 5,
+            kind: NodeKind::Granulator { params },
+        },
+        NodeSpec {
+            id: 6,
+            kind: NodeKind::Svf,
+        },
+    ];
+    let connections = [(5, 6, 0), (6, 3, 0)]
+        .map(|(from, to, input_port)| Connection {
+            from,
+            to,
+            input_port,
+            output_port: 0,
+        })
+        .to_vec();
+    GraphDescription { nodes, connections }
+}
+
+fn granular_capture() -> GraphDescription {
+    let mut description = granular_source();
+    description.connections.push(Connection {
+        from: 1,
+        to: 5,
+        input_port: 0,
+        output_port: 0,
+    });
+    description
+}
+
+fn main_bank() -> GraphDescription {
+    let mut description = sample_voice();
+    description
+        .nodes
+        .iter_mut()
+        .find(|node| node.id == 5)
+        .unwrap()
+        .kind = NodeKind::MainVoiceBank { fft_order: 9 };
+    description
+}
+
+fn main_target(amplitudes: &[f32]) -> PartialSet {
+    let mut target = PartialSet {
+        fundamental: 1.0,
+        ..PartialSet::default()
+    };
+    target.count = amplitudes.len();
+    for (index, amplitude) in amplitudes.iter().enumerate() {
+        target.partials[index] = Partial {
+            frequency: (index + 1) as f32,
+            amplitude: *amplitude,
+            phase: 0.0,
+            decay_rate: 0.0,
+        };
+    }
+    target
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<_> = std::env::args().collect();
+    if args.len() != 3
+        || ![
+            "seed",
+            "distortion",
+            "cv",
+            "texture",
+            "note-voice",
+            "sample-voice",
+            "region-voice",
+            "granular-source",
+            "granular-capture",
+            "main-bank",
+            "main-bank-add",
+            "main-bank-follow-add",
+            "main-bank-follow-morph",
+            "main-bank-follow-driven",
+        ]
+        .contains(&args[1].as_str())
+    {
+        return Err(
+            "usage: render_graph_workspace seed|distortion|cv|texture|note-voice|sample-voice|region-voice|granular-source|granular-capture OUTPUT".into(),
+        );
+    }
+    if args[1] == "texture" {
+        return render(tone_texture(), &args[2], false, false, false, false, 0);
+    }
+    if args[1] == "note-voice" {
+        return render(note_voice(), &args[2], true, false, false, false, 0);
+    }
+    if args[1] == "sample-voice" {
+        return render(sample_voice(), &args[2], true, true, false, false, 0);
+    }
+    if args[1] == "region-voice" {
+        return render(region_voice(), &args[2], true, true, true, false, 0);
+    }
+    if args[1] == "granular-source" {
+        return render(granular_source(), &args[2], false, true, false, false, 0);
+    }
+    if args[1] == "granular-capture" {
+        return render(granular_capture(), &args[2], false, false, false, false, 0);
+    }
+    if args[1].starts_with("main-bank") {
+        return render(
+            main_bank(),
+            &args[2],
+            true,
+            true,
+            false,
+            args[1] == "main-bank-add"
+                || args[1] == "main-bank-follow-add"
+                || args[1] == "main-bank-follow-driven",
+            if args[1] == "main-bank-follow-driven" {
+                2
+            } else if args[1].starts_with("main-bank-follow") {
+                1
+            } else {
+                0
+            },
+        );
+    }
+    let distorted = args[1] != "seed";
+    let cv = args[1] == "cv";
+    let mut nodes = vec![
+        NodeSpec {
+            id: 1,
+            kind: NodeKind::InputRaw,
+        },
+        NodeSpec {
+            id: 2,
+            kind: NodeKind::Gain { gain: 0.7 },
+        },
+        NodeSpec {
+            id: 3,
+            kind: NodeKind::Output,
+        },
+    ];
+    let mut connections = vec![Connection {
+        from: 1,
+        to: 2,
+        input_port: 0,
+        output_port: 0,
+    }];
+    if distorted {
+        nodes.push(NodeSpec {
+            id: 4,
+            kind: NodeKind::Distortion {
+                drive: 9.0,
+                mix: 0.7,
+                output: 0.8,
+            },
+        });
+        connections.push(Connection {
+            from: 2,
+            to: 4,
+            input_port: 0,
+            output_port: 0,
+        });
+    }
+    if cv {
+        nodes.push(NodeSpec {
+            id: 5,
+            kind: NodeKind::Lfo {
+                waveform: 0,
+                rate: 2.0,
+            },
+        });
+        nodes.push(NodeSpec {
+            id: 6,
+            kind: NodeKind::ModulatedGain {
+                base: 0.5,
+                depth: 0.4,
+            },
+        });
+        connections.extend([
+            Connection {
+                from: 4,
+                to: 6,
+                input_port: 0,
+                output_port: 0,
+            },
+            Connection {
+                from: 5,
+                to: 6,
+                input_port: 1,
+                output_port: 0,
+            },
+        ]);
+    }
+    connections.push(Connection {
+        from: if cv {
+            6
+        } else if distorted {
+            4
+        } else {
+            2
+        },
+        to: 3,
+        input_port: 0,
+        output_port: 0,
+    });
+    render(
+        GraphDescription { nodes, connections },
+        &args[2],
+        false,
+        false,
+        false,
+        false,
+        0,
+    )
+}
+
+fn render(
+    description: GraphDescription,
+    path: &str,
+    note_events: bool,
+    sample_source: bool,
+    sample_region: bool,
+    main_add: bool,
+    main_follow: u8,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut plan = description.compile(48_000.0, 2048)?;
+    if note_events && !sample_source && !plan.set_parameter(5, 0, 7.0) {
+        return Err("MIDI transpose parameter unavailable".into());
+    }
+    let main_bank = description
+        .nodes
+        .iter()
+        .any(|node| matches!(node.kind, NodeKind::MainVoiceBank { .. }));
+    if main_bank {
+        for (id, value) in [
+            (0, 0.0),
+            (1, 0.35),
+            (2, 60.0),
+            (3, 2.0),
+            (4, 0.0),
+            (5, 0.0),
+            (
+                6,
+                if main_add {
+                    4.0
+                } else if main_follow != 0 {
+                    5.0
+                } else {
+                    0.0
+                },
+            ),
+            (7, 0.5),
+            (8, 0.5),
+            (9, 0.0),
+            (10, 1.0),
+            (11, 0.005),
+            (12, 0.08),
+            (13, 0.8),
+            (14, 0.16),
+            (15, 1.0),
+            (16, 1.0),
+            (17, 0.0),
+            (18, 0.2),
+            (19, 0.0),
+        ] {
+            if !plan.set_parameter(5, id, value) {
+                return Err("Main bank parameter rejected".into());
+            }
+        }
+    }
+    if sample_source {
+        let source = std::fs::read(
+            std::path::Path::new(path)
+                .parent()
+                .unwrap()
+                .join("sample-source.f32"),
+        )?;
+        let stereo = source
+            .chunks_exact(4)
+            .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
+            .collect();
+        if !plan.load_sample_stereo(5, stereo, 48_000.0) {
+            return Err("graph sample source rejected".into());
+        }
+        if sample_region && !plan.set_parameter(5, 8, 0.08) {
+            return Err("sample region crossfade rejected".into());
+        }
+    }
+    if main_bank {
+        if !plan.load_partials_target(5, 0, main_target(&[1.0, 0.42, 0.2, 0.1]))
+            || !plan.load_partials_target(5, 1, main_target(&[1.0, 0.38, 0.13]))
+        {
+            return Err("Main bank partial target rejected".into());
+        }
+    }
+    if main_follow != 0 {
+        let bytes = std::fs::read(
+            std::path::Path::new(path)
+                .parent()
+                .unwrap()
+                .join("temporal-frames.f32"),
+        )?;
+        let values: Vec<f32> = bytes
+            .chunks_exact(4)
+            .map(|part| f32::from_le_bytes(part.try_into().unwrap()))
+            .collect();
+        let count = values[0] as usize;
+        if count < 2 || count > 128 || values.len() != 1 + count * 131 {
+            return Err("invalid graph temporal frame fixture".into());
+        }
+        let mut frames = Vec::with_capacity(count);
+        for packed in values[1..].chunks_exact(131) {
+            let active = packed[2] as usize;
+            if active > 32 {
+                return Err("invalid graph temporal partial count".into());
+            }
+            let mut partials = PartialSet {
+                fundamental: packed[1],
+                count: active,
+                ..PartialSet::default()
+            };
+            for (index, fields) in packed[3..3 + active * 4].chunks_exact(4).enumerate() {
+                partials.partials[index] = Partial {
+                    frequency: fields[0],
+                    amplitude: fields[1],
+                    phase: fields[2],
+                    decay_rate: fields[3],
+                };
+            }
+            frames.push(TemporalFrame {
+                position: packed[0],
+                source_start: 0,
+                rms: 0.0,
+                brightness: 0.0,
+                partials,
+            });
+        }
+        let driven = main_follow == 2;
+        let recipe = MainTemporalRecipe {
+            smooth: if driven { 0.4 } else { 0.0 },
+            contrast: if driven { 1.2 } else { 1.0 },
+            shape: if driven {
+                SpectralShape {
+                    stretch: 0.3,
+                    tilt_mode: 2,
+                }
+            } else {
+                SpectralShape::default()
+            },
+            add_flavor: if driven {
+                AddFlavor::Driven {
+                    waveform: 6,
+                    pulse_width: 0.35,
+                }
+            } else {
+                AddFlavor::SelfResynthesis
+            },
+            morph: MorphRecipe {
+                position: 0.5,
+                depth: 0.7,
+                curve: 2,
+            },
+        };
+        if !plan.load_main_temporal_frames(5, frames, recipe)
+            || !plan.set_main_temporal_speed(5, 1.0)
+        {
+            return Err("graph temporal frame upload rejected".into());
+        }
+    }
+    let event_schedule = [
+        (
+            16,
+            EventKind::NoteOn {
+                channel: 15,
+                note: 60,
+                velocity: 100,
+            },
+        ),
+        (
+            2048,
+            EventKind::NoteOn {
+                channel: 15,
+                note: 64,
+                velocity: 96,
+            },
+        ),
+        (
+            4096,
+            EventKind::NoteOff {
+                channel: 15,
+                note: 60,
+            },
+        ),
+        (
+            6144,
+            EventKind::NoteOff {
+                channel: 15,
+                note: 64,
+            },
+        ),
+    ];
+    let mut pcm = Vec::with_capacity(8192 * 2 * 4);
+    for block in 0..64 {
+        let mut input_left = [0.0_f32; 128];
+        let mut input_right = [0.0_f32; 128];
+        for index in 0..128 {
+            let frame = block * 128 + index;
+            let step = (frame % 64) as i32 - 32;
+            input_left[index] = step as f32 / 128.0;
+            input_right[index] = -(step as f32) / 256.0;
+        }
+        let mut left = [0.0_f32; 128];
+        let mut right = [0.0_f32; 128];
+        if note_events {
+            let start = block * 128;
+            let timed: Vec<_> = event_schedule
+                .iter()
+                .filter(|(frame, _)| *frame >= start && *frame < start + 128)
+                .map(|(frame, kind)| TimedEvent {
+                    offset: frame - start,
+                    node: 4,
+                    kind: *kind,
+                })
+                .collect();
+            plan.process_with_events([&input_left, &input_right], [&mut left, &mut right], &timed)
+                .map_err(|_| "timed MIDI event rejected")?;
+        } else {
+            plan.process([&input_left, &input_right], [&mut left, &mut right]);
+        }
+        for (&l, &r) in left.iter().zip(&right) {
+            pcm.extend_from_slice(&l.to_le_bytes());
+            pcm.extend_from_slice(&r.to_le_bytes());
+        }
+    }
+    std::fs::File::create(path)?.write_all(&pcm)?;
+    Ok(())
+}

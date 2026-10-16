@@ -1,0 +1,12 @@
+[package]
+name = "manifold-project-js"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+manifold-core = { path = "../manifold-core" }
+manifold-native = { path = "../manifold-native" }
+rquickjs = "0.14.0"
+serde_json = "1"
+sha2 = "0.10"

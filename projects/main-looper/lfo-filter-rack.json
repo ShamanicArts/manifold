@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "projectId": "manifold.main-looper",
+  "viewMode": "rack",
+  "modules": [
+    {
+      "id": "adsr",
+      "nodeId": 10,
+      "type": "adsr",
+      "row": 0,
+      "col": 0,
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "oscillator",
+      "nodeId": 5,
+      "type": "source",
+      "row": 0,
+      "col": 1,
+      "w": 2,
+      "h": 1
+    },
+    {
+      "id": "filter",
+      "nodeId": 6,
+      "type": "filter",
+      "row": 0,
+      "col": 3,
+      "w": 2,
+      "h": 1
+    },
+    {
+      "id": "fx1",
+      "nodeId": 7,
+      "type": "fx1",
+      "row": 1,
+      "col": 0,
+      "w": 2,
+      "h": 1
+    },
+    {
+      "id": "fx2",
+      "nodeId": 8,
+      "type": "fx2",
+      "row": 1,
+      "col": 2,
+      "w": 2,
+      "h": 1
+    },
+    {
+      "id": "eq",
+      "nodeId": 9,
+      "type": "eq",
+      "row": 1,
+      "col": 4,
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "lfo1",
+      "nodeId": 11,
+      "type": "lfo",
+      "row": 2,
+      "col": 0,
+      "w": 1,
+      "h": 1
+    }
+  ],
+  "connections": [
+    {
+      "id": "midi_in_to_adsr",
+      "from": {
+        "moduleId": "__midiInput",
+        "portId": "voice"
+      },
+      "to": {
+        "moduleId": "adsr",
+        "portId": "midi"
+      }
+    },
+    {
+      "id": "adsr_to_oscillator",
+      "from": {
+        "moduleId": "adsr",
+        "portId": "voice"
+      },
+      "to": {
+        "moduleId": "oscillator",
+        "portId": "voice"
+      }
+    },
+    {
+      "id": "oscillator_to_filter",
+      "from": {
+        "moduleId": "oscillator",
+        "portId": "out"
+      },
+      "to": {
+        "moduleId": "filter",
+        "portId": "in"
+      }
+    },
+    {
+      "id": "filter_to_fx1",
+      "from": {
+        "moduleId": "filter",
+        "portId": "out"
+      },
+      "to": {
+        "moduleId": "fx1",
+        "portId": "in"
+      }
+    },
+    {
+      "id": "fx1_to_fx2",
+      "from": {
+        "moduleId": "fx1",
+        "portId": "out"
+      },
+      "to": {
+        "moduleId": "fx2",
+        "portId": "in"
+      }
+    },
+    {
+      "id": "fx2_to_eq",
+      "from": {
+        "moduleId": "fx2",
+        "portId": "out"
+      },
+      "to": {
+        "moduleId": "eq",
+        "portId": "in"
+      }
+    },
+    {
+      "id": "eq_to_output",
+      "from": {
+        "moduleId": "eq",
+        "portId": "out"
+      },
+      "to": {
+        "moduleId": "__rackOutput",
+        "portId": "main"
+      }
+    },
+    {
+      "id": "connection_1",
+      "from": {
+        "moduleId": "lfo1",
+        "portId": "out"
+      },
+      "to": {
+        "moduleId": "filter",
+        "portId": "cutoff"
+      }
+    }
+  ]
+}

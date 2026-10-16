@@ -1,0 +1,11 @@
+{
+  "scope": "Current optimized Linux builds. Offline callback proofs use debug test binaries; these release files have not been loaded in a DAW for the new owned-loop publication gate.",
+  "sha256": {
+    "target/clap/ManifoldFX.clap": "64dbb12f1fc50b81c294616b742d73d0a83fe2744189e73ac9cac23f457b931a",
+    "target/clap/ManifoldFX-editor": "fe4af0bcb7222e10d4580d8200794bba0949c5c051229cd1f965bf193e8a9227",
+    "target/release/libmanifold_vst3.so": "c460895f875aff15d1b4abe9ad36ff4e327d7ff6eca9763d3fba629c4ea3c711",
+    "target/release/manifold-editor": "fe4af0bcb7222e10d4580d8200794bba0949c5c051229cd1f965bf193e8a9227",
+    "target/vst3/ManifoldFX.vst3/Contents/x86_64-linux/ManifoldFX.so": "c460895f875aff15d1b4abe9ad36ff4e327d7ff6eca9763d3fba629c4ea3c711",
+    "target/vst3/ManifoldFX.vst3/Contents/x86_64-linux/ManifoldFX-editor": "fe4af0bcb7222e10d4580d8200794bba0949c5c051229cd1f965bf193e8a9227"
+  }
+}

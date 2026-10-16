@@ -1,0 +1,350 @@
+{
+  "recordedAt": "2026-09-30T08:18:28.569Z",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174/native-loop-publication/2026-09-30-native-owned-loops-final/",
+  "chromiumVersion": "152.0.7977.82",
+  "manifest": {
+    "label": "2026-09-30-native-owned-loops-final",
+    "scope": "Offline debug test binaries call actual native/CLAP/VST3 callback entry points. No device, real DAW or C++ comparison. Native JS uses the public four-layer module; plug-in tests use a different one-loop workload.",
+    "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "commands": [
+      [
+        "cargo",
+        "test",
+        "-p",
+        "manifold-native",
+        "--test",
+        "owned_loop_publication"
+      ],
+      [
+        "cargo",
+        "test",
+        "-p",
+        "manifold-clap",
+        "-p",
+        "manifold-vst3",
+        "owned_loop_publication_matches_native"
+      ],
+      [
+        "cargo",
+        "test",
+        "-p",
+        "manifold-project-js",
+        "--test",
+        "native_owned_loops"
+      ]
+    ],
+    "logs": [
+      "test-1.log",
+      "test-2.log",
+      "test-3.log"
+    ],
+    "sourceHashes": {
+      "Cargo.lock": "6dfb4bb75cbf9ff17063cee7bb62728759e55ad2f308be313400573dea7de451",
+      "scripts/verify-native-loop-publication.py": "52cc0cd76ff5c6476f15cc0c46b67db74ccd3e7c21f98204f9c9e985e5d288a6",
+      "crates/manifold-core/src/loop_capture.rs": "d79f37aa6ca8fe9625dcc780ab2ba095c5bdb493d9b0b976e0584a2864982290",
+      "crates/manifold-core/src/graph.rs": "801da94141753be6f73816fb7c3e0ae6599f2f41bf9a55e64790869a5fd4e381",
+      "crates/manifold-native/src/project.rs": "edb0cbd880fa6b98e275afc4c4aebb19b2179084101888a80615265c4dff071a",
+      "crates/manifold-native/src/lib.rs": "e0678f324d625f9e7d340f638010072f8fed2cf01d5b0c1687442026214542ad",
+      "crates/manifold-native/src/author.rs": "836238b1ed8d4e1d579a777c02a67340a293ee323fd43a82501e2fb6274567fe",
+      "crates/manifold-native/tests/owned_loop_publication.rs": "53f3c6f7a3fde47257602a2b0b950a1f6ae3f4b7148bcd0a410fccf70147e81d",
+      "crates/manifold-native/tests/support/callback_heap.rs": "30199cae8e3dd943ddaadcf92ccd5201240abb08c83e1e56e8f3c02102f1ab14",
+      "crates/manifold-native/tests/support/loop_publication.rs": "95021deb457ada7f09302ab24acfbaa88de1cf126e1b01135b2365b95d7ffb5b",
+      "crates/manifold-clap/src/graph.rs": "09d2f4800ad168cae2a5c0565ae330a08c7ee6c420c92138a335ea8f94da7c8c",
+      "crates/manifold-vst3/src/graph_processor.rs": "b79c7159fd395643a3b8303d2be06331692cc81e17cde1cb8d65119f80c782f7",
+      "crates/manifold-project-js/src/native_host.rs": "785cd295e43e52c73592616f8462e201d1618a81e8425c3375a46fb4d811ff1d",
+      "crates/manifold-project-js/src/lib.rs": "c018bb469c3877e88994baa6a99a0d97b06831f8a31f67bb9a878af340c6fbd4",
+      "crates/manifold-project-js/tests/native_owned_loops.rs": "3d4b383b90be894aca2c6a37c90855ab6de8c68457a99dc88ecd5867cc830d87",
+      "packages/manifold-author/index.js": "b98549f0561eab161abc139d74e7e56d81828a8647d13dc3a4ac339d6b993655",
+      "packages/manifold-author/sample-assets.js": "328d001769a34d90eb21e49f5a9d9ee81a81d58f7c81952b4f94012dbfed1f86",
+      "packages/manifold-author/examples/four-layer-loops.mjs": "be4fd71ea0bbc411badb1bc2223721a9c0325b4aadbe617b386127ec28920e9c",
+      "packages/manifold-author/examples/loop-authoring.mjs": "e1cb8284f078f2afd12ee76650abe5a9f35c54c82c78e1cee008b354ccdbf848",
+      "projects/graph-workspace/loop-authoring-project.bundle.js": "5d4b87afc01a6bc628a7d2c1649f98e4587c4e2a84ad26b260412feea9757b35",
+      "projects/graph-workspace/authored-live-loop-route.json": "b2064253e9411b510b2bddd853c56f55b547906f7d2460f352ce121886708f77"
+    },
+    "hosts": [
+      {
+        "callbackAllocations": 0,
+        "callbackDeallocations": 0,
+        "differingSamples": 0,
+        "frames": 57344,
+        "host": "clap",
+        "maxDifference": 0,
+        "sampleRate": 48000,
+        "scope": "actual callback; recording, staging defer/cancel, named renumber, racing controls, overdub, stop before publication and reopen",
+        "files": {
+          "edited.wav": "e5047fc98c4aa867e24b99881ebe1d204ca0763463b084753abfa3fc91dae852",
+          "reference.wav": "e5047fc98c4aa867e24b99881ebe1d204ca0763463b084753abfa3fc91dae852",
+          "saved-project.json": "6b58f8a0ee3230055e16ddfbddf51cc2dbacee3ef28004c8cf9cf4cb2c0de7d0",
+          "report.json": "c2ad58301704bb2172f2b11a9a0329f6d81a28f15a86b3162267bb405e589152"
+        }
+      },
+      {
+        "callbackAllocations": 0,
+        "callbackDeallocations": 0,
+        "differingSamples": 0,
+        "frames": 57344,
+        "host": "vst3",
+        "maxDifference": 0,
+        "sampleRate": 48000,
+        "scope": "actual callback; recording, staging defer/cancel, named renumber, racing controls, overdub, stop before publication and reopen",
+        "files": {
+          "edited.wav": "e5047fc98c4aa867e24b99881ebe1d204ca0763463b084753abfa3fc91dae852",
+          "reference.wav": "e5047fc98c4aa867e24b99881ebe1d204ca0763463b084753abfa3fc91dae852",
+          "saved-project.json": "6b58f8a0ee3230055e16ddfbddf51cc2dbacee3ef28004c8cf9cf4cb2c0de7d0",
+          "report.json": "d92b63a49d625b25d8b068f5ac699b8bacad412784a911468702cf7e54c7c280"
+        }
+      },
+      {
+        "callbackAllocations": 0,
+        "callbackDeallocations": 0,
+        "differingSamples": 0,
+        "frames": 57472,
+        "host": "native-js",
+        "maxDifference": 0,
+        "sampleRate": 48000,
+        "scope": "actual public JS author module in QuickJS and native callback; record, transparent insert/remove, speed/reverse, overdub, stop before publication, PCM snapshot and fresh module restore",
+        "files": {
+          "edited.wav": "576b7aa47fdef0b642edd65a6b2e0b9d32ece325805a5a4979f05f2f022b2d87",
+          "reference.wav": "576b7aa47fdef0b642edd65a6b2e0b9d32ece325805a5a4979f05f2f022b2d87",
+          "saved-project.json": "3d411b93f0c9a7856520569082822587f739394215a584030f79428bc8386105",
+          "report.json": "452af11b7bbd9c0b2ac7afc3b5b7b34644610184aa828c61972f46bc69695faf"
+        }
+      }
+    ]
+  },
+  "sources": [
+    {
+      "path": "Cargo.lock",
+      "expected": "6dfb4bb75cbf9ff17063cee7bb62728759e55ad2f308be313400573dea7de451",
+      "actual": "6dfb4bb75cbf9ff17063cee7bb62728759e55ad2f308be313400573dea7de451",
+      "status": 200
+    },
+    {
+      "path": "scripts/verify-native-loop-publication.py",
+      "expected": "52cc0cd76ff5c6476f15cc0c46b67db74ccd3e7c21f98204f9c9e985e5d288a6",
+      "actual": "52cc0cd76ff5c6476f15cc0c46b67db74ccd3e7c21f98204f9c9e985e5d288a6",
+      "status": 200
+    },
+    {
+      "path": "crates/manifold-core/src/loop_capture.rs",
+      "expected": "d79f37aa6ca8fe9625dcc780ab2ba095c5bdb493d9b0b976e0584a2864982290",
+      "actual": "d79f37aa6ca8fe9625dcc780ab2ba095c5bdb493d9b0b976e0584a2864982290",
+      "status": 200
+    },
+    {
+      "path": "crates/manifold-core/src/graph.rs",
+      "expected": "801da94141753be6f73816fb7c3e0ae6599f2f41bf9a55e64790869a5fd4e381",
+      "actual": "801da94141753be6f73816fb7c3e0ae6599f2f41bf9a55e64790869a5fd4e381",
+      "status": 200
+    },
+    {
+      "path": "crates/manifold-native/src/project.rs",
+      "expected": "edb0cbd880fa6b98e275afc4c4aebb19b2179084101888a80615265c4dff071a",
+      "actual": "edb0cbd880fa6b98e275afc4c4aebb19b2179084101888a80615265c4dff071a",
+      "status": 200
+    },
+    {
+      "path": "crates/manifold-native/src/lib.rs",
+      "expected": "e0678f324d625f9e7d340f638010072f8fed2cf01d5b0c1687442026214542ad",
+      "actual": "e0678f324d625f9e7d340f638010072f8fed2cf01d5b0c1687442026214542ad",
+      "status": 200
+    },
+    {
+      "path": "crates/manifold-native/src/author.rs",
+      "expected": "836238b1ed8d4e1d579a777c02a67340a293ee323fd43a82501e2fb6274567fe",
+      "actual": "836238b1ed8d4e1d579a777c02a67340a293ee323fd43a82501e2fb6274567fe",
+      "status": 200
+    },
+    {
+      "path": "crates/manifold-native/tests/owned_loop_publication.rs",
+      "expected": "53f3c6f7a3fde47257602a2b0b950a1f6ae3f4b7148bcd0a410fccf70147e81d",
+      "actual": "53f3c6f7a3fde47257602a2b0b950a1f6ae3f4b7148bcd0a410fccf70147e81d",
+      "status": 200
+    },
+    {
+      "path": "crates/manifold-native/tests/support/callback_heap.rs",
+      "expected": "30199cae8e3dd943ddaadcf92ccd5201240abb08c83e1e56e8f3c02102f1ab14",
+      "actual": "30199cae8e3dd943ddaadcf92ccd5201240abb08c83e1e56e8f3c02102f1ab14",
+      "status": 200
+    },
+    {
+      "path": "crates/manifold-native/tests/support/loop_publication.rs",
+      "expected": "95021deb457ada7f09302ab24acfbaa88de1cf126e1b01135b2365b95d7ffb5b",
+      "actual": "95021deb457ada7f09302ab24acfbaa88de1cf126e1b01135b2365b95d7ffb5b",
+      "status": 200
+    },
+    {
+      "path": "crates/manifold-clap/src/graph.rs",
+      "expected": "09d2f4800ad168cae2a5c0565ae330a08c7ee6c420c92138a335ea8f94da7c8c",
+      "actual": "09d2f4800ad168cae2a5c0565ae330a08c7ee6c420c92138a335ea8f94da7c8c",
+      "status": 200
+    },
+    {
+      "path": "crates/manifold-vst3/src/graph_processor.rs",
+      "expected": "b79c7159fd395643a3b8303d2be06331692cc81e17cde1cb8d65119f80c782f7",
+      "actual": "b79c7159fd395643a3b8303d2be06331692cc81e17cde1cb8d65119f80c782f7",
+      "status": 200
+    },
+    {
+      "path": "crates/manifold-project-js/src/native_host.rs",
+      "expected": "785cd295e43e52c73592616f8462e201d1618a81e8425c3375a46fb4d811ff1d",
+      "actual": "785cd295e43e52c73592616f8462e201d1618a81e8425c3375a46fb4d811ff1d",
+      "status": 200
+    },
+    {
+      "path": "crates/manifold-project-js/src/lib.rs",
+      "expected": "c018bb469c3877e88994baa6a99a0d97b06831f8a31f67bb9a878af340c6fbd4",
+      "actual": "c018bb469c3877e88994baa6a99a0d97b06831f8a31f67bb9a878af340c6fbd4",
+      "status": 200
+    },
+    {
+      "path": "crates/manifold-project-js/tests/native_owned_loops.rs",
+      "expected": "3d4b383b90be894aca2c6a37c90855ab6de8c68457a99dc88ecd5867cc830d87",
+      "actual": "3d4b383b90be894aca2c6a37c90855ab6de8c68457a99dc88ecd5867cc830d87",
+      "status": 200
+    },
+    {
+      "path": "packages/manifold-author/index.js",
+      "expected": "b98549f0561eab161abc139d74e7e56d81828a8647d13dc3a4ac339d6b993655",
+      "actual": "b98549f0561eab161abc139d74e7e56d81828a8647d13dc3a4ac339d6b993655",
+      "status": 200
+    },
+    {
+      "path": "packages/manifold-author/sample-assets.js",
+      "expected": "328d001769a34d90eb21e49f5a9d9ee81a81d58f7c81952b4f94012dbfed1f86",
+      "actual": "328d001769a34d90eb21e49f5a9d9ee81a81d58f7c81952b4f94012dbfed1f86",
+      "status": 200
+    },
+    {
+      "path": "packages/manifold-author/examples/four-layer-loops.mjs",
+      "expected": "be4fd71ea0bbc411badb1bc2223721a9c0325b4aadbe617b386127ec28920e9c",
+      "actual": "be4fd71ea0bbc411badb1bc2223721a9c0325b4aadbe617b386127ec28920e9c",
+      "status": 200
+    },
+    {
+      "path": "packages/manifold-author/examples/loop-authoring.mjs",
+      "expected": "e1cb8284f078f2afd12ee76650abe5a9f35c54c82c78e1cee008b354ccdbf848",
+      "actual": "e1cb8284f078f2afd12ee76650abe5a9f35c54c82c78e1cee008b354ccdbf848",
+      "status": 200
+    },
+    {
+      "path": "projects/graph-workspace/loop-authoring-project.bundle.js",
+      "expected": "5d4b87afc01a6bc628a7d2c1649f98e4587c4e2a84ad26b260412feea9757b35",
+      "actual": "5d4b87afc01a6bc628a7d2c1649f98e4587c4e2a84ad26b260412feea9757b35",
+      "status": 200
+    },
+    {
+      "path": "projects/graph-workspace/authored-live-loop-route.json",
+      "expected": "b2064253e9411b510b2bddd853c56f55b547906f7d2460f352ce121886708f77",
+      "actual": "b2064253e9411b510b2bddd853c56f55b547906f7d2460f352ce121886708f77",
+      "status": 200
+    }
+  ],
+  "recordings": [
+    {
+      "path": "clap/edited.wav",
+      "expected": "e5047fc98c4aa867e24b99881ebe1d204ca0763463b084753abfa3fc91dae852",
+      "actual": "e5047fc98c4aa867e24b99881ebe1d204ca0763463b084753abfa3fc91dae852",
+      "status": 200
+    },
+    {
+      "path": "clap/reference.wav",
+      "expected": "e5047fc98c4aa867e24b99881ebe1d204ca0763463b084753abfa3fc91dae852",
+      "actual": "e5047fc98c4aa867e24b99881ebe1d204ca0763463b084753abfa3fc91dae852",
+      "status": 200
+    },
+    {
+      "path": "clap/saved-project.json",
+      "expected": "6b58f8a0ee3230055e16ddfbddf51cc2dbacee3ef28004c8cf9cf4cb2c0de7d0",
+      "actual": "6b58f8a0ee3230055e16ddfbddf51cc2dbacee3ef28004c8cf9cf4cb2c0de7d0",
+      "status": 200
+    },
+    {
+      "path": "clap/report.json",
+      "expected": "c2ad58301704bb2172f2b11a9a0329f6d81a28f15a86b3162267bb405e589152",
+      "actual": "c2ad58301704bb2172f2b11a9a0329f6d81a28f15a86b3162267bb405e589152",
+      "status": 200
+    },
+    {
+      "path": "vst3/edited.wav",
+      "expected": "e5047fc98c4aa867e24b99881ebe1d204ca0763463b084753abfa3fc91dae852",
+      "actual": "e5047fc98c4aa867e24b99881ebe1d204ca0763463b084753abfa3fc91dae852",
+      "status": 200
+    },
+    {
+      "path": "vst3/reference.wav",
+      "expected": "e5047fc98c4aa867e24b99881ebe1d204ca0763463b084753abfa3fc91dae852",
+      "actual": "e5047fc98c4aa867e24b99881ebe1d204ca0763463b084753abfa3fc91dae852",
+      "status": 200
+    },
+    {
+      "path": "vst3/saved-project.json",
+      "expected": "6b58f8a0ee3230055e16ddfbddf51cc2dbacee3ef28004c8cf9cf4cb2c0de7d0",
+      "actual": "6b58f8a0ee3230055e16ddfbddf51cc2dbacee3ef28004c8cf9cf4cb2c0de7d0",
+      "status": 200
+    },
+    {
+      "path": "vst3/report.json",
+      "expected": "d92b63a49d625b25d8b068f5ac699b8bacad412784a911468702cf7e54c7c280",
+      "actual": "d92b63a49d625b25d8b068f5ac699b8bacad412784a911468702cf7e54c7c280",
+      "status": 200
+    },
+    {
+      "path": "native-js/edited.wav",
+      "expected": "576b7aa47fdef0b642edd65a6b2e0b9d32ece325805a5a4979f05f2f022b2d87",
+      "actual": "576b7aa47fdef0b642edd65a6b2e0b9d32ece325805a5a4979f05f2f022b2d87",
+      "status": 200
+    },
+    {
+      "path": "native-js/reference.wav",
+      "expected": "576b7aa47fdef0b642edd65a6b2e0b9d32ece325805a5a4979f05f2f022b2d87",
+      "actual": "576b7aa47fdef0b642edd65a6b2e0b9d32ece325805a5a4979f05f2f022b2d87",
+      "status": 200
+    },
+    {
+      "path": "native-js/saved-project.json",
+      "expected": "3d411b93f0c9a7856520569082822587f739394215a584030f79428bc8386105",
+      "actual": "3d411b93f0c9a7856520569082822587f739394215a584030f79428bc8386105",
+      "status": 200
+    },
+    {
+      "path": "native-js/report.json",
+      "expected": "452af11b7bbd9c0b2ac7afc3b5b7b34644610184aa828c61972f46bc69695faf",
+      "actual": "452af11b7bbd9c0b2ac7afc3b5b7b34644610184aa828c61972f46bc69695faf",
+      "status": 200
+    }
+  ],
+  "players": [
+    {
+      "paused": true,
+      "autoplay": false,
+      "error": null
+    },
+    {
+      "paused": true,
+      "autoplay": false,
+      "error": null
+    },
+    {
+      "paused": true,
+      "autoplay": false,
+      "error": null
+    },
+    {
+      "paused": true,
+      "autoplay": false,
+      "error": null
+    },
+    {
+      "paused": true,
+      "autoplay": false,
+      "error": null
+    },
+    {
+      "paused": true,
+      "autoplay": false,
+      "error": null
+    }
+  ],
+  "pageErrors": []
+}

@@ -1,0 +1,3330 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "external",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 10,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      },
+      {
+        "id": 11,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 12,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 13,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 14,
+        "type": "mixer",
+        "a": 3,
+        "b": 1
+      },
+      {
+        "id": 15,
+        "type": "mixer",
+        "a": 4,
+        "b": 1
+      },
+      {
+        "id": 16,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      },
+      {
+        "id": 17,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 18,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 19,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 20,
+        "type": "mixer",
+        "a": 3,
+        "b": 1
+      },
+      {
+        "id": 21,
+        "type": "mixer",
+        "a": 4,
+        "b": 1
+      },
+      {
+        "id": 22,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      },
+      {
+        "id": 23,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 24,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 25,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 26,
+        "type": "mixer",
+        "a": 3,
+        "b": 1
+      },
+      {
+        "id": 27,
+        "type": "mixer",
+        "a": 4,
+        "b": 1
+      },
+      {
+        "id": 28,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      },
+      {
+        "id": 29,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 30,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 31,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 32,
+        "type": "mixer",
+        "a": 3,
+        "b": 1
+      },
+      {
+        "id": 33,
+        "type": "mixer",
+        "a": 4,
+        "b": 1
+      },
+      {
+        "id": 34,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      },
+      {
+        "id": 35,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 36,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 37,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 38,
+        "type": "mixer",
+        "a": 3,
+        "b": 1
+      },
+      {
+        "id": 39,
+        "type": "mixer",
+        "a": 4,
+        "b": 1
+      },
+      {
+        "id": 40,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      },
+      {
+        "id": 41,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 42,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 43,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 44,
+        "type": "mixer",
+        "a": 3,
+        "b": 1
+      },
+      {
+        "id": 45,
+        "type": "mixer",
+        "a": 4,
+        "b": 1
+      },
+      {
+        "id": 46,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      },
+      {
+        "id": 47,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 48,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 49,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 50,
+        "type": "mixer",
+        "a": 3,
+        "b": 1
+      },
+      {
+        "id": 51,
+        "type": "mixer",
+        "a": 4,
+        "b": 1
+      },
+      {
+        "id": 52,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      },
+      {
+        "id": 53,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 54,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 55,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 56,
+        "type": "mixer",
+        "a": 3,
+        "b": 1
+      },
+      {
+        "id": 57,
+        "type": "mixer",
+        "a": 4,
+        "b": 1
+      },
+      {
+        "id": 60,
+        "type": "mixer",
+        "a": 8,
+        "b": 1
+      },
+      {
+        "id": 70,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 71,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 72,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 73,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 74,
+        "type": "mixer",
+        "a": 4,
+        "b": 1
+      },
+      {
+        "id": 75,
+        "type": "mixer",
+        "a": 3,
+        "b": 1
+      },
+      {
+        "id": 76,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 77,
+        "type": "sum2",
+        "a": 1,
+        "b": 1
+      },
+      {
+        "id": 78,
+        "type": "sum2",
+        "a": 1,
+        "b": 1
+      },
+      {
+        "id": 79,
+        "type": "sum2",
+        "a": 1,
+        "b": 1
+      },
+      {
+        "id": 80,
+        "type": "sum2",
+        "a": 1,
+        "b": 1
+      },
+      {
+        "id": 90,
+        "type": "retrospective-capture",
+        "a": 30,
+        "b": 0
+      },
+      {
+        "id": 91,
+        "type": "retrospective-capture",
+        "a": 30,
+        "b": 0
+      },
+      {
+        "id": 92,
+        "type": "retrospective-capture",
+        "a": 30,
+        "b": 0
+      },
+      {
+        "id": 93,
+        "type": "retrospective-capture",
+        "a": 30,
+        "b": 0
+      }
+    ],
+    "connections": [
+      {
+        "from": 76,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 10,
+        "outputPort": 0,
+        "to": 11,
+        "inputPort": 0
+      },
+      {
+        "from": 10,
+        "outputPort": 0,
+        "to": 12,
+        "inputPort": 0
+      },
+      {
+        "from": 11,
+        "outputPort": 0,
+        "to": 13,
+        "inputPort": 0
+      },
+      {
+        "from": 12,
+        "outputPort": 0,
+        "to": 13,
+        "inputPort": 1
+      },
+      {
+        "from": 13,
+        "outputPort": 0,
+        "to": 14,
+        "inputPort": 0
+      },
+      {
+        "from": 14,
+        "outputPort": 0,
+        "to": 15,
+        "inputPort": 3
+      },
+      {
+        "from": 16,
+        "outputPort": 0,
+        "to": 17,
+        "inputPort": 0
+      },
+      {
+        "from": 16,
+        "outputPort": 0,
+        "to": 18,
+        "inputPort": 0
+      },
+      {
+        "from": 17,
+        "outputPort": 0,
+        "to": 19,
+        "inputPort": 0
+      },
+      {
+        "from": 18,
+        "outputPort": 0,
+        "to": 19,
+        "inputPort": 1
+      },
+      {
+        "from": 19,
+        "outputPort": 0,
+        "to": 20,
+        "inputPort": 0
+      },
+      {
+        "from": 20,
+        "outputPort": 0,
+        "to": 21,
+        "inputPort": 3
+      },
+      {
+        "from": 22,
+        "outputPort": 0,
+        "to": 23,
+        "inputPort": 0
+      },
+      {
+        "from": 22,
+        "outputPort": 0,
+        "to": 24,
+        "inputPort": 0
+      },
+      {
+        "from": 23,
+        "outputPort": 0,
+        "to": 25,
+        "inputPort": 0
+      },
+      {
+        "from": 24,
+        "outputPort": 0,
+        "to": 25,
+        "inputPort": 1
+      },
+      {
+        "from": 25,
+        "outputPort": 0,
+        "to": 26,
+        "inputPort": 0
+      },
+      {
+        "from": 26,
+        "outputPort": 0,
+        "to": 27,
+        "inputPort": 3
+      },
+      {
+        "from": 28,
+        "outputPort": 0,
+        "to": 29,
+        "inputPort": 0
+      },
+      {
+        "from": 28,
+        "outputPort": 0,
+        "to": 30,
+        "inputPort": 0
+      },
+      {
+        "from": 29,
+        "outputPort": 0,
+        "to": 31,
+        "inputPort": 0
+      },
+      {
+        "from": 30,
+        "outputPort": 0,
+        "to": 31,
+        "inputPort": 1
+      },
+      {
+        "from": 31,
+        "outputPort": 0,
+        "to": 32,
+        "inputPort": 0
+      },
+      {
+        "from": 32,
+        "outputPort": 0,
+        "to": 33,
+        "inputPort": 3
+      },
+      {
+        "from": 34,
+        "outputPort": 0,
+        "to": 35,
+        "inputPort": 0
+      },
+      {
+        "from": 34,
+        "outputPort": 0,
+        "to": 36,
+        "inputPort": 0
+      },
+      {
+        "from": 35,
+        "outputPort": 0,
+        "to": 37,
+        "inputPort": 0
+      },
+      {
+        "from": 36,
+        "outputPort": 0,
+        "to": 37,
+        "inputPort": 1
+      },
+      {
+        "from": 37,
+        "outputPort": 0,
+        "to": 38,
+        "inputPort": 0
+      },
+      {
+        "from": 38,
+        "outputPort": 0,
+        "to": 39,
+        "inputPort": 3
+      },
+      {
+        "from": 40,
+        "outputPort": 0,
+        "to": 41,
+        "inputPort": 0
+      },
+      {
+        "from": 40,
+        "outputPort": 0,
+        "to": 42,
+        "inputPort": 0
+      },
+      {
+        "from": 41,
+        "outputPort": 0,
+        "to": 43,
+        "inputPort": 0
+      },
+      {
+        "from": 42,
+        "outputPort": 0,
+        "to": 43,
+        "inputPort": 1
+      },
+      {
+        "from": 43,
+        "outputPort": 0,
+        "to": 44,
+        "inputPort": 0
+      },
+      {
+        "from": 44,
+        "outputPort": 0,
+        "to": 45,
+        "inputPort": 3
+      },
+      {
+        "from": 46,
+        "outputPort": 0,
+        "to": 47,
+        "inputPort": 0
+      },
+      {
+        "from": 46,
+        "outputPort": 0,
+        "to": 48,
+        "inputPort": 0
+      },
+      {
+        "from": 47,
+        "outputPort": 0,
+        "to": 49,
+        "inputPort": 0
+      },
+      {
+        "from": 48,
+        "outputPort": 0,
+        "to": 49,
+        "inputPort": 1
+      },
+      {
+        "from": 49,
+        "outputPort": 0,
+        "to": 50,
+        "inputPort": 0
+      },
+      {
+        "from": 50,
+        "outputPort": 0,
+        "to": 51,
+        "inputPort": 3
+      },
+      {
+        "from": 52,
+        "outputPort": 0,
+        "to": 53,
+        "inputPort": 0
+      },
+      {
+        "from": 52,
+        "outputPort": 0,
+        "to": 54,
+        "inputPort": 0
+      },
+      {
+        "from": 53,
+        "outputPort": 0,
+        "to": 55,
+        "inputPort": 0
+      },
+      {
+        "from": 54,
+        "outputPort": 0,
+        "to": 55,
+        "inputPort": 1
+      },
+      {
+        "from": 55,
+        "outputPort": 0,
+        "to": 56,
+        "inputPort": 0
+      },
+      {
+        "from": 56,
+        "outputPort": 0,
+        "to": 57,
+        "inputPort": 3
+      },
+      {
+        "from": 15,
+        "outputPort": 0,
+        "to": 60,
+        "inputPort": 0
+      },
+      {
+        "from": 21,
+        "outputPort": 0,
+        "to": 60,
+        "inputPort": 1
+      },
+      {
+        "from": 27,
+        "outputPort": 0,
+        "to": 60,
+        "inputPort": 2
+      },
+      {
+        "from": 33,
+        "outputPort": 0,
+        "to": 60,
+        "inputPort": 3
+      },
+      {
+        "from": 39,
+        "outputPort": 0,
+        "to": 60,
+        "inputPort": 4
+      },
+      {
+        "from": 45,
+        "outputPort": 0,
+        "to": 60,
+        "inputPort": 5
+      },
+      {
+        "from": 51,
+        "outputPort": 0,
+        "to": 60,
+        "inputPort": 6
+      },
+      {
+        "from": 57,
+        "outputPort": 0,
+        "to": 60,
+        "inputPort": 7
+      },
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 70,
+        "inputPort": 0
+      },
+      {
+        "from": 70,
+        "outputPort": 0,
+        "to": 71,
+        "inputPort": 0
+      },
+      {
+        "from": 60,
+        "outputPort": 0,
+        "to": 72,
+        "inputPort": 0
+      },
+      {
+        "from": 60,
+        "outputPort": 0,
+        "to": 73,
+        "inputPort": 0
+      },
+      {
+        "from": 72,
+        "outputPort": 0,
+        "to": 75,
+        "inputPort": 0
+      },
+      {
+        "from": 74,
+        "outputPort": 0,
+        "to": 75,
+        "inputPort": 1
+      },
+      {
+        "from": 71,
+        "outputPort": 0,
+        "to": 75,
+        "inputPort": 2
+      },
+      {
+        "from": 75,
+        "outputPort": 0,
+        "to": 76,
+        "inputPort": 0
+      },
+      {
+        "from": 70,
+        "outputPort": 0,
+        "to": 77,
+        "inputPort": 0
+      },
+      {
+        "from": 73,
+        "outputPort": 0,
+        "to": 77,
+        "inputPort": 1
+      },
+      {
+        "from": 70,
+        "outputPort": 0,
+        "to": 78,
+        "inputPort": 0
+      },
+      {
+        "from": 73,
+        "outputPort": 0,
+        "to": 78,
+        "inputPort": 1
+      },
+      {
+        "from": 70,
+        "outputPort": 0,
+        "to": 79,
+        "inputPort": 0
+      },
+      {
+        "from": 73,
+        "outputPort": 0,
+        "to": 79,
+        "inputPort": 1
+      },
+      {
+        "from": 70,
+        "outputPort": 0,
+        "to": 80,
+        "inputPort": 0
+      },
+      {
+        "from": 73,
+        "outputPort": 0,
+        "to": 80,
+        "inputPort": 1
+      },
+      {
+        "from": 77,
+        "outputPort": 0,
+        "to": 90,
+        "inputPort": 0
+      },
+      {
+        "from": 78,
+        "outputPort": 0,
+        "to": 91,
+        "inputPort": 0
+      },
+      {
+        "from": 79,
+        "outputPort": 0,
+        "to": 92,
+        "inputPort": 0
+      },
+      {
+        "from": 80,
+        "outputPort": 0,
+        "to": 93,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 10,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 10,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 10,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 10,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 10,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 10,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 10,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 10,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 10,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 10,
+        "id": 9,
+        "value": 0
+      },
+      {
+        "nodeId": 10,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 10,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 10,
+        "id": 12,
+        "value": 0
+      },
+      {
+        "nodeId": 10,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 10,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 10,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 10,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 11,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 11,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 11,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 12,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 12,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 12,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 13,
+        "id": 0,
+        "value": -1
+      },
+      {
+        "nodeId": 13,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 13,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 14,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 14,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 14,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 14,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 14,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 14,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 14,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 15,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 15,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 15,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 15,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 15,
+        "id": 4,
+        "value": 1
+      },
+      {
+        "nodeId": 15,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 15,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 15,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 15,
+        "id": 36,
+        "value": 0
+      },
+      {
+        "nodeId": 16,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 16,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 16,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 16,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 16,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 16,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 16,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 16,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 16,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 16,
+        "id": 9,
+        "value": 0
+      },
+      {
+        "nodeId": 16,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 16,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 16,
+        "id": 12,
+        "value": 0
+      },
+      {
+        "nodeId": 16,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 16,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 16,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 16,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 17,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 17,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 17,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 18,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 18,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 18,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 19,
+        "id": 0,
+        "value": -1
+      },
+      {
+        "nodeId": 19,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 19,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 20,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 20,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 20,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 20,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 20,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 20,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 20,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 21,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 21,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 21,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 21,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 21,
+        "id": 4,
+        "value": 1
+      },
+      {
+        "nodeId": 21,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 21,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 21,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 21,
+        "id": 36,
+        "value": 0
+      },
+      {
+        "nodeId": 22,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 22,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 22,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 22,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 22,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 22,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 22,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 22,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 22,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 22,
+        "id": 9,
+        "value": 0
+      },
+      {
+        "nodeId": 22,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 22,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 22,
+        "id": 12,
+        "value": 0
+      },
+      {
+        "nodeId": 22,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 22,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 22,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 22,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 23,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 23,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 23,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 24,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 24,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 24,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 25,
+        "id": 0,
+        "value": -1
+      },
+      {
+        "nodeId": 25,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 25,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 26,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 26,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 26,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 26,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 26,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 26,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 26,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 27,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 27,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 27,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 27,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 27,
+        "id": 4,
+        "value": 1
+      },
+      {
+        "nodeId": 27,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 27,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 27,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 27,
+        "id": 36,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 28,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 28,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 28,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 28,
+        "id": 9,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 28,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 12,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 28,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 28,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 29,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 29,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 29,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 30,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 30,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 30,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 31,
+        "id": 0,
+        "value": -1
+      },
+      {
+        "nodeId": 31,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 31,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 32,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 32,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 32,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 32,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 32,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 32,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 32,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 33,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 33,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 33,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 33,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 33,
+        "id": 4,
+        "value": 1
+      },
+      {
+        "nodeId": 33,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 33,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 33,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 33,
+        "id": 36,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 34,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 34,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 34,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 34,
+        "id": 9,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 34,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 12,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 34,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 34,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 35,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 35,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 35,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 36,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 36,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 36,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 37,
+        "id": 0,
+        "value": -1
+      },
+      {
+        "nodeId": 37,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 37,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 38,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 38,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 38,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 38,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 38,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 38,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 38,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 39,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 39,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 39,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 39,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 39,
+        "id": 4,
+        "value": 1
+      },
+      {
+        "nodeId": 39,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 39,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 39,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 39,
+        "id": 36,
+        "value": 0
+      },
+      {
+        "nodeId": 40,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 40,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 40,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 40,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 40,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 40,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 40,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 40,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 40,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 40,
+        "id": 9,
+        "value": 0
+      },
+      {
+        "nodeId": 40,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 40,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 40,
+        "id": 12,
+        "value": 0
+      },
+      {
+        "nodeId": 40,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 40,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 40,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 40,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 41,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 41,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 41,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 42,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 42,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 42,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 43,
+        "id": 0,
+        "value": -1
+      },
+      {
+        "nodeId": 43,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 43,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 44,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 44,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 44,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 44,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 44,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 44,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 44,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 45,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 45,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 45,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 45,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 45,
+        "id": 4,
+        "value": 1
+      },
+      {
+        "nodeId": 45,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 45,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 45,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 45,
+        "id": 36,
+        "value": 0
+      },
+      {
+        "nodeId": 46,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 46,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 46,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 46,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 46,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 46,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 46,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 46,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 46,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 46,
+        "id": 9,
+        "value": 0
+      },
+      {
+        "nodeId": 46,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 46,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 46,
+        "id": 12,
+        "value": 0
+      },
+      {
+        "nodeId": 46,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 46,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 46,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 46,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 47,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 47,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 47,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 48,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 48,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 48,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 49,
+        "id": 0,
+        "value": -1
+      },
+      {
+        "nodeId": 49,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 49,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 50,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 50,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 50,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 50,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 50,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 50,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 50,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 51,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 51,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 51,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 51,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 51,
+        "id": 4,
+        "value": 1
+      },
+      {
+        "nodeId": 51,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 51,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 51,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 51,
+        "id": 36,
+        "value": 0
+      },
+      {
+        "nodeId": 52,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 52,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 52,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 52,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 52,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 52,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 52,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 52,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 52,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 52,
+        "id": 9,
+        "value": 0
+      },
+      {
+        "nodeId": 52,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 52,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 52,
+        "id": 12,
+        "value": 0
+      },
+      {
+        "nodeId": 52,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 52,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 52,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 52,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 53,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 53,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 53,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 54,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 54,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 54,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 55,
+        "id": 0,
+        "value": -1
+      },
+      {
+        "nodeId": 55,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 55,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 56,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 56,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 56,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 56,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 56,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 56,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 56,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 57,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 57,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 57,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 57,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 57,
+        "id": 4,
+        "value": 1
+      },
+      {
+        "nodeId": 57,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 57,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 57,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 57,
+        "id": 36,
+        "value": 0
+      },
+      {
+        "nodeId": 60,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 60,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 60,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 60,
+        "id": 3,
+        "value": 1
+      },
+      {
+        "nodeId": 60,
+        "id": 4,
+        "value": 1
+      },
+      {
+        "nodeId": 60,
+        "id": 5,
+        "value": 1
+      },
+      {
+        "nodeId": 60,
+        "id": 6,
+        "value": 1
+      },
+      {
+        "nodeId": 60,
+        "id": 7,
+        "value": 1
+      },
+      {
+        "nodeId": 60,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 60,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 60,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 60,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 60,
+        "id": 36,
+        "value": 0
+      },
+      {
+        "nodeId": 60,
+        "id": 37,
+        "value": 0
+      },
+      {
+        "nodeId": 60,
+        "id": 38,
+        "value": 0
+      },
+      {
+        "nodeId": 60,
+        "id": 39,
+        "value": 0
+      },
+      {
+        "nodeId": 60,
+        "id": 40,
+        "value": 0
+      },
+      {
+        "nodeId": 70,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 71,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 72,
+        "id": 0,
+        "value": 0.8
+      },
+      {
+        "nodeId": 73,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 74,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 74,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 74,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 74,
+        "id": 3,
+        "value": 1
+      },
+      {
+        "nodeId": 74,
+        "id": 4,
+        "value": 1
+      },
+      {
+        "nodeId": 74,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 74,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 74,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 74,
+        "id": 36,
+        "value": 0
+      },
+      {
+        "nodeId": 75,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 75,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 75,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 75,
+        "id": 3,
+        "value": 1
+      },
+      {
+        "nodeId": 75,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 75,
+        "id": 34,
+        "value": 0
+      },
+      {
+        "nodeId": 75,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 76,
+        "id": 0,
+        "value": 1
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/midi/synth/captureSend",
+      "kind": "parameter",
+      "nodeId": 73,
+      "id": 0,
+      "min": 0,
+      "max": 2,
+      "default": 1
+    },
+    {
+      "path": "/midi/synth/inputMonitor",
+      "kind": "parameter",
+      "nodeId": 71,
+      "id": 0,
+      "min": 0,
+      "max": 2,
+      "default": 1
+    },
+    {
+      "path": "/midi/synth/inputTrim",
+      "kind": "parameter",
+      "nodeId": 70,
+      "id": 0,
+      "min": 0,
+      "max": 2,
+      "default": 1
+    },
+    {
+      "path": "/midi/synth/master",
+      "kind": "parameter",
+      "nodeId": 76,
+      "id": 0,
+      "min": 0,
+      "max": 2,
+      "default": 1
+    },
+    {
+      "path": "/midi/synth/output",
+      "kind": "parameter",
+      "nodeId": 72,
+      "id": 0,
+      "min": 0,
+      "max": 2,
+      "default": 0.8
+    },
+    {
+      "path": "/midi/synth/voice/1/amp",
+      "kind": "parameter",
+      "nodeId": 10,
+      "id": 2,
+      "min": 0,
+      "max": 0.5,
+      "default": 0
+    },
+    {
+      "path": "/midi/synth/voice/1/freq",
+      "kind": "parameter",
+      "nodeId": 10,
+      "id": 1,
+      "min": 20,
+      "max": 8000,
+      "default": 220
+    },
+    {
+      "path": "/midi/synth/voice/2/amp",
+      "kind": "parameter",
+      "nodeId": 16,
+      "id": 2,
+      "min": 0,
+      "max": 0.5,
+      "default": 0
+    },
+    {
+      "path": "/midi/synth/voice/2/freq",
+      "kind": "parameter",
+      "nodeId": 16,
+      "id": 1,
+      "min": 20,
+      "max": 8000,
+      "default": 220
+    },
+    {
+      "path": "/midi/synth/voice/3/amp",
+      "kind": "parameter",
+      "nodeId": 22,
+      "id": 2,
+      "min": 0,
+      "max": 0.5,
+      "default": 0
+    },
+    {
+      "path": "/midi/synth/voice/3/freq",
+      "kind": "parameter",
+      "nodeId": 22,
+      "id": 1,
+      "min": 20,
+      "max": 8000,
+      "default": 220
+    },
+    {
+      "path": "/midi/synth/voice/4/amp",
+      "kind": "parameter",
+      "nodeId": 28,
+      "id": 2,
+      "min": 0,
+      "max": 0.5,
+      "default": 0
+    },
+    {
+      "path": "/midi/synth/voice/4/freq",
+      "kind": "parameter",
+      "nodeId": 28,
+      "id": 1,
+      "min": 20,
+      "max": 8000,
+      "default": 220
+    },
+    {
+      "path": "/midi/synth/voice/5/amp",
+      "kind": "parameter",
+      "nodeId": 34,
+      "id": 2,
+      "min": 0,
+      "max": 0.5,
+      "default": 0
+    },
+    {
+      "path": "/midi/synth/voice/5/freq",
+      "kind": "parameter",
+      "nodeId": 34,
+      "id": 1,
+      "min": 20,
+      "max": 8000,
+      "default": 220
+    },
+    {
+      "path": "/midi/synth/voice/6/amp",
+      "kind": "parameter",
+      "nodeId": 40,
+      "id": 2,
+      "min": 0,
+      "max": 0.5,
+      "default": 0
+    },
+    {
+      "path": "/midi/synth/voice/6/freq",
+      "kind": "parameter",
+      "nodeId": 40,
+      "id": 1,
+      "min": 20,
+      "max": 8000,
+      "default": 220
+    },
+    {
+      "path": "/midi/synth/voice/7/amp",
+      "kind": "parameter",
+      "nodeId": 46,
+      "id": 2,
+      "min": 0,
+      "max": 0.5,
+      "default": 0
+    },
+    {
+      "path": "/midi/synth/voice/7/freq",
+      "kind": "parameter",
+      "nodeId": 46,
+      "id": 1,
+      "min": 20,
+      "max": 8000,
+      "default": 220
+    },
+    {
+      "path": "/midi/synth/voice/8/amp",
+      "kind": "parameter",
+      "nodeId": 52,
+      "id": 2,
+      "min": 0,
+      "max": 0.5,
+      "default": 0
+    },
+    {
+      "path": "/midi/synth/voice/8/freq",
+      "kind": "parameter",
+      "nodeId": 52,
+      "id": 1,
+      "min": 20,
+      "max": 8000,
+      "default": 220
+    }
+  ],
+  "controls": [
+    {
+      "path": "/midi/synth/blend/amount",
+      "min": 0,
+      "max": 1,
+      "default": 0.5,
+      "value": 0.5,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/detune",
+      "min": 0,
+      "max": 100,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/drive",
+      "min": 0,
+      "max": 20,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/driveBias",
+      "min": -1,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/driveMix",
+      "min": 0,
+      "max": 1,
+      "default": 1,
+      "value": 1,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/driveShape",
+      "min": 0,
+      "max": 3,
+      "default": 0,
+      "value": 0,
+      "discrete": true
+    },
+    {
+      "path": "/midi/synth/pulseWidth",
+      "min": 0.01,
+      "max": 0.99,
+      "default": 0.5,
+      "value": 0.5,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/spread",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/unison",
+      "min": 1,
+      "max": 8,
+      "default": 1,
+      "value": 1,
+      "discrete": true
+    },
+    {
+      "path": "/midi/synth/voice/1/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/voice/2/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/voice/3/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/voice/4/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/voice/5/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/voice/6/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/voice/7/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/voice/8/gate",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": false
+    },
+    {
+      "path": "/midi/synth/waveform",
+      "min": 0,
+      "max": 7,
+      "default": 1,
+      "value": 1,
+      "discrete": true
+    }
+  ],
+  "instances": [
+    {
+      "path": "/main/layer/1/capture",
+      "nodeId": 90
+    },
+    {
+      "path": "/main/layer/2/capture",
+      "nodeId": 91
+    },
+    {
+      "path": "/main/layer/3/capture",
+      "nodeId": 92
+    },
+    {
+      "path": "/main/layer/4/capture",
+      "nodeId": 93
+    },
+    {
+      "path": "/main/nodes/input_monitor",
+      "nodeId": 71
+    },
+    {
+      "path": "/main/nodes/input_trim",
+      "nodeId": 70
+    },
+    {
+      "path": "/main/nodes/layer_1_input",
+      "nodeId": 77
+    },
+    {
+      "path": "/main/nodes/layer_2_input",
+      "nodeId": 78
+    },
+    {
+      "path": "/main/nodes/layer_3_input",
+      "nodeId": 79
+    },
+    {
+      "path": "/main/nodes/layer_4_input",
+      "nodeId": 80
+    },
+    {
+      "path": "/main/nodes/layer_mixer",
+      "nodeId": 74
+    },
+    {
+      "path": "/main/nodes/main_mixer",
+      "nodeId": 75
+    },
+    {
+      "path": "/main/nodes/master",
+      "nodeId": 76
+    },
+    {
+      "path": "/main/nodes/synth_monitor",
+      "nodeId": 72
+    },
+    {
+      "path": "/main/nodes/synth_send",
+      "nodeId": 73
+    },
+    {
+      "path": "/midi/synth/nodes/voice_mixer",
+      "nodeId": 60
+    },
+    {
+      "path": "/midi/synth/voice/1/nodes/base_select",
+      "nodeId": 13
+    },
+    {
+      "path": "/midi/synth/voice/1/nodes/branches",
+      "nodeId": 14
+    },
+    {
+      "path": "/midi/synth/voice/1/nodes/direction",
+      "nodeId": 12
+    },
+    {
+      "path": "/midi/synth/voice/1/nodes/mix",
+      "nodeId": 11
+    },
+    {
+      "path": "/midi/synth/voice/1/nodes/oscillator",
+      "nodeId": 10
+    },
+    {
+      "path": "/midi/synth/voice/1/nodes/output",
+      "nodeId": 15
+    },
+    {
+      "path": "/midi/synth/voice/2/nodes/base_select",
+      "nodeId": 19
+    },
+    {
+      "path": "/midi/synth/voice/2/nodes/branches",
+      "nodeId": 20
+    },
+    {
+      "path": "/midi/synth/voice/2/nodes/direction",
+      "nodeId": 18
+    },
+    {
+      "path": "/midi/synth/voice/2/nodes/mix",
+      "nodeId": 17
+    },
+    {
+      "path": "/midi/synth/voice/2/nodes/oscillator",
+      "nodeId": 16
+    },
+    {
+      "path": "/midi/synth/voice/2/nodes/output",
+      "nodeId": 21
+    },
+    {
+      "path": "/midi/synth/voice/3/nodes/base_select",
+      "nodeId": 25
+    },
+    {
+      "path": "/midi/synth/voice/3/nodes/branches",
+      "nodeId": 26
+    },
+    {
+      "path": "/midi/synth/voice/3/nodes/direction",
+      "nodeId": 24
+    },
+    {
+      "path": "/midi/synth/voice/3/nodes/mix",
+      "nodeId": 23
+    },
+    {
+      "path": "/midi/synth/voice/3/nodes/oscillator",
+      "nodeId": 22
+    },
+    {
+      "path": "/midi/synth/voice/3/nodes/output",
+      "nodeId": 27
+    },
+    {
+      "path": "/midi/synth/voice/4/nodes/base_select",
+      "nodeId": 31
+    },
+    {
+      "path": "/midi/synth/voice/4/nodes/branches",
+      "nodeId": 32
+    },
+    {
+      "path": "/midi/synth/voice/4/nodes/direction",
+      "nodeId": 30
+    },
+    {
+      "path": "/midi/synth/voice/4/nodes/mix",
+      "nodeId": 29
+    },
+    {
+      "path": "/midi/synth/voice/4/nodes/oscillator",
+      "nodeId": 28
+    },
+    {
+      "path": "/midi/synth/voice/4/nodes/output",
+      "nodeId": 33
+    },
+    {
+      "path": "/midi/synth/voice/5/nodes/base_select",
+      "nodeId": 37
+    },
+    {
+      "path": "/midi/synth/voice/5/nodes/branches",
+      "nodeId": 38
+    },
+    {
+      "path": "/midi/synth/voice/5/nodes/direction",
+      "nodeId": 36
+    },
+    {
+      "path": "/midi/synth/voice/5/nodes/mix",
+      "nodeId": 35
+    },
+    {
+      "path": "/midi/synth/voice/5/nodes/oscillator",
+      "nodeId": 34
+    },
+    {
+      "path": "/midi/synth/voice/5/nodes/output",
+      "nodeId": 39
+    },
+    {
+      "path": "/midi/synth/voice/6/nodes/base_select",
+      "nodeId": 43
+    },
+    {
+      "path": "/midi/synth/voice/6/nodes/branches",
+      "nodeId": 44
+    },
+    {
+      "path": "/midi/synth/voice/6/nodes/direction",
+      "nodeId": 42
+    },
+    {
+      "path": "/midi/synth/voice/6/nodes/mix",
+      "nodeId": 41
+    },
+    {
+      "path": "/midi/synth/voice/6/nodes/oscillator",
+      "nodeId": 40
+    },
+    {
+      "path": "/midi/synth/voice/6/nodes/output",
+      "nodeId": 45
+    },
+    {
+      "path": "/midi/synth/voice/7/nodes/base_select",
+      "nodeId": 49
+    },
+    {
+      "path": "/midi/synth/voice/7/nodes/branches",
+      "nodeId": 50
+    },
+    {
+      "path": "/midi/synth/voice/7/nodes/direction",
+      "nodeId": 48
+    },
+    {
+      "path": "/midi/synth/voice/7/nodes/mix",
+      "nodeId": 47
+    },
+    {
+      "path": "/midi/synth/voice/7/nodes/oscillator",
+      "nodeId": 46
+    },
+    {
+      "path": "/midi/synth/voice/7/nodes/output",
+      "nodeId": 51
+    },
+    {
+      "path": "/midi/synth/voice/8/nodes/base_select",
+      "nodeId": 55
+    },
+    {
+      "path": "/midi/synth/voice/8/nodes/branches",
+      "nodeId": 56
+    },
+    {
+      "path": "/midi/synth/voice/8/nodes/direction",
+      "nodeId": 54
+    },
+    {
+      "path": "/midi/synth/voice/8/nodes/mix",
+      "nodeId": 53
+    },
+    {
+      "path": "/midi/synth/voice/8/nodes/oscillator",
+      "nodeId": 52
+    },
+    {
+      "path": "/midi/synth/voice/8/nodes/output",
+      "nodeId": 57
+    }
+  ]
+}

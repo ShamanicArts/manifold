@@ -1,0 +1,106 @@
+{
+  "recordedAt": "2026-09-30T06:30:41.075Z",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174",
+  "chromiumVersion": "152.0.7977.82",
+  "instrumentation": "Main-thread GraphWorkspace.fromProject wall time; wrapped without changing results or audio processing",
+  "edits": [
+    {
+      "index": 0,
+      "totalMs": 200.9300000667572,
+      "fromProjectCalls": [
+        88.66499996185303
+      ],
+      "requestedAudioFrame": 20480,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 164,
+        "rustProcessedBlocks": 84,
+        "publications": 2,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 7,
+        "lastPublicationContextFrame": 29696,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 34078720,
+        "lastPreparationMs": 87.66499996185303,
+        "lastPublicationMs": 100.51499998569489,
+        "compilerFailed": false,
+        "processorFailed": false,
+        "eventsAdmitted": 0,
+        "eventsConsumed": 0,
+        "eventsCancelled": 0,
+        "eventsRejected": 0,
+        "eventsPending": 0,
+        "lastEventContextFrame": 0,
+        "renderQuantum": 128
+      }
+    },
+    {
+      "index": 1,
+      "totalMs": 188.97500002384186,
+      "fromProjectCalls": [
+        85.24000000953674
+      ],
+      "requestedAudioFrame": 30208,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 236,
+        "rustProcessedBlocks": 156,
+        "publications": 3,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 7,
+        "lastPublicationContextFrame": 38912,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 34078720,
+        "lastPreparationMs": 82.06500005722046,
+        "lastPublicationMs": 94.9650000333786,
+        "compilerFailed": false,
+        "processorFailed": false,
+        "eventsAdmitted": 0,
+        "eventsConsumed": 0,
+        "eventsCancelled": 0,
+        "eventsRejected": 0,
+        "eventsPending": 0,
+        "lastEventContextFrame": 0,
+        "renderQuantum": 128
+      }
+    },
+    {
+      "index": 2,
+      "totalMs": 180.55999994277954,
+      "fromProjectCalls": [
+        81.72000002861023
+      ],
+      "requestedAudioFrame": 39424,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 304,
+        "rustProcessedBlocks": 224,
+        "publications": 4,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 7,
+        "lastPublicationContextFrame": 47616,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 34078720,
+        "lastPreparationMs": 82.86499989032745,
+        "lastPublicationMs": 90.30499994754791,
+        "compilerFailed": false,
+        "processorFailed": false,
+        "eventsAdmitted": 0,
+        "eventsConsumed": 0,
+        "eventsCancelled": 0,
+        "eventsRejected": 0,
+        "eventsPending": 0,
+        "lastEventContextFrame": 0,
+        "renderQuantum": 128
+      }
+    }
+  ],
+  "graphAssetBytes": 671744,
+  "displayedGraphCharacters": 5789
+}

@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-10",
+  "project": "nacre-prism-bend.manifold.json",
+  "host": "Manifold Studio in headed Chromium",
+  "presentation": "1745x1100 browser viewport; Nacre canvas 820x624 CSS pixels; physical GPU-backed Chromium window on the second monitor",
+  "graphics": "ANGLE (AMD, AMD Radeon RX 6600 XT (radeonsi navi23 LLVM 22.1.8), OpenGL ES 3.2)",
+  "audio": "Running: browser AudioWorklet, 110 Hz saw host input, Nacre host-input mode, private manifold_review_null output, visual energy 1.00000",
+  "measurement": "requestAnimationFrame interval sampled only when the Nacre face frame counter advanced; this is animation-loop cadence, not GPU completion or physical display scanout",
+  "steadyAudio": {
+    "durationSeconds": 10,
+    "frames": 982,
+    "p50Ms": 9.515,
+    "p90Ms": 13.46,
+    "p95Ms": 15.855,
+    "p99Ms": 20.81,
+    "maxMs": 28.11,
+    "over20Ms": 13,
+    "over33Ms": 0
+  },
+  "continuousFieldDrag": {
+    "pointerMoves": 400,
+    "frames": 5407,
+    "p50Ms": 9.49,
+    "p90Ms": 12.645,
+    "p95Ms": 15.395,
+    "p99Ms": 21.275,
+    "maxMs": 51.835,
+    "over20Ms": 67,
+    "over33Ms": 7,
+    "audioStatusAtEnd": "Running",
+    "visualModeChanged": true
+  },
+  "limitations": [
+    "The native WebKitGTK face was running on the private sink but has no frame telemetry yet; these figures are browser only.",
+    "The initial headless run was excluded from this presented-window result because its drag p95 was 65.55 ms and its presentation path differs from a visible GPU-backed window.",
+    "These measurements do not establish GPU execution time, compositor present intervals, audio callback timing, or microphone input performance."
+  ]
+}

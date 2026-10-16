@@ -1,0 +1,8 @@
+{
+  "name": "independent-manifold-midi-consumer",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@manifold/author": "file:../manifold-prepared-midi-pack/manifold-author-0.1.0.tgz"
+  }
+}

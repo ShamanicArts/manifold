@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b1220" />
+    <title>Manifold · Standalone Sample</title>
+  </head>
+  <body>
+    <header class="topbar"><a class="brand" href="/">Manifold</a><span>/</span><strong>Standalone Sample</strong><a class="workbench-link" href="/?primitive=sample-instrument">Sample workbench ↗</a></header>
+    <main>
+      <div class="view-heading"><div><p class="eyebrow">Authored project / browser reconstruction</p><h1>Standalone Sample</h1></div><a class="review-link" href="/standalone-sample-review.html">Port review ↗</a></div>
+      <section id="plugin-stage" class="plugin-stage" aria-label="Standalone Sample exported project surface">
+        <div id="plugin-viewport"><div id="plugin-shell">
+          <div class="plugin-header"><span class="plugin-accent"></span><span class="plugin-title">Sample</span><button id="settings-toggle" type="button" aria-label="Open plugin settings">SET</button></div>
+          <div id="plugin-content"></div>
+          <div id="settings-overlay" hidden><span class="settings-heading">Settings</span><button id="settings-close" type="button" aria-label="Close plugin settings">×</button><div class="settings-section">Standalone Sample export</div><p>The original shell includes settings for OSC and web remote. This browser host uses the controls beneath the exported module.</p></div>
+        </div></div>
+      </section>
+      <section class="sample-host" aria-label="Browser host controls outside the original plugin surface">
+        <div class="host-heading"><span>Browser host</span><small>Audio devices, capture, MIDI, and files sit outside the exported 472 × 220 module.</small></div>
+        <div class="host-row"><label>Audio input <select id="input-source"><option value="oscillator">Test oscillator · 165 Hz</option><option value="microphone">Microphone</option></select></label><label>Sidechain <select id="sidechain-source"><option value="oscillator">Test oscillator · 330 Hz</option><option value="microphone">Microphone</option></select></label><button id="audio-toggle" type="button">Start audio</button><span id="engine-indicator">Idle</span></div>
+        <div class="host-row"><label>Recent window <select id="capture-seconds"><option value="0.5">0.5 s</option><option value="1" selected>1 s</option><option value="2">2 s</option><option value="4">4 s</option></select></label><button id="capture-button" type="button" disabled>Capture selected source</button><label class="file-button">Load audio file<input id="sample-file" type="file" accept="audio/*" /></label><span id="sample-readout">No sample captured</span></div>
+        <div class="host-row"><button id="midi-connect" type="button">Connect MIDI</button><span id="midi-status">On-screen keys work without MIDI permission.</span></div>
+        <div id="keyboard" class="sample-keyboard" role="group" aria-label="On-screen sample keyboard"></div>
+        <div class="host-row state-row"><button id="save-project" type="button">Download project</button><label class="file-button">Open project<input id="open-project" type="file" accept="application/json,.json" /></label><span id="output-db">−∞ dB</span></div>
+      </section>
+      <p id="status" class="status" role="status">Start audio, capture a recent window, then play a key.</p>
+      <footer><span>Reference: Standalone_Sample export shell and one-slot DSP</span><span>Rust/Wasm audio · <a href="/standalone-sample-review.html">Read the migration boundary ↗</a></span></footer>
+    </main>
+    <script type="module" src="/src/standalone-sample.js"></script>
+  </body>
+</html>

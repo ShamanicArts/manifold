@@ -1,0 +1,528 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "external",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 6,
+        "type": "phase-vocoder"
+      },
+      {
+        "id": 7,
+        "type": "svf"
+      },
+      {
+        "id": 8,
+        "type": "wave-shaper"
+      },
+      {
+        "id": 9,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 10,
+        "type": "crossfader",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 11,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 12,
+        "type": "svf"
+      },
+      {
+        "id": 13,
+        "type": "wave-shaper"
+      },
+      {
+        "id": 20,
+        "type": "granulator"
+      }
+    ],
+    "connections": [
+      {
+        "from": 11,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 6,
+        "inputPort": 0
+      },
+      {
+        "from": 6,
+        "outputPort": 0,
+        "to": 7,
+        "inputPort": 0
+      },
+      {
+        "from": 7,
+        "outputPort": 0,
+        "to": 8,
+        "inputPort": 0
+      },
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 9,
+        "inputPort": 0
+      },
+      {
+        "from": 20,
+        "outputPort": 0,
+        "to": 9,
+        "inputPort": 1
+      },
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 10,
+        "inputPort": 0
+      },
+      {
+        "from": 9,
+        "outputPort": 0,
+        "to": 10,
+        "inputPort": 1
+      },
+      {
+        "from": 10,
+        "outputPort": 0,
+        "to": 11,
+        "inputPort": 0
+      },
+      {
+        "from": 8,
+        "outputPort": 0,
+        "to": 12,
+        "inputPort": 0
+      },
+      {
+        "from": 12,
+        "outputPort": 0,
+        "to": 13,
+        "inputPort": 0
+      },
+      {
+        "from": 13,
+        "outputPort": 0,
+        "to": 20,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 6,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 6,
+        "id": 1,
+        "value": 7
+      },
+      {
+        "nodeId": 6,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 3,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 4,
+        "value": 11
+      },
+      {
+        "nodeId": 7,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 7,
+        "id": 1,
+        "value": 2400
+      },
+      {
+        "nodeId": 7,
+        "id": 2,
+        "value": 0.58
+      },
+      {
+        "nodeId": 8,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 8,
+        "id": 1,
+        "value": 18
+      },
+      {
+        "nodeId": 8,
+        "id": 2,
+        "value": -8
+      },
+      {
+        "nodeId": 8,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 8,
+        "id": 4,
+        "value": 10000
+      },
+      {
+        "nodeId": 8,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 8,
+        "id": 6,
+        "value": 1
+      },
+      {
+        "nodeId": 8,
+        "id": 7,
+        "value": 2
+      },
+      {
+        "nodeId": 9,
+        "id": 0,
+        "value": 0.64
+      },
+      {
+        "nodeId": 9,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 9,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 10,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 10,
+        "id": 1,
+        "value": 0
+      },
+      {
+        "nodeId": 10,
+        "id": 2,
+        "value": 1
+      },
+      {
+        "nodeId": 11,
+        "id": 0,
+        "value": 0.64
+      },
+      {
+        "nodeId": 12,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 12,
+        "id": 1,
+        "value": 4800
+      },
+      {
+        "nodeId": 12,
+        "id": 2,
+        "value": 0.75
+      },
+      {
+        "nodeId": 13,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 13,
+        "id": 1,
+        "value": 8
+      },
+      {
+        "nodeId": 13,
+        "id": 2,
+        "value": 0
+      },
+      {
+        "nodeId": 13,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 13,
+        "id": 4,
+        "value": 0
+      },
+      {
+        "nodeId": 13,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 13,
+        "id": 6,
+        "value": 1
+      },
+      {
+        "nodeId": 13,
+        "id": 7,
+        "value": 2
+      },
+      {
+        "nodeId": 20,
+        "id": 0,
+        "value": 85
+      },
+      {
+        "nodeId": 20,
+        "id": 1,
+        "value": 32
+      },
+      {
+        "nodeId": 20,
+        "id": 2,
+        "value": 0.04
+      },
+      {
+        "nodeId": 20,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 20,
+        "id": 4,
+        "value": 0.28
+      },
+      {
+        "nodeId": 20,
+        "id": 5,
+        "value": 0.22
+      },
+      {
+        "nodeId": 20,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 20,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 20,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 20,
+        "id": 9,
+        "value": 0
+      },
+      {
+        "nodeId": 20,
+        "id": 10,
+        "value": 1
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/nacre/active",
+      "kind": "parameter",
+      "nodeId": 10,
+      "id": 0,
+      "min": -1,
+      "max": 1,
+      "default": 1
+    },
+    {
+      "path": "/nacre/afterimage",
+      "kind": "parameter",
+      "nodeId": 20,
+      "id": 5,
+      "min": 0,
+      "max": 1,
+      "default": 0.22
+    },
+    {
+      "path": "/nacre/curve",
+      "kind": "parameter",
+      "nodeId": 8,
+      "id": 0,
+      "min": 0,
+      "max": 6,
+      "default": 0
+    },
+    {
+      "path": "/nacre/drive",
+      "kind": "parameter",
+      "nodeId": 8,
+      "id": 1,
+      "min": 0,
+      "max": 40,
+      "default": 18
+    },
+    {
+      "path": "/nacre/focus",
+      "kind": "parameter",
+      "nodeId": 7,
+      "id": 1,
+      "min": 160,
+      "max": 10000,
+      "default": 2400
+    },
+    {
+      "path": "/nacre/grain-size",
+      "kind": "parameter",
+      "nodeId": 20,
+      "id": 0,
+      "min": 15,
+      "max": 300,
+      "default": 85
+    },
+    {
+      "path": "/nacre/hold",
+      "kind": "parameter",
+      "nodeId": 20,
+      "id": 6,
+      "min": 0,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "path": "/nacre/mix",
+      "kind": "parameter",
+      "nodeId": 9,
+      "id": 0,
+      "min": -1,
+      "max": 1,
+      "default": 0.64
+    },
+    {
+      "path": "/nacre/output",
+      "kind": "parameter",
+      "nodeId": 11,
+      "id": 0,
+      "min": 0,
+      "max": 1,
+      "default": 0.64
+    },
+    {
+      "path": "/nacre/resonance",
+      "kind": "parameter",
+      "nodeId": 7,
+      "id": 2,
+      "min": 0.1,
+      "max": 1,
+      "default": 0.58
+    },
+    {
+      "path": "/nacre/scatter",
+      "kind": "parameter",
+      "nodeId": 20,
+      "id": 4,
+      "min": 0,
+      "max": 1,
+      "default": 0.28
+    },
+    {
+      "path": "/nacre/shift",
+      "kind": "parameter",
+      "nodeId": 6,
+      "id": 1,
+      "min": -12,
+      "max": 12,
+      "default": 7
+    },
+    {
+      "path": "/studio/prism-bend/12/edge",
+      "kind": "parameter",
+      "nodeId": 12,
+      "id": 1,
+      "min": 100,
+      "max": 12000,
+      "default": 4800
+    },
+    {
+      "path": "/studio/prism-bend/12/heat",
+      "kind": "parameter",
+      "nodeId": 13,
+      "id": 1,
+      "min": 0,
+      "max": 40,
+      "default": 8
+    }
+  ],
+  "instances": [
+    {
+      "path": "/nacre/dsp/bypass",
+      "nodeId": 10
+    },
+    {
+      "path": "/nacre/dsp/focus",
+      "nodeId": 7
+    },
+    {
+      "path": "/nacre/dsp/memory",
+      "nodeId": 20
+    },
+    {
+      "path": "/nacre/dsp/mix",
+      "nodeId": 9
+    },
+    {
+      "path": "/nacre/dsp/output",
+      "nodeId": 11
+    },
+    {
+      "path": "/nacre/dsp/shaper",
+      "nodeId": 8
+    },
+    {
+      "path": "/nacre/dsp/spectral",
+      "nodeId": 6
+    },
+    {
+      "path": "/studio/prism-bend/12/contour",
+      "nodeId": 12
+    },
+    {
+      "path": "/studio/prism-bend/12/exciter",
+      "nodeId": 13
+    }
+  ]
+}

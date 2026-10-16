@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.slew-audio",
+  "name": "Slew limiter",
+  "source": "legacy C++ SlewLimiterNode scalar stereo behavior",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 2, "type": "slew-audio", "a": 72, "b": 320 },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "slide-up", "label": "Rise slide", "kind": "float", "min": 1, "max": 1024, "default": 72, "unit": "samples" },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "slide-down", "label": "Fall slide", "kind": "float", "min": 1, "max": 1024, "default": 320, "unit": "samples" }
+  ]
+}

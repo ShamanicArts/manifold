@@ -1,0 +1,120 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { addNode, removeNode, setConnection, setInitialParameter,
+  registerCaptureSource, renameCaptureSource,
+  setInputSource, setSidechainSource, graphNoteTarget, captureGraphProject, parseGraphProject, parseGraphBundle,
+  validateTopology, defaultGraphTemporal } from '../web/src/graph/topology.js';
+
+const project = JSON.parse(readFileSync('projects/graph-workspace/project.json', 'utf8'));
+const texture = JSON.parse(readFileSync('projects/graph-workspace/tone-texture.json', 'utf8'));
+const noteVoice = JSON.parse(readFileSync('projects/graph-workspace/note-voice.json', 'utf8'));
+const sampleVoice = JSON.parse(readFileSync('projects/graph-workspace/sample-voice.json', 'utf8'));
+const regionVoice = JSON.parse(readFileSync('projects/graph-workspace/region-voice.json', 'utf8'));
+const granularSource = JSON.parse(readFileSync('projects/graph-workspace/granular-source.json', 'utf8'));
+const mainBank = JSON.parse(readFileSync('projects/graph-workspace/main-bank.json', 'utf8'));
+const sidechainSampler = JSON.parse(readFileSync('projects/graph-workspace/sidechain-sampler.json', 'utf8'));
+const multisourceSampler = JSON.parse(readFileSync('projects/graph-workspace/retrospective-multisource.json', 'utf8'));
+const source = { nodeId: 5, sourceRate: 48000, stereo: new Float32Array([.25, -.25, .5, -.5]), label: 'Two frames' };
+assert.deepEqual(parseGraphProject(texture), texture.signal);
+assert.deepEqual(parseGraphProject(noteVoice), noteVoice.signal);
+assert.equal(graphNoteTarget(noteVoice.signal), 4);
+assert.deepEqual(parseGraphProject(sampleVoice), sampleVoice.signal);
+assert.equal(graphNoteTarget(sampleVoice.signal), 4);
+assert.deepEqual(parseGraphProject(regionVoice), regionVoice.signal);
+assert.equal(graphNoteTarget(regionVoice.signal), 4);
+assert.deepEqual(parseGraphProject(granularSource), granularSource.signal);
+assert.equal(graphNoteTarget(granularSource.signal), null);
+assert.deepEqual(parseGraphBundle(mainBank).targets, mainBank.targets);
+assert.equal(graphNoteTarget(mainBank.signal), 4);
+assert.deepEqual(parseGraphProject(sidechainSampler), sidechainSampler.signal);
+assert.equal(sidechainSampler.signal.sidechainSource, 'oscillator');
+assert.equal(sidechainSampler.signal.connections.find((edge) => edge.to === 6 && edge.inputPort === 0).from, 8);
+assert.equal(setSidechainSource(sidechainSampler.signal, 'microphone').sidechainSource, 'microphone');
+assert.throws(() => setSidechainSource(sidechainSampler.signal, 'bad'), /Invalid graph/);
+assert.deepEqual(parseGraphProject(multisourceSampler), multisourceSampler.signal);
+assert.deepEqual(multisourceSampler.signal.captureSources.map(({ id, name, nodeId }) => [id, name, nodeId]),
+  [[0, 'Audio Input', 6], [1, 'Sidechain', 10]]);
+assert.throws(() => validateTopology({ ...multisourceSampler.signal, selectedCaptureSourceId: 1 }), /selected capture source/);
+assert.throws(() => validateTopology({ ...multisourceSampler.signal,
+  captureSources: [multisourceSampler.signal.captureSources[0],
+    { ...multisourceSampler.signal.captureSources[1], id: 0 }] }), /capture source/);
+assert.throws(() => validateTopology({ ...multisourceSampler.signal,
+  captureSources: [{ ...multisourceSampler.signal.captureSources[0], nodeId: 7 },
+    multisourceSampler.signal.captureSources[1]] }), /capture source/);
+const renamedSource = renameCaptureSource(multisourceSampler.signal, 10, 'Sidechain renamed');
+assert.equal(parseGraphProject(captureGraphProject(renamedSource)).captureSources[1].name, 'Sidechain renamed');
+const addedSource = addNode(multisourceSampler.signal, 'retrospective-capture');
+const thirdNode = addedSource.nodes.at(-1).id;
+const registeredSource = registerCaptureSource(addedSource, thirdNode, 'Room mic');
+assert.deepEqual(registeredSource.captureSources.at(-1),
+  { id: 2, nodeId: thirdNode, name: 'Room mic', kind: 'custom' });
+assert.equal(removeNode(registeredSource, 6).selectedCaptureSourceId, 1);
+assert.throws(() => validateTopology({ ...multisourceSampler.signal, captureWindowBars: 0 }), /Invalid graph/);
+assert.throws(() => validateTopology({ ...multisourceSampler.signal, captureWindowMode: 'beats' }), /Invalid graph/);
+const metered = { ...multisourceSampler.signal, captureTimeSignatureNumerator: 3,
+  captureTimeSignatureDenominator: 4 };
+assert.deepEqual(validateTopology(metered), metered);
+assert.throws(() => validateTopology({ ...metered, captureTimeSignatureDenominator: 0 }), /Invalid graph/);
+assert.throws(() => validateTopology({ ...metered, captureTimeSignatureDenominator: undefined }), /Invalid graph/);
+const missingTempo = { ...multisourceSampler.signal };
+delete missingTempo.captureTempoBpm;
+assert.throws(() => validateTopology(missingTempo), /Invalid graph/);
+assert.deepEqual(parseGraphBundle(JSON.parse(JSON.stringify(captureGraphProject(mainBank.signal, [], mainBank.targets)))).targets, mainBank.targets);
+const motion = defaultGraphTemporal(5);
+const movingBundle = captureGraphProject(mainBank.signal, [source], mainBank.targets, [motion]);
+assert.deepEqual(parseGraphBundle(JSON.parse(JSON.stringify(movingBundle))).temporal, [motion]);
+assert.throws(() => captureGraphProject(mainBank.signal, [], mainBank.targets, [motion]), /temporal recipe/);
+assert.throws(() => parseGraphBundle({ ...movingBundle, temporal: [motion, motion] }), /temporal recipe/);
+assert.throws(() => parseGraphBundle({ ...movingBundle, temporal: [{ ...motion, recipe: [...motion.recipe.slice(0, 4), 4, ...motion.recipe.slice(5)] }] }), /temporal recipe/);
+assert.throws(() => parseGraphBundle({ ...movingBundle, temporal: null }), /temporal recipe/);
+assert.throws(() => captureGraphProject(mainBank.signal), /wave and source targets/);
+assert.throws(() => parseGraphBundle({ ...mainBank, targets: null }), /partial targets/);
+assert.throws(() => parseGraphBundle({ ...mainBank, targets: [mainBank.targets[0], mainBank.targets[0]] }), /partial target/);
+assert.throws(() => parseGraphBundle({ ...mainBank, targets: mainBank.targets.map((target) => ({ ...target, values: [1, 1e100, 0, 0] })) }), /partial target/);
+const sampleBundle = captureGraphProject(sampleVoice.signal, [source]);
+assert.deepEqual(parseGraphBundle(JSON.parse(JSON.stringify(sampleBundle))).assets, [source]);
+assert.deepEqual(parseGraphBundle(JSON.parse(JSON.stringify(captureGraphProject(regionVoice.signal, [source])))).assets, [source]);
+const grainSource = { ...source, nodeId: 5 };
+assert.deepEqual(parseGraphBundle(JSON.parse(JSON.stringify(captureGraphProject(granularSource.signal, [grainSource])))).assets, [grainSource]);
+assert.throws(() => parseGraphBundle({ ...sampleBundle, assets: [{ ...sampleBundle.assets[0], nodeId: 6 }] }), /sample asset/);
+assert.throws(() => parseGraphBundle({ ...sampleBundle, assets: null }), /at most four sample assets/);
+assert.throws(() => parseGraphBundle({ ...sampleBundle, assets: [{ ...sampleBundle.assets[0], pcmF32Base64: 'bad' }] }), /stereo PCM/);
+assert.equal(graphNoteTarget(texture.signal), null);
+assert.throws(() => addNode(noteVoice.signal, 'midi-input'), /one MIDI input/);
+assert.throws(() => setConnection(noteVoice.signal, 6, 0, 1), /types/);
+assert.equal(graphNoteTarget(removeNode(noteVoice.signal, 4)), 6);
+assert.equal(texture.signal.inputSource, 'none');
+assert.equal(texture.signal.nodes.length, 8);
+const seed = validateTopology(project.signal);
+assert.deepEqual(seed, project.signal);
+assert.equal(setInputSource(seed, 'none').inputSource, 'none');
+assert.throws(() => setInputSource(seed, 'untrusted'), /Invalid graph/);
+let signal = addNode(seed, 'distortion');
+assert.equal(signal.nodes.at(-1).id, 4);
+signal = setConnection(signal, 4, 0, 2);
+signal = setConnection(signal, 3, 0, 4);
+signal = setInitialParameter(signal, 4, 0, 9);
+assert.equal(signal.initialParameters.find((entry) => entry.nodeId === 4 && entry.id === 0).value, 9);
+signal = addNode(signal, 'lfo');
+signal = addNode(signal, 'modulated-gain');
+const lfo = signal.nodes.find((node) => node.type === 'lfo').id;
+const cvGain = signal.nodes.find((node) => node.type === 'modulated-gain').id;
+signal = setConnection(signal, cvGain, 0, 4);
+signal = setConnection(signal, cvGain, 1, lfo);
+signal = setConnection(signal, 3, 0, cvGain);
+assert.deepEqual(parseGraphProject(JSON.parse(JSON.stringify(captureGraphProject(signal)))), signal);
+assert.throws(() => setConnection(signal, cvGain, 1, 1), /types/);
+assert.throws(() => setConnection(signal, 4, 0, cvGain), /cycle/);
+assert.throws(() => setConnection(signal, 3, 1, 4), /input/);
+assert.throws(() => setInitialParameter(signal, lfo, 1, 200), /parameter/);
+assert.throws(() => addNode(signal, '__proto__'), /addable/);
+assert.throws(() => removeNode(signal, 3), /stay/);
+const malformed = structuredClone(signal);
+malformed.connections.push({ from: 1, to: 2, inputPort: 0 });
+assert.throws(() => validateTopology(malformed), /already connected/);
+assert.throws(() => parseGraphProject({ ...captureGraphProject(signal), projectId: 'other' }), /supported/);
+assert.throws(() => parseGraphProject({ ...captureGraphProject(signal), signal: malformed }), /already connected/);
+const removed = removeNode(signal, cvGain);
+assert.equal(removed.nodes.some((node) => node.id === cvGain), false);
+assert.equal(removed.connections.some((edge) => edge.from === cvGain || edge.to === cvGain), false);
+console.log('Graph topology: add/remove, typed audio/CV routes, cycle and occupancy rejection, parameter validation, project round-trip passed');

@@ -1,0 +1,258 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "external",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 6,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 7,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 8,
+        "type": "sum2",
+        "a": 1,
+        "b": 1
+      },
+      {
+        "id": 10,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 11,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 12,
+        "type": "sum2",
+        "a": 1,
+        "b": 1
+      },
+      {
+        "id": 13,
+        "type": "gain",
+        "a": 0.7
+      }
+    ],
+    "connections": [
+      {
+        "from": 13,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 4,
+        "inputPort": 0
+      },
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 6,
+        "inputPort": 0
+      },
+      {
+        "from": 6,
+        "outputPort": 0,
+        "to": 7,
+        "inputPort": 0
+      },
+      {
+        "from": 7,
+        "outputPort": 0,
+        "to": 8,
+        "inputPort": 0
+      },
+      {
+        "from": 8,
+        "outputPort": 0,
+        "to": 10,
+        "inputPort": 0
+      },
+      {
+        "from": 10,
+        "outputPort": 0,
+        "to": 11,
+        "inputPort": 0
+      },
+      {
+        "from": 11,
+        "outputPort": 0,
+        "to": 12,
+        "inputPort": 0
+      },
+      {
+        "from": 12,
+        "outputPort": 0,
+        "to": 13,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 6,
+        "id": 0,
+        "value": 0.8
+      },
+      {
+        "nodeId": 7,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 10,
+        "id": 0,
+        "value": 0.8
+      },
+      {
+        "nodeId": 11,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 13,
+        "id": 0,
+        "value": 1
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/test/fxslot/input_gain",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 0,
+      "min": 0,
+      "max": 2,
+      "default": 1
+    }
+  ],
+  "hostBindings": [
+    {
+      "slot": 0,
+      "nodeId": 4,
+      "id": 0
+    }
+  ],
+  "controls": [
+    {
+      "path": "/test/fxslot/slotA/gain/amount",
+      "min": 0,
+      "max": 2,
+      "default": 0.8,
+      "value": 0.8,
+      "discrete": false
+    },
+    {
+      "path": "/test/fxslot/slotA/select",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": true
+    },
+    {
+      "path": "/test/fxslot/slotA/width/amount",
+      "min": 0,
+      "max": 2,
+      "default": 1.6,
+      "value": 1.6,
+      "discrete": false
+    },
+    {
+      "path": "/test/fxslot/slotB/gain/amount",
+      "min": 0,
+      "max": 2,
+      "default": 0.8,
+      "value": 0.8,
+      "discrete": false
+    },
+    {
+      "path": "/test/fxslot/slotB/select",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "value": 0,
+      "discrete": true
+    },
+    {
+      "path": "/test/fxslot/slotB/width/amount",
+      "min": 0,
+      "max": 2,
+      "default": 1.6,
+      "value": 1.6,
+      "discrete": false
+    }
+  ],
+  "instances": [
+    {
+      "path": "/test/fxslot/nodes/input_trim",
+      "nodeId": 4
+    },
+    {
+      "path": "/test/fxslot/nodes/master",
+      "nodeId": 13
+    },
+    {
+      "path": "/test/fxslot/slotA/nodes/gain",
+      "nodeId": 6
+    },
+    {
+      "path": "/test/fxslot/slotA/nodes/gain_gate",
+      "nodeId": 7
+    },
+    {
+      "path": "/test/fxslot/slotA/nodes/mix",
+      "nodeId": 8
+    },
+    {
+      "path": "/test/fxslot/slotB/nodes/gain",
+      "nodeId": 10
+    },
+    {
+      "path": "/test/fxslot/slotB/nodes/gain_gate",
+      "nodeId": 11
+    },
+    {
+      "path": "/test/fxslot/slotB/nodes/mix",
+      "nodeId": 12
+    }
+  ],
+  "hostAssignments": [
+    {
+      "slot": 0,
+      "path": "/test/fxslot/input_gain"
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "pulse-oscillator",
+        "a": 220,
+        "b": 0.4
+      }
+    ],
+    "connections": [
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 4,
+        "id": 2,
+        "value": 0.16
+      },
+      {
+        "nodeId": 4,
+        "id": 4,
+        "value": 0.25
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/primitives/pulse/node/1",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 1,
+      "min": 20,
+      "max": 16000,
+      "default": 220
+    },
+    {
+      "path": "/primitives/pulse/node/2",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 2,
+      "min": 0,
+      "max": 1,
+      "default": 0.16
+    },
+    {
+      "path": "/primitives/pulse/node/4",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 4,
+      "min": 0.01,
+      "max": 0.99,
+      "default": 0.25
+    }
+  ],
+  "instances": [
+    {
+      "path": "/primitives/pulse/node",
+      "nodeId": 4
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// Pulse oscillator: Frequency, level and pulse width.\n// Audition composition of public Rust primitives; not an instrument parity claim.\n// Examples name imports so you can trace each tool to its module.\n// Alternative: import * as manifold from '@manifold/author';\n// Then use manifold.createGraphWorkspace(), manifold.gain, etc.\n// Imports — each definition can be inspected in Manifold's primitive catalog.\nimport { createGraphWorkspace } from '@manifold/author';\nimport {\n  pulseOscillator as pulseOscillatorDefinition,\n} from '@manifold/author/primitives';\n\nexport default function createProject() {\n  // Interface — public paths and stable IDs preserve saved controls.\n  const controls = {\n    pulseOscillator_frequency: {\n      \"path\": \"/primitives/pulse/node/1\",\n      \"label\": \"Frequency\",\n      \"group\": \"Pulse oscillator\",\n      \"min\": 20,\n      \"max\": 16000,\n      \"default\": 220\n    },\n    pulseOscillator_level: {\n      \"path\": \"/primitives/pulse/node/2\",\n      \"label\": \"Level\",\n      \"group\": \"Pulse oscillator\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0.16\n    },\n    pulseOscillator_pulseWidth: {\n      \"path\": \"/primitives/pulse/node/4\",\n      \"label\": \"Pulse width\",\n      \"group\": \"Pulse oscillator\",\n      \"min\": 0.01,\n      \"max\": 0.99,\n      \"default\": 0.25\n    },\n  };\n\n  // Audio inputs and outputs — generated sound; no audio input is needed.\n  const graph = createGraphWorkspace().setInputSource('none');\n  const output = graph.output.input('in');\n\n  // DSP instances — parameters belong to these named instances.\n  const pulseOscillator = graph.add(pulseOscillatorDefinition.type, {\"id\":4});\n  graph.registerInstance('/primitives/pulse/node', pulseOscillator);\n  pulseOscillator.parameter('frequency').expose(controls.pulseOscillator_frequency);\n  pulseOscillator.parameter('level').expose(controls.pulseOscillator_level);\n  pulseOscillator.parameter('pulseWidth').expose(controls.pulseOscillator_pulseWidth);\n\n  // Composition — named ports make the audio and control paths visible.\n  graph.connect(pulseOscillator.output('out'), output);\n\n  // Presentation — both renderers bind to the controls declared above.\n  const view = [\n    controls.pulseOscillator_frequency,\n    controls.pulseOscillator_level,\n    controls.pulseOscillator_pulseWidth\n  ].map(control => ({\n    id: control.path, type: 'parameter', path: control.path,\n    label: control.label, group: control.group,\n    ...(control.choices ? { choices: control.choices } : {}),\n  }));\n  function paint(ui) {\n    for (const component of view) {\n      if (component.type === 'label') ui.label(component.label, component.id);\n      else ui.parameter(component.path, component);\n    }\n  }\n\n  // The host uses this project declaration for audio, UI, save and live edits.\n  return { graph, view, paint };\n}",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "/primitives/pulse/node/1",
+        "type": "parameter",
+        "path": "/primitives/pulse/node/1",
+        "label": "Frequency",
+        "group": "Pulse oscillator"
+      },
+      {
+        "id": "/primitives/pulse/node/2",
+        "type": "parameter",
+        "path": "/primitives/pulse/node/2",
+        "label": "Level",
+        "group": "Pulse oscillator"
+      },
+      {
+        "id": "/primitives/pulse/node/4",
+        "type": "parameter",
+        "path": "/primitives/pulse/node/4",
+        "label": "Pulse width",
+        "group": "Pulse oscillator"
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

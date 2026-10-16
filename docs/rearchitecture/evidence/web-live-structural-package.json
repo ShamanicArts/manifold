@@ -1,0 +1,93 @@
+{
+  "recordedAt": "2026-09-29T20:36:08.908Z",
+  "isolated": true,
+  "dspNodes": [
+    4,
+    5,
+    4
+  ],
+  "graphNodes": [
+    10,
+    12,
+    12
+  ],
+  "outputRms": {
+    "dspBefore": 0.0489,
+    "dspDistorted": 0.2209,
+    "dspAfter": 0.0568,
+    "before": 0.0364,
+    "width": 0.045
+  },
+  "diagnostics": {
+    "audioBlocks": 520,
+    "underruns": 0,
+    "activeSlot": 0,
+    "outputLatencyBlocks": 4,
+    "lastPreparationMs": 2.1449999809265137,
+    "lastPublicationMs": 19.165000081062317,
+    "lastTransferredNodes": 8
+  },
+  "workerProfile": {
+    "blocks": 396,
+    "p50Us": 5,
+    "p95Us": 20,
+    "p99Us": 35,
+    "maxUs": 45
+  },
+  "secondInstance": {
+    "diagnostics": {
+      "audioBlocks": 140,
+      "underruns": 0,
+      "activeSlot": 0,
+      "outputLatencyBlocks": 4,
+      "lastPreparationMs": 1.965000033378601,
+      "lastPublicationMs": null,
+      "lastTransferredNodes": null
+    },
+    "profile": {
+      "blocks": 136,
+      "p50Us": 5,
+      "p95Us": 15,
+      "p99Us": 25,
+      "maxUs": 45
+    }
+  },
+  "renamed": {
+    "outward": 2,
+    "back": 2,
+    "unchangedController": true
+  },
+  "marks": [
+    {
+      "label": "fx initial",
+      "audioBlocks": 196,
+      "underruns": 0,
+      "activeSlot": 0,
+      "outputLatencyBlocks": 4,
+      "lastPreparationMs": 2.0950000286102295,
+      "lastPublicationMs": null,
+      "lastTransferredNodes": null
+    },
+    {
+      "label": "fx width",
+      "audioBlocks": 308,
+      "underruns": 0,
+      "activeSlot": 1,
+      "outputLatencyBlocks": 4,
+      "lastPreparationMs": 2.3300000429153442,
+      "lastPublicationMs": 37.264999985694885,
+      "lastTransferredNodes": 6
+    },
+    {
+      "label": "fx settled",
+      "audioBlocks": 520,
+      "underruns": 0,
+      "activeSlot": 0,
+      "outputLatencyBlocks": 4,
+      "lastPreparationMs": 2.1449999809265137,
+      "lastPublicationMs": 19.165000081062317,
+      "lastTransferredNodes": 8
+    }
+  ],
+  "pageErrors": []
+}

@@ -1,0 +1,186 @@
+{
+  "rustTests": 570,
+  "webTests": 190,
+  "interruptedSearchCases": 64,
+  "previouslyCrashingPolls": [
+    615,
+    624,
+    630,
+    638,
+    645
+  ],
+  "patchedSanitizerFailures": 0,
+  "budgetsChanged": false,
+  "vendorCodeChanges": [
+    "quickjs/quickjs.c"
+  ],
+  "native": [
+    {
+      "source": "noise",
+      "audioBlocks": 55024,
+      "failed": false,
+      "monitorEnabled": false,
+      "packageId": null,
+      "peak": 0.6480758190155029,
+      "rms": 0.36084702610969543
+    },
+    {
+      "source": "none",
+      "audioBlocks": 55148,
+      "failed": false,
+      "monitorEnabled": false,
+      "packageId": null,
+      "peak": 0.0,
+      "rms": 0.0
+    },
+    {
+      "source": "saw",
+      "audioBlocks": 55268,
+      "failed": false,
+      "monitorEnabled": false,
+      "packageId": null,
+      "peak": 0.6493067741394043,
+      "rms": 0.3365404009819031
+    },
+    {
+      "source": "noise",
+      "audioBlocks": 55392,
+      "failed": false,
+      "monitorEnabled": false,
+      "packageId": null,
+      "peak": 0.6491336822509766,
+      "rms": 0.3663250207901001
+    },
+    {
+      "source": "saw",
+      "audioBlocks": 55516,
+      "failed": false,
+      "monitorEnabled": false,
+      "packageId": null,
+      "peak": 0.64858478307724,
+      "rms": 0.36147868633270264
+    }
+  ],
+  "browser": {
+    "records": [
+      {
+        "diagnostics": {
+          "audioBlocks": 24676,
+          "compilerFailed": false,
+          "eventsAdmitted": 0,
+          "eventsCancelled": 0,
+          "eventsConsumed": 0,
+          "eventsPending": 0,
+          "eventsRejected": 0,
+          "execution": "prepared",
+          "lastEventContextFrame": 0,
+          "lastPreparationMs": 5.100000023841858,
+          "lastPublicationContextFrame": 0,
+          "lastPublicationMs": 8.245000004768372,
+          "lastTransferredNodes": 0,
+          "memoryBytes": 16777216,
+          "outputLatencyBlocks": 0,
+          "processorFailed": false,
+          "publications": 1,
+          "renderQuantum": 128,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "rustProcessedBlocks": 24676,
+          "rustProcessingFailures": 0
+        },
+        "kind": "saw",
+        "ready": true,
+        "rms": 0.326174280879769
+      },
+      {
+        "diagnostics": {
+          "audioBlocks": 24892,
+          "compilerFailed": false,
+          "eventsAdmitted": 0,
+          "eventsCancelled": 0,
+          "eventsConsumed": 0,
+          "eventsPending": 0,
+          "eventsRejected": 0,
+          "execution": "prepared",
+          "lastEventContextFrame": 0,
+          "lastPreparationMs": 5.100000023841858,
+          "lastPublicationContextFrame": 0,
+          "lastPublicationMs": 8.245000004768372,
+          "lastTransferredNodes": 0,
+          "memoryBytes": 16777216,
+          "outputLatencyBlocks": 0,
+          "processorFailed": false,
+          "publications": 1,
+          "renderQuantum": 128,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "rustProcessedBlocks": 24892,
+          "rustProcessingFailures": 0
+        },
+        "kind": "noise",
+        "ready": true,
+        "rms": 0.26377719449311315
+      },
+      {
+        "diagnostics": {
+          "audioBlocks": 25280,
+          "compilerFailed": false,
+          "eventsAdmitted": 0,
+          "eventsCancelled": 0,
+          "eventsConsumed": 0,
+          "eventsPending": 0,
+          "eventsRejected": 0,
+          "execution": "prepared",
+          "lastEventContextFrame": 0,
+          "lastPreparationMs": 5.100000023841858,
+          "lastPublicationContextFrame": 0,
+          "lastPublicationMs": 8.245000004768372,
+          "lastTransferredNodes": 0,
+          "memoryBytes": 16777216,
+          "outputLatencyBlocks": 0,
+          "processorFailed": false,
+          "publications": 1,
+          "renderQuantum": 128,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "rustProcessedBlocks": 25280,
+          "rustProcessingFailures": 0
+        },
+        "kind": "none",
+        "ready": true,
+        "rms": 0
+      },
+      {
+        "diagnostics": {
+          "audioBlocks": 25728,
+          "compilerFailed": false,
+          "eventsAdmitted": 0,
+          "eventsCancelled": 0,
+          "eventsConsumed": 0,
+          "eventsPending": 0,
+          "eventsRejected": 0,
+          "execution": "prepared",
+          "lastEventContextFrame": 0,
+          "lastPreparationMs": 5.100000023841858,
+          "lastPublicationContextFrame": 0,
+          "lastPublicationMs": 8.245000004768372,
+          "lastTransferredNodes": 0,
+          "memoryBytes": 16777216,
+          "outputLatencyBlocks": 0,
+          "processorFailed": false,
+          "publications": 1,
+          "renderQuantum": 128,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "rustProcessedBlocks": 25728,
+          "rustProcessingFailures": 0
+        },
+        "kind": "saw",
+        "ready": true,
+        "rms": 0.3262223815877139
+      }
+    ],
+    "stopped": true,
+    "errors": []
+  }
+}

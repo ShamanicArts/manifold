@@ -1,0 +1,1054 @@
+import { configuredWorkspaceType } from '@manifold/author/workspace-types';
+import { NODE_TYPES, SAMPLE_NODE_TYPES, PCM_ASSET_TYPES, addNode, removeNode, registerCaptureSource, renameCaptureSource,
+  setConnection, setInitialParameter,
+  setInputSource, setSidechainSource, captureGraphProject, parseGraphProject, parseGraphBundle, validateGraphAssets,
+  validateGraphSampleBindings,
+  validateGraphTargets, validateGraphTemporal, defaultGraphTemporal, deriveGraphHostBindings,
+  reassignGraphHostSlot, HOST_SLOT_COUNT } from './topology.js';
+import { validateNamedInstances, validateParameterEndpoints, validateProjectControls } from '@manifold/author';
+import { parseMainVoiceBankState } from '../state/main-voice-bank.js';
+import { parseProjectDocument } from '../state/project-document.js';
+import { analyzeMainSource } from './main-source.js';
+import mainVoiceBankProject from '../../../projects/main-voice-bank/project.json';
+import toneTexture from '../../../projects/graph-workspace/tone-texture.json';
+import authoredLfo from '../../../projects/graph-workspace/authored-inverted-lfo.json';
+import authoredLiveLoop from '../../../projects/graph-workspace/authored-live-loop-route.json';
+import authoredCvUtilities from '../../../projects/graph-workspace/authored-cv-utilities.json';
+import authoredCvDecisions from '../../../projects/graph-workspace/authored-cv-decisions.json';
+import noteVoice from '../../../projects/graph-workspace/note-voice.json';
+import sampleVoice from '../../../projects/graph-workspace/sample-voice.json';
+import regionVoice from '../../../projects/graph-workspace/region-voice.json';
+import granularSource from '../../../projects/graph-workspace/granular-source.json';
+import mainBank from '../../../projects/graph-workspace/main-bank.json';
+import liveSampler from '../../../projects/graph-workspace/live-sampler.json';
+import sidechainSampler from '../../../projects/graph-workspace/sidechain-sampler.json';
+import retrospectiveSampler from '../../../projects/graph-workspace/retrospective-sampler.json';
+import retrospectiveMultisource from '../../../projects/graph-workspace/retrospective-multisource.json';
+
+const defaultMainTargets = (nodeId) => [mainVoiceBankProject.partials, ...mainVoiceBankProject.extraPartials]
+  .map((target) => ({ ...target, nodeId }));
+const MOTION_FIELDS = [
+  { key: 'smooth', label: 'Smoothing', min: 0, max: 1, step: .01 },
+  { key: 'contrast', label: 'Contrast', min: 0, max: 2, step: .01 },
+  { index: 9, label: 'Stretch', min: 0, max: 1, step: .01 },
+  { index: 10, label: 'Spectral tilt', choices: ['Neutral', 'Brighter', 'Darker'] },
+  { index: 5, label: 'Add source', choices: ['Source partials', 'Driven wave'] },
+  { index: 0, label: 'Driven wave', choices: ['Sine', 'Saw', 'Square', 'Triangle', 'Blend', 'Noise cloud', 'Pulse', 'SuperSaw'] },
+  { index: 4, label: 'Pulse width', min: .01, max: .99, step: .01 },
+  { index: 6, label: 'Morph amount', min: 0, max: 1, step: .01 },
+  { index: 7, label: 'Morph depth', min: 0, max: 1, step: .01 },
+  { index: 8, label: 'Morph curve', choices: ['Linear', 'Cosine', 'Equal power'] },
+];
+function temporalFromMainState(nodeId, controls) {
+  return { nodeId, mode: controls.mode === 3 ? 2 : 1,
+    speed: controls.speed, smooth: controls.smooth, contrast: controls.contrast,
+    recipe: [controls.waveform, 8, 0, 0, controls.pulseWidth,
+      controls.mode === 2 ? 1 : 0, controls.morphAmount, controls.morphDepth,
+      controls.morphCurve, controls.stretch, controls.tiltMode] };
+}
+
+// Edits a project description outside the AudioWorklet. The next start compiles it in Rust.
+export function mountGraphEditor(section, project, { isRunning, isActive, canRouteLive = () => false, onRoute, onChange, onParameter, onTemporalSpeed, onCapturePublish, onCaptureArm, onCaptureCancel, onSampleReplace, onTemplateLoaded, decodeSample, builtinSample }) {
+  const nodesRoot = section.querySelector('#graph-nodes');
+  const status = section.querySelector('#graph-status');
+  const addType = section.querySelector('#graph-add-type');
+  const addButton = section.querySelector('#graph-add-node');
+  const sourceMode = section.querySelector('#graph-source-mode');
+  const sidechainMode = section.querySelector('#graph-sidechain-mode');
+  const sidechainRow = section.querySelector('#graph-sidechain-row');
+  const loadTone = section.querySelector('#graph-load-tone');
+  const loadAuthoredLfo = section.querySelector('#graph-load-authored-lfo');
+  const loadAuthoredLoop = section.querySelector('#graph-load-authored-loop');
+  const loadCvUtilities = section.querySelector('#graph-load-cv-utilities');
+  const loadCvDecisions = section.querySelector('#graph-load-cv-decisions');
+  const loadNote = section.querySelector('#graph-load-note');
+  const loadSample = section.querySelector('#graph-load-sample');
+  const loadRegion = section.querySelector('#graph-load-region');
+  const loadGranular = section.querySelector('#graph-load-granular');
+  const loadMain = section.querySelector('#graph-load-main');
+  const loadLiveSampler = section.querySelector('#graph-load-live-sampler');
+  const loadSidechainSampler = section.querySelector('#graph-load-sidechain-sampler');
+  const loadRetrospectiveSampler = section.querySelector('#graph-load-retrospective-sampler');
+  const loadRetrospectiveMultisource = section.querySelector('#graph-load-retrospective-multisource');
+  const fileInput = section.querySelector('#graph-project-file');
+  const exportButton = section.querySelector('#graph-project-export');
+  const listeners = new AbortController();
+  let busy = false;
+  let destroyed = false;
+  let revision = 0;
+  let sourceRequest = 0;
+  let freeCaptureArmed = null;
+  const pendingParameters = new Set();
+
+  project.graphHostBindings = deriveGraphHostBindings(project.signal, project.graphHostBindings ?? []);
+
+  addType.replaceChildren(...Object.entries(NODE_TYPES).filter(([, spec]) => !spec.fixedId)
+    .map(([type, spec]) => new Option(spec.label, type)));
+
+  const canEdit = () => !destroyed && isActive() && !isRunning() && !busy;
+  const canEditRoute = () => canEdit() || (!destroyed && isActive() && isRunning() && canRouteLive() && !busy);
+  const canChangeParameter = () => !destroyed && isActive() && !busy;
+  function refreshRunning(updateStatus = true) {
+    if (!isRunning() && freeCaptureArmed !== null) {
+      onCaptureCancel();
+      freeCaptureArmed = null;
+      for (const button of section.querySelectorAll('button[aria-label^="Stop free capture"]')) {
+        button.textContent = 'Arm free capture';
+        button.setAttribute('aria-label', button.getAttribute('aria-label').replace('Stop free capture', 'Arm free capture'));
+      }
+    }
+    const disabled = !canEdit();
+    section.querySelectorAll('.graph-edit').forEach((control) => {
+      control.disabled = control.classList.contains('graph-live-sample') ? !canChangeParameter()
+        : control.classList.contains('graph-route') ? !canEditRoute() : disabled;
+    });
+    section.querySelectorAll('.graph-parameter').forEach((control) => {
+      control.disabled = !canChangeParameter() || pendingParameters.has(`${control.dataset.node}:${control.dataset.parameter}`);
+    });
+    section.querySelectorAll('.graph-capture-action').forEach((control) => {
+      control.disabled = !canChangeParameter() || (control.tagName === 'BUTTON' && !isRunning());
+    });
+    fileInput.disabled = disabled;
+    if (updateStatus && isActive()) status.textContent = `${project.signal.nodes.length} nodes · ${project.signal.connections.length} connections · ${isRunning() ? canRouteLive() ? 'prepared routes and parameters update live' : 'parameters update live; stop audio to edit topology' : 'start audio to compile this graph in Rust'}`;
+  }
+  function commit(signal, message, assets = project.graphAssets ?? [], targets = project.graphTargets ?? [], temporal = project.graphTemporal ?? [], hostBindings = project.graphHostBindings ?? [], endpoints = project.graphEndpoints ?? [], controls = project.graphControls ?? [], instances = project.graphInstances ?? [], sampleBindings = project.graphSampleBindings ?? []) {
+    const checked = validateGraphAssets(signal, assets.filter((asset) => signal.nodes.some((node) => node.id === asset.nodeId && PCM_ASSET_TYPES.has(node.type))));
+    const shared = validateGraphSampleBindings(signal, checked, sampleBindings.filter((binding) =>
+      checked.some((asset) => asset.nodeId === binding.sourceNodeId)
+      && signal.nodes.some((node) => node.id === binding.nodeId && node.type === 'sample-region')));
+    const partials = validateGraphTargets(signal, targets.filter((target) => signal.nodes.some((node) => node.id === target.nodeId && node.type === 'main-voice-bank')));
+    const motion = validateGraphTemporal(signal, checked, temporal.filter((entry) =>
+      signal.nodes.some((node) => node.id === entry.nodeId && node.type === 'main-voice-bank')
+      && checked.some((asset) => asset.nodeId === entry.nodeId)));
+    const paths = validateParameterEndpoints(signal, endpoints.filter((endpoint) =>
+      signal.nodes.some((node) => node.id === endpoint.nodeId)));
+    const projectControls = validateProjectControls(controls, paths);
+    const named = validateNamedInstances(signal, instances.filter((instance) =>
+      signal.nodes.some((node) => node.id === instance.nodeId)));
+    const bindings = deriveGraphHostBindings(signal, hostBindings);
+    revision++;
+    project.signal = signal;
+    project.graphAssets = checked;
+    project.graphSampleBindings = shared;
+    project.graphTargets = partials;
+    project.graphTemporal = motion;
+    project.graphHostBindings = bindings;
+    project.graphEndpoints = paths;
+    project.graphControls = projectControls;
+    project.graphInstances = named;
+    render();
+    status.textContent = message;
+    onChange?.(signal);
+  }
+  function commitTemplate(signal, message, assets = [], targets = [], temporal = []) {
+    commit(signal, message, assets, targets, temporal, [], [], [], [], []);
+  }
+  function fail(error) {
+    status.textContent = `Graph unchanged: ${error.message ?? String(error)}`;
+  }
+
+  function render() {
+    const expanded = new Set([...nodesRoot.querySelectorAll('details[open]')].map((item) => item.dataset.key));
+    sourceMode.value = project.signal.inputSource === 'none' ? 'none' : 'external';
+    sidechainMode.value = project.signal.sidechainSource ?? 'none';
+    sidechainRow.hidden = !project.signal.nodes.some((node) => node.type === 'input.sidechain');
+    const reachable = new Set([3, ...project.signal.nodes.filter((node) =>
+      node.type === 'retrospective-capture').map((node) => node.id)]);
+    let changed;
+    do {
+      changed = false;
+      for (const edge of project.signal.connections) {
+        if (reachable.has(edge.to) && !reachable.has(edge.from)) {
+          reachable.add(edge.from);
+          changed = true;
+        }
+      }
+    } while (changed);
+    nodesRoot.replaceChildren();
+    for (const node of project.signal.nodes) {
+      const spec = configuredWorkspaceType(node);
+      const article = document.createElement('article');
+      article.className = 'graph-node';
+      if (!reachable.has(node.id)) article.classList.add('graph-node-parked');
+      const heading = document.createElement('div');
+      heading.className = 'graph-node-heading';
+      const name = document.createElement('strong');
+      name.textContent = `${node.id} · ${spec.label}`;
+      const signal = document.createElement('span');
+      signal.className = `graph-signal graph-signal-${spec.output ?? 'sink'}`;
+      signal.textContent = spec.output ?? 'sink';
+      heading.append(name, signal);
+      if (!reachable.has(node.id)) {
+        const parked = document.createElement('span');
+        parked.className = 'graph-parked';
+        parked.textContent = 'parked';
+        parked.title = 'This node is disconnected from Output and does not run until its route is connected on a stopped edit.';
+        heading.append(parked);
+      }
+      if (!spec.fixedId) {
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'graph-edit graph-remove';
+        remove.textContent = 'Remove';
+        remove.setAttribute('aria-label', `Remove ${spec.label} node ${node.id}`);
+        remove.addEventListener('click', () => {
+          if (!canEdit()) return;
+          try { commit(removeNode(project.signal, node.id), `Removed ${spec.label} ${node.id}. Start audio to compile.`); }
+          catch (error) { fail(error); }
+        });
+        heading.append(remove);
+      }
+      article.appendChild(heading);
+      if (['loop-capture', 'retrospective-capture'].includes(node.type)) {
+        const entry = project.signal.captureSources?.find((source) => source.nodeId === node.id);
+        const label = document.createElement('label');
+        label.className = 'graph-capture-source-name';
+        label.textContent = entry ? `Source ${entry.id} · ${entry.kind} · name ` : 'Register source · name ';
+        const name = document.createElement('input');
+        name.type = 'text';
+        name.maxLength = 80;
+        name.className = 'graph-edit';
+        name.value = entry?.name ?? `${spec.label} ${node.id}`;
+        name.setAttribute('aria-label', `Source name for capture node ${node.id}`);
+        label.append(name);
+        if (entry) {
+          name.addEventListener('change', () => {
+            if (!canEdit()) return;
+            try { commit(renameCaptureSource(project.signal, node.id, name.value), `Source ${entry.id} renamed.`); }
+            catch (error) { fail(error); }
+          });
+        } else {
+          const register = document.createElement('button');
+          register.type = 'button';
+          register.className = 'graph-edit';
+          register.textContent = 'Register';
+          register.setAttribute('aria-label', `Register capture node ${node.id} as source`);
+          register.addEventListener('click', () => {
+            if (!canEdit()) return;
+            try { commit(registerCaptureSource(project.signal, node.id, name.value), `Capture node ${node.id} registered as a source.`); }
+            catch (error) { fail(error); }
+          });
+          label.append(register);
+        }
+        article.append(label);
+      }
+      if (SAMPLE_NODE_TYPES.has(node.type)) {
+        const asset = project.graphAssets?.find((item) => item.nodeId === node.id);
+        const source = document.createElement('label');
+        source.className = 'sample-file graph-sample-file';
+        source.textContent = asset ? `Source: ${asset.label} · ${(asset.stereo.length / 2 / asset.sourceRate).toFixed(2)} s · replace file`
+          : node.type === 'granulator' ? 'Live input capture · choose a file to use a fixed source'
+            : 'No source loaded · choose audio file';
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'audio/*,.wav,.aiff,.aif,.flac,.mp3,.ogg';
+        input.className = node.type === 'sample-instrument' && reachable.has(node.id)
+          ? 'graph-edit graph-live-sample' : 'graph-edit';
+        input.setAttribute('aria-label', `${spec.label} ${node.id} audio file`);
+        input.addEventListener('change', async () => {
+          const file = input.files?.[0];
+          if (!file) return;
+          const startingRevision = revision;
+          const request = ++sourceRequest;
+          const liveReplacement = isRunning() && node.type === 'sample-instrument' && reachable.has(node.id);
+          try {
+            if (!(liveReplacement ? canChangeParameter() : canEdit())) {
+              throw new Error('Sample source is unavailable while the graph changes.');
+            }
+            busy = true;
+            refreshRunning(false);
+            status.textContent = `Decoding ${file.name}…`;
+            const decoded = await decodeSample(file);
+            if (destroyed || !isActive() || isRunning() !== liveReplacement
+              || revision !== startingRevision || request !== sourceRequest) return;
+            let targets = project.graphTargets ?? [];
+            if (node.type === 'main-voice-bank') {
+              status.textContent = `Preparing ${file.name} source spectrum in Rust/Wasm…`;
+              const analyzed = await analyzeMainSource(decoded);
+              if (destroyed || !isActive() || isRunning() !== liveReplacement
+                || revision !== startingRevision || request !== sourceRequest) return;
+              targets = targets.map((target) => target.nodeId === node.id && target.target === 1
+                ? { nodeId: node.id, target: 1, ...analyzed } : target);
+            }
+            const assets = [...(project.graphAssets ?? []).filter((item) => item.nodeId !== node.id),
+              { nodeId: node.id, sourceRate: decoded.sourceRate, stereo: decoded.stereo, label: decoded.label }];
+            validateGraphAssets(project.signal, assets);
+            if (liveReplacement) {
+              status.textContent = `Publishing ${file.name} to sample instrument ${node.id} while audio runs…`;
+              await onSampleReplace(node.id, decoded.sourceRate, decoded.stereo);
+              if (destroyed || !isActive() || revision !== startingRevision || request !== sourceRequest) return;
+            }
+            commit(project.signal, liveReplacement
+              ? `Loaded ${file.name} into sample instrument ${node.id}. Held notes keep their old source; new notes use this file.`
+              : `Loaded ${file.name} into ${spec.label.toLowerCase()} ${node.id}${node.type === 'main-voice-bank' ? ' with a new prepared source target' : ''}. Start audio to hear it.`, assets, targets);
+          } catch (error) { if (revision === startingRevision && request === sourceRequest) fail(error); }
+          finally { busy = false; input.value = ''; refreshRunning(false); }
+        });
+        source.append(input);
+        article.appendChild(source);
+        if (asset) {
+          const clear = document.createElement('button');
+          clear.type = 'button';
+          clear.className = 'graph-edit graph-remove';
+          clear.textContent = 'Remove source';
+          clear.setAttribute('aria-label', `Remove source from ${spec.label} ${node.id}`);
+          clear.addEventListener('click', () => {
+            if (!canEdit()) return;
+            commit(project.signal, `Removed source from ${spec.label.toLowerCase()} ${node.id}. Start audio to compile.`,
+              project.graphAssets.filter((item) => item.nodeId !== node.id));
+          });
+          article.appendChild(clear);
+        }
+        const useBuiltin = document.createElement('button');
+        useBuiltin.type = 'button';
+        useBuiltin.className = 'graph-edit graph-remove';
+        useBuiltin.textContent = 'Use built-in source';
+        useBuiltin.setAttribute('aria-label', `Use built-in source for ${spec.label} ${node.id}`);
+        useBuiltin.addEventListener('click', () => {
+          if (!canEdit()) return;
+          try {
+            const source = builtinSample();
+            const assets = [...(project.graphAssets ?? []).filter((item) => item.nodeId !== node.id),
+              { nodeId: node.id, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }];
+            const targets = node.type === 'main-voice-bank'
+              ? (project.graphTargets ?? []).map((target) => target.nodeId === node.id && target.target === 1
+                ? defaultMainTargets(node.id)[1] : target)
+              : project.graphTargets ?? [];
+            commit(project.signal, `Restored built-in source for ${spec.label.toLowerCase()} ${node.id}. Start audio to hear it.`, assets, targets);
+          } catch (error) { fail(error); }
+        });
+        article.appendChild(useBuiltin);
+      }
+      if (node.type === 'sample-instrument') {
+        const captures = project.signal.nodes.filter((item) =>
+          ['loop-capture', 'retrospective-capture'].includes(item.type) && reachable.has(item.id)
+          && (!project.signal.captureSources || project.signal.captureSources.some((source) => source.nodeId === item.id)));
+        if (captures.length) {
+          const row = document.createElement('div');
+          row.className = 'graph-capture-controls';
+          const source = document.createElement('select');
+          source.className = 'graph-capture-action';
+          source.setAttribute('aria-label', `Capture source for sample instrument ${node.id}`);
+          const sourceName = (capture) => {
+            const registered = project.signal.captureSources?.find((item) => item.nodeId === capture.id);
+            if (registered) return `${registered.id} · ${registered.name}`;
+            if (capture.type !== 'retrospective-capture') return `Loop capture ${capture.id}`;
+            let upstream = project.signal.connections.find((edge) => edge.to === capture.id)?.from;
+            if (project.signal.nodes.find((item) => item.id === upstream)?.type === 'fixed-gain') {
+              upstream = project.signal.connections.find((edge) => edge.to === upstream)?.from;
+            }
+            const role = project.signal.nodes.find((item) => item.id === upstream)?.type;
+            return `${role === 'input.sidechain' ? 'Sidechain' : role === 'input.raw' ? 'Audio input' : 'Retrospective'} · ${capture.id}`;
+          };
+          for (const capture of captures) source.add(new Option(sourceName(capture), String(capture.id)));
+          source.value = String(project.signal.selectedCaptureNodeId ?? captures[0].id);
+          source.addEventListener('change', () => {
+            if (!canChangeParameter()) return;
+            const chosen = selectedCapture();
+            if (!chosen) return;
+            if (freeCaptureArmed !== null) {
+              onCaptureCancel();
+              freeCaptureArmed = null;
+            }
+            const registered = project.signal.captureSources?.find((item) => item.nodeId === chosen.id);
+            commit({ ...project.signal, selectedCaptureNodeId: chosen.id,
+              ...(registered ? { selectedCaptureSourceId: registered.id } : {}) },
+            `${sourceName(chosen)} selected for the next capture.`);
+          });
+          const windowSeconds = document.createElement('input');
+          windowSeconds.type = 'number';
+          windowSeconds.className = 'graph-capture-action';
+          windowSeconds.min = '0';
+          windowSeconds.step = '0.05';
+          windowSeconds.value = String(project.signal.captureWindowSeconds ?? 2);
+          windowSeconds.setAttribute('aria-label', `Recent window seconds for sample instrument ${node.id}`);
+          windowSeconds.addEventListener('change', () => {
+            if (!canChangeParameter()) return;
+            const seconds = Number(windowSeconds.value);
+            if (!Number.isFinite(seconds) || seconds <= 0) {
+              windowSeconds.value = String(project.signal.captureWindowSeconds ?? 2);
+              fail(new Error('Choose a positive capture window within the source history.'));
+              return;
+            }
+            commit({ ...project.signal, captureWindowSeconds: seconds }, `Recent capture window: ${seconds} seconds.`);
+          });
+          const windowLabel = document.createElement('label');
+          windowLabel.className = 'graph-capture-window';
+          windowLabel.append('Recent window', windowSeconds, 'seconds');
+          const windowMode = document.createElement('select');
+          windowMode.className = 'graph-capture-action';
+          windowMode.setAttribute('aria-label', `Capture window unit for sample instrument ${node.id}`);
+          windowMode.add(new Option('Seconds', 'seconds'));
+          windowMode.add(new Option('Bars at tempo', 'bars'));
+          windowMode.add(new Option('Free start / stop', 'free'));
+          windowMode.value = project.signal.captureWindowMode ?? 'seconds';
+          windowMode.addEventListener('change', () => {
+            if (!canChangeParameter()) return;
+            if (freeCaptureArmed !== null) {
+              onCaptureCancel();
+              freeCaptureArmed = null;
+            }
+            const signal = { ...project.signal, captureWindowMode: windowMode.value,
+              ...(windowMode.value !== 'free' && (project.signal.captureWindowSeconds ?? 2) < .05
+                ? { captureWindowSeconds: 2 } : {}),
+              ...(windowMode.value === 'bars' ? { captureWindowBars: project.signal.captureWindowBars ?? 1,
+                captureTempoBpm: project.signal.captureTempoBpm ?? 120 } : {}) };
+            commit(signal, `Capture window uses ${windowMode.value === 'bars' ? 'bars at the chosen tempo' : windowMode.value === 'free' ? 'two presses' : 'seconds'}.`);
+          });
+          const windowBars = document.createElement('input');
+          windowBars.type = 'number';
+          windowBars.className = 'graph-capture-action';
+          windowBars.min = '0';
+          windowBars.step = 'any';
+          windowBars.value = String(project.signal.captureWindowBars ?? 1);
+          windowBars.setAttribute('aria-label', `Capture length bars for sample instrument ${node.id}`);
+          windowBars.addEventListener('change', () => {
+            if (!canChangeParameter()) return;
+            const bars = Number(windowBars.value);
+            if (!Number.isFinite(bars) || bars <= 0) {
+              windowBars.value = String(project.signal.captureWindowBars ?? 1);
+              fail(new Error('Choose a capture length from 1/16 to 16 bars.'));
+              return;
+            }
+            commit({ ...project.signal, captureWindowBars: bars }, `Recent capture window: ${bars} bars.`);
+          });
+          const barsLabel = document.createElement('label');
+          barsLabel.className = 'graph-capture-window';
+          barsLabel.append('Recent window', windowBars, 'bars');
+          const tempoBpm = document.createElement('input');
+          tempoBpm.type = 'number';
+          tempoBpm.className = 'graph-capture-action';
+          tempoBpm.min = '20';
+          tempoBpm.max = '300';
+          tempoBpm.step = '0.1';
+          tempoBpm.value = String(project.signal.captureTempoBpm ?? 120);
+          tempoBpm.setAttribute('aria-label', `Capture tempo BPM for sample instrument ${node.id}`);
+          tempoBpm.addEventListener('change', () => {
+            if (!canChangeParameter()) return;
+            const tempo = Number(tempoBpm.value);
+            if (!Number.isFinite(tempo) || tempo < 20 || tempo > 300) {
+              tempoBpm.value = String(project.signal.captureTempoBpm ?? 120);
+              fail(new Error('Choose a capture tempo from 20 to 300 BPM.'));
+              return;
+            }
+            commit({ ...project.signal, captureTempoBpm: tempo }, `Capture tempo: ${tempo} BPM.`);
+          });
+          const tempoLabel = document.createElement('label');
+          tempoLabel.className = 'graph-capture-window';
+          tempoLabel.append('Tempo', tempoBpm, 'BPM');
+          const meterNumerator = document.createElement('input');
+          const meterDenominator = document.createElement('input');
+          for (const [input, value, part] of [
+            [meterNumerator, project.signal.captureTimeSignatureNumerator ?? 4, 'numerator'],
+            [meterDenominator, project.signal.captureTimeSignatureDenominator ?? 4, 'denominator'],
+          ]) {
+            input.type = 'number';
+            input.className = 'graph-capture-action';
+            input.min = '1';
+            input.max = '128';
+            input.step = '1';
+            input.value = String(value);
+            input.setAttribute('aria-label', `Capture meter ${part} for sample instrument ${node.id}`);
+          }
+          const updateMeter = () => {
+            if (!canChangeParameter()) return;
+            const numerator = Number(meterNumerator.value);
+            const denominator = Number(meterDenominator.value);
+            if (!Number.isInteger(numerator) || numerator < 1 || numerator > 128
+              || !Number.isInteger(denominator) || denominator < 1 || denominator > 128) {
+              meterNumerator.value = String(project.signal.captureTimeSignatureNumerator ?? 4);
+              meterDenominator.value = String(project.signal.captureTimeSignatureDenominator ?? 4);
+              fail(new Error('Choose a capture meter from 1 to 128 in each field.'));
+              return;
+            }
+            commit({ ...project.signal, captureTimeSignatureNumerator: numerator,
+              captureTimeSignatureDenominator: denominator }, `Capture meter: ${numerator}/${denominator}.`);
+          };
+          meterNumerator.addEventListener('change', updateMeter);
+          meterDenominator.addEventListener('change', updateMeter);
+          const meterLabel = document.createElement('label');
+          meterLabel.className = 'graph-capture-window';
+          meterLabel.append('Meter', meterNumerator, '/', meterDenominator);
+          const publish = document.createElement('button');
+          publish.type = 'button';
+          publish.className = 'gate-button graph-capture-action';
+          publish.textContent = 'Use stopped take';
+          publish.setAttribute('aria-label', `Use stopped take for sample instrument ${node.id}`);
+          const publishLive = document.createElement('button');
+          publishLive.type = 'button';
+          publishLive.className = 'gate-button graph-capture-action';
+          publishLive.textContent = 'Use current recording';
+          publishLive.setAttribute('aria-label', `Use current recording for sample instrument ${node.id}`);
+          const selectedCapture = () => captures.find((item) => item.id === Number(source.value));
+          const syncCaptureControls = () => {
+            const retrospective = selectedCapture()?.type === 'retrospective-capture';
+            const bars = windowMode.value === 'bars';
+            const free = windowMode.value === 'free';
+            windowMode.hidden = !retrospective;
+            windowLabel.hidden = !retrospective || bars || free;
+            barsLabel.hidden = !retrospective || !bars;
+            tempoLabel.hidden = !retrospective || !bars;
+            meterLabel.hidden = !retrospective || !bars;
+            publish.hidden = retrospective;
+            const action = retrospective ? free ? freeCaptureArmed === Number(source.value)
+              ? 'Stop free capture' : 'Arm free capture' : 'Capture recent window' : 'Use current recording';
+            publishLive.textContent = action;
+            publishLive.setAttribute('aria-label', `${action} for sample instrument ${node.id}`);
+          };
+          source.addEventListener('change', syncCaptureControls);
+          syncCaptureControls();
+          const useCapture = async (live) => {
+            if (!isRunning() || !canChangeParameter()) return;
+            const startingRevision = revision;
+            const retrospective = selectedCapture()?.type === 'retrospective-capture';
+            const freeMode = retrospective && windowMode.value === 'free';
+            const seconds = retrospective ? Number(windowSeconds.value) : 0;
+            const barsMode = retrospective && windowMode.value === 'bars';
+            const bars = Number(windowBars.value);
+            const tempo = Number(tempoBpm.value);
+            const numerator = Number(meterNumerator.value);
+            const denominator = Number(meterDenominator.value);
+            if (retrospective && !barsMode && !freeMode && (!Number.isFinite(seconds) || seconds <= 0)) {
+              fail(new Error('Choose a positive capture window within the source history.'));
+              return;
+            }
+            if (barsMode && (!Number.isFinite(bars) || bars <= 0
+              || !Number.isFinite(tempo) || tempo < 20 || tempo > 300
+              || !Number.isInteger(numerator) || numerator < 1 || numerator > 128
+              || !Number.isInteger(denominator) || denominator < 1 || denominator > 128)) {
+              fail(new Error('Choose a positive bar count, a tempo and a meter within the source history.'));
+              return;
+            }
+            busy = true;
+            refreshRunning(false);
+            status.textContent = `Publishing ${freeMode ? 'free capture' : retrospective ? 'recent history' : live ? 'recording window' : 'stopped take'} ${source.value} to sample instrument ${node.id}…`;
+            try {
+              const window = freeMode ? { freeStop: true } : barsMode ? { windowBars: bars, tempoBpm: tempo,
+                meterNumerator: numerator, meterDenominator: denominator } : seconds;
+              const asset = await onCapturePublish(Number(source.value), node.id, live, window);
+              if (destroyed || revision !== startingRevision || !isActive() || !isRunning()) return;
+              if (freeMode) freeCaptureArmed = null;
+              const label = `${freeMode ? 'Free capture' : retrospective ? 'Recent history' : live ? 'Recording window' : 'Loop take'} ${source.value}`;
+              const assets = [...(project.graphAssets ?? []).filter((item) => item.nodeId !== node.id),
+                { nodeId: node.id, sourceRate: asset.sourceRate, stereo: asset.stereo,
+                  label }];
+              const signal = { ...project.signal, selectedCaptureNodeId: Number(source.value),
+                ...(project.signal.captureSources ? { selectedCaptureSourceId: project.signal.captureSources.find((item) =>
+                  item.nodeId === Number(source.value)).id } : {}),
+                ...(retrospective ? freeMode ? { captureWindowMode: 'free',
+                  captureWindowSeconds: asset.frames / asset.sourceRate } : barsMode ? { captureWindowMode: 'bars', captureWindowBars: bars,
+                  captureTempoBpm: tempo, captureTimeSignatureNumerator: numerator,
+                  captureTimeSignatureDenominator: denominator,
+                  captureWindowSeconds: asset.stereo.length / 2 / asset.sourceRate }
+                  : { captureWindowMode: 'seconds', captureWindowSeconds: seconds } : {}) };
+              commit(signal, `${label} is now the source for new notes. Held notes keep their previous source; project bundle includes the take.`, assets);
+            } catch (error) {
+              if (freeMode) {
+                onCaptureCancel();
+                freeCaptureArmed = null;
+                syncCaptureControls();
+              }
+              if (revision === startingRevision) fail(error);
+            } finally { busy = false; refreshRunning(false); }
+          };
+          publish.addEventListener('click', () => useCapture(false));
+          publishLive.addEventListener('click', async () => {
+            if (selectedCapture()?.type !== 'retrospective-capture' || windowMode.value !== 'free'
+              || freeCaptureArmed === Number(source.value)) {
+              useCapture(true);
+              return;
+            }
+            if (!isRunning() || !canChangeParameter()) return;
+            busy = true;
+            refreshRunning(false);
+            try {
+              await onCaptureArm(Number(source.value));
+              freeCaptureArmed = Number(source.value);
+              status.textContent = `Free capture armed at source ${source.value}; press Stop free capture to publish the span.`;
+            } catch (error) { fail(error); }
+            finally { busy = false; refreshRunning(false); syncCaptureControls(); }
+          });
+          row.append(source, windowMode, windowLabel, barsLabel, tempoLabel, meterLabel, publish, publishLive);
+          article.append(row);
+        }
+      }
+      if (node.type === 'main-voice-bank') {
+        const importLabel = document.createElement('label');
+        importLabel.className = 'sample-file graph-sample-file';
+        importLabel.textContent = 'Open standalone Main bank state or project';
+        const importInput = document.createElement('input');
+        importInput.type = 'file';
+        importInput.accept = 'application/json,.json';
+        importInput.className = 'graph-edit';
+        importInput.setAttribute('aria-label', `Main voice bank ${node.id} state`);
+        importInput.addEventListener('change', async () => {
+          const file = importInput.files?.[0];
+          if (!file) return;
+          const startingRevision = revision;
+          try {
+            if (!canEdit()) throw new Error('Stop audio before opening a Main bank state.');
+            if (file.size > 45 * 1024 * 1024) throw new Error('Main bank state must be smaller than 45 MB.');
+            const parsed = parseProjectDocument(JSON.parse(await file.text()), mainVoiceBankProject, parseMainVoiceBankState).state;
+            if (!canEdit() || revision !== startingRevision) return;
+            const source = parsed.source.kind === 'builtin' ? builtinSample() : parsed.source;
+            const signal = structuredClone(project.signal);
+            for (const parameter of mainVoiceBankProject.parameters) {
+              signal.initialParameters.find((entry) => entry.nodeId === node.id && entry.id === parameter.nodeParameterId).value = parsed.parameters[parameter.hostId];
+            }
+            const targets = [...(project.graphTargets ?? []).filter((target) => target.nodeId !== node.id),
+              ...parsed.targets.map((target) => ({ ...target, nodeId: node.id }))];
+            const assets = [...(project.graphAssets ?? []).filter((asset) => asset.nodeId !== node.id),
+              { nodeId: node.id, sourceRate: source.sourceRate, stereo: source.stereo, label: source.label ?? 'Built-in two-tone source' }];
+            const temporal = [...(project.graphTemporal ?? []).filter((entry) => entry.nodeId !== node.id),
+              ...(parsed.targetControls.active && parsed.targetControls.followPlayback
+                ? [temporalFromMainState(node.id, parsed.targetControls)] : [])];
+            commit(signal, `Imported ${file.name} into Main bank ${node.id}. Its prepared targets and controls are ready; start audio to hear it.`, assets, targets, temporal);
+          } catch (error) { if (revision === startingRevision) fail(error); }
+          finally { importInput.value = ''; }
+        });
+        importLabel.append(importInput);
+        article.append(importLabel);
+        const motion = (project.graphTemporal ?? []).find((entry) => entry.nodeId === node.id);
+        const followRow = document.createElement('label');
+        followRow.className = 'graph-field';
+        const followText = document.createElement('span');
+        followText.textContent = 'Source follow';
+        followText.title = 'Each voice follows its sample position through prepared source frames in Add or Morph mode.';
+        const follow = document.createElement('input');
+        follow.type = 'checkbox';
+        follow.className = 'graph-edit';
+        follow.checked = Boolean(motion);
+        follow.setAttribute('aria-label', `Main voice bank ${node.id} follow source position`);
+        follow.addEventListener('change', () => {
+          if (!canEdit()) return;
+          try {
+            if (follow.checked && !(project.graphAssets ?? []).some((asset) => asset.nodeId === node.id)) {
+              throw new Error('Load a Main source before enabling motion.');
+            }
+            const temporal = [...(project.graphTemporal ?? []).filter((entry) => entry.nodeId !== node.id),
+              ...(follow.checked ? [motion ?? defaultGraphTemporal(node.id)] : [])];
+            commit(project.signal, `${follow.checked ? 'Enabled' : 'Disabled'} source motion for Main bank ${node.id}.`,
+              project.graphAssets, project.graphTargets, temporal);
+          } catch (error) { follow.checked = Boolean(motion); fail(error); }
+        });
+        followRow.append(followText, follow);
+        article.append(followRow);
+        if (motion) {
+          const speedRow = document.createElement('label');
+          speedRow.className = 'graph-field';
+          const speedText = document.createElement('span');
+          speedText.textContent = 'Motion speed';
+          const speed = document.createElement('input');
+          speed.type = 'number';
+          speed.min = '0';
+          speed.max = '4';
+          speed.step = '0.1';
+          speed.value = String(motion.speed);
+          speed.className = 'graph-parameter';
+          speed.setAttribute('aria-label', `Main voice bank ${node.id} motion speed`);
+          speed.addEventListener('change', () => {
+            if (!canChangeParameter()) return;
+            try {
+              const temporal = (project.graphTemporal ?? []).map((entry) => entry.nodeId === node.id
+                ? { ...entry, speed: Number(speed.value) } : entry);
+              validateGraphTemporal(project.signal, project.graphAssets ?? [], temporal);
+              if (isRunning()) onTemporalSpeed?.(node.id, Number(speed.value));
+              commit(project.signal, `Updated Main bank ${node.id} source motion to ${speed.value}×.`,
+                project.graphAssets, project.graphTargets, temporal);
+            } catch (error) { speed.value = String(motion.speed); fail(error); }
+          });
+          speedRow.append(speedText, speed);
+          article.append(speedRow);
+          const shape = document.createElement('details');
+          shape.className = 'graph-motion';
+          shape.dataset.key = `motion-${node.id}`;
+          shape.open = expanded.has(shape.dataset.key);
+          const shapeTitle = document.createElement('summary');
+          shapeTitle.textContent = 'Source shape · worker recipe';
+          shape.append(shapeTitle);
+          for (const field of MOTION_FIELDS) {
+            const current = field.key ? motion[field.key] : motion.recipe[field.index];
+            const row = document.createElement('label');
+            row.className = 'graph-field graph-motion-field';
+            const label = document.createElement('span');
+            label.textContent = field.label;
+            let input;
+            if (field.choices) {
+              input = document.createElement('select');
+              field.choices.forEach((choice, index) => input.add(new Option(choice, String(index))));
+            } else {
+              input = document.createElement('input');
+              input.type = 'range';
+              input.min = String(field.min);
+              if (field.max !== undefined) input.max = String(field.max);
+              input.step = String(field.step);
+            }
+            input.value = String(current);
+            input.className = 'graph-edit';
+            input.setAttribute('aria-label', `Main voice bank ${node.id} ${field.label}`);
+            const control = document.createElement('span');
+            control.className = 'graph-motion-control';
+            control.append(input);
+            if (!field.choices) {
+              const readout = document.createElement('output');
+              readout.value = Number(current).toFixed(2);
+              input.addEventListener('input', () => { readout.value = Number(input.value).toFixed(2); });
+              control.append(readout);
+            }
+            input.addEventListener('change', () => {
+              if (!canEdit()) return;
+              try {
+                const updated = { ...motion, recipe: [...motion.recipe] };
+                if (field.key) updated[field.key] = Number(input.value);
+                else updated.recipe[field.index] = Number(input.value);
+                const temporal = (project.graphTemporal ?? []).map((entry) => entry.nodeId === node.id ? updated : entry);
+                commit(project.signal, `Updated Main bank ${node.id} ${field.label.toLowerCase()} source shape. Start audio to rebuild frames.`,
+                  project.graphAssets, project.graphTargets, temporal);
+              } catch (error) { input.value = String(current); fail(error); }
+            });
+            row.append(label, control);
+            shape.append(row);
+          }
+          article.append(shape);
+        }
+        const targets = (project.graphTargets ?? []).filter((target) => target.nodeId === node.id);
+        for (const target of targets) {
+          const details = document.createElement('details');
+          details.className = 'graph-target';
+          details.dataset.key = `target-${node.id}-${target.target}`;
+          details.open = expanded.has(details.dataset.key);
+          const summary = document.createElement('summary');
+          summary.textContent = `${target.target === 0 ? 'Wave' : 'Source'} target · ${target.values.length / 4} partials`;
+          const values = document.createElement('textarea');
+          values.className = 'graph-edit';
+          values.rows = 4;
+          values.value = JSON.stringify({ fundamental: target.fundamental, values: target.values });
+          values.setAttribute('aria-label', `Main voice bank ${node.id} ${target.target === 0 ? 'wave' : 'source'} target JSON`);
+          const apply = document.createElement('button');
+          apply.type = 'button';
+          apply.className = 'graph-edit gate-button';
+          apply.textContent = 'Apply target';
+          apply.addEventListener('click', () => {
+            if (!canEdit()) return;
+            try {
+              const updated = { ...JSON.parse(values.value), nodeId: node.id, target: target.target };
+              const next = (project.graphTargets ?? []).map((item) => item === target ? updated : item);
+              commit(project.signal, `Updated ${target.target === 0 ? 'wave' : 'source'} target for Main bank ${node.id}. Start audio to compile.`, project.graphAssets, next);
+            } catch (error) { fail(error); }
+          });
+          details.append(summary, values, apply);
+          article.append(details);
+        }
+      }
+      for (let port = 0; port < spec.inputs.length; port++) {
+        const kind = spec.inputs[port];
+        const row = document.createElement('label');
+        row.className = 'graph-field';
+        const text = document.createElement('span');
+        text.textContent = `${spec.inputNames[port].toUpperCase()} · ${kind === 'control' ? 'CV' : kind === 'midi' ? 'MIDI' : 'Audio'}`;
+        const select = document.createElement('select');
+        select.className = 'graph-edit graph-route';
+        select.dataset.to = String(node.id);
+        select.dataset.port = String(port);
+        select.setAttribute('aria-label', `${spec.label} ${node.id} ${kind} input ${port + 1}`);
+        select.add(new Option('Unconnected', ''));
+        for (const source of project.signal.nodes) {
+          const sourceSpec = configuredWorkspaceType(source);
+          const outputs = sourceSpec.outputs ?? (sourceSpec.output ? [sourceSpec.output] : []);
+          for (let outputPort = 0; outputPort < outputs.length; outputPort++) {
+            if (source.id !== node.id && outputs[outputPort] === kind) {
+              const name = sourceSpec.outputNames?.[outputPort] ?? `OUT ${outputPort + 1}`;
+              select.add(new Option(`${source.id} · ${sourceSpec.label} ${name}`, `${source.id}:${outputPort}`));
+            }
+          }
+        }
+        const current = project.signal.connections.find((edge) => edge.to === node.id && edge.inputPort === port);
+        select.value = current ? `${current.from}:${current.outputPort ?? 0}` : '';
+        select.addEventListener('change', async () => {
+          if (!canEditRoute()) return;
+          try {
+            const [from, outputPort] = select.value === '' ? [null, 0] : select.value.split(':').map(Number);
+            const next = setConnection(project.signal, node.id, port, from, outputPort);
+            if (isRunning()) {
+              busy = true;
+              refreshRunning(false);
+              await onRoute(node.id, port, from, outputPort);
+              commit(next, `Updated ${spec.label} ${node.id} input ${port + 1} in the prepared Rust graph.`);
+            } else {
+              commit(next, `Updated ${spec.label} ${node.id} input ${port + 1}. Start audio to compile.`);
+            }
+          } catch (error) { select.value = current ? `${current.from}:${current.outputPort ?? 0}` : ''; fail(error); }
+          finally { busy = false; refreshRunning(false); }
+        });
+        row.append(text, select);
+        article.appendChild(row);
+      }
+      for (const parameter of spec.parameters ?? []) {
+        const entry = project.signal.initialParameters.find((item) => item.nodeId === node.id && item.id === parameter.id);
+        const row = document.createElement('div');
+        row.className = 'graph-field';
+        const text = document.createElement('span');
+        text.textContent = parameter.label;
+        let input;
+        if (parameter.choices) {
+          input = document.createElement('select');
+          for (const [index, choice] of parameter.choices.entries()) {
+            input.add(new Option(choice, String(parameter.choiceValues?.[index] ?? index)));
+          }
+        } else {
+          input = document.createElement('input');
+          input.type = 'number';
+          input.min = String(parameter.min);
+          input.max = String(parameter.max);
+          input.step = 'any';
+        }
+        input.className = 'graph-parameter';
+        input.dataset.node = String(node.id);
+        input.dataset.parameter = String(parameter.id);
+        input.setAttribute('aria-label', `${spec.label} ${node.id} ${parameter.label}`);
+        input.value = String(entry?.value ?? parameter.default);
+        input.addEventListener('change', async () => {
+          if (!canChangeParameter()) return;
+          const key = `${node.id}:${parameter.id}`;
+          try {
+            if (input.value.trim() === '') throw new Error('Enter a parameter value.');
+            const value = Number(input.value);
+            setInitialParameter(project.signal, node.id, parameter.id, value);
+            if (isRunning()) {
+              pendingParameters.add(key);
+              input.disabled = true;
+              await onParameter(node.id, parameter.id, value);
+            }
+            if (!canChangeParameter()) return;
+            commit(setInitialParameter(project.signal, node.id, parameter.id, value),
+              `Updated ${spec.label} ${node.id} ${parameter.label}${isRunning() ? ' in Rust and project state.' : '. Start audio to compile.'}`);
+          }
+          catch (error) { input.value = String(project.signal.initialParameters.find((item) => item.nodeId === node.id && item.id === parameter.id)?.value ?? entry?.value ?? parameter.default); fail(error); }
+          finally { pendingParameters.delete(key); refreshRunning(false); }
+        });
+        const controls = document.createElement('span');
+        controls.className = 'graph-parameter-controls';
+        controls.append(input);
+        const binding = (project.graphHostBindings ?? []).find((item) => item.nodeId === node.id && item.id === parameter.id);
+        if (binding) {
+          const slotLabel = document.createElement('span');
+          slotLabel.className = 'graph-slot-label';
+          slotLabel.textContent = 'Host slot';
+          const slotInput = document.createElement('input');
+          slotInput.type = 'number';
+          slotInput.className = 'graph-edit graph-slot-input';
+          slotInput.min = '1';
+          slotInput.max = String(HOST_SLOT_COUNT);
+          slotInput.step = '1';
+          slotInput.value = String(binding.slot + 1);
+          slotInput.setAttribute('aria-label', `Host slot for ${spec.label} ${node.id} ${parameter.label}`);
+          slotInput.addEventListener('change', () => {
+            if (!canEdit()) return;
+            try {
+              if (slotInput.value.trim() === '') throw new Error('Enter a host slot number.');
+              const requested = Number(slotInput.value) - 1;
+              const occupied = (project.graphHostBindings ?? []).find((item) => item.slot === requested);
+              const bindings = reassignGraphHostSlot(project.signal, project.graphHostBindings ?? [], node.id, parameter.id, requested);
+              const displacedNode = project.signal.nodes.find((item) => item.id === occupied?.nodeId);
+              const displaced = (displacedNode ? configuredWorkspaceType(displacedNode) : null)?.parameters?.find((item) => item.id === occupied?.id);
+              const swap = occupied && occupied !== binding
+                ? `; ${NODE_TYPES[displacedNode.type].label} ${occupied.nodeId} ${displaced?.label ?? occupied.id} moved to slot ${binding.slot + 1}` : '';
+              commit(project.signal, `Assigned ${spec.label} ${node.id} ${parameter.label} to host slot ${requested + 1}${swap}. Download the graph project to use this mapping in a host.`,
+                project.graphAssets, project.graphTargets, project.graphTemporal, bindings);
+            } catch (error) { slotInput.value = String(binding.slot + 1); fail(error); }
+          });
+          controls.append(slotLabel, slotInput);
+        }
+        row.append(text, controls);
+        article.appendChild(row);
+      }
+      nodesRoot.appendChild(article);
+    }
+    refreshRunning();
+  }
+
+  addButton.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      const signal = addNode(project.signal, addType.value);
+      const added = signal.nodes.at(-1);
+      const targets = added.type === 'main-voice-bank' ? [...(project.graphTargets ?? []), ...defaultMainTargets(added.id)] : project.graphTargets ?? [];
+      commit(signal, `Added ${NODE_TYPES[addType.value].label}. Connect its ports, then start audio.`, project.graphAssets, targets);
+    }
+    catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  sourceMode.addEventListener('change', () => {
+    if (!canEdit()) return;
+    try { commit(setInputSource(project.signal, sourceMode.value),
+      sourceMode.value === 'none' ? 'External input off. Internal graph sources will play on the next start.' : 'External input on. Choose the test oscillator or microphone above.'); }
+    catch (error) { sourceMode.value = project.signal.inputSource === 'none' ? 'none' : 'external'; fail(error); }
+  }, { signal: listeners.signal });
+  sidechainMode.addEventListener('change', () => {
+    if (!canEdit()) return;
+    try {
+      commit(setSidechainSource(project.signal, sidechainMode.value),
+        `Sidechain bus: ${sidechainMode.selectedOptions[0].textContent}. Start audio to connect its separate worklet input.`);
+    } catch (error) { sidechainMode.value = project.signal.sidechainSource ?? 'none'; fail(error); }
+  }, { signal: listeners.signal });
+  loadTone.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      commitTemplate(parseGraphProject(toneTexture), 'Loaded the tone and noise study. Start the instrument to hear its Rust graph.', []);
+      onTemplateLoaded?.('texture');
+    }
+    catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadAuthoredLfo.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      commitTemplate(parseGraphProject(authoredLfo),
+        'Loaded the JS-authored LFO graph. Start the instrument, then change node 6 CV from LFO INV to UNI while it plays.', []);
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadAuthoredLoop.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      const signal = parseGraphProject(authoredLiveLoop);
+      signal.initialParameters.find(entry => entry.nodeId === 2 && entry.id === 1).value = 1;
+      const sourceRate = 48_000;
+      const stereo = new Float32Array(sourceRate);
+      for (let frame = 0; frame < sourceRate / 2; frame++) {
+        const sample = 0.2 * Math.sin(2 * Math.PI * 220 * frame / sourceRate);
+        stereo[frame * 2] = sample;
+        stereo[frame * 2 + 1] = sample;
+      }
+      commitTemplate(signal,
+        'Loaded the authored loop graph with a half-second take. Start the instrument, then unplug/reconnect node 4 input A while it plays. Download and reopen the project to check its PCM.',
+        [{ nodeId: 2, sourceRate, stereo, label: 'Authored 220 Hz loop' }]);
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadCvUtilities.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      commitTemplate(parseGraphProject(authoredCvUtilities),
+        'Loaded the JS-authored CV chain: LFO → attenuverter → slew → sample/hold → CV mixer → gain. Start the instrument; routes and parameters update live.', []);
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadCvDecisions.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      commitTemplate(parseGraphProject(authoredCvDecisions),
+        'Loaded JS-authored CV decisions: Compare GATE and TRIG feed Range and the CV mixer. Start the instrument; both routes and parameters update live.', []);
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadNote.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      commitTemplate(parseGraphProject(noteVoice), 'Loaded the note voice. Start the instrument, then play the on-screen keyboard.', []);
+      onTemplateLoaded?.('note-voice');
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadSample.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      const source = builtinSample();
+      const signal = parseGraphProject(sampleVoice);
+      commitTemplate(signal, 'Loaded the sample voice study with a built-in source. Start the instrument, then play the keyboard.',
+        [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
+      onTemplateLoaded?.('sample-voice');
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadRegion.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      const source = builtinSample();
+      const signal = parseGraphProject(regionVoice);
+      commitTemplate(signal, 'Loaded the sample region study. Notes retrigger one region playhead.',
+        [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
+      onTemplateLoaded?.('region-voice');
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadGranular.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      const source = builtinSample();
+      const signal = parseGraphProject(granularSource);
+      commitTemplate(signal, 'Loaded the granulator with a built-in source. Start audio to hear its grains.',
+        [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
+      onTemplateLoaded?.('granular-source');
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadMain.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      const source = builtinSample();
+      const bundle = parseGraphBundle(mainBank);
+      commitTemplate(bundle.signal, 'Loaded the Main voice bank with prepared wave/source targets. Start audio and play the keyboard.',
+        [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }], bundle.targets, bundle.temporal);
+      onTemplateLoaded?.('main-bank');
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadLiveSampler.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      const source = builtinSample();
+      const signal = parseGraphProject(liveSampler);
+      commitTemplate(signal, 'Loaded the live sampler. Start audio and record Loop capture 6. Publish the current recording window to Sample instrument 5 at any time, or stop and use the completed take.',
+        [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
+      onTemplateLoaded?.('live-sampler');
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadSidechainSampler.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      const source = builtinSample();
+      const signal = parseGraphProject(sidechainSampler);
+      commitTemplate(signal, 'Loaded separate main and sidechain inputs. Start audio and record Loop capture 6; publish its current window while recording continues, or stop and use the completed sidechain take.',
+        [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
+      onTemplateLoaded?.('sidechain-sampler');
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadRetrospectiveSampler.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      const source = builtinSample();
+      const signal = parseGraphProject(retrospectiveSampler);
+      commitTemplate(signal, 'Loaded the always-on retrospective sampler. Start audio, wait for input, then choose a recent window under Sample instrument 5.',
+        [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadRetrospectiveMultisource.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      const source = builtinSample();
+      const signal = parseGraphProject(retrospectiveMultisource);
+      commitTemplate(signal, 'Loaded Audio Input and Sidechain retrospective sources. Both record while audio runs; select either source under Sample instrument 5 to publish its recent window.',
+        [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  exportButton.addEventListener('click', () => {
+    if (!isActive()) return;
+    try {
+      const bundle = captureGraphProject(project.signal, project.graphAssets ?? [], project.graphTargets ?? [], project.graphTemporal ?? [], project.graphHostBindings ?? null, project.graphEndpoints ?? [], project.graphControls ?? [], project.graphInstances ?? [], project.graphSampleBindings ?? []);
+      const url = URL.createObjectURL(new Blob([`${JSON.stringify(bundle, null, 2)}\n`], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'manifold-graph-workspace-project.json';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      status.textContent = `Downloaded ${bundle.signal.nodes.length} nodes, ${bundle.signal.connections.length} connections, ${bundle.hostBindings.length} host control slots, ${bundle.assets?.length ?? 0} sample assets, ${bundle.targets?.length ?? 0} partial targets, and ${bundle.temporal?.length ?? 0} motion recipes.`;
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    const startingRevision = revision;
+    try {
+      if (!canEdit()) throw new Error('Stop audio before opening a graph.');
+      if (file.size > 45 * 1024 * 1024) throw new Error('Graph project must be smaller than 45 MB.');
+      const contents = await file.text();
+      if (!canEdit() || revision !== startingRevision) return;
+      const bundle = parseGraphBundle(JSON.parse(contents));
+      commit(bundle.signal, `Opened ${file.name} with ${bundle.hostBindings.length} host slots, ${bundle.assets.length} sample assets, ${bundle.sampleBindings.length} sample bindings, ${bundle.targets.length} partial targets, and ${bundle.temporal.length} motion recipes. Start audio to compile the restored graph.`, bundle.assets, bundle.targets, bundle.temporal, bundle.hostBindings, bundle.endpoints, bundle.controls, bundle.instances, bundle.sampleBindings);
+    } catch (error) { if (revision === startingRevision) fail(error); }
+    finally { fileInput.value = ''; }
+  }, { signal: listeners.signal });
+  render();
+  return { refreshRunning, setBusy(value) { busy = value; refreshRunning(); },
+    destroy() { destroyed = true; listeners.abort(); } };
+}

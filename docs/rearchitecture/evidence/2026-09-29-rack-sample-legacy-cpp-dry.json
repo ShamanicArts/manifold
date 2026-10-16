@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "fixture": "projects/graph-workspace/authored-rack-sample-eight-voice-unison3.json",
+  "vocoderDry": true,
+  "fixtureSha256": "a808788ab472f9793186aaa6a876b46f44b1a821c4a110bee08fa9876d30884b",
+  "pcmSha256": "caa37318b336068d631c1c7f61e8ee8b527843100d90470613c3cf3bb25bf6d3",
+  "sourceSha256": "158525c1c5a459fa97efcf720bd1e62174018e33eed0293317cb5254c45f3845",
+  "oldSourceRevision": "d56a1ec73887c727e692d1e640f8e3199f904619",
+  "oldKernelSha256": {
+    "dsp/core/nodes/SampleRegionPlaybackNode.cpp": "7c9f556ce9c4bd1d87aadb7e051dd30282be9bd55bdbcb7b242f1f4afc378252",
+    "dsp/core/nodes/PhaseVocoderNode.cpp": "891f038e997555325858c1956bd111c3b0a40a61ad5604a5c9877ab6eb4d9b63",
+    "manifold/primitives/scripting/GraphRuntime.cpp": "0f7843ff61e74eca8d93aad5196c19a6c3c576f2ccd199fd57c3eb93a4f3beab"
+  },
+  "compiler": "c++ (GCC) 16.2.1 20260810",
+  "buildDir": "/tmp/manifold-legacy-sample-perf-build",
+  "runs": [
+    {
+      "method": "release historical C++ GraphRuntime offline",
+      "sampleRate": 48000,
+      "blockFrames": 128,
+      "warmupBlocks": 128,
+      "measuredBlocks": 2048,
+      "sampleFrames": 4800,
+      "voices": 8,
+      "unison": 3,
+      "fftOrder": 11,
+      "dry": true,
+      "compiledNodes": 26,
+      "routes": 25,
+      "prepareMs": 34.814198,
+      "p50Us": 107.719,
+      "p95Us": 131.378,
+      "p99Us": 166.258,
+      "maxUs": 243.408,
+      "overDeadline": 0,
+      "outputChecksum": 626.484798938,
+      "checkpoints": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0.0924353004,
+          0.108524814
+        ]
+      ]
+    },
+    {
+      "method": "release historical C++ GraphRuntime offline",
+      "sampleRate": 48000,
+      "blockFrames": 128,
+      "warmupBlocks": 128,
+      "measuredBlocks": 2048,
+      "sampleFrames": 4800,
+      "voices": 8,
+      "unison": 3,
+      "fftOrder": 11,
+      "dry": true,
+      "compiledNodes": 26,
+      "routes": 25,
+      "prepareMs": 34.513031,
+      "p50Us": 107.848,
+      "p95Us": 119.509,
+      "p99Us": 143.149,
+      "maxUs": 188.817,
+      "overDeadline": 0,
+      "outputChecksum": 626.484798938,
+      "checkpoints": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0.0924353004,
+          0.108524814
+        ]
+      ]
+    },
+    {
+      "method": "release historical C++ GraphRuntime offline",
+      "sampleRate": 48000,
+      "blockFrames": 128,
+      "warmupBlocks": 128,
+      "measuredBlocks": 2048,
+      "sampleFrames": 4800,
+      "voices": 8,
+      "unison": 3,
+      "fftOrder": 11,
+      "dry": true,
+      "compiledNodes": 26,
+      "routes": 25,
+      "prepareMs": 34.756409,
+      "p50Us": 107.929,
+      "p95Us": 138.248,
+      "p99Us": 166.648,
+      "maxUs": 557.183,
+      "overDeadline": 0,
+      "outputChecksum": 626.484798938,
+      "checkpoints": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0.0924353004,
+          0.108524814
+        ]
+      ]
+    }
+  ],
+  "medianOfRuns": {
+    "p50Us": 107.848,
+    "p95Us": 131.378,
+    "p99Us": 166.258,
+    "maxUs": 243.408,
+    "prepareMs": 34.756409
+  },
+  "limits": "Same source PCM, voices, unison, FFT order, rate, block size, and trigger schedule; historical C++ and v2 Rust kernels/graph adapters are different implementations. Offline sequential timing is not a real device deadline guarantee."
+}

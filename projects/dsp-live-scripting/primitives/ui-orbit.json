@@ -1,0 +1,352 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      },
+      {
+        "id": 5,
+        "type": "svf"
+      }
+    ],
+    "connections": [
+      {
+        "from": 5,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 5,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 7
+      },
+      {
+        "nodeId": 4,
+        "id": 1,
+        "value": 110
+      },
+      {
+        "nodeId": 4,
+        "id": 2,
+        "value": 0.08
+      },
+      {
+        "nodeId": 4,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 4,
+        "id": 5,
+        "value": 1.4
+      },
+      {
+        "nodeId": 4,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 4,
+        "id": 9,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 10,
+        "value": 8
+      },
+      {
+        "nodeId": 4,
+        "id": 11,
+        "value": 18
+      },
+      {
+        "nodeId": 4,
+        "id": 12,
+        "value": 0.7
+      },
+      {
+        "nodeId": 4,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 4,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 16,
+        "value": 0
+      },
+      {
+        "nodeId": 5,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 5,
+        "id": 1,
+        "value": 1200
+      },
+      {
+        "nodeId": 5,
+        "id": 2,
+        "value": 0.5
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/ui/space/cutoff",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 1,
+      "min": 80,
+      "max": 8000,
+      "default": 1200
+    },
+    {
+      "path": "/ui/space/detune",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 11,
+      "min": 0,
+      "max": 100,
+      "default": 18
+    },
+    {
+      "path": "/ui/space/drive",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 5,
+      "min": 0,
+      "max": 10,
+      "default": 1.4
+    },
+    {
+      "path": "/ui/space/level",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 2,
+      "min": 0,
+      "max": 0.3,
+      "default": 0.08
+    },
+    {
+      "path": "/ui/space/pitch",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 1,
+      "min": 55,
+      "max": 880,
+      "default": 110
+    },
+    {
+      "path": "/ui/space/resonance",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 2,
+      "min": 0.1,
+      "max": 1,
+      "default": 0.5
+    },
+    {
+      "path": "/ui/space/spread",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 12,
+      "min": 0,
+      "max": 1,
+      "default": 0.7
+    },
+    {
+      "path": "/ui/space/waveform",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 0,
+      "min": 0,
+      "max": 7,
+      "default": 7
+    }
+  ],
+  "instances": [
+    {
+      "path": "/ui/space/filter",
+      "nodeId": 5
+    },
+    {
+      "path": "/ui/space/voice",
+      "nodeId": 4
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// Examples name imports so each tool has a visible origin.\n// Alternative: import * as manifold from '@manifold/author';\nimport { createGraphWorkspace } from '@manifold/author';\nimport { extendedOscillator, svf } from '@manifold/author/primitives';\nimport { applyStudioGraph } from '@manifold/author/studio-graph';\n\n// Additional parameters — expose named primitive parameters while authoring.\n// The studio edits this literal list; you can also write these definitions here.\nconst studioParameters = [];\nconst studioGraph = { nodes: [], connections: [], removed: [], layout: [] };\n\n// Presentation layout — percentages inside the control panel, independent of DSP.\n// Arrange controls in the studio, or edit these positions directly.\nconst presentationLayout = [\n  { path: '/ui/space/waveform', x: 4, y: 13, width: 28, label: 'Waveform' },\n  { path: '/ui/space/pitch', x: 37, y: 13, width: 28, label: 'Pitch' },\n  { path: '/ui/space/detune', x: 70, y: 13, width: 26, label: 'Detune' },\n  { path: '/ui/space/cutoff', x: 4, y: 41, width: 28, label: 'Brightness' },\n  { path: '/ui/space/resonance', x: 37, y: 41, width: 28 },\n  { path: '/ui/space/spread', x: 4, y: 69, width: 28, label: 'Stereo width' },\n  { path: '/ui/space/drive', x: 37, y: 69, width: 28 },\n  { path: '/ui/space/level', x: 70, y: 69, width: 26 },\n];\n\nexport default function createProject() {\n  // Inputs — named musical controls; these paths also bind the finished face.\n  const controls = {\n    waveform: { path: '/ui/space/waveform', label: 'Waveform', min: 0, max: 7, default: 7,\n      choices: ['Sine', 'Saw', 'Square', 'Triangle', 'Blend', 'Noise', 'Pulse', 'Supersaw'] },\n    pitch: { path: '/ui/space/pitch', label: 'Pitch · Hz', min: 55, max: 880, default: 110 },\n    detune: { path: '/ui/space/detune', label: 'Detune · cents', min: 0, max: 100, default: 18 },\n    spread: { path: '/ui/space/spread', label: 'Stereo spread', min: 0, max: 1, default: 0.7 },\n    cutoff: { path: '/ui/space/cutoff', label: 'Cutoff · Hz', min: 80, max: 8000, default: 1200 },\n    resonance: { path: '/ui/space/resonance', label: 'Resonance', min: 0.1, max: 1, default: 0.5 },\n    drive: { path: '/ui/space/drive', label: 'Drive', min: 0, max: 10, default: 1.4 },\n    level: { path: '/ui/space/level', label: 'Output', min: 0, max: 0.3, default: 0.08 },\n  };\n\n  // Audio interface and composition — an eight-voice drone, generated in Rust.\n  const graph = createGraphWorkspace().setInputSource('none');\n  const voice = graph.add(extendedOscillator.type, { id: 4 });\n  const filter = graph.add(svf.type, { id: 5 });\n  graph.registerInstance('/ui/space/voice', voice);\n  graph.registerInstance('/ui/space/filter', filter);\n  for (const name of ['waveform', 'detune', 'spread', 'drive', 'level']) {\n    const parameter = { detune: 'detuneCents', spread: 'stereoSpread' }[name] ?? name;\n    voice.parameter(parameter).expose(controls[name]);\n  }\n  voice.parameter('frequency').expose(controls.pitch);\n  voice.parameter('unisonVoices').set(8);\n  filter.parameter('cutoff').expose(controls.cutoff);\n  filter.parameter('resonance').expose(controls.resonance);\n  graph.connect(voice.output('out'), filter.input('audio'));\n  graph.connect(filter.output('out'), graph.output.input('in'));\n  applyStudioGraph(graph, studioGraph);\n\n  for (const definition of studioParameters) {\n    const node = graph.findInstance(definition.instance);\n    node.parameter(definition.parameter).expose(definition);\n  }\n\n  // Inspector — automatic declaration order, before any authored layout is needed.\n  const view = Object.values(controls).map(control => ({\n    id: control.path, type: 'parameter', path: control.path, label: control.label,\n    choices: control.choices, group: 'Orbit', style: { accent: '#a5c4c6', background: '#202830', text: '#dbe4ec' },\n  }));\n  for (const definition of studioParameters) {\n    view.push({ id: definition.path, type: 'parameter', path: definition.path,\n      label: definition.label, choices: definition.choices, group: 'Orbit',\n      style: { accent: '#a5c4c6', background: '#202830', text: '#dbe4ec' } });\n  }\n\n  // Plugin face — separate presentation code and layout, saved with this project.\n  const webView = { version: 1, role: 'instrument', height: 520,\n    dependencies: { three: '0.184.0', '@manifold/ui-web/control-panel': '0.1.0' },\n    layout: presentationLayout, source: webViewSource };\n  return { graph, view, webView, editorGraph: studioGraph };\n}\n\n// The view explicitly imports the graphics library and Manifold's existing kit.\n// Its API reads the same named controls; there is no audio implementation here.\nconst webViewSource = `import * as THREE from 'three';\nimport { mountControlPanel } from '@manifold/ui-web/control-panel';\n\nexport default function createView() {\n  return {\n    mount(element, api) {\n      element.innerHTML = \\`\n        <div class=\"orbit-face\">\n          <style>\n            .orbit-face{height:100%;background:oklch(18% .009 240);color:oklch(91% .01 230);font-family:system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden;container-type:inline-size}\n            .orbit-face *{box-sizing:border-box}\n            .orbit-head{display:flex;align-items:center;justify-content:space-between;padding:18px 24px 14px;border-bottom:1px solid #2b333d;flex-shrink:0}\n            .orbit-brand{display:flex;align-items:baseline;gap:12px}.orbit-name{font-size:23px;font-weight:550;letter-spacing:.19em;line-height:1.2}.orbit-sub{font-size:10px;color:#8b9ba9;letter-spacing:.04em}.orbit-mark{font-size:10px;letter-spacing:.14em;color:#8b9ba9}\n            .orbit-scene{flex:1;min-height:90px;position:relative;background:#11171e}\n            .orbit-scene canvas{width:100%;height:100%;display:block;touch-action:none;cursor:grab}\n            .orbit-scene[data-held=true] canvas{cursor:grabbing}\n            .orbit-note{position:absolute;left:24px;top:20px;pointer-events:none}.orbit-note strong{display:block;font-size:44px;font-weight:350;letter-spacing:-.04em;line-height:1}.orbit-note small{display:block;margin-top:8px;color:#92a9bb;font-size:11px;font-variant-numeric:tabular-nums}\n            .orbit-axis{position:absolute;left:24px;bottom:14px;font-size:10px;color:#8597a8;pointer-events:none}\n            .orbit-coordinate{position:absolute;right:24px;bottom:14px;font-size:10px;color:#93b6c7;pointer-events:none;font-variant-numeric:tabular-nums}\n            .orbit-panel{height:250px;flex-shrink:0;border-top:1px solid #2b333d;background:oklch(21% .009 240);position:relative}\n            .orbit-row{position:absolute;left:4%;right:4%;font-size:9px;letter-spacing:.16em;color:#7f92a4;pointer-events:none;border-top:1px solid #303a44;padding-top:5px;line-height:1}\n            .orbit-row-source{top:4%;border:0;padding-top:0}.orbit-row-filter{top:34%}.orbit-row-space{top:62%}\n            .orbit-foot{height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;font-size:9px;letter-spacing:.06em;color:#8999a8;border-top:1px solid #2b333d;flex-shrink:0}\n            .orbit-output{display:flex;align-items:center;gap:10px;font-variant-numeric:tabular-nums}.orbit-meter{width:50px;height:3px;background:#303d49;overflow:hidden}.orbit-meter i{display:block;height:100%;background:#a5c4c6;transform-origin:left;transform:scaleX(0);transition:transform 120ms ease-out}\n            .orbit-face [role=slider] canvas{width:100%;height:100%;display:block}.orbit-face [role=slider]{border-radius:4px;transition:background 120ms ease-out;cursor:ew-resize}\n            .orbit-face [role=slider]:hover{background:rgba(165,196,198,.04)}.orbit-face [role=slider]:focus-visible,.orbit-face select:focus-visible,.orbit-scene canvas:focus-visible{outline:2px solid #a5c4c6;outline-offset:3px}\n            .orbit-face select:hover{border-color:#93acbc!important}.orbit-face select{cursor:pointer}\n            .orbit-help{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}\n            .orbit-compact .orbit-head{padding:12px 20px 10px}.orbit-compact .orbit-name{font-size:20px}.orbit-compact .orbit-note{top:12px;left:20px}.orbit-compact .orbit-note strong{font-size:32px}.orbit-compact .orbit-panel{height:216px}.orbit-compact .orbit-scene{min-height:60px}.orbit-compact .orbit-axis{left:20px;bottom:10px}.orbit-compact .orbit-coordinate{right:20px;bottom:10px}.orbit-compact .orbit-foot{height:25px;padding:0 20px}.orbit-compact .orbit-note small{margin-top:5px}\n            @container(max-width:430px){.orbit-sub,.orbit-mark{display:none}.orbit-coordinate{display:none}.orbit-head{padding-left:16px;padding-right:16px}.orbit-note,.orbit-compact .orbit-note{left:16px}.orbit-axis,.orbit-compact .orbit-axis{left:16px}}\n            @media(prefers-reduced-motion:reduce){.orbit-meter i,.orbit-face [role=slider]{transition:none}}\n          </style>\n          <div class=\"orbit-head\"><div class=\"orbit-brand\"><span class=\"orbit-name\">ORBIT</span><span class=\"orbit-sub\">Unison synthesizer</span></div><span class=\"orbit-mark\">MANIFOLD</span></div>\n          <div class=\"orbit-scene\"><div class=\"orbit-note\"><strong></strong><small></small></div><span class=\"orbit-axis\">Drag pitch + brightness · Shift for fine</span><span class=\"orbit-coordinate\"></span><span class=\"orbit-help\" id=\"orbit-pad-help\">Left and right arrows change pitch. Up and down arrows change brightness. Hold Shift for fine adjustment.</span></div>\n          <div class=\"orbit-panel\"></div>\n          <div class=\"orbit-foot\"><span class=\"orbit-voices\"></span><span class=\"orbit-output\"><span class=\"orbit-meter\" aria-hidden=\"true\"><i></i></span><span class=\"orbit-energy\">−∞ dB</span></span></div>\n        </div>\\`;\n      const face = element.querySelector('.orbit-face');\n      const surface = face.querySelector('.orbit-scene');\n      const controlElement = face.querySelector('.orbit-panel');\n      const pitchPath = '/ui/space/pitch', cutoffPath = '/ui/space/cutoff';\n      const number = value => value.toFixed(value < 100 ? 1 : 0);\n      const panel = mountControlPanel(controlElement, api, {\n        height: 44, fontSize: 11, showChoiceLabels: true, accent: '#a5c4c6', background: '#28343e', text: '#dbe4ec',\n        scales: { [pitchPath]: 'log', [cutoffPath]: 'log' },\n        formatters: {\n          [pitchPath]: value => number(value) + ' Hz',\n          [cutoffPath]: value => value >= 1000 ? (value / 1000).toFixed(2) + ' kHz' : Math.round(value) + ' Hz',\n          '/ui/space/detune': value => number(value) + ' ct',\n          '/ui/space/spread': value => Math.round(value * 100) + '%',\n          '/ui/space/drive': value => value.toFixed(2),\n          '/ui/space/level': value => value > 0 ? (20 * Math.log10(value)).toFixed(1) + ' dB' : '−∞ dB',\n        },\n      });\n      for (const [name, title] of [['source', 'SOURCE'], ['filter', 'FILTER'], ['space', 'SPACE / OUTPUT']]) {\n        const label = document.createElement('div');\n        label.className = 'orbit-row orbit-row-' + name; label.textContent = title; controlElement.append(label);\n      }\n\n      // The sculpture shows actual pitch, brightness, unison and output energy.\n      const scene = new THREE.Scene(); scene.background = new THREE.Color('#11171e');\n      const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 50); camera.position.set(0, 0, 4.8);\n      const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setPixelRatio(Math.min(devicePixelRatio, 2));\n      const canvas = renderer.domElement; canvas.tabIndex = 0;\n      canvas.setAttribute('role', 'group'); canvas.setAttribute('aria-label', 'Orbit pitch and brightness pad');\n      const help = face.querySelector('.orbit-help'); help.id = 'orbit-pad-' + crypto.randomUUID();\n      canvas.setAttribute('aria-describedby', help.id); surface.prepend(canvas);\n      scene.add(new THREE.HemisphereLight('#d1e6ed', '#19232e', 2.2));\n      const light = new THREE.DirectionalLight('#b2d6db', 4); light.position.set(2, 3, 4); scene.add(light);\n      const rim = new THREE.DirectionalLight('#748fae', 3); rim.position.set(-3, 1, -2); scene.add(rim);\n      const body = new THREE.Group(); body.position.x = .5; scene.add(body);\n      const resources = [], keep = resource => { resources.push(resource); return resource; };\n      const core = new THREE.Mesh(keep(new THREE.IcosahedronGeometry(.49, 1)),\n        keep(new THREE.MeshStandardMaterial({ color: '#719ba8', roughness: .28, metalness: .8, flatShading: true })));\n      body.add(core);\n      const shell = new THREE.Mesh(keep(new THREE.IcosahedronGeometry(.55, 1)),\n        keep(new THREE.MeshBasicMaterial({ color: '#8cabb9', wireframe: true, transparent: true, opacity: .26 })));\n      body.add(shell);\n      const rings = [];\n      for (let index = 0; index < 8; index++) {\n        const ring = new THREE.Mesh(keep(new THREE.TorusGeometry(.77 + index * .065, .0045 + index * .0007, 6, 120)),\n          keep(new THREE.MeshStandardMaterial({ color: index % 2 ? '#9aafbb' : '#a5c4c6', roughness: .35, metalness: .65 })));\n        ring.rotation.set(index * .24, index * .16, 0); body.add(ring); rings.push(ring);\n      }\n      const note = face.querySelector('.orbit-note strong'), hz = face.querySelector('.orbit-note small');\n      const names = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];\n      const motion = matchMedia('(prefers-reduced-motion: reduce)');\n      let targetY = 0, targetZ = 0;\n      function update() {\n        const pitch = api.value(pitchPath), cutoff = api.value(cutoffPath);\n        const voices = api.value('/ui/space/voices') ?? 8;\n        const midi = Math.round(69 + 12 * Math.log2(pitch / 440));\n        note.textContent = names[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);\n        hz.textContent = pitch.toFixed(1) + ' Hz';\n        face.querySelector('.orbit-coordinate').textContent = Math.round(cutoff) + ' Hz brightness';\n        face.querySelector('.orbit-voices').textContent = voices + ' voices';\n        targetY = Math.log(cutoff / 80) / Math.log(100) * 1.8;\n        targetZ = (Math.log(pitch / 55) / Math.log(16) - .5) * .8;\n        rings.forEach((ring, index) => { ring.visible = index < voices; ring.rotation.x = index * (.08 + api.value('/ui/space/detune') / 150); });\n        canvas.dataset.pitch = String(pitch); canvas.dataset.cutoff = String(cutoff);\n      }\n\n      // Relative gestures preserve the sound on contact. All edits use live bindings.\n      let held = null, anchor;\n      function move(event) {\n        if (event.pointerId !== held) return;\n        const rect = canvas.getBoundingClientRect(), fine = event.shiftKey ? .15 : 1;\n        const dx = (event.clientX - anchor.x) / rect.width * fine;\n        const dy = (anchor.y - event.clientY) / rect.height * fine;\n        api.set(pitchPath, Math.max(55, Math.min(880, anchor.pitch * Math.pow(16, dx)))).catch(console.error);\n        api.set(cutoffPath, Math.max(80, Math.min(8000, anchor.cutoff * Math.pow(100, dy)))).catch(console.error);\n      }\n      const down = event => {\n        if (held !== null || event.button !== 0) return;\n        held = event.pointerId; anchor = {x:event.clientX,y:event.clientY,pitch:api.value(pitchPath),cutoff:api.value(cutoffPath)};\n        canvas.focus({preventScroll:true}); canvas.setPointerCapture(held); surface.dataset.held = 'true';\n      };\n      const cancel = () => { held = null; surface.dataset.held = 'false'; };\n      const up = event => { if (event.pointerId !== held) return; move(event); if(canvas.hasPointerCapture(held))canvas.releasePointerCapture(held); cancel(); };\n      const key = event => {\n        const direction = {ArrowRight:1,ArrowLeft:-1,ArrowUp:1,ArrowDown:-1}[event.key];\n        if (!direction) return; event.preventDefault();\n        const path = event.key === 'ArrowRight' || event.key === 'ArrowLeft' ? pitchPath : cutoffPath;\n        const min = path === pitchPath ? 55 : 80, max = path === pitchPath ? 880 : 8000;\n        const value = api.value(path) * Math.pow(2, direction / (event.shiftKey ? 120 : 12));\n        api.set(path, Math.max(min, Math.min(max, value))).catch(console.error);\n      };\n      const events = {pointerdown:down,pointermove:move,pointerup:up,pointercancel:cancel,lostpointercapture:cancel,keydown:key};\n      for (const [name, handler] of Object.entries(events)) canvas.addEventListener(name, handler);\n      const resize = new ResizeObserver(() => {\n        face.classList.toggle('orbit-compact', element.clientHeight < 470);\n        camera.aspect = surface.clientWidth / Math.max(1, surface.clientHeight);\n        camera.position.z = Math.max(4.8, 1.7 / (Math.tan(camera.fov * Math.PI / 360) * camera.aspect));\n        body.position.x = Math.min(.55, Math.tan(camera.fov * Math.PI / 360) * camera.position.z * camera.aspect * .18);\n        camera.updateProjectionMatrix();\n        renderer.setSize(surface.clientWidth, surface.clientHeight, false);\n      });\n      resize.observe(element); resize.observe(surface);\n      const meter = face.querySelector('.orbit-meter i'), energy = face.querySelector('.orbit-energy');\n      renderer.setAnimationLoop(() => {\n        const rms = api.analysis()?.rms ?? 0, db = rms > 0 ? 20 * Math.log10(rms) : -Infinity;\n        const easing = motion.matches ? 1 : .18;\n        body.rotation.y += (targetY - body.rotation.y) * easing;\n        body.rotation.z += (targetZ - body.rotation.z) * easing;\n        core.scale.setScalar(motion.matches ? 1 : 1 + Math.min(.08, rms));\n        energy.textContent = Number.isFinite(db) ? db.toFixed(1) + ' dB' : '−∞ dB';\n        meter.style.transform = 'scaleX(' + Math.max(0, Math.min(1, (db + 60) / 60)) + ')';\n        renderer.render(scene, camera);\n      });\n      return { update, dispose() {\n        panel.dispose(); resize.disconnect(); renderer.setAnimationLoop(null);\n        for (const [name, handler] of Object.entries(events)) canvas.removeEventListener(name, handler);\n        resources.forEach(resource => resource.dispose()); renderer.dispose(); renderer.forceContextLoss(); face.remove();\n      } };\n    },\n  };\n}\n`;\n",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "/ui/space/waveform",
+        "type": "parameter",
+        "path": "/ui/space/waveform",
+        "label": "Waveform",
+        "choices": [
+          "Sine",
+          "Saw",
+          "Square",
+          "Triangle",
+          "Blend",
+          "Noise",
+          "Pulse",
+          "Supersaw"
+        ],
+        "group": "Orbit",
+        "style": {
+          "accent": "#a5c4c6",
+          "background": "#202830",
+          "text": "#dbe4ec"
+        }
+      },
+      {
+        "id": "/ui/space/pitch",
+        "type": "parameter",
+        "path": "/ui/space/pitch",
+        "label": "Pitch · Hz",
+        "group": "Orbit",
+        "style": {
+          "accent": "#a5c4c6",
+          "background": "#202830",
+          "text": "#dbe4ec"
+        }
+      },
+      {
+        "id": "/ui/space/detune",
+        "type": "parameter",
+        "path": "/ui/space/detune",
+        "label": "Detune · cents",
+        "group": "Orbit",
+        "style": {
+          "accent": "#a5c4c6",
+          "background": "#202830",
+          "text": "#dbe4ec"
+        }
+      },
+      {
+        "id": "/ui/space/spread",
+        "type": "parameter",
+        "path": "/ui/space/spread",
+        "label": "Stereo spread",
+        "group": "Orbit",
+        "style": {
+          "accent": "#a5c4c6",
+          "background": "#202830",
+          "text": "#dbe4ec"
+        }
+      },
+      {
+        "id": "/ui/space/cutoff",
+        "type": "parameter",
+        "path": "/ui/space/cutoff",
+        "label": "Cutoff · Hz",
+        "group": "Orbit",
+        "style": {
+          "accent": "#a5c4c6",
+          "background": "#202830",
+          "text": "#dbe4ec"
+        }
+      },
+      {
+        "id": "/ui/space/resonance",
+        "type": "parameter",
+        "path": "/ui/space/resonance",
+        "label": "Resonance",
+        "group": "Orbit",
+        "style": {
+          "accent": "#a5c4c6",
+          "background": "#202830",
+          "text": "#dbe4ec"
+        }
+      },
+      {
+        "id": "/ui/space/drive",
+        "type": "parameter",
+        "path": "/ui/space/drive",
+        "label": "Drive",
+        "group": "Orbit",
+        "style": {
+          "accent": "#a5c4c6",
+          "background": "#202830",
+          "text": "#dbe4ec"
+        }
+      },
+      {
+        "id": "/ui/space/level",
+        "type": "parameter",
+        "path": "/ui/space/level",
+        "label": "Output",
+        "group": "Orbit",
+        "style": {
+          "accent": "#a5c4c6",
+          "background": "#202830",
+          "text": "#dbe4ec"
+        }
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

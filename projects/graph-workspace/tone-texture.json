@@ -1,0 +1,42 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 3, "type": "output" },
+      { "id": 4, "type": "oscillator", "a": 220, "b": 0.4 },
+      { "id": 5, "type": "noise", "a": 0.08, "b": 0.5 },
+      { "id": 6, "type": "sum2", "a": 1, "b": 1 },
+      { "id": 7, "type": "svf" },
+      { "id": 8, "type": "modulated-gain", "a": 0.5, "b": 0.4 },
+      { "id": 9, "type": "lfo", "a": 2 }
+    ],
+    "connections": [
+      { "from": 4, "to": 6, "inputPort": 0 },
+      { "from": 5, "to": 6, "inputPort": 1 },
+      { "from": 6, "to": 7, "inputPort": 0 },
+      { "from": 7, "to": 8, "inputPort": 0 },
+      { "from": 9, "to": 8, "inputPort": 1 },
+      { "from": 8, "to": 3, "inputPort": 0 }
+    ],
+    "initialParameters": [
+      { "nodeId": 4, "id": 0, "value": 0 },
+      { "nodeId": 4, "id": 1, "value": 220 },
+      { "nodeId": 4, "id": 2, "value": 0.4 },
+      { "nodeId": 5, "id": 0, "value": 0.08 },
+      { "nodeId": 5, "id": 1, "value": 0.5 },
+      { "nodeId": 7, "id": 0, "value": 0 },
+      { "nodeId": 7, "id": 1, "value": 3200 },
+      { "nodeId": 7, "id": 2, "value": 0.75 },
+      { "nodeId": 8, "id": 0, "value": 0.5 },
+      { "nodeId": 8, "id": 1, "value": 0.4 },
+      { "nodeId": 9, "id": 0, "value": 0 },
+      { "nodeId": 9, "id": 1, "value": 2 }
+    ]
+  }
+}

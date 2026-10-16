@@ -1,0 +1,938 @@
+{
+  "recordedAt": "2026-09-30T06:52:36.421Z",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174",
+  "chromiumVersion": "152.0.7977.82",
+  "hashes": {
+    "crates/manifold-core/src/graph.rs": "801da94141753be6f73816fb7c3e0ae6599f2f41bf9a55e64790869a5fd4e381",
+    "crates/manifold-core/src/loop_capture.rs": "d79f37aa6ca8fe9625dcc780ab2ba095c5bdb493d9b0b976e0584a2864982290",
+    "crates/manifold-web/src/prepared_worklet.rs": "51f5d7fec70ea38cef393559b405c0a2ce376b4f0c52431708c7024e563c0e35",
+    "packages/manifold-author/prepared-runtime.js": "975a52a84b7d4d7abb6596fffffad6b6626abe43a14e866b260cdd22776f779a",
+    "packages/manifold-author/prepared-compiler.js": "a484dc89c4b5cabec14f534fe6190260581253cdead87b19de87a0a68acdf060",
+    "packages/manifold-author/prepared-processor.js": "97a6cd0a67aeb3fd82aa643c22c73295d05aeabff6c02f36ca05c0d1b68458b7",
+    "packages/manifold-author/browser.js": "fd1608e389fbd640438005c29de2e127e5663c14b99fce8ccf23635781f5fbe3",
+    "packages/manifold-author/index.js": "b98549f0561eab161abc139d74e7e56d81828a8647d13dc3a4ac339d6b993655",
+    "packages/manifold-author/sample-assets.js": "7bce09230a445265c5d19f1be0e2c4427eef95481315c8ffee240a7135bf81c4",
+    "packages/manifold-author/examples/four-layer-loops.mjs": "be4fd71ea0bbc411badb1bc2223721a9c0325b4aadbe617b386127ec28920e9c",
+    "packages/manifold-author/examples/loop-authoring.mjs": "0fbd507774e71d543936175d1757db88d403cdd023d51fadfd6e69e2fea4c909",
+    "packages/manifold-author/runtime/manifold_prepared.wasm": "66eacaaceb4e03a4dfd195a0592963a266ba087427bc7c387326ff7f5f48fdec",
+    "web/src/prepared-loops.js": "d39a9fc43df2706a30bf84325f31ea49065892134e6f622d51b3b0dbe7750234"
+  },
+  "ui": {
+    "graph": {
+      "format": "manifold.project",
+      "schemaVersion": 1,
+      "projectId": "manifold.graph-workspace",
+      "signal": {
+        "inputs": 2,
+        "outputs": 2,
+        "inputSource": "none",
+        "nodes": [
+          {
+            "id": 1,
+            "type": "input.raw"
+          },
+          {
+            "id": 3,
+            "type": "output"
+          },
+          {
+            "id": 4,
+            "type": "oscillator",
+            "a": 220,
+            "b": 0.4
+          },
+          {
+            "id": 5,
+            "type": "fixed-gain",
+            "a": 4
+          },
+          {
+            "id": 8,
+            "type": "mixer9",
+            "a": 9,
+            "b": 1
+          },
+          {
+            "id": 9,
+            "type": "distortion",
+            "a": 4,
+            "b": 0.7
+          },
+          {
+            "id": 70,
+            "type": "loop-capture",
+            "a": 2,
+            "b": 1
+          },
+          {
+            "id": 71,
+            "type": "loop-capture",
+            "a": 2,
+            "b": 1
+          },
+          {
+            "id": 72,
+            "type": "loop-capture",
+            "a": 2,
+            "b": 1
+          },
+          {
+            "id": 73,
+            "type": "loop-capture",
+            "a": 2,
+            "b": 1
+          },
+          {
+            "id": 80,
+            "type": "retrospective-capture",
+            "a": 30,
+            "b": 0
+          }
+        ],
+        "connections": [
+          {
+            "from": 9,
+            "outputPort": 0,
+            "to": 3,
+            "inputPort": 0
+          },
+          {
+            "from": 4,
+            "outputPort": 0,
+            "to": 5,
+            "inputPort": 0
+          },
+          {
+            "from": 70,
+            "outputPort": 0,
+            "to": 8,
+            "inputPort": 0
+          },
+          {
+            "from": 71,
+            "outputPort": 0,
+            "to": 8,
+            "inputPort": 1
+          },
+          {
+            "from": 72,
+            "outputPort": 0,
+            "to": 8,
+            "inputPort": 2
+          },
+          {
+            "from": 73,
+            "outputPort": 0,
+            "to": 8,
+            "inputPort": 3
+          },
+          {
+            "from": 8,
+            "outputPort": 0,
+            "to": 9,
+            "inputPort": 0
+          },
+          {
+            "from": 5,
+            "outputPort": 0,
+            "to": 70,
+            "inputPort": 0
+          },
+          {
+            "from": 5,
+            "outputPort": 0,
+            "to": 71,
+            "inputPort": 0
+          },
+          {
+            "from": 5,
+            "outputPort": 0,
+            "to": 72,
+            "inputPort": 0
+          },
+          {
+            "from": 5,
+            "outputPort": 0,
+            "to": 73,
+            "inputPort": 0
+          },
+          {
+            "from": 5,
+            "outputPort": 0,
+            "to": 80,
+            "inputPort": 0
+          }
+        ],
+        "initialParameters": [
+          {
+            "nodeId": 4,
+            "id": 0,
+            "value": 0
+          },
+          {
+            "nodeId": 4,
+            "id": 1,
+            "value": 220
+          },
+          {
+            "nodeId": 4,
+            "id": 2,
+            "value": 0.4000000059604645
+          },
+          {
+            "nodeId": 8,
+            "id": 0,
+            "value": 0.25
+          },
+          {
+            "nodeId": 9,
+            "id": 0,
+            "value": 4
+          },
+          {
+            "nodeId": 9,
+            "id": 1,
+            "value": 0.4000000059604645
+          },
+          {
+            "nodeId": 9,
+            "id": 2,
+            "value": 1
+          },
+          {
+            "nodeId": 70,
+            "id": 0,
+            "value": 0
+          },
+          {
+            "nodeId": 70,
+            "id": 1,
+            "value": 1
+          },
+          {
+            "nodeId": 70,
+            "id": 2,
+            "value": 0
+          },
+          {
+            "nodeId": 70,
+            "id": 3,
+            "value": 1
+          },
+          {
+            "nodeId": 70,
+            "id": 4,
+            "value": 0
+          },
+          {
+            "nodeId": 70,
+            "id": 5,
+            "value": 1
+          },
+          {
+            "nodeId": 70,
+            "id": 6,
+            "value": 0.5
+          },
+          {
+            "nodeId": 71,
+            "id": 0,
+            "value": 0
+          },
+          {
+            "nodeId": 71,
+            "id": 1,
+            "value": 0
+          },
+          {
+            "nodeId": 71,
+            "id": 2,
+            "value": 0
+          },
+          {
+            "nodeId": 71,
+            "id": 3,
+            "value": 1
+          },
+          {
+            "nodeId": 71,
+            "id": 4,
+            "value": 0
+          },
+          {
+            "nodeId": 71,
+            "id": 5,
+            "value": 1
+          },
+          {
+            "nodeId": 71,
+            "id": 6,
+            "value": 0.5
+          },
+          {
+            "nodeId": 72,
+            "id": 0,
+            "value": 0
+          },
+          {
+            "nodeId": 72,
+            "id": 1,
+            "value": 0
+          },
+          {
+            "nodeId": 72,
+            "id": 2,
+            "value": 0
+          },
+          {
+            "nodeId": 72,
+            "id": 3,
+            "value": 1
+          },
+          {
+            "nodeId": 72,
+            "id": 4,
+            "value": 0
+          },
+          {
+            "nodeId": 72,
+            "id": 5,
+            "value": 1
+          },
+          {
+            "nodeId": 72,
+            "id": 6,
+            "value": 0.5
+          },
+          {
+            "nodeId": 73,
+            "id": 0,
+            "value": 0
+          },
+          {
+            "nodeId": 73,
+            "id": 1,
+            "value": 0
+          },
+          {
+            "nodeId": 73,
+            "id": 2,
+            "value": 0
+          },
+          {
+            "nodeId": 73,
+            "id": 3,
+            "value": 1
+          },
+          {
+            "nodeId": 73,
+            "id": 4,
+            "value": 0
+          },
+          {
+            "nodeId": 73,
+            "id": 5,
+            "value": 1
+          },
+          {
+            "nodeId": 73,
+            "id": 6,
+            "value": 0.5
+          }
+        ]
+      },
+      "instances": [
+        {
+          "path": "/loop/audition/history",
+          "nodeId": 80
+        },
+        {
+          "path": "/loop/audition/insert",
+          "nodeId": 9
+        },
+        {
+          "path": "/loop/audition/mix",
+          "nodeId": 8
+        },
+        {
+          "path": "/loop/audition/source",
+          "nodeId": 4
+        },
+        {
+          "path": "/loop/audition/trim",
+          "nodeId": 5
+        },
+        {
+          "path": "/rack_host/layers/1/loop",
+          "nodeId": 70
+        },
+        {
+          "path": "/rack_host/layers/2/loop",
+          "nodeId": 71
+        },
+        {
+          "path": "/rack_host/layers/3/loop",
+          "nodeId": 72
+        },
+        {
+          "path": "/rack_host/layers/4/loop",
+          "nodeId": 73
+        }
+      ]
+    },
+    "diagnostics": {
+      "execution": "prepared",
+      "audioBlocks": 180,
+      "rustProcessedBlocks": 164,
+      "publications": 2,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 7,
+      "lastPublicationContextFrame": 17920,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 34078720,
+      "lastPreparationMs": 7.050000071525574,
+      "lastPublicationMs": 21.1599999666214,
+      "compilerFailed": false,
+      "processorFailed": false,
+      "eventsAdmitted": 0,
+      "eventsConsumed": 0,
+      "eventsCancelled": 0,
+      "eventsRejected": 0,
+      "eventsPending": 0,
+      "lastEventContextFrame": 0,
+      "renderQuantum": 128
+    }
+  },
+  "pair": {
+    "frames": 73472,
+    "overflow": false,
+    "maxDifference": 0,
+    "differingSamples": 0,
+    "peak": 0.800000011920929,
+    "edits": [
+      {
+        "stage": "recording",
+        "index": 0,
+        "totalMs": 24.860000014305115,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 72,
+          "rustProcessedBlocks": 72,
+          "publications": 2,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 7,
+          "lastPublicationContextFrame": 8704,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 34078720,
+          "lastPreparationMs": 6.884999990463257,
+          "lastPublicationMs": 20.679999947547913,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 0,
+          "eventsConsumed": 0,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 0,
+          "renderQuantum": 128
+        }
+      },
+      {
+        "stage": "recording",
+        "index": 1,
+        "totalMs": 13.605000019073486,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 96,
+          "rustProcessedBlocks": 96,
+          "publications": 3,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 7,
+          "lastPublicationContextFrame": 11776,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 34078720,
+          "lastPreparationMs": 1.6500000953674316,
+          "lastPublicationMs": 9.004999995231628,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 0,
+          "eventsConsumed": 0,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 0,
+          "renderQuantum": 128
+        }
+      },
+      {
+        "stage": "recording",
+        "index": 2,
+        "totalMs": 12.754999995231628,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 120,
+          "rustProcessedBlocks": 120,
+          "publications": 4,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 7,
+          "lastPublicationContextFrame": 14848,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 34078720,
+          "lastPreparationMs": 1.3149999380111694,
+          "lastPublicationMs": 8.475000023841858,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 0,
+          "eventsConsumed": 0,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 0,
+          "renderQuantum": 128
+        }
+      },
+      {
+        "stage": "recording",
+        "index": 3,
+        "totalMs": 15,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 144,
+          "rustProcessedBlocks": 144,
+          "publications": 5,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 7,
+          "lastPublicationContextFrame": 17920,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 34078720,
+          "lastPreparationMs": 1.209999918937683,
+          "lastPublicationMs": 10.690000057220459,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 0,
+          "eventsConsumed": 0,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 0,
+          "renderQuantum": 128
+        }
+      },
+      {
+        "stage": "playing",
+        "index": 0,
+        "totalMs": 13.65499997138977,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 229,
+          "rustProcessedBlocks": 229,
+          "publications": 6,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 7,
+          "lastPublicationContextFrame": 28928,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 34078720,
+          "lastPreparationMs": 1.1299999952316284,
+          "lastPublicationMs": 8.110000014305115,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 0,
+          "eventsConsumed": 0,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 0,
+          "renderQuantum": 128
+        }
+      },
+      {
+        "stage": "playing",
+        "index": 1,
+        "totalMs": 13.350000023841858,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 253,
+          "rustProcessedBlocks": 253,
+          "publications": 7,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 7,
+          "lastPublicationContextFrame": 32000,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 34078720,
+          "lastPreparationMs": 1.2899999618530273,
+          "lastPublicationMs": 8.360000014305115,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 0,
+          "eventsConsumed": 0,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 0,
+          "renderQuantum": 128
+        }
+      },
+      {
+        "stage": "playing",
+        "index": 2,
+        "totalMs": 12.809999942779541,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 277,
+          "rustProcessedBlocks": 277,
+          "publications": 8,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 7,
+          "lastPublicationContextFrame": 35072,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 34078720,
+          "lastPreparationMs": 1.600000023841858,
+          "lastPublicationMs": 8.870000004768372,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 0,
+          "eventsConsumed": 0,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 0,
+          "renderQuantum": 128
+        }
+      },
+      {
+        "stage": "playing",
+        "index": 3,
+        "totalMs": 14.955000042915344,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 301,
+          "rustProcessedBlocks": 301,
+          "publications": 9,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 7,
+          "lastPublicationContextFrame": 38144,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 34078720,
+          "lastPreparationMs": 1.2300000190734863,
+          "lastPublicationMs": 10.519999980926514,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 0,
+          "eventsConsumed": 0,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 0,
+          "renderQuantum": 128
+        }
+      },
+      {
+        "stage": "playing",
+        "index": 4,
+        "totalMs": 14.93500006198883,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 325,
+          "rustProcessedBlocks": 325,
+          "publications": 10,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 7,
+          "lastPublicationContextFrame": 41216,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 34078720,
+          "lastPreparationMs": 1.215000033378601,
+          "lastPublicationMs": 10.365000009536743,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 0,
+          "eventsConsumed": 0,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 0,
+          "renderQuantum": 128
+        }
+      },
+      {
+        "stage": "playing",
+        "index": 5,
+        "totalMs": 11.585000038146973,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 349,
+          "rustProcessedBlocks": 349,
+          "publications": 11,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 7,
+          "lastPublicationContextFrame": 44288,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 34078720,
+          "lastPreparationMs": 1.1500000953674316,
+          "lastPublicationMs": 8.02999997138977,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 0,
+          "eventsConsumed": 0,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 0,
+          "renderQuantum": 128
+        }
+      },
+      {
+        "stage": "playing",
+        "index": 6,
+        "totalMs": 14.209999918937683,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 373,
+          "rustProcessedBlocks": 373,
+          "publications": 12,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 7,
+          "lastPublicationContextFrame": 47360,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 34078720,
+          "lastPreparationMs": 1.1799999475479126,
+          "lastPublicationMs": 10.269999980926514,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 0,
+          "eventsConsumed": 0,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 0,
+          "renderQuantum": 128
+        }
+      },
+      {
+        "stage": "playing",
+        "index": 7,
+        "totalMs": 14.849999904632568,
+        "diagnostics": {
+          "execution": "prepared",
+          "audioBlocks": 397,
+          "rustProcessedBlocks": 397,
+          "publications": 13,
+          "rustProcessingFailures": 0,
+          "rustCallbackAllocations": 0,
+          "rustCallbackDeallocations": 0,
+          "lastTransferredNodes": 7,
+          "lastPublicationContextFrame": 50432,
+          "outputLatencyBlocks": 0,
+          "memoryBytes": 34078720,
+          "lastPreparationMs": 1.4149999618530273,
+          "lastPublicationMs": 10.555000066757202,
+          "compilerFailed": false,
+          "processorFailed": false,
+          "eventsAdmitted": 0,
+          "eventsConsumed": 0,
+          "eventsCancelled": 0,
+          "eventsRejected": 0,
+          "eventsPending": 0,
+          "lastEventContextFrame": 0,
+          "renderQuantum": 128
+        }
+      }
+    ],
+    "cursorBefore": {
+      "startOffset": 52992,
+      "capacity": 1440000
+    },
+    "cursorAfter": {
+      "startOffset": 52992,
+      "capacity": 1440000
+    },
+    "takes": [
+      {
+        "layer": 1,
+        "frames": 20864,
+        "referenceFrames": 20864,
+        "differingSamples": 0
+      },
+      {
+        "layer": 2,
+        "frames": 20864,
+        "referenceFrames": 20864,
+        "differingSamples": 0
+      },
+      {
+        "layer": 3,
+        "frames": 20864,
+        "referenceFrames": 20864,
+        "differingSamples": 0
+      },
+      {
+        "layer": 4,
+        "frames": 20864,
+        "referenceFrames": 20864,
+        "differingSamples": 0
+      }
+    ],
+    "activeSaveError": "Stop recording layer 1 before saving",
+    "primary": {
+      "execution": "prepared",
+      "audioBlocks": 574,
+      "rustProcessedBlocks": 574,
+      "publications": 16,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 7,
+      "lastPublicationContextFrame": 70912,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 34078720,
+      "lastPreparationMs": 1.2799999713897705,
+      "lastPublicationMs": 12.620000004768372,
+      "compilerFailed": false,
+      "processorFailed": false,
+      "eventsAdmitted": 0,
+      "eventsConsumed": 0,
+      "eventsCancelled": 0,
+      "eventsRejected": 0,
+      "eventsPending": 0,
+      "lastEventContextFrame": 0,
+      "renderQuantum": 128
+    },
+    "reference": {
+      "execution": "prepared",
+      "audioBlocks": 574,
+      "rustProcessedBlocks": 574,
+      "publications": 1,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 0,
+      "lastPublicationContextFrame": 0,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 22544384,
+      "lastPreparationMs": 7.045000076293945,
+      "lastPublicationMs": 9.75,
+      "compilerFailed": false,
+      "processorFailed": false,
+      "eventsAdmitted": 0,
+      "eventsConsumed": 0,
+      "eventsCancelled": 0,
+      "eventsRejected": 0,
+      "eventsPending": 0,
+      "lastEventContextFrame": 0,
+      "renderQuantum": 128
+    }
+  },
+  "replacementProof": {
+    "frames": 32,
+    "differingSamples": 0,
+    "diagnostics": {
+      "execution": "prepared",
+      "audioBlocks": 574,
+      "rustProcessedBlocks": 574,
+      "publications": 17,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 6,
+      "lastPublicationContextFrame": 73984,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 34078720,
+      "lastPreparationMs": 2.5800000429153442,
+      "lastPublicationMs": 12.665000081062317,
+      "compilerFailed": false,
+      "processorFailed": false,
+      "eventsAdmitted": 0,
+      "eventsConsumed": 0,
+      "eventsCancelled": 0,
+      "eventsRejected": 0,
+      "eventsPending": 0,
+      "lastEventContextFrame": 0,
+      "renderQuantum": 128
+    }
+  },
+  "rejection": {
+    "message": "Error: Loop asset loading failed",
+    "frames": 32,
+    "first": 0.23000000417232513,
+    "diagnostics": {
+      "execution": "prepared",
+      "audioBlocks": 574,
+      "rustProcessedBlocks": 574,
+      "publications": 17,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 6,
+      "lastPublicationContextFrame": 73984,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 35258368,
+      "lastPreparationMs": 2.5800000429153442,
+      "lastPublicationMs": 12.665000081062317,
+      "compilerFailed": false,
+      "processorFailed": false,
+      "eventsAdmitted": 0,
+      "eventsConsumed": 0,
+      "eventsCancelled": 0,
+      "eventsRejected": 0,
+      "eventsPending": 0,
+      "lastEventContextFrame": 0,
+      "renderQuantum": 128
+    }
+  },
+  "restore": [
+    {
+      "nodeId": 71,
+      "frames": 20864,
+      "expectedFrames": 20864,
+      "differingSamples": 0,
+      "play": 1
+    },
+    {
+      "nodeId": 72,
+      "frames": 20864,
+      "expectedFrames": 20864,
+      "differingSamples": 0,
+      "play": 1
+    },
+    {
+      "nodeId": 73,
+      "frames": 20864,
+      "expectedFrames": 20864,
+      "differingSamples": 0,
+      "play": 1
+    },
+    {
+      "nodeId": 170,
+      "frames": 20864,
+      "expectedFrames": 20864,
+      "differingSamples": 0,
+      "play": 1
+    }
+  ],
+  "restorePeak": 0.7903351187705994,
+  "workersAfterClose": [],
+  "pageErrors": []
+}

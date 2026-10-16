@@ -1,0 +1,28 @@
+{
+  "date": "2026-10-10",
+  "project": "Nacre",
+  "operation": "graph.group + graph.ungroup",
+  "cycles": 3,
+  "browser": {
+    "operations": 6,
+    "p50Ms": 101.8,
+    "p95Ms": 185.2,
+    "minMs": 81.5,
+    "maxMs": 185.2,
+    "audioRunning": false,
+    "graphUnchanged": true,
+    "groupsRestored": true
+  },
+  "native": {
+    "operations": 6,
+    "p50Ms": 2018.1,
+    "p95Ms": 2027.0,
+    "minMs": 1982.7,
+    "maxMs": 2027.0,
+    "audioRunning": true,
+    "audioSink": "manifold_review_null",
+    "audioBlocksAdvanced": true,
+    "graphUnchanged": true,
+    "groupsRestored": true
+  }
+}

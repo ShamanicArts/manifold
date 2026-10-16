@@ -1,0 +1,85 @@
+// Exercise the packaged graph editor gesture without opening a DAW window.
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+
+const requireFromWeb = createRequire(new URL('../web/package.json', import.meta.url));
+const { chromium } = requireFromWeb('playwright-core');
+const browser = await chromium.launch({
+  executablePath: process.env.MANIFOLD_CHROMIUM ?? '/usr/bin/chromium',
+  headless: true,
+  args: ['--no-sandbox'],
+});
+try {
+  const page = await browser.newPage();
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    window.__captureMessages = [];
+    window.ipc = { postMessage(message) { window.__captureMessages.push(JSON.parse(message)); } };
+  });
+  await page.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/graph-module.html?editor`);
+  await page.evaluate(() => window.manifoldEditorReceive({
+    schemaVersion: 1,
+    id: 'manifold.graph',
+    captureGesture: true,
+    captureSources: [
+      { id: 0, nodeId: 6, name: 'Audio Input', kind: 'input' },
+      { id: 1, nodeId: 10, name: 'Sidechain', kind: 'sidechain' },
+    ],
+    selectedCaptureNodeId: 10,
+    nodes: [
+      { id: 5, type: 'sample-instrument' },
+      { id: 6, type: 'retrospective-capture' },
+      { id: 10, type: 'retrospective-capture' },
+    ],
+    controls: [],
+  }));
+  assert.equal(await page.locator('#graph-capture').isVisible(), true);
+  assert.equal(await page.locator('#graph-capture-source option').count(), 2);
+  assert.deepEqual(await page.locator('#graph-capture-source option').allTextContents(),
+    ['0 · Audio Input', '1 · Sidechain']);
+  assert.equal(await page.locator('#graph-capture-source').inputValue(), '10');
+  await page.locator('#graph-capture-source').selectOption('10');
+  await page.locator('#graph-capture-seconds').fill('0.2');
+  await page.locator('#graph-capture-go').click();
+  assert.equal(await page.locator('#graph-capture-go').isDisabled(), true);
+  const start = await page.evaluate(() => window.__captureMessages.find((message) => message.kind === 'capture-start'));
+  assert.deepEqual(start, { version: 1, kind: 'capture-start', nodeId: 10, seconds: 0.2 });
+  await page.waitForTimeout(150);
+  assert.equal(await page.evaluate(() => window.__captureMessages.some((message) => message.kind === 'capture-finish')), false);
+  await page.evaluate(() => window.manifoldEditorStatus('Freezing the selected source…'));
+  await page.waitForFunction(() => window.__captureMessages.some((message) => message.kind === 'capture-finish'));
+  const finish = await page.evaluate(() => window.__captureMessages.find((message) => message.kind === 'capture-finish'));
+  assert.deepEqual(finish, { version: 1, kind: 'capture-finish', instrumentId: 5 });
+  await page.evaluate(() => window.manifoldCaptureResult(true, 'Captured source published.'));
+  assert.equal(await page.locator('#graph-capture-go').isEnabled(), true);
+  assert.match(await page.locator('#graph-status').textContent(), /Captured source published/);
+  await page.locator('#graph-capture-mode').selectOption('bars');
+  await page.locator('#graph-capture-seconds').fill('0.5');
+  await page.locator('#graph-capture-go').click();
+  const barStart = await page.evaluate(() => window.__captureMessages.filter((message) => message.kind === 'capture-start').at(-1));
+  assert.deepEqual(barStart, { version: 1, kind: 'capture-start', nodeId: 10, bars: 0.5 });
+  await page.evaluate(() => window.manifoldCaptureResult(false, 'Host tempo unavailable.'));
+  await page.locator('#graph-capture-mode').selectOption('free');
+  assert.equal(await page.locator('#graph-capture-seconds').isHidden(), true);
+  assert.equal(await page.locator('#graph-capture-go').textContent(), 'Arm free capture');
+  await page.locator('#graph-capture-go').click();
+  assert.deepEqual(await page.evaluate(() => window.__captureMessages.at(-1)),
+    { version: 1, kind: 'capture-free-arm', nodeId: 10 });
+  assert.equal(await page.locator('#graph-capture-go').isDisabled(), true);
+  await page.evaluate(() => window.manifoldEditorStatus('Free capture armed. Press Stop free capture to publish.'));
+  assert.equal(await page.locator('#graph-capture-go').textContent(), 'Stop free capture');
+  assert.equal(await page.locator('#graph-capture-source').isDisabled(), true);
+  await page.locator('#graph-capture-go').click();
+  assert.deepEqual(await page.evaluate(() => window.__captureMessages.at(-1)),
+    { version: 1, kind: 'capture-free-stop', nodeId: 10 });
+  await page.evaluate(() => window.manifoldEditorStatus('Freezing free capture…'));
+  await page.waitForFunction(() => window.__captureMessages.filter((message) => message.kind === 'capture-finish').length >= 2);
+  await page.evaluate(() => window.manifoldCaptureResult(true, 'Free capture published.'));
+  assert.equal(await page.locator('#graph-capture-go').textContent(), 'Arm free capture');
+  assert.equal(await page.locator('#graph-capture-source').isEnabled(), true);
+  assert.deepEqual(errors, []);
+  console.log('Graph editor capture: seconds, bars, free arm/stop, result poll, and completion passed');
+} finally {
+  await browser.close();
+}

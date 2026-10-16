@@ -1,0 +1,1050 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "external",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "eq8"
+      }
+    ],
+    "connections": [
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 4,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 1,
+        "value": 1
+      },
+      {
+        "nodeId": 4,
+        "id": 2,
+        "value": 60
+      },
+      {
+        "nodeId": 4,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 4,
+        "value": 1
+      },
+      {
+        "nodeId": 4,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 7,
+        "value": 120
+      },
+      {
+        "nodeId": 4,
+        "id": 8,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 9,
+        "value": 1
+      },
+      {
+        "nodeId": 4,
+        "id": 10,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 12,
+        "value": 250
+      },
+      {
+        "nodeId": 4,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 14,
+        "value": 1
+      },
+      {
+        "nodeId": 4,
+        "id": 15,
+        "value": 1
+      },
+      {
+        "nodeId": 4,
+        "id": 16,
+        "value": 3
+      },
+      {
+        "nodeId": 4,
+        "id": 17,
+        "value": 500
+      },
+      {
+        "nodeId": 4,
+        "id": 18,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 19,
+        "value": 1
+      },
+      {
+        "nodeId": 4,
+        "id": 20,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 21,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 22,
+        "value": 1000
+      },
+      {
+        "nodeId": 4,
+        "id": 23,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 24,
+        "value": 1
+      },
+      {
+        "nodeId": 4,
+        "id": 25,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 26,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 27,
+        "value": 2500
+      },
+      {
+        "nodeId": 4,
+        "id": 28,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 29,
+        "value": 1
+      },
+      {
+        "nodeId": 4,
+        "id": 30,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 31,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 32,
+        "value": 6000
+      },
+      {
+        "nodeId": 4,
+        "id": 33,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 34,
+        "value": 1
+      },
+      {
+        "nodeId": 4,
+        "id": 35,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 36,
+        "value": 2
+      },
+      {
+        "nodeId": 4,
+        "id": 37,
+        "value": 12000
+      },
+      {
+        "nodeId": 4,
+        "id": 38,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 39,
+        "value": 1
+      },
+      {
+        "nodeId": 4,
+        "id": 40,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 41,
+        "value": 1
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/primitives/eq8/node/0",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 0,
+      "min": 0,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/1",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 1,
+      "min": 0,
+      "max": 6,
+      "default": 1
+    },
+    {
+      "path": "/primitives/eq8/node/10",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 10,
+      "min": 0,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/11",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 11,
+      "min": 0,
+      "max": 6,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/12",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 12,
+      "min": 20,
+      "max": 20000,
+      "default": 250
+    },
+    {
+      "path": "/primitives/eq8/node/13",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 13,
+      "min": -24,
+      "max": 24,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/14",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 14,
+      "min": 0.1,
+      "max": 24,
+      "default": 1
+    },
+    {
+      "path": "/primitives/eq8/node/15",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 15,
+      "min": 0,
+      "max": 1,
+      "default": 1
+    },
+    {
+      "path": "/primitives/eq8/node/16",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 16,
+      "min": 0,
+      "max": 6,
+      "default": 3
+    },
+    {
+      "path": "/primitives/eq8/node/17",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 17,
+      "min": 20,
+      "max": 20000,
+      "default": 500
+    },
+    {
+      "path": "/primitives/eq8/node/18",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 18,
+      "min": -24,
+      "max": 24,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/19",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 19,
+      "min": 0.1,
+      "max": 24,
+      "default": 1
+    },
+    {
+      "path": "/primitives/eq8/node/2",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 2,
+      "min": 20,
+      "max": 20000,
+      "default": 60
+    },
+    {
+      "path": "/primitives/eq8/node/20",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 20,
+      "min": 0,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/21",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 21,
+      "min": 0,
+      "max": 6,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/22",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 22,
+      "min": 20,
+      "max": 20000,
+      "default": 1000
+    },
+    {
+      "path": "/primitives/eq8/node/23",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 23,
+      "min": -24,
+      "max": 24,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/24",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 24,
+      "min": 0.1,
+      "max": 24,
+      "default": 1
+    },
+    {
+      "path": "/primitives/eq8/node/25",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 25,
+      "min": 0,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/26",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 26,
+      "min": 0,
+      "max": 6,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/27",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 27,
+      "min": 20,
+      "max": 20000,
+      "default": 2500
+    },
+    {
+      "path": "/primitives/eq8/node/28",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 28,
+      "min": -24,
+      "max": 24,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/29",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 29,
+      "min": 0.1,
+      "max": 24,
+      "default": 1
+    },
+    {
+      "path": "/primitives/eq8/node/3",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 3,
+      "min": -24,
+      "max": 24,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/30",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 30,
+      "min": 0,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/31",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 31,
+      "min": 0,
+      "max": 6,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/32",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 32,
+      "min": 20,
+      "max": 20000,
+      "default": 6000
+    },
+    {
+      "path": "/primitives/eq8/node/33",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 33,
+      "min": -24,
+      "max": 24,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/34",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 34,
+      "min": 0.1,
+      "max": 24,
+      "default": 1
+    },
+    {
+      "path": "/primitives/eq8/node/35",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 35,
+      "min": 0,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/36",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 36,
+      "min": 0,
+      "max": 6,
+      "default": 2
+    },
+    {
+      "path": "/primitives/eq8/node/37",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 37,
+      "min": 20,
+      "max": 20000,
+      "default": 12000
+    },
+    {
+      "path": "/primitives/eq8/node/38",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 38,
+      "min": -24,
+      "max": 24,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/39",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 39,
+      "min": 0.1,
+      "max": 24,
+      "default": 1
+    },
+    {
+      "path": "/primitives/eq8/node/4",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 4,
+      "min": 0.1,
+      "max": 24,
+      "default": 1
+    },
+    {
+      "path": "/primitives/eq8/node/40",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 40,
+      "min": -24,
+      "max": 24,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/41",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 41,
+      "min": 0,
+      "max": 1,
+      "default": 1
+    },
+    {
+      "path": "/primitives/eq8/node/5",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 5,
+      "min": 0,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/6",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 6,
+      "min": 0,
+      "max": 6,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/7",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 7,
+      "min": 20,
+      "max": 20000,
+      "default": 120
+    },
+    {
+      "path": "/primitives/eq8/node/8",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 8,
+      "min": -24,
+      "max": 24,
+      "default": 0
+    },
+    {
+      "path": "/primitives/eq8/node/9",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 9,
+      "min": 0.1,
+      "max": 24,
+      "default": 1
+    }
+  ],
+  "instances": [
+    {
+      "path": "/primitives/eq8/node",
+      "nodeId": 4
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// Eight-band EQ: Eight independent bands with seven filter shapes, output gain and wet mix. Band 4 starts as an audible low-pass.\n// Legacy reference: dsp/core/nodes/EQ8Node.h\n// Examples name imports so you can trace each tool to its module.\n// Alternative: import * as manifold from '@manifold/author';\n// Then use manifold.createGraphWorkspace(), manifold.gain, etc.\n// Imports — each definition can be inspected in Manifold's primitive catalog.\nimport { createGraphWorkspace } from '@manifold/author';\nimport {\n  eq8 as eq8Definition,\n} from '@manifold/author/primitives';\n\nexport default function createProject() {\n  // Interface — public paths and stable IDs preserve saved controls.\n  const controls = {\n    eq8_band1Enabled: {\n      \"path\": \"/primitives/eq8/node/0\",\n      \"label\": \"Band 1 on\",\n      \"group\": \"Band 1\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0,\n      \"choices\": [\n        \"Off\",\n        \"On\"\n      ]\n    },\n    eq8_band1Curve: {\n      \"path\": \"/primitives/eq8/node/1\",\n      \"label\": \"Band 1 curve\",\n      \"group\": \"Band 1\",\n      \"min\": 0,\n      \"max\": 6,\n      \"default\": 1,\n      \"choices\": [\n        \"Bell\",\n        \"Low shelf\",\n        \"High shelf\",\n        \"Low pass\",\n        \"High pass\",\n        \"Notch\",\n        \"Band pass\"\n      ]\n    },\n    eq8_band1Frequency: {\n      \"path\": \"/primitives/eq8/node/2\",\n      \"label\": \"Band 1 Hz\",\n      \"group\": \"Band 1\",\n      \"min\": 20,\n      \"max\": 20000,\n      \"default\": 60\n    },\n    eq8_band1GainDb: {\n      \"path\": \"/primitives/eq8/node/3\",\n      \"label\": \"Band 1 dB\",\n      \"group\": \"Band 1\",\n      \"min\": -24,\n      \"max\": 24,\n      \"default\": 0\n    },\n    eq8_band1Q: {\n      \"path\": \"/primitives/eq8/node/4\",\n      \"label\": \"Band 1 Q\",\n      \"group\": \"Band 1\",\n      \"min\": 0.1,\n      \"max\": 24,\n      \"default\": 1\n    },\n    eq8_band2Enabled: {\n      \"path\": \"/primitives/eq8/node/5\",\n      \"label\": \"Band 2 on\",\n      \"group\": \"Band 2\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0,\n      \"choices\": [\n        \"Off\",\n        \"On\"\n      ]\n    },\n    eq8_band2Curve: {\n      \"path\": \"/primitives/eq8/node/6\",\n      \"label\": \"Band 2 curve\",\n      \"group\": \"Band 2\",\n      \"min\": 0,\n      \"max\": 6,\n      \"default\": 0,\n      \"choices\": [\n        \"Bell\",\n        \"Low shelf\",\n        \"High shelf\",\n        \"Low pass\",\n        \"High pass\",\n        \"Notch\",\n        \"Band pass\"\n      ]\n    },\n    eq8_band2Frequency: {\n      \"path\": \"/primitives/eq8/node/7\",\n      \"label\": \"Band 2 Hz\",\n      \"group\": \"Band 2\",\n      \"min\": 20,\n      \"max\": 20000,\n      \"default\": 120\n    },\n    eq8_band2GainDb: {\n      \"path\": \"/primitives/eq8/node/8\",\n      \"label\": \"Band 2 dB\",\n      \"group\": \"Band 2\",\n      \"min\": -24,\n      \"max\": 24,\n      \"default\": 0\n    },\n    eq8_band2Q: {\n      \"path\": \"/primitives/eq8/node/9\",\n      \"label\": \"Band 2 Q\",\n      \"group\": \"Band 2\",\n      \"min\": 0.1,\n      \"max\": 24,\n      \"default\": 1\n    },\n    eq8_band3Enabled: {\n      \"path\": \"/primitives/eq8/node/10\",\n      \"label\": \"Band 3 on\",\n      \"group\": \"Band 3\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0,\n      \"choices\": [\n        \"Off\",\n        \"On\"\n      ]\n    },\n    eq8_band3Curve: {\n      \"path\": \"/primitives/eq8/node/11\",\n      \"label\": \"Band 3 curve\",\n      \"group\": \"Band 3\",\n      \"min\": 0,\n      \"max\": 6,\n      \"default\": 0,\n      \"choices\": [\n        \"Bell\",\n        \"Low shelf\",\n        \"High shelf\",\n        \"Low pass\",\n        \"High pass\",\n        \"Notch\",\n        \"Band pass\"\n      ]\n    },\n    eq8_band3Frequency: {\n      \"path\": \"/primitives/eq8/node/12\",\n      \"label\": \"Band 3 Hz\",\n      \"group\": \"Band 3\",\n      \"min\": 20,\n      \"max\": 20000,\n      \"default\": 250\n    },\n    eq8_band3GainDb: {\n      \"path\": \"/primitives/eq8/node/13\",\n      \"label\": \"Band 3 dB\",\n      \"group\": \"Band 3\",\n      \"min\": -24,\n      \"max\": 24,\n      \"default\": 0\n    },\n    eq8_band3Q: {\n      \"path\": \"/primitives/eq8/node/14\",\n      \"label\": \"Band 3 Q\",\n      \"group\": \"Band 3\",\n      \"min\": 0.1,\n      \"max\": 24,\n      \"default\": 1\n    },\n    eq8_band4Enabled: {\n      \"path\": \"/primitives/eq8/node/15\",\n      \"label\": \"Band 4 on\",\n      \"group\": \"Band 4\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 1,\n      \"choices\": [\n        \"Off\",\n        \"On\"\n      ]\n    },\n    eq8_band4Curve: {\n      \"path\": \"/primitives/eq8/node/16\",\n      \"label\": \"Band 4 curve\",\n      \"group\": \"Band 4\",\n      \"min\": 0,\n      \"max\": 6,\n      \"default\": 3,\n      \"choices\": [\n        \"Bell\",\n        \"Low shelf\",\n        \"High shelf\",\n        \"Low pass\",\n        \"High pass\",\n        \"Notch\",\n        \"Band pass\"\n      ]\n    },\n    eq8_band4Frequency: {\n      \"path\": \"/primitives/eq8/node/17\",\n      \"label\": \"Band 4 Hz\",\n      \"group\": \"Band 4\",\n      \"min\": 20,\n      \"max\": 20000,\n      \"default\": 500\n    },\n    eq8_band4GainDb: {\n      \"path\": \"/primitives/eq8/node/18\",\n      \"label\": \"Band 4 dB\",\n      \"group\": \"Band 4\",\n      \"min\": -24,\n      \"max\": 24,\n      \"default\": 0\n    },\n    eq8_band4Q: {\n      \"path\": \"/primitives/eq8/node/19\",\n      \"label\": \"Band 4 Q\",\n      \"group\": \"Band 4\",\n      \"min\": 0.1,\n      \"max\": 24,\n      \"default\": 1\n    },\n    eq8_band5Enabled: {\n      \"path\": \"/primitives/eq8/node/20\",\n      \"label\": \"Band 5 on\",\n      \"group\": \"Band 5\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0,\n      \"choices\": [\n        \"Off\",\n        \"On\"\n      ]\n    },\n    eq8_band5Curve: {\n      \"path\": \"/primitives/eq8/node/21\",\n      \"label\": \"Band 5 curve\",\n      \"group\": \"Band 5\",\n      \"min\": 0,\n      \"max\": 6,\n      \"default\": 0,\n      \"choices\": [\n        \"Bell\",\n        \"Low shelf\",\n        \"High shelf\",\n        \"Low pass\",\n        \"High pass\",\n        \"Notch\",\n        \"Band pass\"\n      ]\n    },\n    eq8_band5Frequency: {\n      \"path\": \"/primitives/eq8/node/22\",\n      \"label\": \"Band 5 Hz\",\n      \"group\": \"Band 5\",\n      \"min\": 20,\n      \"max\": 20000,\n      \"default\": 1000\n    },\n    eq8_band5GainDb: {\n      \"path\": \"/primitives/eq8/node/23\",\n      \"label\": \"Band 5 dB\",\n      \"group\": \"Band 5\",\n      \"min\": -24,\n      \"max\": 24,\n      \"default\": 0\n    },\n    eq8_band5Q: {\n      \"path\": \"/primitives/eq8/node/24\",\n      \"label\": \"Band 5 Q\",\n      \"group\": \"Band 5\",\n      \"min\": 0.1,\n      \"max\": 24,\n      \"default\": 1\n    },\n    eq8_band6Enabled: {\n      \"path\": \"/primitives/eq8/node/25\",\n      \"label\": \"Band 6 on\",\n      \"group\": \"Band 6\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0,\n      \"choices\": [\n        \"Off\",\n        \"On\"\n      ]\n    },\n    eq8_band6Curve: {\n      \"path\": \"/primitives/eq8/node/26\",\n      \"label\": \"Band 6 curve\",\n      \"group\": \"Band 6\",\n      \"min\": 0,\n      \"max\": 6,\n      \"default\": 0,\n      \"choices\": [\n        \"Bell\",\n        \"Low shelf\",\n        \"High shelf\",\n        \"Low pass\",\n        \"High pass\",\n        \"Notch\",\n        \"Band pass\"\n      ]\n    },\n    eq8_band6Frequency: {\n      \"path\": \"/primitives/eq8/node/27\",\n      \"label\": \"Band 6 Hz\",\n      \"group\": \"Band 6\",\n      \"min\": 20,\n      \"max\": 20000,\n      \"default\": 2500\n    },\n    eq8_band6GainDb: {\n      \"path\": \"/primitives/eq8/node/28\",\n      \"label\": \"Band 6 dB\",\n      \"group\": \"Band 6\",\n      \"min\": -24,\n      \"max\": 24,\n      \"default\": 0\n    },\n    eq8_band6Q: {\n      \"path\": \"/primitives/eq8/node/29\",\n      \"label\": \"Band 6 Q\",\n      \"group\": \"Band 6\",\n      \"min\": 0.1,\n      \"max\": 24,\n      \"default\": 1\n    },\n    eq8_band7Enabled: {\n      \"path\": \"/primitives/eq8/node/30\",\n      \"label\": \"Band 7 on\",\n      \"group\": \"Band 7\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0,\n      \"choices\": [\n        \"Off\",\n        \"On\"\n      ]\n    },\n    eq8_band7Curve: {\n      \"path\": \"/primitives/eq8/node/31\",\n      \"label\": \"Band 7 curve\",\n      \"group\": \"Band 7\",\n      \"min\": 0,\n      \"max\": 6,\n      \"default\": 0,\n      \"choices\": [\n        \"Bell\",\n        \"Low shelf\",\n        \"High shelf\",\n        \"Low pass\",\n        \"High pass\",\n        \"Notch\",\n        \"Band pass\"\n      ]\n    },\n    eq8_band7Frequency: {\n      \"path\": \"/primitives/eq8/node/32\",\n      \"label\": \"Band 7 Hz\",\n      \"group\": \"Band 7\",\n      \"min\": 20,\n      \"max\": 20000,\n      \"default\": 6000\n    },\n    eq8_band7GainDb: {\n      \"path\": \"/primitives/eq8/node/33\",\n      \"label\": \"Band 7 dB\",\n      \"group\": \"Band 7\",\n      \"min\": -24,\n      \"max\": 24,\n      \"default\": 0\n    },\n    eq8_band7Q: {\n      \"path\": \"/primitives/eq8/node/34\",\n      \"label\": \"Band 7 Q\",\n      \"group\": \"Band 7\",\n      \"min\": 0.1,\n      \"max\": 24,\n      \"default\": 1\n    },\n    eq8_band8Enabled: {\n      \"path\": \"/primitives/eq8/node/35\",\n      \"label\": \"Band 8 on\",\n      \"group\": \"Band 8\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0,\n      \"choices\": [\n        \"Off\",\n        \"On\"\n      ]\n    },\n    eq8_band8Curve: {\n      \"path\": \"/primitives/eq8/node/36\",\n      \"label\": \"Band 8 curve\",\n      \"group\": \"Band 8\",\n      \"min\": 0,\n      \"max\": 6,\n      \"default\": 2,\n      \"choices\": [\n        \"Bell\",\n        \"Low shelf\",\n        \"High shelf\",\n        \"Low pass\",\n        \"High pass\",\n        \"Notch\",\n        \"Band pass\"\n      ]\n    },\n    eq8_band8Frequency: {\n      \"path\": \"/primitives/eq8/node/37\",\n      \"label\": \"Band 8 Hz\",\n      \"group\": \"Band 8\",\n      \"min\": 20,\n      \"max\": 20000,\n      \"default\": 12000\n    },\n    eq8_band8GainDb: {\n      \"path\": \"/primitives/eq8/node/38\",\n      \"label\": \"Band 8 dB\",\n      \"group\": \"Band 8\",\n      \"min\": -24,\n      \"max\": 24,\n      \"default\": 0\n    },\n    eq8_band8Q: {\n      \"path\": \"/primitives/eq8/node/39\",\n      \"label\": \"Band 8 Q\",\n      \"group\": \"Band 8\",\n      \"min\": 0.1,\n      \"max\": 24,\n      \"default\": 1\n    },\n    eq8_outputDb: {\n      \"path\": \"/primitives/eq8/node/40\",\n      \"label\": \"Output dB\",\n      \"group\": \"Output\",\n      \"min\": -24,\n      \"max\": 24,\n      \"default\": 0\n    },\n    eq8_mix: {\n      \"path\": \"/primitives/eq8/node/41\",\n      \"label\": \"Mix\",\n      \"group\": \"Output\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 1\n    },\n  };\n\n  // Audio inputs and outputs — the host supplies the external audio input.\n  const graph = createGraphWorkspace().setInputSource('external');\n  const input = graph.input.output('out');\n  const output = graph.output.input('in');\n\n  // DSP instances — parameters belong to these named instances.\n  const eq8 = graph.add(eq8Definition.type, {\"id\":4});\n  graph.registerInstance('/primitives/eq8/node', eq8);\n  eq8.parameter('band1Enabled').expose(controls.eq8_band1Enabled);\n  eq8.parameter('band1Curve').expose(controls.eq8_band1Curve);\n  eq8.parameter('band1Frequency').expose(controls.eq8_band1Frequency);\n  eq8.parameter('band1GainDb').expose(controls.eq8_band1GainDb);\n  eq8.parameter('band1Q').expose(controls.eq8_band1Q);\n  eq8.parameter('band2Enabled').expose(controls.eq8_band2Enabled);\n  eq8.parameter('band2Curve').expose(controls.eq8_band2Curve);\n  eq8.parameter('band2Frequency').expose(controls.eq8_band2Frequency);\n  eq8.parameter('band2GainDb').expose(controls.eq8_band2GainDb);\n  eq8.parameter('band2Q').expose(controls.eq8_band2Q);\n  eq8.parameter('band3Enabled').expose(controls.eq8_band3Enabled);\n  eq8.parameter('band3Curve').expose(controls.eq8_band3Curve);\n  eq8.parameter('band3Frequency').expose(controls.eq8_band3Frequency);\n  eq8.parameter('band3GainDb').expose(controls.eq8_band3GainDb);\n  eq8.parameter('band3Q').expose(controls.eq8_band3Q);\n  eq8.parameter('band4Enabled').expose(controls.eq8_band4Enabled);\n  eq8.parameter('band4Curve').expose(controls.eq8_band4Curve);\n  eq8.parameter('band4Frequency').expose(controls.eq8_band4Frequency);\n  eq8.parameter('band4GainDb').expose(controls.eq8_band4GainDb);\n  eq8.parameter('band4Q').expose(controls.eq8_band4Q);\n  eq8.parameter('band5Enabled').expose(controls.eq8_band5Enabled);\n  eq8.parameter('band5Curve').expose(controls.eq8_band5Curve);\n  eq8.parameter('band5Frequency').expose(controls.eq8_band5Frequency);\n  eq8.parameter('band5GainDb').expose(controls.eq8_band5GainDb);\n  eq8.parameter('band5Q').expose(controls.eq8_band5Q);\n  eq8.parameter('band6Enabled').expose(controls.eq8_band6Enabled);\n  eq8.parameter('band6Curve').expose(controls.eq8_band6Curve);\n  eq8.parameter('band6Frequency').expose(controls.eq8_band6Frequency);\n  eq8.parameter('band6GainDb').expose(controls.eq8_band6GainDb);\n  eq8.parameter('band6Q').expose(controls.eq8_band6Q);\n  eq8.parameter('band7Enabled').expose(controls.eq8_band7Enabled);\n  eq8.parameter('band7Curve').expose(controls.eq8_band7Curve);\n  eq8.parameter('band7Frequency').expose(controls.eq8_band7Frequency);\n  eq8.parameter('band7GainDb').expose(controls.eq8_band7GainDb);\n  eq8.parameter('band7Q').expose(controls.eq8_band7Q);\n  eq8.parameter('band8Enabled').expose(controls.eq8_band8Enabled);\n  eq8.parameter('band8Curve').expose(controls.eq8_band8Curve);\n  eq8.parameter('band8Frequency').expose(controls.eq8_band8Frequency);\n  eq8.parameter('band8GainDb').expose(controls.eq8_band8GainDb);\n  eq8.parameter('band8Q').expose(controls.eq8_band8Q);\n  eq8.parameter('outputDb').expose(controls.eq8_outputDb);\n  eq8.parameter('mix').expose(controls.eq8_mix);\n\n  // Composition — named ports make the audio and control paths visible.\n  graph.connect(input, eq8.input('audio'));\n  graph.connect(eq8.output('out'), output);\n\n  // Presentation — both renderers bind to the controls declared above.\n  const view = [\n    controls.eq8_band1Enabled,\n    controls.eq8_band1Curve,\n    controls.eq8_band1Frequency,\n    controls.eq8_band1GainDb,\n    controls.eq8_band1Q,\n    controls.eq8_band2Enabled,\n    controls.eq8_band2Curve,\n    controls.eq8_band2Frequency,\n    controls.eq8_band2GainDb,\n    controls.eq8_band2Q,\n    controls.eq8_band3Enabled,\n    controls.eq8_band3Curve,\n    controls.eq8_band3Frequency,\n    controls.eq8_band3GainDb,\n    controls.eq8_band3Q,\n    controls.eq8_band4Enabled,\n    controls.eq8_band4Curve,\n    controls.eq8_band4Frequency,\n    controls.eq8_band4GainDb,\n    controls.eq8_band4Q,\n    controls.eq8_band5Enabled,\n    controls.eq8_band5Curve,\n    controls.eq8_band5Frequency,\n    controls.eq8_band5GainDb,\n    controls.eq8_band5Q,\n    controls.eq8_band6Enabled,\n    controls.eq8_band6Curve,\n    controls.eq8_band6Frequency,\n    controls.eq8_band6GainDb,\n    controls.eq8_band6Q,\n    controls.eq8_band7Enabled,\n    controls.eq8_band7Curve,\n    controls.eq8_band7Frequency,\n    controls.eq8_band7GainDb,\n    controls.eq8_band7Q,\n    controls.eq8_band8Enabled,\n    controls.eq8_band8Curve,\n    controls.eq8_band8Frequency,\n    controls.eq8_band8GainDb,\n    controls.eq8_band8Q,\n    controls.eq8_outputDb,\n    controls.eq8_mix\n  ].map(control => ({\n    id: control.path, type: 'parameter', path: control.path,\n    label: control.label, group: control.group,\n    ...(control.choices ? { choices: control.choices } : {}),\n  }));\n  function paint(ui) {\n    for (const component of view) {\n      if (component.type === 'label') ui.label(component.label, component.id);\n      else ui.parameter(component.path, component);\n    }\n  }\n\n  // The host uses this project declaration for audio, UI, save and live edits.\n  return { graph, view, paint };\n}",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "/primitives/eq8/node/0",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/0",
+        "label": "Band 1 on",
+        "group": "Band 1",
+        "choices": [
+          "Off",
+          "On"
+        ]
+      },
+      {
+        "id": "/primitives/eq8/node/1",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/1",
+        "label": "Band 1 curve",
+        "group": "Band 1",
+        "choices": [
+          "Bell",
+          "Low shelf",
+          "High shelf",
+          "Low pass",
+          "High pass",
+          "Notch",
+          "Band pass"
+        ]
+      },
+      {
+        "id": "/primitives/eq8/node/2",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/2",
+        "label": "Band 1 Hz",
+        "group": "Band 1"
+      },
+      {
+        "id": "/primitives/eq8/node/3",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/3",
+        "label": "Band 1 dB",
+        "group": "Band 1"
+      },
+      {
+        "id": "/primitives/eq8/node/4",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/4",
+        "label": "Band 1 Q",
+        "group": "Band 1"
+      },
+      {
+        "id": "/primitives/eq8/node/5",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/5",
+        "label": "Band 2 on",
+        "group": "Band 2",
+        "choices": [
+          "Off",
+          "On"
+        ]
+      },
+      {
+        "id": "/primitives/eq8/node/6",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/6",
+        "label": "Band 2 curve",
+        "group": "Band 2",
+        "choices": [
+          "Bell",
+          "Low shelf",
+          "High shelf",
+          "Low pass",
+          "High pass",
+          "Notch",
+          "Band pass"
+        ]
+      },
+      {
+        "id": "/primitives/eq8/node/7",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/7",
+        "label": "Band 2 Hz",
+        "group": "Band 2"
+      },
+      {
+        "id": "/primitives/eq8/node/8",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/8",
+        "label": "Band 2 dB",
+        "group": "Band 2"
+      },
+      {
+        "id": "/primitives/eq8/node/9",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/9",
+        "label": "Band 2 Q",
+        "group": "Band 2"
+      },
+      {
+        "id": "/primitives/eq8/node/10",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/10",
+        "label": "Band 3 on",
+        "group": "Band 3",
+        "choices": [
+          "Off",
+          "On"
+        ]
+      },
+      {
+        "id": "/primitives/eq8/node/11",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/11",
+        "label": "Band 3 curve",
+        "group": "Band 3",
+        "choices": [
+          "Bell",
+          "Low shelf",
+          "High shelf",
+          "Low pass",
+          "High pass",
+          "Notch",
+          "Band pass"
+        ]
+      },
+      {
+        "id": "/primitives/eq8/node/12",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/12",
+        "label": "Band 3 Hz",
+        "group": "Band 3"
+      },
+      {
+        "id": "/primitives/eq8/node/13",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/13",
+        "label": "Band 3 dB",
+        "group": "Band 3"
+      },
+      {
+        "id": "/primitives/eq8/node/14",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/14",
+        "label": "Band 3 Q",
+        "group": "Band 3"
+      },
+      {
+        "id": "/primitives/eq8/node/15",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/15",
+        "label": "Band 4 on",
+        "group": "Band 4",
+        "choices": [
+          "Off",
+          "On"
+        ]
+      },
+      {
+        "id": "/primitives/eq8/node/16",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/16",
+        "label": "Band 4 curve",
+        "group": "Band 4",
+        "choices": [
+          "Bell",
+          "Low shelf",
+          "High shelf",
+          "Low pass",
+          "High pass",
+          "Notch",
+          "Band pass"
+        ]
+      },
+      {
+        "id": "/primitives/eq8/node/17",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/17",
+        "label": "Band 4 Hz",
+        "group": "Band 4"
+      },
+      {
+        "id": "/primitives/eq8/node/18",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/18",
+        "label": "Band 4 dB",
+        "group": "Band 4"
+      },
+      {
+        "id": "/primitives/eq8/node/19",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/19",
+        "label": "Band 4 Q",
+        "group": "Band 4"
+      },
+      {
+        "id": "/primitives/eq8/node/20",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/20",
+        "label": "Band 5 on",
+        "group": "Band 5",
+        "choices": [
+          "Off",
+          "On"
+        ]
+      },
+      {
+        "id": "/primitives/eq8/node/21",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/21",
+        "label": "Band 5 curve",
+        "group": "Band 5",
+        "choices": [
+          "Bell",
+          "Low shelf",
+          "High shelf",
+          "Low pass",
+          "High pass",
+          "Notch",
+          "Band pass"
+        ]
+      },
+      {
+        "id": "/primitives/eq8/node/22",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/22",
+        "label": "Band 5 Hz",
+        "group": "Band 5"
+      },
+      {
+        "id": "/primitives/eq8/node/23",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/23",
+        "label": "Band 5 dB",
+        "group": "Band 5"
+      },
+      {
+        "id": "/primitives/eq8/node/24",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/24",
+        "label": "Band 5 Q",
+        "group": "Band 5"
+      },
+      {
+        "id": "/primitives/eq8/node/25",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/25",
+        "label": "Band 6 on",
+        "group": "Band 6",
+        "choices": [
+          "Off",
+          "On"
+        ]
+      },
+      {
+        "id": "/primitives/eq8/node/26",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/26",
+        "label": "Band 6 curve",
+        "group": "Band 6",
+        "choices": [
+          "Bell",
+          "Low shelf",
+          "High shelf",
+          "Low pass",
+          "High pass",
+          "Notch",
+          "Band pass"
+        ]
+      },
+      {
+        "id": "/primitives/eq8/node/27",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/27",
+        "label": "Band 6 Hz",
+        "group": "Band 6"
+      },
+      {
+        "id": "/primitives/eq8/node/28",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/28",
+        "label": "Band 6 dB",
+        "group": "Band 6"
+      },
+      {
+        "id": "/primitives/eq8/node/29",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/29",
+        "label": "Band 6 Q",
+        "group": "Band 6"
+      },
+      {
+        "id": "/primitives/eq8/node/30",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/30",
+        "label": "Band 7 on",
+        "group": "Band 7",
+        "choices": [
+          "Off",
+          "On"
+        ]
+      },
+      {
+        "id": "/primitives/eq8/node/31",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/31",
+        "label": "Band 7 curve",
+        "group": "Band 7",
+        "choices": [
+          "Bell",
+          "Low shelf",
+          "High shelf",
+          "Low pass",
+          "High pass",
+          "Notch",
+          "Band pass"
+        ]
+      },
+      {
+        "id": "/primitives/eq8/node/32",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/32",
+        "label": "Band 7 Hz",
+        "group": "Band 7"
+      },
+      {
+        "id": "/primitives/eq8/node/33",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/33",
+        "label": "Band 7 dB",
+        "group": "Band 7"
+      },
+      {
+        "id": "/primitives/eq8/node/34",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/34",
+        "label": "Band 7 Q",
+        "group": "Band 7"
+      },
+      {
+        "id": "/primitives/eq8/node/35",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/35",
+        "label": "Band 8 on",
+        "group": "Band 8",
+        "choices": [
+          "Off",
+          "On"
+        ]
+      },
+      {
+        "id": "/primitives/eq8/node/36",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/36",
+        "label": "Band 8 curve",
+        "group": "Band 8",
+        "choices": [
+          "Bell",
+          "Low shelf",
+          "High shelf",
+          "Low pass",
+          "High pass",
+          "Notch",
+          "Band pass"
+        ]
+      },
+      {
+        "id": "/primitives/eq8/node/37",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/37",
+        "label": "Band 8 Hz",
+        "group": "Band 8"
+      },
+      {
+        "id": "/primitives/eq8/node/38",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/38",
+        "label": "Band 8 dB",
+        "group": "Band 8"
+      },
+      {
+        "id": "/primitives/eq8/node/39",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/39",
+        "label": "Band 8 Q",
+        "group": "Band 8"
+      },
+      {
+        "id": "/primitives/eq8/node/40",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/40",
+        "label": "Output dB",
+        "group": "Output"
+      },
+      {
+        "id": "/primitives/eq8/node/41",
+        "type": "parameter",
+        "path": "/primitives/eq8/node/41",
+        "label": "Mix",
+        "group": "Output"
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

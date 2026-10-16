@@ -1,0 +1,308 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "oscillator",
+        "a": 220,
+        "b": 0.4
+      },
+      {
+        "id": 5,
+        "type": "lfo",
+        "a": 2
+      },
+      {
+        "id": 6,
+        "type": "slew-control",
+        "a": 16,
+        "b": 16
+      },
+      {
+        "id": 7,
+        "type": "modulated-gain",
+        "a": 0.5,
+        "b": 0.4
+      }
+    ],
+    "connections": [
+      {
+        "from": 7,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 5,
+        "outputPort": 0,
+        "to": 6,
+        "inputPort": 0
+      },
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 7,
+        "inputPort": 0
+      },
+      {
+        "from": 6,
+        "outputPort": 0,
+        "to": 7,
+        "inputPort": 1
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 4,
+        "id": 2,
+        "value": 0.16
+      },
+      {
+        "nodeId": 5,
+        "id": 0,
+        "value": 2
+      },
+      {
+        "nodeId": 5,
+        "id": 1,
+        "value": 2
+      },
+      {
+        "nodeId": 6,
+        "id": 0,
+        "value": 800
+      },
+      {
+        "nodeId": 6,
+        "id": 1,
+        "value": 400
+      },
+      {
+        "nodeId": 7,
+        "id": 0,
+        "value": 0.5
+      },
+      {
+        "nodeId": 7,
+        "id": 1,
+        "value": 0.4
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/primitives/cv-slew/gain/0",
+      "kind": "parameter",
+      "nodeId": 7,
+      "id": 0,
+      "min": 0,
+      "max": 2,
+      "default": 0.5
+    },
+    {
+      "path": "/primitives/cv-slew/gain/1",
+      "kind": "parameter",
+      "nodeId": 7,
+      "id": 1,
+      "min": -2,
+      "max": 2,
+      "default": 0.4
+    },
+    {
+      "path": "/primitives/cv-slew/lfo/0",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 0,
+      "min": 0,
+      "max": 2,
+      "default": 2
+    },
+    {
+      "path": "/primitives/cv-slew/lfo/1",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 1,
+      "min": 0.05,
+      "max": 20,
+      "default": 2
+    },
+    {
+      "path": "/primitives/cv-slew/node/0",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 0,
+      "min": 0,
+      "max": 4,
+      "default": 0
+    },
+    {
+      "path": "/primitives/cv-slew/node/1",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 1,
+      "min": 20,
+      "max": 16000,
+      "default": 220
+    },
+    {
+      "path": "/primitives/cv-slew/node/2",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 2,
+      "min": 0,
+      "max": 1,
+      "default": 0.16
+    },
+    {
+      "path": "/primitives/cv-slew/slew/0",
+      "kind": "parameter",
+      "nodeId": 6,
+      "id": 0,
+      "min": 1,
+      "max": 1024,
+      "default": 800
+    },
+    {
+      "path": "/primitives/cv-slew/slew/1",
+      "kind": "parameter",
+      "nodeId": 6,
+      "id": 1,
+      "min": 1,
+      "max": 1024,
+      "default": 400
+    }
+  ],
+  "instances": [
+    {
+      "path": "/primitives/cv-slew/gain",
+      "nodeId": 7
+    },
+    {
+      "path": "/primitives/cv-slew/lfo",
+      "nodeId": 5
+    },
+    {
+      "path": "/primitives/cv-slew/node",
+      "nodeId": 4
+    },
+    {
+      "path": "/primitives/cv-slew/slew",
+      "nodeId": 6
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// CV slew: Asymmetric rise and fall applied to a square LFO before it controls audio gain.\n// Audition composition of public Rust primitives; not an instrument parity claim.\n// Examples name imports so you can trace each tool to its module.\n// Alternative: import * as manifold from '@manifold/author';\n// Then use manifold.createGraphWorkspace(), manifold.gain, etc.\n// Imports — each definition can be inspected in Manifold's primitive catalog.\nimport { createGraphWorkspace } from '@manifold/author';\nimport {\n  oscillator as oscillatorDefinition,\n  lfo as lfoDefinition,\n  slewControl as slewControlDefinition,\n  modulatedGain as modulatedGainDefinition,\n} from '@manifold/author/primitives';\n\nexport default function createProject() {\n  // Interface — public paths and stable IDs preserve saved controls.\n  const controls = {\n    oscillator_waveform: {\n      \"path\": \"/primitives/cv-slew/node/0\",\n      \"label\": \"Waveform\",\n      \"group\": \"Oscillator\",\n      \"min\": 0,\n      \"max\": 4,\n      \"default\": 0,\n      \"choices\": [\n        \"Sine\",\n        \"Saw\",\n        \"Square\",\n        \"Triangle\",\n        \"Blend\"\n      ]\n    },\n    oscillator_frequency: {\n      \"path\": \"/primitives/cv-slew/node/1\",\n      \"label\": \"Frequency\",\n      \"group\": \"Oscillator\",\n      \"min\": 20,\n      \"max\": 16000,\n      \"default\": 220\n    },\n    oscillator_level: {\n      \"path\": \"/primitives/cv-slew/node/2\",\n      \"label\": \"Level\",\n      \"group\": \"Oscillator\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0.16\n    },\n    lfo_waveform: {\n      \"path\": \"/primitives/cv-slew/lfo/0\",\n      \"label\": \"Waveform\",\n      \"group\": \"LFO\",\n      \"min\": 0,\n      \"max\": 2,\n      \"default\": 2,\n      \"choices\": [\n        \"Sine\",\n        \"Triangle\",\n        \"Square\"\n      ]\n    },\n    lfo_rate: {\n      \"path\": \"/primitives/cv-slew/lfo/1\",\n      \"label\": \"Rate\",\n      \"group\": \"LFO\",\n      \"min\": 0.05,\n      \"max\": 20,\n      \"default\": 2\n    },\n    slew_riseSamples: {\n      \"path\": \"/primitives/cv-slew/slew/0\",\n      \"label\": \"Rise samples\",\n      \"group\": \"CV slew\",\n      \"min\": 1,\n      \"max\": 1024,\n      \"default\": 800\n    },\n    slew_fallSamples: {\n      \"path\": \"/primitives/cv-slew/slew/1\",\n      \"label\": \"Fall samples\",\n      \"group\": \"CV slew\",\n      \"min\": 1,\n      \"max\": 1024,\n      \"default\": 400\n    },\n    gain_base: {\n      \"path\": \"/primitives/cv-slew/gain/0\",\n      \"label\": \"Base\",\n      \"group\": \"CV gain\",\n      \"min\": 0,\n      \"max\": 2,\n      \"default\": 0.5\n    },\n    gain_depth: {\n      \"path\": \"/primitives/cv-slew/gain/1\",\n      \"label\": \"Depth\",\n      \"group\": \"CV gain\",\n      \"min\": -2,\n      \"max\": 2,\n      \"default\": 0.4\n    },\n  };\n\n  // Audio inputs and outputs — generated sound; no audio input is needed.\n  const graph = createGraphWorkspace().setInputSource('none');\n  const output = graph.output.input('in');\n\n  // DSP instances — parameters belong to these named instances.\n  const oscillator = graph.add(oscillatorDefinition.type, {\"id\":4});\n  graph.registerInstance('/primitives/cv-slew/node', oscillator);\n  oscillator.parameter('waveform').expose(controls.oscillator_waveform);\n  oscillator.parameter('frequency').expose(controls.oscillator_frequency);\n  oscillator.parameter('level').expose(controls.oscillator_level);\n\n  const lfo = graph.add(lfoDefinition.type, {\"id\":5});\n  graph.registerInstance('/primitives/cv-slew/lfo', lfo);\n  lfo.parameter('waveform').expose(controls.lfo_waveform);\n  lfo.parameter('rate').expose(controls.lfo_rate);\n\n  const slew = graph.add(slewControlDefinition.type, {\"id\":6});\n  graph.registerInstance('/primitives/cv-slew/slew', slew);\n  slew.parameter('riseSamples').expose(controls.slew_riseSamples);\n  slew.parameter('fallSamples').expose(controls.slew_fallSamples);\n\n  const gain = graph.add(modulatedGainDefinition.type, {\"id\":7});\n  graph.registerInstance('/primitives/cv-slew/gain', gain);\n  gain.parameter('base').expose(controls.gain_base);\n  gain.parameter('depth').expose(controls.gain_depth);\n\n  // Composition — named ports make the audio and control paths visible.\n  graph.connect(oscillator.output('out'), gain.input('audio'));\n  graph.connect(lfo.output('out'), slew.input('cv'));\n  graph.connect(slew.output('out'), gain.input('cv'));\n  graph.connect(gain.output('out'), output);\n\n  // Presentation — both renderers bind to the controls declared above.\n  const view = [\n    controls.oscillator_waveform,\n    controls.oscillator_frequency,\n    controls.oscillator_level,\n    controls.lfo_waveform,\n    controls.lfo_rate,\n    controls.slew_riseSamples,\n    controls.slew_fallSamples,\n    controls.gain_base,\n    controls.gain_depth\n  ].map(control => ({\n    id: control.path, type: 'parameter', path: control.path,\n    label: control.label, group: control.group,\n    ...(control.choices ? { choices: control.choices } : {}),\n  }));\n  function paint(ui) {\n    for (const component of view) {\n      if (component.type === 'label') ui.label(component.label, component.id);\n      else ui.parameter(component.path, component);\n    }\n  }\n\n  // The host uses this project declaration for audio, UI, save and live edits.\n  return { graph, view, paint };\n}",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "/primitives/cv-slew/node/0",
+        "type": "parameter",
+        "path": "/primitives/cv-slew/node/0",
+        "label": "Waveform",
+        "group": "Oscillator",
+        "choices": [
+          "Sine",
+          "Saw",
+          "Square",
+          "Triangle",
+          "Blend"
+        ]
+      },
+      {
+        "id": "/primitives/cv-slew/node/1",
+        "type": "parameter",
+        "path": "/primitives/cv-slew/node/1",
+        "label": "Frequency",
+        "group": "Oscillator"
+      },
+      {
+        "id": "/primitives/cv-slew/node/2",
+        "type": "parameter",
+        "path": "/primitives/cv-slew/node/2",
+        "label": "Level",
+        "group": "Oscillator"
+      },
+      {
+        "id": "/primitives/cv-slew/lfo/0",
+        "type": "parameter",
+        "path": "/primitives/cv-slew/lfo/0",
+        "label": "Waveform",
+        "group": "LFO",
+        "choices": [
+          "Sine",
+          "Triangle",
+          "Square"
+        ]
+      },
+      {
+        "id": "/primitives/cv-slew/lfo/1",
+        "type": "parameter",
+        "path": "/primitives/cv-slew/lfo/1",
+        "label": "Rate",
+        "group": "LFO"
+      },
+      {
+        "id": "/primitives/cv-slew/slew/0",
+        "type": "parameter",
+        "path": "/primitives/cv-slew/slew/0",
+        "label": "Rise samples",
+        "group": "CV slew"
+      },
+      {
+        "id": "/primitives/cv-slew/slew/1",
+        "type": "parameter",
+        "path": "/primitives/cv-slew/slew/1",
+        "label": "Fall samples",
+        "group": "CV slew"
+      },
+      {
+        "id": "/primitives/cv-slew/gain/0",
+        "type": "parameter",
+        "path": "/primitives/cv-slew/gain/0",
+        "label": "Base",
+        "group": "CV gain"
+      },
+      {
+        "id": "/primitives/cv-slew/gain/1",
+        "type": "parameter",
+        "path": "/primitives/cv-slew/gain/1",
+        "label": "Depth",
+        "group": "CV gain"
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

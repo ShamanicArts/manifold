@@ -1,0 +1,170 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "external",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "lfo",
+        "a": 2
+      },
+      {
+        "id": 5,
+        "type": "modulated-gain",
+        "a": 0.5,
+        "b": 0.4
+      }
+    ],
+    "connections": [
+      {
+        "from": 5,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 5,
+        "inputPort": 0
+      },
+      {
+        "from": 4,
+        "outputPort": 2,
+        "to": 5,
+        "inputPort": 1
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 1,
+        "value": 2
+      },
+      {
+        "nodeId": 5,
+        "id": 0,
+        "value": 0.5
+      },
+      {
+        "nodeId": 5,
+        "id": 1,
+        "value": 0.4
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/primitives/lfo-gain/gain/0",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 0,
+      "min": 0,
+      "max": 2,
+      "default": 0.5
+    },
+    {
+      "path": "/primitives/lfo-gain/gain/1",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 1,
+      "min": -2,
+      "max": 2,
+      "default": 0.4
+    },
+    {
+      "path": "/primitives/lfo-gain/lfo/0",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 0,
+      "min": 0,
+      "max": 2,
+      "default": 0
+    },
+    {
+      "path": "/primitives/lfo-gain/lfo/1",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 1,
+      "min": 0.05,
+      "max": 20,
+      "default": 2
+    }
+  ],
+  "instances": [
+    {
+      "path": "/primitives/lfo-gain/gain",
+      "nodeId": 5
+    },
+    {
+      "path": "/primitives/lfo-gain/lfo",
+      "nodeId": 4
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// LFO → CV gain: A typed control cable modulates input level. Rate, waveform, base and depth remain live.\n// Audition composition of public Rust primitives; not an instrument parity claim.\n// Examples name imports so you can trace each tool to its module.\n// Alternative: import * as manifold from '@manifold/author';\n// Then use manifold.createGraphWorkspace(), manifold.gain, etc.\n// Imports — each definition can be inspected in Manifold's primitive catalog.\nimport { createGraphWorkspace } from '@manifold/author';\nimport {\n  lfo as lfoDefinition,\n  modulatedGain as modulatedGainDefinition,\n} from '@manifold/author/primitives';\n\nexport default function createProject() {\n  // Interface — public paths and stable IDs preserve saved controls.\n  const controls = {\n    lfo_waveform: {\n      \"path\": \"/primitives/lfo-gain/lfo/0\",\n      \"label\": \"Waveform\",\n      \"group\": \"LFO\",\n      \"min\": 0,\n      \"max\": 2,\n      \"default\": 0,\n      \"choices\": [\n        \"Sine\",\n        \"Triangle\",\n        \"Square\"\n      ]\n    },\n    lfo_rate: {\n      \"path\": \"/primitives/lfo-gain/lfo/1\",\n      \"label\": \"Rate\",\n      \"group\": \"LFO\",\n      \"min\": 0.05,\n      \"max\": 20,\n      \"default\": 2\n    },\n    gain_base: {\n      \"path\": \"/primitives/lfo-gain/gain/0\",\n      \"label\": \"Base\",\n      \"group\": \"CV gain\",\n      \"min\": 0,\n      \"max\": 2,\n      \"default\": 0.5\n    },\n    gain_depth: {\n      \"path\": \"/primitives/lfo-gain/gain/1\",\n      \"label\": \"Depth\",\n      \"group\": \"CV gain\",\n      \"min\": -2,\n      \"max\": 2,\n      \"default\": 0.4\n    },\n  };\n\n  // Audio inputs and outputs — the host supplies the external audio input.\n  const graph = createGraphWorkspace().setInputSource('external');\n  const input = graph.input.output('out');\n  const output = graph.output.input('in');\n\n  // DSP instances — parameters belong to these named instances.\n  const lfo = graph.add(lfoDefinition.type, {\"id\":4});\n  graph.registerInstance('/primitives/lfo-gain/lfo', lfo);\n  lfo.parameter('waveform').expose(controls.lfo_waveform);\n  lfo.parameter('rate').expose(controls.lfo_rate);\n\n  const gain = graph.add(modulatedGainDefinition.type, {\"id\":5});\n  graph.registerInstance('/primitives/lfo-gain/gain', gain);\n  gain.parameter('base').expose(controls.gain_base);\n  gain.parameter('depth').expose(controls.gain_depth);\n\n  // Composition — named ports make the audio and control paths visible.\n  graph.connect(input, gain.input('audio'));\n  graph.connect(lfo.output('uni'), gain.input('cv'));\n  graph.connect(gain.output('out'), output);\n\n  // Presentation — both renderers bind to the controls declared above.\n  const view = [\n    controls.lfo_waveform,\n    controls.lfo_rate,\n    controls.gain_base,\n    controls.gain_depth\n  ].map(control => ({\n    id: control.path, type: 'parameter', path: control.path,\n    label: control.label, group: control.group,\n    ...(control.choices ? { choices: control.choices } : {}),\n  }));\n  function paint(ui) {\n    for (const component of view) {\n      if (component.type === 'label') ui.label(component.label, component.id);\n      else ui.parameter(component.path, component);\n    }\n  }\n\n  // The host uses this project declaration for audio, UI, save and live edits.\n  return { graph, view, paint };\n}",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "/primitives/lfo-gain/lfo/0",
+        "type": "parameter",
+        "path": "/primitives/lfo-gain/lfo/0",
+        "label": "Waveform",
+        "group": "LFO",
+        "choices": [
+          "Sine",
+          "Triangle",
+          "Square"
+        ]
+      },
+      {
+        "id": "/primitives/lfo-gain/lfo/1",
+        "type": "parameter",
+        "path": "/primitives/lfo-gain/lfo/1",
+        "label": "Rate",
+        "group": "LFO"
+      },
+      {
+        "id": "/primitives/lfo-gain/gain/0",
+        "type": "parameter",
+        "path": "/primitives/lfo-gain/gain/0",
+        "label": "Base",
+        "group": "CV gain"
+      },
+      {
+        "id": "/primitives/lfo-gain/gain/1",
+        "type": "parameter",
+        "path": "/primitives/lfo-gain/gain/1",
+        "label": "Depth",
+        "group": "CV gain"
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

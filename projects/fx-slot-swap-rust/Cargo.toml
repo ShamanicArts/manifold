@@ -1,0 +1,12 @@
+[package]
+name = "manifold-fx-slot-swap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+manifold-native = { path = "../../crates/manifold-native" }
+serde_json = "1"
+
+[dev-dependencies]
+manifold-core = { path = "../../crates/manifold-core" }

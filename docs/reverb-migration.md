@@ -1,0 +1,9 @@
+# Reverb migration boundary
+
+The original `dsp/core/nodes/ReverbNode.cpp` wraps JUCE's FreeVerb-style stereo processor. Rust graph kind 40 implements the same signal behavior in `reverb.rs`, with its own prepared delay lines and no JUCE dependency. The [workbench project](../projects/reverb/project.json) exposes room size, damping, wet level, dry level, and stereo wet width as parameters 0–4. All controls use the original `0…1` range.
+
+Each channel has eight comb filters followed by four all-pass filters, with the original 44.1 kHz tunings scaled to the host sample rate and a 23-sample stereo offset before scaling. The two channels share a mono summed input. The original node smooths parameter targets once per audio block with a 20 ms coefficient; the reverb processor then linearly smooths its derived gains and coefficients over 10 ms. The Rust port preserves both layers. Delay lines are allocated when the graph is prepared, reused during processing, and cleared without allocation when Standalone FX selects this type.
+
+Standalone FX type 7 maps normalized `p/0` to room size `0.15…0.95` and `p/1` to damping `0…1`. It holds the internal wet level at 1, dry at 0, and width at 1. The public slot wet mix combines this tail with the original input. The remaining three normalized controls are unused by the original definition.
+
+Eight checked-in C++ captures cover the default sound, room and damping sweeps, width, wet and dry levels, short blocks, and a long stereo tail. Browser Rust/Wasm agrees with these captures within the `0.00001` maximum sample error gate; the largest observed difference is `1.28e-6`. Four slot cases compare native Rust with Rust/Wasm for normalized controls and type switches. These comparisons establish node output parity and v2 slot consistency. Old project routing, automation timing, and preset roundtrips remain separate work.

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Manifold shared Sample authors</title>
+<style>body{font:16px system-ui;background:#151820;color:#e4e8f1;max-width:1050px;margin:40px auto;padding:0 24px}button,select,input{font:inherit;padding:9px;background:#242c3c;color:inherit;border:1px solid #758199;border-radius:5px}button{cursor:pointer}button:disabled{opacity:.4}a{color:#9dcaff}section{padding:20px;border:1px solid #3a4354;margin:20px 0;border-radius:8px}pre{overflow:auto;max-height:360px;background:#10131a;padding:16px}label{display:inline-block;margin:8px 12px 8px 0}audio{max-width:100%;display:block;margin:8px 0}h1{font-size:30px}#status{min-height:28px}</style></head><body>
+<h1>One authored project, browser and native</h1>
+<p>These two project entries use public Manifold primitives. The same entries run in native QuickJS and here through the prepared browser host.</p>
+<section><label>Project <select id="mode"><option value="rack">Eight-voice Rack Sample</option><option value="instrument">MIDI Sample Instrument</option></select></label>
+<button id="start">Start</button> <button id="stop" disabled>Stop</button>
+<p id="status" role="status">Ready.</p>
+<button id="sound" disabled>Play voices / new note</button> <button id="off" disabled>All off</button>
+<button id="insert" disabled>Toggle unity insert (Rack)</button>
+<label>New source Hz <input id="frequency" type="number" value="330" min="40" max="1200"></label><button id="replace" disabled>Publish source</button>
+<button id="save">Download graph + PCM</button>
+<button id="save-package">Download project package</button>
+<p><label>Recall a plug-in save <select id="package-source">
+<option value="/scripted-samples/2026-09-30-scripted-samples-release-v2/clap-sdk/rack/saved.manifold.json">CLAP Rack</option>
+<option value="/scripted-samples/2026-09-30-scripted-samples-release-v2/vst3-sdk/rack/saved.manifold.json">VST3 Rack</option>
+<option value="/scripted-samples/2026-09-30-scripted-samples-release-v2/clap-sdk/instrument/saved.manifold.json">CLAP Instrument</option>
+<option value="/scripted-samples/2026-09-30-scripted-samples-release-v2/vst3-sdk/instrument/saved.manifold.json">VST3 Instrument</option>
+</select></label><button id="load-package">Load saved package</button></p>
+<p>Rack source replacement stops its regions; use All off then Play to retrigger. Instrument held notes keep their old source; new notes use the replacement. Stop/Start keeps the accepted graph. Saved state retains PCM and targets; playback cursors and FFT rings are live state.</p>
+<pre id="health">Not running.</pre><details><summary>Inspect authored graph</summary><pre id="graph"></pre></details></section>
+<section><h2>Native recordings and evidence</h2>
+<p><a href="/scripted-samples/2026-09-30-scripted-samples-release-v2/">Release CLAP/VST3 recordings, saved packages and host evidence</a>.</p>
+<p><a href="/native-samples/2026-09-30-native-samples-v3/">Open the native recordings, reports, saved graphs and measured source</a>.</p>
+<p>The native Rack edits are compared to an untouched v2 graph. Held Instrument notes match before new notes intentionally change source. C++ legacy parity, release DAW script events/batches and matched host performance remain open.</p></section>
+<script type="module" src="/src/native-sample-authoring.js"></script></body></html>

@@ -1,0 +1,8 @@
+{
+  "name": "manifold-filter-consumer",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "vite --host 0.0.0.0", "build": "vite build --base /examples/filter-import/" },
+  "dependencies": { "@manifold/author": "file:../../packages/manifold-author", "@manifold/ui-web": "file:../../packages/manifold-ui-web" },
+  "devDependencies": { "vite": "7.3.6" }
+}

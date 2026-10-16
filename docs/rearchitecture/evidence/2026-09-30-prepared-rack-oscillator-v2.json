@@ -1,0 +1,3118 @@
+{
+  "recordedAt": "2026-09-30T04:25:52.355Z",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174",
+  "chromiumVersion": "152.0.7977.82",
+  "hashes": {
+    "crates/manifold-core/src/graph.rs": "db466c5be5f69f9adfd7c142e482c88a807788db2728ff76ae9c8bcd2c60ed67",
+    "crates/manifold-core/src/oscillator.rs": "b2d60aae3c9a4087574f2eebda6d86130576f02423f658a300f44622b4024dbb",
+    "crates/manifold-core/src/lfo.rs": "5682c820fd5e4a9d8bb74bfef36fe0f81a3f7da1953fea1016e5ee4db4885c52",
+    "crates/manifold-core/src/distortion.rs": "e05f1ecc59d52b05549bcd589533d692bcae69563d9d2d15b3fa4fde0e699602",
+    "crates/manifold-web/src/prepared_worklet.rs": "b00be42b58dba219634ed02667e6151c8de5bbbc2e9ea7c7086e454942754ea3",
+    "packages/manifold-author/prepared-runtime.js": "8144e88db58439b04cf4f93f531c9a1d9969683a6b9072d476ac0ef90db303c2",
+    "packages/manifold-author/prepared-processor.js": "a13a1b90db3edadf6c03ae500263d85124cf61f9f0dff22d815a18a6bf0e1e76",
+    "packages/manifold-author/prepared-compiler.js": "832e4daeb8045f471be1fb48a18890c6ba8405b682cbbfb1312ca0e7b9c08fda",
+    "packages/manifold-author/examples/rack-oscillator.mjs": "7e49643d9b834fe021f0ed4bf77fde373875334e30fe08c7ed9d9e3f5b5407b3",
+    "packages/manifold-author/runtime/manifold_prepared.wasm": "0bc2618da4c80ef8991c5d82d1257354579f5719ba9e755e494163edce4b16ea"
+  },
+  "ui": {
+    "graph": {
+      "format": "manifold.project",
+      "schemaVersion": 1,
+      "projectId": "manifold.graph-workspace",
+      "signal": {
+        "inputs": 2,
+        "outputs": 2,
+        "inputSource": "none",
+        "nodes": [
+          {
+            "id": 1,
+            "type": "input.raw"
+          },
+          {
+            "id": 3,
+            "type": "output"
+          },
+          {
+            "id": 4,
+            "type": "extended-oscillator",
+            "a": 220,
+            "b": 0
+          },
+          {
+            "id": 5,
+            "type": "extended-oscillator",
+            "a": 220,
+            "b": 0
+          },
+          {
+            "id": 6,
+            "type": "extended-oscillator",
+            "a": 220,
+            "b": 0
+          },
+          {
+            "id": 7,
+            "type": "extended-oscillator",
+            "a": 220,
+            "b": 0
+          },
+          {
+            "id": 8,
+            "type": "extended-oscillator",
+            "a": 220,
+            "b": 0
+          },
+          {
+            "id": 9,
+            "type": "extended-oscillator",
+            "a": 220,
+            "b": 0
+          },
+          {
+            "id": 10,
+            "type": "extended-oscillator",
+            "a": 220,
+            "b": 0
+          },
+          {
+            "id": 11,
+            "type": "extended-oscillator",
+            "a": 220,
+            "b": 0
+          },
+          {
+            "id": 12,
+            "type": "extended-oscillator",
+            "a": 220,
+            "b": 0
+          },
+          {
+            "id": 13,
+            "type": "mixer9",
+            "a": 9,
+            "b": 1
+          },
+          {
+            "id": 21,
+            "type": "gain",
+            "a": 0.7
+          },
+          {
+            "id": 22,
+            "type": "distortion",
+            "a": 4,
+            "b": 0.7
+          }
+        ],
+        "connections": [
+          {
+            "from": 22,
+            "outputPort": 0,
+            "to": 3,
+            "inputPort": 0
+          },
+          {
+            "from": 4,
+            "outputPort": 0,
+            "to": 13,
+            "inputPort": 0
+          },
+          {
+            "from": 5,
+            "outputPort": 0,
+            "to": 13,
+            "inputPort": 1
+          },
+          {
+            "from": 6,
+            "outputPort": 0,
+            "to": 13,
+            "inputPort": 2
+          },
+          {
+            "from": 7,
+            "outputPort": 0,
+            "to": 13,
+            "inputPort": 3
+          },
+          {
+            "from": 8,
+            "outputPort": 0,
+            "to": 13,
+            "inputPort": 4
+          },
+          {
+            "from": 9,
+            "outputPort": 0,
+            "to": 13,
+            "inputPort": 5
+          },
+          {
+            "from": 10,
+            "outputPort": 0,
+            "to": 13,
+            "inputPort": 6
+          },
+          {
+            "from": 11,
+            "outputPort": 0,
+            "to": 13,
+            "inputPort": 7
+          },
+          {
+            "from": 12,
+            "outputPort": 0,
+            "to": 13,
+            "inputPort": 8
+          },
+          {
+            "from": 13,
+            "outputPort": 0,
+            "to": 21,
+            "inputPort": 0
+          },
+          {
+            "from": 21,
+            "outputPort": 0,
+            "to": 22,
+            "inputPort": 0
+          }
+        ],
+        "initialParameters": [
+          {
+            "nodeId": 4,
+            "id": 0,
+            "value": 1
+          },
+          {
+            "nodeId": 4,
+            "id": 1,
+            "value": 220
+          },
+          {
+            "nodeId": 4,
+            "id": 2,
+            "value": 0.30000001192092896
+          },
+          {
+            "nodeId": 4,
+            "id": 3,
+            "value": 0
+          },
+          {
+            "nodeId": 4,
+            "id": 4,
+            "value": 0.5
+          },
+          {
+            "nodeId": 4,
+            "id": 5,
+            "value": 0
+          },
+          {
+            "nodeId": 4,
+            "id": 6,
+            "value": 0
+          },
+          {
+            "nodeId": 4,
+            "id": 7,
+            "value": 0
+          },
+          {
+            "nodeId": 4,
+            "id": 8,
+            "value": 1
+          },
+          {
+            "nodeId": 4,
+            "id": 9,
+            "value": 1
+          },
+          {
+            "nodeId": 4,
+            "id": 10,
+            "value": 4
+          },
+          {
+            "nodeId": 4,
+            "id": 11,
+            "value": 23
+          },
+          {
+            "nodeId": 4,
+            "id": 12,
+            "value": 0.699999988079071
+          },
+          {
+            "nodeId": 4,
+            "id": 13,
+            "value": 1
+          },
+          {
+            "nodeId": 4,
+            "id": 14,
+            "value": 8
+          },
+          {
+            "nodeId": 4,
+            "id": 15,
+            "value": 0
+          },
+          {
+            "nodeId": 4,
+            "id": 16,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 0,
+            "value": 1
+          },
+          {
+            "nodeId": 5,
+            "id": 1,
+            "value": 220
+          },
+          {
+            "nodeId": 5,
+            "id": 2,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 3,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 4,
+            "value": 0.5
+          },
+          {
+            "nodeId": 5,
+            "id": 5,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 6,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 7,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 8,
+            "value": 1
+          },
+          {
+            "nodeId": 5,
+            "id": 9,
+            "value": 1
+          },
+          {
+            "nodeId": 5,
+            "id": 10,
+            "value": 4
+          },
+          {
+            "nodeId": 5,
+            "id": 11,
+            "value": 23
+          },
+          {
+            "nodeId": 5,
+            "id": 12,
+            "value": 0.699999988079071
+          },
+          {
+            "nodeId": 5,
+            "id": 13,
+            "value": 1
+          },
+          {
+            "nodeId": 5,
+            "id": 14,
+            "value": 8
+          },
+          {
+            "nodeId": 5,
+            "id": 15,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 16,
+            "value": 0
+          },
+          {
+            "nodeId": 6,
+            "id": 0,
+            "value": 1
+          },
+          {
+            "nodeId": 6,
+            "id": 1,
+            "value": 220
+          },
+          {
+            "nodeId": 6,
+            "id": 2,
+            "value": 0
+          },
+          {
+            "nodeId": 6,
+            "id": 3,
+            "value": 0
+          },
+          {
+            "nodeId": 6,
+            "id": 4,
+            "value": 0.5
+          },
+          {
+            "nodeId": 6,
+            "id": 5,
+            "value": 0
+          },
+          {
+            "nodeId": 6,
+            "id": 6,
+            "value": 0
+          },
+          {
+            "nodeId": 6,
+            "id": 7,
+            "value": 0
+          },
+          {
+            "nodeId": 6,
+            "id": 8,
+            "value": 1
+          },
+          {
+            "nodeId": 6,
+            "id": 9,
+            "value": 1
+          },
+          {
+            "nodeId": 6,
+            "id": 10,
+            "value": 4
+          },
+          {
+            "nodeId": 6,
+            "id": 11,
+            "value": 23
+          },
+          {
+            "nodeId": 6,
+            "id": 12,
+            "value": 0.699999988079071
+          },
+          {
+            "nodeId": 6,
+            "id": 13,
+            "value": 1
+          },
+          {
+            "nodeId": 6,
+            "id": 14,
+            "value": 8
+          },
+          {
+            "nodeId": 6,
+            "id": 15,
+            "value": 0
+          },
+          {
+            "nodeId": 6,
+            "id": 16,
+            "value": 0
+          },
+          {
+            "nodeId": 7,
+            "id": 0,
+            "value": 1
+          },
+          {
+            "nodeId": 7,
+            "id": 1,
+            "value": 220
+          },
+          {
+            "nodeId": 7,
+            "id": 2,
+            "value": 0
+          },
+          {
+            "nodeId": 7,
+            "id": 3,
+            "value": 0
+          },
+          {
+            "nodeId": 7,
+            "id": 4,
+            "value": 0.5
+          },
+          {
+            "nodeId": 7,
+            "id": 5,
+            "value": 0
+          },
+          {
+            "nodeId": 7,
+            "id": 6,
+            "value": 0
+          },
+          {
+            "nodeId": 7,
+            "id": 7,
+            "value": 0
+          },
+          {
+            "nodeId": 7,
+            "id": 8,
+            "value": 1
+          },
+          {
+            "nodeId": 7,
+            "id": 9,
+            "value": 1
+          },
+          {
+            "nodeId": 7,
+            "id": 10,
+            "value": 4
+          },
+          {
+            "nodeId": 7,
+            "id": 11,
+            "value": 23
+          },
+          {
+            "nodeId": 7,
+            "id": 12,
+            "value": 0.699999988079071
+          },
+          {
+            "nodeId": 7,
+            "id": 13,
+            "value": 1
+          },
+          {
+            "nodeId": 7,
+            "id": 14,
+            "value": 8
+          },
+          {
+            "nodeId": 7,
+            "id": 15,
+            "value": 0
+          },
+          {
+            "nodeId": 7,
+            "id": 16,
+            "value": 0
+          },
+          {
+            "nodeId": 8,
+            "id": 0,
+            "value": 1
+          },
+          {
+            "nodeId": 8,
+            "id": 1,
+            "value": 220
+          },
+          {
+            "nodeId": 8,
+            "id": 2,
+            "value": 0
+          },
+          {
+            "nodeId": 8,
+            "id": 3,
+            "value": 0
+          },
+          {
+            "nodeId": 8,
+            "id": 4,
+            "value": 0.5
+          },
+          {
+            "nodeId": 8,
+            "id": 5,
+            "value": 0
+          },
+          {
+            "nodeId": 8,
+            "id": 6,
+            "value": 0
+          },
+          {
+            "nodeId": 8,
+            "id": 7,
+            "value": 0
+          },
+          {
+            "nodeId": 8,
+            "id": 8,
+            "value": 1
+          },
+          {
+            "nodeId": 8,
+            "id": 9,
+            "value": 1
+          },
+          {
+            "nodeId": 8,
+            "id": 10,
+            "value": 4
+          },
+          {
+            "nodeId": 8,
+            "id": 11,
+            "value": 23
+          },
+          {
+            "nodeId": 8,
+            "id": 12,
+            "value": 0.699999988079071
+          },
+          {
+            "nodeId": 8,
+            "id": 13,
+            "value": 1
+          },
+          {
+            "nodeId": 8,
+            "id": 14,
+            "value": 8
+          },
+          {
+            "nodeId": 8,
+            "id": 15,
+            "value": 0
+          },
+          {
+            "nodeId": 8,
+            "id": 16,
+            "value": 0
+          },
+          {
+            "nodeId": 9,
+            "id": 0,
+            "value": 1
+          },
+          {
+            "nodeId": 9,
+            "id": 1,
+            "value": 220
+          },
+          {
+            "nodeId": 9,
+            "id": 2,
+            "value": 0
+          },
+          {
+            "nodeId": 9,
+            "id": 3,
+            "value": 0
+          },
+          {
+            "nodeId": 9,
+            "id": 4,
+            "value": 0.5
+          },
+          {
+            "nodeId": 9,
+            "id": 5,
+            "value": 0
+          },
+          {
+            "nodeId": 9,
+            "id": 6,
+            "value": 0
+          },
+          {
+            "nodeId": 9,
+            "id": 7,
+            "value": 0
+          },
+          {
+            "nodeId": 9,
+            "id": 8,
+            "value": 1
+          },
+          {
+            "nodeId": 9,
+            "id": 9,
+            "value": 1
+          },
+          {
+            "nodeId": 9,
+            "id": 10,
+            "value": 4
+          },
+          {
+            "nodeId": 9,
+            "id": 11,
+            "value": 23
+          },
+          {
+            "nodeId": 9,
+            "id": 12,
+            "value": 0.699999988079071
+          },
+          {
+            "nodeId": 9,
+            "id": 13,
+            "value": 1
+          },
+          {
+            "nodeId": 9,
+            "id": 14,
+            "value": 8
+          },
+          {
+            "nodeId": 9,
+            "id": 15,
+            "value": 0
+          },
+          {
+            "nodeId": 9,
+            "id": 16,
+            "value": 0
+          },
+          {
+            "nodeId": 10,
+            "id": 0,
+            "value": 1
+          },
+          {
+            "nodeId": 10,
+            "id": 1,
+            "value": 220
+          },
+          {
+            "nodeId": 10,
+            "id": 2,
+            "value": 0
+          },
+          {
+            "nodeId": 10,
+            "id": 3,
+            "value": 0
+          },
+          {
+            "nodeId": 10,
+            "id": 4,
+            "value": 0.5
+          },
+          {
+            "nodeId": 10,
+            "id": 5,
+            "value": 0
+          },
+          {
+            "nodeId": 10,
+            "id": 6,
+            "value": 0
+          },
+          {
+            "nodeId": 10,
+            "id": 7,
+            "value": 0
+          },
+          {
+            "nodeId": 10,
+            "id": 8,
+            "value": 1
+          },
+          {
+            "nodeId": 10,
+            "id": 9,
+            "value": 1
+          },
+          {
+            "nodeId": 10,
+            "id": 10,
+            "value": 4
+          },
+          {
+            "nodeId": 10,
+            "id": 11,
+            "value": 23
+          },
+          {
+            "nodeId": 10,
+            "id": 12,
+            "value": 0.699999988079071
+          },
+          {
+            "nodeId": 10,
+            "id": 13,
+            "value": 1
+          },
+          {
+            "nodeId": 10,
+            "id": 14,
+            "value": 8
+          },
+          {
+            "nodeId": 10,
+            "id": 15,
+            "value": 0
+          },
+          {
+            "nodeId": 10,
+            "id": 16,
+            "value": 0
+          },
+          {
+            "nodeId": 11,
+            "id": 0,
+            "value": 1
+          },
+          {
+            "nodeId": 11,
+            "id": 1,
+            "value": 220
+          },
+          {
+            "nodeId": 11,
+            "id": 2,
+            "value": 0
+          },
+          {
+            "nodeId": 11,
+            "id": 3,
+            "value": 0
+          },
+          {
+            "nodeId": 11,
+            "id": 4,
+            "value": 0.5
+          },
+          {
+            "nodeId": 11,
+            "id": 5,
+            "value": 0
+          },
+          {
+            "nodeId": 11,
+            "id": 6,
+            "value": 0
+          },
+          {
+            "nodeId": 11,
+            "id": 7,
+            "value": 0
+          },
+          {
+            "nodeId": 11,
+            "id": 8,
+            "value": 1
+          },
+          {
+            "nodeId": 11,
+            "id": 9,
+            "value": 1
+          },
+          {
+            "nodeId": 11,
+            "id": 10,
+            "value": 4
+          },
+          {
+            "nodeId": 11,
+            "id": 11,
+            "value": 23
+          },
+          {
+            "nodeId": 11,
+            "id": 12,
+            "value": 0.699999988079071
+          },
+          {
+            "nodeId": 11,
+            "id": 13,
+            "value": 1
+          },
+          {
+            "nodeId": 11,
+            "id": 14,
+            "value": 8
+          },
+          {
+            "nodeId": 11,
+            "id": 15,
+            "value": 0
+          },
+          {
+            "nodeId": 11,
+            "id": 16,
+            "value": 0
+          },
+          {
+            "nodeId": 12,
+            "id": 0,
+            "value": 1
+          },
+          {
+            "nodeId": 12,
+            "id": 1,
+            "value": 261.6255798339844
+          },
+          {
+            "nodeId": 12,
+            "id": 2,
+            "value": 0.20000000298023224
+          },
+          {
+            "nodeId": 12,
+            "id": 3,
+            "value": 0
+          },
+          {
+            "nodeId": 12,
+            "id": 4,
+            "value": 0.5
+          },
+          {
+            "nodeId": 12,
+            "id": 5,
+            "value": 0
+          },
+          {
+            "nodeId": 12,
+            "id": 6,
+            "value": 0
+          },
+          {
+            "nodeId": 12,
+            "id": 7,
+            "value": 0
+          },
+          {
+            "nodeId": 12,
+            "id": 8,
+            "value": 1
+          },
+          {
+            "nodeId": 12,
+            "id": 9,
+            "value": 0
+          },
+          {
+            "nodeId": 12,
+            "id": 10,
+            "value": 4
+          },
+          {
+            "nodeId": 12,
+            "id": 11,
+            "value": 23
+          },
+          {
+            "nodeId": 12,
+            "id": 12,
+            "value": 0.699999988079071
+          },
+          {
+            "nodeId": 12,
+            "id": 13,
+            "value": 1
+          },
+          {
+            "nodeId": 12,
+            "id": 14,
+            "value": 8
+          },
+          {
+            "nodeId": 12,
+            "id": 15,
+            "value": 0
+          },
+          {
+            "nodeId": 12,
+            "id": 16,
+            "value": 0
+          },
+          {
+            "nodeId": 13,
+            "id": 0,
+            "value": 1
+          },
+          {
+            "nodeId": 21,
+            "id": 0,
+            "value": 0.20000000298023224
+          },
+          {
+            "nodeId": 22,
+            "id": 0,
+            "value": 4
+          },
+          {
+            "nodeId": 22,
+            "id": 1,
+            "value": 0.4000000059604645
+          },
+          {
+            "nodeId": 22,
+            "id": 2,
+            "value": 0.800000011920929
+          }
+        ]
+      },
+      "controls": [
+        {
+          "path": "/midi/synth/rack/osc/1/additiveDrift",
+          "min": 0,
+          "max": 1,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/additivePartials",
+          "min": 1,
+          "max": 32,
+          "default": 8,
+          "value": 8,
+          "discrete": true
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/additiveTilt",
+          "min": -1,
+          "max": 1,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/detune",
+          "min": 0,
+          "max": 100,
+          "default": 0,
+          "value": 23,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/drive",
+          "min": 0,
+          "max": 20,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/driveBias",
+          "min": -1,
+          "max": 1,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/driveShape",
+          "min": 0,
+          "max": 3,
+          "default": 0,
+          "value": 0,
+          "discrete": true
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/manualLevel",
+          "min": 0,
+          "max": 1,
+          "default": 0,
+          "value": 0.5,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/manualPitch",
+          "min": 0,
+          "max": 127,
+          "default": 60,
+          "value": 60,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/output",
+          "min": 0,
+          "max": 2,
+          "default": 0.8,
+          "value": 0.8,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/pulseWidth",
+          "min": 0.01,
+          "max": 0.99,
+          "default": 0.5,
+          "value": 0.5,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/renderMode",
+          "min": 0,
+          "max": 1,
+          "default": 0,
+          "value": 1,
+          "discrete": true
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/spread",
+          "min": 0,
+          "max": 1,
+          "default": 0,
+          "value": 0.7,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/unison",
+          "min": 1,
+          "max": 8,
+          "default": 1,
+          "value": 4,
+          "discrete": true
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/1/fm",
+          "min": -1,
+          "max": 1,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/1/gate",
+          "min": 0,
+          "max": 1,
+          "default": 0,
+          "value": 0.3,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/1/pwCv",
+          "min": 0,
+          "max": 1,
+          "default": 0.5,
+          "value": 0.5,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/1/vOct",
+          "min": 0,
+          "max": 127,
+          "default": 60,
+          "value": 60,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/2/fm",
+          "min": -1,
+          "max": 1,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/2/gate",
+          "min": 0,
+          "max": 1,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/2/pwCv",
+          "min": 0,
+          "max": 1,
+          "default": 0.5,
+          "value": 0.5,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/2/vOct",
+          "min": 0,
+          "max": 127,
+          "default": 60,
+          "value": 60,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/3/fm",
+          "min": -1,
+          "max": 1,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/3/gate",
+          "min": 0,
+          "max": 1,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/3/pwCv",
+          "min": 0,
+          "max": 1,
+          "default": 0.5,
+          "value": 0.5,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/3/vOct",
+          "min": 0,
+          "max": 127,
+          "default": 60,
+          "value": 60,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/4/fm",
+          "min": -1,
+          "max": 1,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/4/gate",
+          "min": 0,
+          "max": 1,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/4/pwCv",
+          "min": 0,
+          "max": 1,
+          "default": 0.5,
+          "value": 0.5,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/4/vOct",
+          "min": 0,
+          "max": 127,
+          "default": 60,
+          "value": 60,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/5/fm",
+          "min": -1,
+          "max": 1,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/5/gate",
+          "min": 0,
+          "max": 1,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/5/pwCv",
+          "min": 0,
+          "max": 1,
+          "default": 0.5,
+          "value": 0.5,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/5/vOct",
+          "min": 0,
+          "max": 127,
+          "default": 60,
+          "value": 60,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/6/fm",
+          "min": -1,
+          "max": 1,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/6/gate",
+          "min": 0,
+          "max": 1,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/6/pwCv",
+          "min": 0,
+          "max": 1,
+          "default": 0.5,
+          "value": 0.5,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/6/vOct",
+          "min": 0,
+          "max": 127,
+          "default": 60,
+          "value": 60,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/7/fm",
+          "min": -1,
+          "max": 1,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/7/gate",
+          "min": 0,
+          "max": 1,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/7/pwCv",
+          "min": 0,
+          "max": 1,
+          "default": 0.5,
+          "value": 0.5,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/7/vOct",
+          "min": 0,
+          "max": 127,
+          "default": 60,
+          "value": 60,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/8/fm",
+          "min": -1,
+          "max": 1,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/8/gate",
+          "min": 0,
+          "max": 1,
+          "default": 0,
+          "value": 0,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/8/pwCv",
+          "min": 0,
+          "max": 1,
+          "default": 0.5,
+          "value": 0.5,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/voice/8/vOct",
+          "min": 0,
+          "max": 127,
+          "default": 60,
+          "value": 60,
+          "discrete": false
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/waveform",
+          "min": 0,
+          "max": 7,
+          "default": 1,
+          "value": 1,
+          "discrete": true
+        }
+      ],
+      "instances": [
+        {
+          "path": "/midi/synth/rack/osc/1/nodes/insert",
+          "nodeId": 22
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/nodes/manual",
+          "nodeId": 12
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/nodes/mixer",
+          "nodeId": 13
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/nodes/output",
+          "nodeId": 21
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/nodes/voice_1",
+          "nodeId": 4
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/nodes/voice_2",
+          "nodeId": 5
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/nodes/voice_3",
+          "nodeId": 6
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/nodes/voice_4",
+          "nodeId": 7
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/nodes/voice_5",
+          "nodeId": 8
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/nodes/voice_6",
+          "nodeId": 9
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/nodes/voice_7",
+          "nodeId": 10
+        },
+        {
+          "path": "/midi/synth/rack/osc/1/nodes/voice_8",
+          "nodeId": 11
+        }
+      ]
+    },
+    "diagnostics": {
+      "execution": "prepared",
+      "audioBlocks": 144,
+      "rustProcessedBlocks": 132,
+      "publications": 2,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 11,
+      "lastPublicationContextFrame": 18432,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 16777216,
+      "lastPreparationMs": 1.125,
+      "lastPublicationMs": 10.059999942779541,
+      "compilerFailed": false,
+      "processorFailed": false
+    }
+  },
+  "frames": 80896,
+  "firstContextFrame": 0,
+  "overflow": false,
+  "maxDifference": 0,
+  "mismatchedSamples": 0,
+  "rms": 0.01115337562090041,
+  "zeroBlocks": 0,
+  "before": {
+    "primary": {
+      "execution": "prepared",
+      "audioBlocks": 80,
+      "rustProcessedBlocks": 80,
+      "publications": 1,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 0,
+      "lastPublicationContextFrame": 0,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 16777216,
+      "lastPreparationMs": 0.7649999856948853,
+      "lastPublicationMs": 3.75,
+      "compilerFailed": false,
+      "processorFailed": false
+    },
+    "reference": {
+      "execution": "prepared",
+      "audioBlocks": 80,
+      "rustProcessedBlocks": 80,
+      "publications": 1,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 0,
+      "lastPublicationContextFrame": 0,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 16777216,
+      "lastPreparationMs": 0.7400000095367432,
+      "lastPublicationMs": 3.5200001001358032,
+      "compilerFailed": false,
+      "processorFailed": false
+    }
+  },
+  "after": {
+    "primary": {
+      "execution": "prepared",
+      "audioBlocks": 632,
+      "rustProcessedBlocks": 632,
+      "publications": 13,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 11,
+      "lastPublicationContextFrame": 67072,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 16777216,
+      "lastPreparationMs": 0.3999999761581421,
+      "lastPublicationMs": 3.555000066757202,
+      "compilerFailed": false,
+      "processorFailed": false
+    },
+    "reference": {
+      "execution": "prepared",
+      "audioBlocks": 632,
+      "rustProcessedBlocks": 632,
+      "publications": 1,
+      "rustProcessingFailures": 0,
+      "rustCallbackAllocations": 0,
+      "rustCallbackDeallocations": 0,
+      "lastTransferredNodes": 0,
+      "lastPublicationContextFrame": 0,
+      "outputLatencyBlocks": 0,
+      "memoryBytes": 16777216,
+      "lastPreparationMs": 0.7400000095367432,
+      "lastPublicationMs": 3.5200001001358032,
+      "compilerFailed": false,
+      "processorFailed": false
+    }
+  },
+  "edits": [
+    {
+      "index": 0,
+      "totalMs": 20.269999980926514,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 88,
+        "rustProcessedBlocks": 88,
+        "publications": 2,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 11,
+        "lastPublicationContextFrame": 10752,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.7749999761581421,
+        "lastPublicationMs": 4.195000052452087,
+        "compilerFailed": false,
+        "processorFailed": false
+      }
+    },
+    {
+      "index": 1,
+      "totalMs": 26.740000009536743,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 128,
+        "rustProcessedBlocks": 128,
+        "publications": 3,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 11,
+        "lastPublicationContextFrame": 15872,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.7850000858306885,
+        "lastPublicationMs": 12.520000100135803,
+        "compilerFailed": false,
+        "processorFailed": false
+      }
+    },
+    {
+      "index": 2,
+      "totalMs": 26.695000052452087,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 168,
+        "rustProcessedBlocks": 168,
+        "publications": 4,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 11,
+        "lastPublicationContextFrame": 20992,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.7400000095367432,
+        "lastPublicationMs": 12.860000014305115,
+        "compilerFailed": false,
+        "processorFailed": false
+      }
+    },
+    {
+      "index": 3,
+      "totalMs": 25.66000008583069,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 208,
+        "rustProcessedBlocks": 208,
+        "publications": 5,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 11,
+        "lastPublicationContextFrame": 26112,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.6749999523162842,
+        "lastPublicationMs": 10.490000009536743,
+        "compilerFailed": false,
+        "processorFailed": false
+      }
+    },
+    {
+      "index": 4,
+      "totalMs": 26.524999976158142,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 248,
+        "rustProcessedBlocks": 248,
+        "publications": 6,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 11,
+        "lastPublicationContextFrame": 31232,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.4099999666213989,
+        "lastPublicationMs": 11.959999918937683,
+        "compilerFailed": false,
+        "processorFailed": false
+      }
+    },
+    {
+      "index": 5,
+      "totalMs": 37.09500002861023,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 292,
+        "rustProcessedBlocks": 292,
+        "publications": 7,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 11,
+        "lastPublicationContextFrame": 36352,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 1.0700000524520874,
+        "lastPublicationMs": 22.455000042915344,
+        "compilerFailed": false,
+        "processorFailed": false
+      }
+    },
+    {
+      "index": 6,
+      "totalMs": 28,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 332,
+        "rustProcessedBlocks": 332,
+        "publications": 8,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 11,
+        "lastPublicationContextFrame": 41984,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.7749999761581421,
+        "lastPublicationMs": 12.730000019073486,
+        "compilerFailed": false,
+        "processorFailed": false
+      }
+    },
+    {
+      "index": 7,
+      "totalMs": 25.364999890327454,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 372,
+        "rustProcessedBlocks": 372,
+        "publications": 9,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 11,
+        "lastPublicationContextFrame": 47104,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.4150000810623169,
+        "lastPublicationMs": 12.194999933242798,
+        "compilerFailed": false,
+        "processorFailed": false
+      }
+    },
+    {
+      "index": 8,
+      "totalMs": 27.59999990463257,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 412,
+        "rustProcessedBlocks": 412,
+        "publications": 10,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 11,
+        "lastPublicationContextFrame": 52224,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.6000000238418579,
+        "lastPublicationMs": 12.625,
+        "compilerFailed": false,
+        "processorFailed": false
+      }
+    },
+    {
+      "index": 9,
+      "totalMs": 24.855000019073486,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 452,
+        "rustProcessedBlocks": 452,
+        "publications": 11,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 11,
+        "lastPublicationContextFrame": 57344,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.4049999713897705,
+        "lastPublicationMs": 10.585000038146973,
+        "compilerFailed": false,
+        "processorFailed": false
+      }
+    },
+    {
+      "index": 10,
+      "totalMs": 26.37000000476837,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 492,
+        "rustProcessedBlocks": 492,
+        "publications": 12,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 11,
+        "lastPublicationContextFrame": 62464,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.5999999046325684,
+        "lastPublicationMs": 12.259999990463257,
+        "compilerFailed": false,
+        "processorFailed": false
+      }
+    },
+    {
+      "index": 11,
+      "totalMs": 17.024999976158142,
+      "diagnostics": {
+        "execution": "prepared",
+        "audioBlocks": 528,
+        "rustProcessedBlocks": 528,
+        "publications": 13,
+        "rustProcessingFailures": 0,
+        "rustCallbackAllocations": 0,
+        "rustCallbackDeallocations": 0,
+        "lastTransferredNodes": 11,
+        "lastPublicationContextFrame": 67072,
+        "outputLatencyBlocks": 0,
+        "memoryBytes": 16777216,
+        "lastPreparationMs": 0.3999999761581421,
+        "lastPublicationMs": 3.555000066757202,
+        "compilerFailed": false,
+        "processorFailed": false
+      }
+    }
+  ],
+  "finalGraph": {
+    "format": "manifold.project",
+    "schemaVersion": 1,
+    "projectId": "manifold.graph-workspace",
+    "signal": {
+      "inputs": 2,
+      "outputs": 2,
+      "inputSource": "none",
+      "nodes": [
+        {
+          "id": 1,
+          "type": "input.raw"
+        },
+        {
+          "id": 3,
+          "type": "output"
+        },
+        {
+          "id": 4,
+          "type": "extended-oscillator",
+          "a": 220,
+          "b": 0
+        },
+        {
+          "id": 5,
+          "type": "extended-oscillator",
+          "a": 220,
+          "b": 0
+        },
+        {
+          "id": 6,
+          "type": "extended-oscillator",
+          "a": 220,
+          "b": 0
+        },
+        {
+          "id": 7,
+          "type": "extended-oscillator",
+          "a": 220,
+          "b": 0
+        },
+        {
+          "id": 8,
+          "type": "extended-oscillator",
+          "a": 220,
+          "b": 0
+        },
+        {
+          "id": 9,
+          "type": "extended-oscillator",
+          "a": 220,
+          "b": 0
+        },
+        {
+          "id": 10,
+          "type": "extended-oscillator",
+          "a": 220,
+          "b": 0
+        },
+        {
+          "id": 11,
+          "type": "extended-oscillator",
+          "a": 220,
+          "b": 0
+        },
+        {
+          "id": 12,
+          "type": "extended-oscillator",
+          "a": 220,
+          "b": 0
+        },
+        {
+          "id": 13,
+          "type": "mixer9",
+          "a": 9,
+          "b": 1
+        },
+        {
+          "id": 21,
+          "type": "gain",
+          "a": 0.7
+        }
+      ],
+      "connections": [
+        {
+          "from": 21,
+          "outputPort": 0,
+          "to": 3,
+          "inputPort": 0
+        },
+        {
+          "from": 4,
+          "outputPort": 0,
+          "to": 13,
+          "inputPort": 0
+        },
+        {
+          "from": 5,
+          "outputPort": 0,
+          "to": 13,
+          "inputPort": 1
+        },
+        {
+          "from": 6,
+          "outputPort": 0,
+          "to": 13,
+          "inputPort": 2
+        },
+        {
+          "from": 7,
+          "outputPort": 0,
+          "to": 13,
+          "inputPort": 3
+        },
+        {
+          "from": 8,
+          "outputPort": 0,
+          "to": 13,
+          "inputPort": 4
+        },
+        {
+          "from": 9,
+          "outputPort": 0,
+          "to": 13,
+          "inputPort": 5
+        },
+        {
+          "from": 10,
+          "outputPort": 0,
+          "to": 13,
+          "inputPort": 6
+        },
+        {
+          "from": 11,
+          "outputPort": 0,
+          "to": 13,
+          "inputPort": 7
+        },
+        {
+          "from": 12,
+          "outputPort": 0,
+          "to": 13,
+          "inputPort": 8
+        },
+        {
+          "from": 13,
+          "outputPort": 0,
+          "to": 21,
+          "inputPort": 0
+        }
+      ],
+      "initialParameters": [
+        {
+          "nodeId": 4,
+          "id": 0,
+          "value": 1
+        },
+        {
+          "nodeId": 4,
+          "id": 1,
+          "value": 220
+        },
+        {
+          "nodeId": 4,
+          "id": 2,
+          "value": 0.30000001192092896
+        },
+        {
+          "nodeId": 4,
+          "id": 3,
+          "value": 0
+        },
+        {
+          "nodeId": 4,
+          "id": 4,
+          "value": 0.5
+        },
+        {
+          "nodeId": 4,
+          "id": 5,
+          "value": 0
+        },
+        {
+          "nodeId": 4,
+          "id": 6,
+          "value": 0
+        },
+        {
+          "nodeId": 4,
+          "id": 7,
+          "value": 0
+        },
+        {
+          "nodeId": 4,
+          "id": 8,
+          "value": 1
+        },
+        {
+          "nodeId": 4,
+          "id": 9,
+          "value": 1
+        },
+        {
+          "nodeId": 4,
+          "id": 10,
+          "value": 4
+        },
+        {
+          "nodeId": 4,
+          "id": 11,
+          "value": 23
+        },
+        {
+          "nodeId": 4,
+          "id": 12,
+          "value": 0.699999988079071
+        },
+        {
+          "nodeId": 4,
+          "id": 13,
+          "value": 1
+        },
+        {
+          "nodeId": 4,
+          "id": 14,
+          "value": 8
+        },
+        {
+          "nodeId": 4,
+          "id": 15,
+          "value": 0
+        },
+        {
+          "nodeId": 4,
+          "id": 16,
+          "value": 0
+        },
+        {
+          "nodeId": 5,
+          "id": 0,
+          "value": 1
+        },
+        {
+          "nodeId": 5,
+          "id": 1,
+          "value": 220
+        },
+        {
+          "nodeId": 5,
+          "id": 2,
+          "value": 0
+        },
+        {
+          "nodeId": 5,
+          "id": 3,
+          "value": 0
+        },
+        {
+          "nodeId": 5,
+          "id": 4,
+          "value": 0.5
+        },
+        {
+          "nodeId": 5,
+          "id": 5,
+          "value": 0
+        },
+        {
+          "nodeId": 5,
+          "id": 6,
+          "value": 0
+        },
+        {
+          "nodeId": 5,
+          "id": 7,
+          "value": 0
+        },
+        {
+          "nodeId": 5,
+          "id": 8,
+          "value": 1
+        },
+        {
+          "nodeId": 5,
+          "id": 9,
+          "value": 1
+        },
+        {
+          "nodeId": 5,
+          "id": 10,
+          "value": 4
+        },
+        {
+          "nodeId": 5,
+          "id": 11,
+          "value": 23
+        },
+        {
+          "nodeId": 5,
+          "id": 12,
+          "value": 0.699999988079071
+        },
+        {
+          "nodeId": 5,
+          "id": 13,
+          "value": 1
+        },
+        {
+          "nodeId": 5,
+          "id": 14,
+          "value": 8
+        },
+        {
+          "nodeId": 5,
+          "id": 15,
+          "value": 0
+        },
+        {
+          "nodeId": 5,
+          "id": 16,
+          "value": 0
+        },
+        {
+          "nodeId": 6,
+          "id": 0,
+          "value": 1
+        },
+        {
+          "nodeId": 6,
+          "id": 1,
+          "value": 220
+        },
+        {
+          "nodeId": 6,
+          "id": 2,
+          "value": 0
+        },
+        {
+          "nodeId": 6,
+          "id": 3,
+          "value": 0
+        },
+        {
+          "nodeId": 6,
+          "id": 4,
+          "value": 0.5
+        },
+        {
+          "nodeId": 6,
+          "id": 5,
+          "value": 0
+        },
+        {
+          "nodeId": 6,
+          "id": 6,
+          "value": 0
+        },
+        {
+          "nodeId": 6,
+          "id": 7,
+          "value": 0
+        },
+        {
+          "nodeId": 6,
+          "id": 8,
+          "value": 1
+        },
+        {
+          "nodeId": 6,
+          "id": 9,
+          "value": 1
+        },
+        {
+          "nodeId": 6,
+          "id": 10,
+          "value": 4
+        },
+        {
+          "nodeId": 6,
+          "id": 11,
+          "value": 23
+        },
+        {
+          "nodeId": 6,
+          "id": 12,
+          "value": 0.699999988079071
+        },
+        {
+          "nodeId": 6,
+          "id": 13,
+          "value": 1
+        },
+        {
+          "nodeId": 6,
+          "id": 14,
+          "value": 8
+        },
+        {
+          "nodeId": 6,
+          "id": 15,
+          "value": 0
+        },
+        {
+          "nodeId": 6,
+          "id": 16,
+          "value": 0
+        },
+        {
+          "nodeId": 7,
+          "id": 0,
+          "value": 1
+        },
+        {
+          "nodeId": 7,
+          "id": 1,
+          "value": 220
+        },
+        {
+          "nodeId": 7,
+          "id": 2,
+          "value": 0
+        },
+        {
+          "nodeId": 7,
+          "id": 3,
+          "value": 0
+        },
+        {
+          "nodeId": 7,
+          "id": 4,
+          "value": 0.5
+        },
+        {
+          "nodeId": 7,
+          "id": 5,
+          "value": 0
+        },
+        {
+          "nodeId": 7,
+          "id": 6,
+          "value": 0
+        },
+        {
+          "nodeId": 7,
+          "id": 7,
+          "value": 0
+        },
+        {
+          "nodeId": 7,
+          "id": 8,
+          "value": 1
+        },
+        {
+          "nodeId": 7,
+          "id": 9,
+          "value": 1
+        },
+        {
+          "nodeId": 7,
+          "id": 10,
+          "value": 4
+        },
+        {
+          "nodeId": 7,
+          "id": 11,
+          "value": 23
+        },
+        {
+          "nodeId": 7,
+          "id": 12,
+          "value": 0.699999988079071
+        },
+        {
+          "nodeId": 7,
+          "id": 13,
+          "value": 1
+        },
+        {
+          "nodeId": 7,
+          "id": 14,
+          "value": 8
+        },
+        {
+          "nodeId": 7,
+          "id": 15,
+          "value": 0
+        },
+        {
+          "nodeId": 7,
+          "id": 16,
+          "value": 0
+        },
+        {
+          "nodeId": 8,
+          "id": 0,
+          "value": 1
+        },
+        {
+          "nodeId": 8,
+          "id": 1,
+          "value": 220
+        },
+        {
+          "nodeId": 8,
+          "id": 2,
+          "value": 0
+        },
+        {
+          "nodeId": 8,
+          "id": 3,
+          "value": 0
+        },
+        {
+          "nodeId": 8,
+          "id": 4,
+          "value": 0.5
+        },
+        {
+          "nodeId": 8,
+          "id": 5,
+          "value": 0
+        },
+        {
+          "nodeId": 8,
+          "id": 6,
+          "value": 0
+        },
+        {
+          "nodeId": 8,
+          "id": 7,
+          "value": 0
+        },
+        {
+          "nodeId": 8,
+          "id": 8,
+          "value": 1
+        },
+        {
+          "nodeId": 8,
+          "id": 9,
+          "value": 1
+        },
+        {
+          "nodeId": 8,
+          "id": 10,
+          "value": 4
+        },
+        {
+          "nodeId": 8,
+          "id": 11,
+          "value": 23
+        },
+        {
+          "nodeId": 8,
+          "id": 12,
+          "value": 0.699999988079071
+        },
+        {
+          "nodeId": 8,
+          "id": 13,
+          "value": 1
+        },
+        {
+          "nodeId": 8,
+          "id": 14,
+          "value": 8
+        },
+        {
+          "nodeId": 8,
+          "id": 15,
+          "value": 0
+        },
+        {
+          "nodeId": 8,
+          "id": 16,
+          "value": 0
+        },
+        {
+          "nodeId": 9,
+          "id": 0,
+          "value": 1
+        },
+        {
+          "nodeId": 9,
+          "id": 1,
+          "value": 220
+        },
+        {
+          "nodeId": 9,
+          "id": 2,
+          "value": 0
+        },
+        {
+          "nodeId": 9,
+          "id": 3,
+          "value": 0
+        },
+        {
+          "nodeId": 9,
+          "id": 4,
+          "value": 0.5
+        },
+        {
+          "nodeId": 9,
+          "id": 5,
+          "value": 0
+        },
+        {
+          "nodeId": 9,
+          "id": 6,
+          "value": 0
+        },
+        {
+          "nodeId": 9,
+          "id": 7,
+          "value": 0
+        },
+        {
+          "nodeId": 9,
+          "id": 8,
+          "value": 1
+        },
+        {
+          "nodeId": 9,
+          "id": 9,
+          "value": 1
+        },
+        {
+          "nodeId": 9,
+          "id": 10,
+          "value": 4
+        },
+        {
+          "nodeId": 9,
+          "id": 11,
+          "value": 23
+        },
+        {
+          "nodeId": 9,
+          "id": 12,
+          "value": 0.699999988079071
+        },
+        {
+          "nodeId": 9,
+          "id": 13,
+          "value": 1
+        },
+        {
+          "nodeId": 9,
+          "id": 14,
+          "value": 8
+        },
+        {
+          "nodeId": 9,
+          "id": 15,
+          "value": 0
+        },
+        {
+          "nodeId": 9,
+          "id": 16,
+          "value": 0
+        },
+        {
+          "nodeId": 10,
+          "id": 0,
+          "value": 1
+        },
+        {
+          "nodeId": 10,
+          "id": 1,
+          "value": 220
+        },
+        {
+          "nodeId": 10,
+          "id": 2,
+          "value": 0
+        },
+        {
+          "nodeId": 10,
+          "id": 3,
+          "value": 0
+        },
+        {
+          "nodeId": 10,
+          "id": 4,
+          "value": 0.5
+        },
+        {
+          "nodeId": 10,
+          "id": 5,
+          "value": 0
+        },
+        {
+          "nodeId": 10,
+          "id": 6,
+          "value": 0
+        },
+        {
+          "nodeId": 10,
+          "id": 7,
+          "value": 0
+        },
+        {
+          "nodeId": 10,
+          "id": 8,
+          "value": 1
+        },
+        {
+          "nodeId": 10,
+          "id": 9,
+          "value": 1
+        },
+        {
+          "nodeId": 10,
+          "id": 10,
+          "value": 4
+        },
+        {
+          "nodeId": 10,
+          "id": 11,
+          "value": 23
+        },
+        {
+          "nodeId": 10,
+          "id": 12,
+          "value": 0.699999988079071
+        },
+        {
+          "nodeId": 10,
+          "id": 13,
+          "value": 1
+        },
+        {
+          "nodeId": 10,
+          "id": 14,
+          "value": 8
+        },
+        {
+          "nodeId": 10,
+          "id": 15,
+          "value": 0
+        },
+        {
+          "nodeId": 10,
+          "id": 16,
+          "value": 0
+        },
+        {
+          "nodeId": 11,
+          "id": 0,
+          "value": 1
+        },
+        {
+          "nodeId": 11,
+          "id": 1,
+          "value": 220
+        },
+        {
+          "nodeId": 11,
+          "id": 2,
+          "value": 0
+        },
+        {
+          "nodeId": 11,
+          "id": 3,
+          "value": 0
+        },
+        {
+          "nodeId": 11,
+          "id": 4,
+          "value": 0.5
+        },
+        {
+          "nodeId": 11,
+          "id": 5,
+          "value": 0
+        },
+        {
+          "nodeId": 11,
+          "id": 6,
+          "value": 0
+        },
+        {
+          "nodeId": 11,
+          "id": 7,
+          "value": 0
+        },
+        {
+          "nodeId": 11,
+          "id": 8,
+          "value": 1
+        },
+        {
+          "nodeId": 11,
+          "id": 9,
+          "value": 1
+        },
+        {
+          "nodeId": 11,
+          "id": 10,
+          "value": 4
+        },
+        {
+          "nodeId": 11,
+          "id": 11,
+          "value": 23
+        },
+        {
+          "nodeId": 11,
+          "id": 12,
+          "value": 0.699999988079071
+        },
+        {
+          "nodeId": 11,
+          "id": 13,
+          "value": 1
+        },
+        {
+          "nodeId": 11,
+          "id": 14,
+          "value": 8
+        },
+        {
+          "nodeId": 11,
+          "id": 15,
+          "value": 0
+        },
+        {
+          "nodeId": 11,
+          "id": 16,
+          "value": 0
+        },
+        {
+          "nodeId": 12,
+          "id": 0,
+          "value": 1
+        },
+        {
+          "nodeId": 12,
+          "id": 1,
+          "value": 261.6255798339844
+        },
+        {
+          "nodeId": 12,
+          "id": 2,
+          "value": 0.20000000298023224
+        },
+        {
+          "nodeId": 12,
+          "id": 3,
+          "value": 0
+        },
+        {
+          "nodeId": 12,
+          "id": 4,
+          "value": 0.5
+        },
+        {
+          "nodeId": 12,
+          "id": 5,
+          "value": 0
+        },
+        {
+          "nodeId": 12,
+          "id": 6,
+          "value": 0
+        },
+        {
+          "nodeId": 12,
+          "id": 7,
+          "value": 0
+        },
+        {
+          "nodeId": 12,
+          "id": 8,
+          "value": 1
+        },
+        {
+          "nodeId": 12,
+          "id": 9,
+          "value": 0
+        },
+        {
+          "nodeId": 12,
+          "id": 10,
+          "value": 4
+        },
+        {
+          "nodeId": 12,
+          "id": 11,
+          "value": 23
+        },
+        {
+          "nodeId": 12,
+          "id": 12,
+          "value": 0.699999988079071
+        },
+        {
+          "nodeId": 12,
+          "id": 13,
+          "value": 1
+        },
+        {
+          "nodeId": 12,
+          "id": 14,
+          "value": 8
+        },
+        {
+          "nodeId": 12,
+          "id": 15,
+          "value": 0
+        },
+        {
+          "nodeId": 12,
+          "id": 16,
+          "value": 0
+        },
+        {
+          "nodeId": 13,
+          "id": 0,
+          "value": 1
+        },
+        {
+          "nodeId": 21,
+          "id": 0,
+          "value": 0.20000000298023224
+        }
+      ]
+    },
+    "controls": [
+      {
+        "path": "/midi/synth/rack/osc/1/additiveDrift",
+        "min": 0,
+        "max": 1,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/additivePartials",
+        "min": 1,
+        "max": 32,
+        "default": 8,
+        "value": 8,
+        "discrete": true
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/additiveTilt",
+        "min": -1,
+        "max": 1,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/detune",
+        "min": 0,
+        "max": 100,
+        "default": 0,
+        "value": 23,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/drive",
+        "min": 0,
+        "max": 20,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/driveBias",
+        "min": -1,
+        "max": 1,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/driveShape",
+        "min": 0,
+        "max": 3,
+        "default": 0,
+        "value": 0,
+        "discrete": true
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/manualLevel",
+        "min": 0,
+        "max": 1,
+        "default": 0,
+        "value": 0.5,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/manualPitch",
+        "min": 0,
+        "max": 127,
+        "default": 60,
+        "value": 60,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/output",
+        "min": 0,
+        "max": 2,
+        "default": 0.8,
+        "value": 0.8,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/pulseWidth",
+        "min": 0.01,
+        "max": 0.99,
+        "default": 0.5,
+        "value": 0.5,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/renderMode",
+        "min": 0,
+        "max": 1,
+        "default": 0,
+        "value": 1,
+        "discrete": true
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/spread",
+        "min": 0,
+        "max": 1,
+        "default": 0,
+        "value": 0.7,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/unison",
+        "min": 1,
+        "max": 8,
+        "default": 1,
+        "value": 4,
+        "discrete": true
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/1/fm",
+        "min": -1,
+        "max": 1,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/1/gate",
+        "min": 0,
+        "max": 1,
+        "default": 0,
+        "value": 0.3,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/1/pwCv",
+        "min": 0,
+        "max": 1,
+        "default": 0.5,
+        "value": 0.5,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/1/vOct",
+        "min": 0,
+        "max": 127,
+        "default": 60,
+        "value": 60,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/2/fm",
+        "min": -1,
+        "max": 1,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/2/gate",
+        "min": 0,
+        "max": 1,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/2/pwCv",
+        "min": 0,
+        "max": 1,
+        "default": 0.5,
+        "value": 0.5,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/2/vOct",
+        "min": 0,
+        "max": 127,
+        "default": 60,
+        "value": 60,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/3/fm",
+        "min": -1,
+        "max": 1,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/3/gate",
+        "min": 0,
+        "max": 1,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/3/pwCv",
+        "min": 0,
+        "max": 1,
+        "default": 0.5,
+        "value": 0.5,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/3/vOct",
+        "min": 0,
+        "max": 127,
+        "default": 60,
+        "value": 60,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/4/fm",
+        "min": -1,
+        "max": 1,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/4/gate",
+        "min": 0,
+        "max": 1,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/4/pwCv",
+        "min": 0,
+        "max": 1,
+        "default": 0.5,
+        "value": 0.5,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/4/vOct",
+        "min": 0,
+        "max": 127,
+        "default": 60,
+        "value": 60,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/5/fm",
+        "min": -1,
+        "max": 1,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/5/gate",
+        "min": 0,
+        "max": 1,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/5/pwCv",
+        "min": 0,
+        "max": 1,
+        "default": 0.5,
+        "value": 0.5,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/5/vOct",
+        "min": 0,
+        "max": 127,
+        "default": 60,
+        "value": 60,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/6/fm",
+        "min": -1,
+        "max": 1,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/6/gate",
+        "min": 0,
+        "max": 1,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/6/pwCv",
+        "min": 0,
+        "max": 1,
+        "default": 0.5,
+        "value": 0.5,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/6/vOct",
+        "min": 0,
+        "max": 127,
+        "default": 60,
+        "value": 60,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/7/fm",
+        "min": -1,
+        "max": 1,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/7/gate",
+        "min": 0,
+        "max": 1,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/7/pwCv",
+        "min": 0,
+        "max": 1,
+        "default": 0.5,
+        "value": 0.5,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/7/vOct",
+        "min": 0,
+        "max": 127,
+        "default": 60,
+        "value": 60,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/8/fm",
+        "min": -1,
+        "max": 1,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/8/gate",
+        "min": 0,
+        "max": 1,
+        "default": 0,
+        "value": 0,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/8/pwCv",
+        "min": 0,
+        "max": 1,
+        "default": 0.5,
+        "value": 0.5,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/voice/8/vOct",
+        "min": 0,
+        "max": 127,
+        "default": 60,
+        "value": 60,
+        "discrete": false
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/waveform",
+        "min": 0,
+        "max": 7,
+        "default": 1,
+        "value": 1,
+        "discrete": true
+      }
+    ],
+    "instances": [
+      {
+        "path": "/midi/synth/rack/osc/1/nodes/manual",
+        "nodeId": 12
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/nodes/mixer",
+        "nodeId": 13
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/nodes/output",
+        "nodeId": 21
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/nodes/voice_1",
+        "nodeId": 4
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/nodes/voice_2",
+        "nodeId": 5
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/nodes/voice_3",
+        "nodeId": 6
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/nodes/voice_4",
+        "nodeId": 7
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/nodes/voice_5",
+        "nodeId": 8
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/nodes/voice_6",
+        "nodeId": 9
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/nodes/voice_7",
+        "nodeId": 10
+      },
+      {
+        "path": "/midi/synth/rack/osc/1/nodes/voice_8",
+        "nodeId": 11
+      }
+    ]
+  },
+  "controls": [
+    "manual + gated voice",
+    "four unison voices",
+    "additive",
+    "stereo spread"
+  ],
+  "audio": "/prepared-rack-oscillator/2026-09-30-prepared-rack-oscillator-v2/edited.wav",
+  "referenceAudio": "/prepared-rack-oscillator/2026-09-30-prepared-rack-oscillator-v2/reference.wav",
+  "workersAfterClose": [],
+  "pageErrors": []
+}

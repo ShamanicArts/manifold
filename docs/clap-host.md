@@ -1,0 +1,209 @@
+# CLAP host proof
+
+## Graph host checkpoint
+
+The same Linux `.clap` module now exports a second class,
+`arts.shamanic.manifold.graph`. It accepts the authored graph project JSON
+through the CLAP state stream, prepares native Rust DSP outside the audio
+callback, and exposes 128 stable normalized host slots. Its audio callback
+supports stereo input/output, sidechain input, CLAP note events, and timed
+parameter values. The browser and VST3 graph project bytes are portable to
+this class. The first default is the authored Note Voice graph.
+
+`cargo test -p manifold-clap graph_clap_note_and_automation_match_native_and_state_reopens`
+checks a note plus a parameter change at frame 32, compares both CLAP output
+channels sample for sample with `manifold-native`, then saves and reopens state.
+`scripts/probe-clap-graph.py` loads the **packaged** module in a separate
+process, discovers both classes, restores a project through CLAP state,
+renders a block, and saves it again. Successful local runs:
+
+| Project | Loaded bytes | Output peak | Saved bytes |
+| --- | ---: | ---: | ---: |
+| Note Voice | 1,153 | 0.027285 | 879 |
+| Tone Texture | 1,471 | 0.122184 | 1,091 |
+| Four-source sampler | 44,742,408 | 0.175362 | 44,742,624 |
+
+The four-source input can be reproduced with
+`python scripts/probe-reaper-graph-vst3-gui.py --emit-project /tmp/manifold-four-source-bench.json`
+followed by `python scripts/probe-clap-graph.py --project /tmp/manifold-four-source-bench.json`.
+For concurrent state saves while the packaged plug-in processes audio, add
+`--live-saves 64` for Note Voice or Tone Texture and `--live-saves 8` for the
+four-source project. Note Voice alternates two host-automated controls and
+checks each saved pair against a complete block.
+The Graph CLAP GUI now opens the same `graph-module.html` and compact widget
+renderers as the Graph VST3 editor. Its reader accepts bounded widget gestures,
+project JSON chunks, and host slot assignments, then hands project changes to
+the main thread for validation and preparation. Automation changes are painted
+from normalized host values without reparsing a large project every frame.
+`scripts/probe-clap-graph-gui.py` runs the packaged class under isolated
+Weston/Xwayland. It imports Tone Texture through the actual editor file input,
+checks 8 nodes and 12 controls in saved CLAP state, renders the imported graph
+at a 0.122184 peak, then sends host automation to slot 2. The open compact
+Frequency slider changes from 220 to 14,402. Captures are
+`web/public/graph-clap-original-editor.png` and
+`web/public/graph-clap-host-automation.png`. The graph gesture unit test checks
+begin/value/end events reach CLAP and the changed value saves into project state.
+`scripts/probe-reaper-graph-clap-editor.py --gesture` also drags the original
+Frequency slider with XTEST in an isolated REAPER CLAP window. The host value
+changes from `0.012515644542873` to `0.75`. The probe saves the DAW project,
+opens it in a fresh REAPER process, and reads back `0.75`. Its screenshot and
+measurements are `web/public/graph-clap-reaper-widget-gesture.png` and `.json`.
+The probe dismisses REAPER's first-run dialogs and starts playback before the
+drag, since otherwise REAPER may leave CLAP gesture events queued while its
+audio engine is stopped.
+`scripts/probe-reaper-graph-clap.py` adds the Graph CLAP class to a private
+REAPER profile, saves a one-second Note Voice MIDI project, reopens it in a
+fresh REAPER process, and renders a WAV. Its 48,000 stereo frames match a
+direct native Rust render within `5.96e-8` peak error at 0.122364 peak.
+The render and metrics are in `web/public/graph-clap-reaper-note-voice.*`.
+`scripts/probe-reaper-graph-clap-editor.py` then opens the custom Graph CLAP
+editor in REAPER, imports Tone Texture through its file input, saves the DAW
+project, and renders from a fresh REAPER process. That one-second stereo render
+matches native Rust within `5.96e-8` peak error at 0.229929 peak. The REAPER
+editor capture and render are `web/public/graph-clap-reaper-editor-tone-import.png`
+and `web/public/graph-clap-reaper-editor-import.wav`. The private profile uses
+a symlink in `~/.clap`; resolving the module path before locating its companion
+assets is required for the editor to open. The same fix applies to Standalone
+FX CLAP's editor lookup.
+
+The official `free-audio/clap-validator` v0.4.1 reports **36 passed, 0 failed,
+8 skipped** for the Graph class. The raw result is
+`web/public/graph-clap-validator.json`. It initially found two failures:
+wildcard note-off events with unspecified velocity, and more than 1,024
+sample-accurate automation points in one block. Graph CLAP now accepts the
+wildcard release and prepares space for 4,096 automation points; a regression
+test renders 1,536 automation points plus a wildcard release through the same
+native boundary. The core presently has channel/key note events without CLAP
+note IDs or partial wildcard filters, so a wildcard release conservatively
+clears every held note. More precise filter semantics remain host work.
+The [graph host state and reset contract](graph-host-state-reset.md) records
+the completed in-place reset and coherent live-save implementation.
+The [Graph reset review](../web/public/graph-clap-reset-proof.html) collects
+authored graph, external CLAP, validator, and large-asset timing evidence.
+
+The [native host capture review](../web/public/native-host-capture-review.html)
+records a packaged Graph CLAP editor run that saved a 96,000-frame retrospective
+take and rendered the reopened project. Direct adapter tests also cover main
+and sidechain buses, mailbox completion, saved state, and MIDI playback.
+Capture start and publication now execute on the editor IPC reader, serialized
+with host lifecycle and project restoration by a control mutex. Capture may
+only change PCM and capture metadata; publication verifies the fixed host slot
+descriptors and avoids CLAP host callbacks from that reader. The audio callback
+never acquires the control mutex. This removes reliance on REAPER scheduling
+`on_main_thread` after a project import. REAPER reported timer support in the
+earlier probe but delivered only one timer callback, so a timer was not used.
+
+Graph advertises the CLAP `audio-effect` feature because it accepts main and
+sidechain audio as well as note events. In an isolated REAPER test, advertising
+only `instrument` let the 0.125 source WAV through as dry audio before the note.
+With `audio-effect`, the reopened host render has zero pre-note peak, 0.098425
+signal peak, and at most `5.96e-8` sample error against the direct native Rust
+render over the first second. The host probe asserts those parity thresholds
+for both CLAP and VST3.
+
+The same packaged editor now offers seconds or host bars. At 90 BPM in 3/4,
+a half-bar request through REAPER Graph CLAP captures exactly 48,000 frames at
+48 kHz. The saved project records the selected half bar, actual host tempo and
+meter, and the effective one-second window. A fresh host render has zero
+pre-note audio and matches direct Rust within `5.96e-8` peak sample error.
+The audio callback publishes one atomic timing snapshot; the editor worker
+derives its bounded frame request outside processing. A missing host tempo or
+meter rejects a bar request. The [bar review](../web/public/native-host-bars-review.html)
+shows both native formats and their editor surfaces.
+
+## Standalone FX
+
+The Linux CLAP module is the first loadable native host for the authored
+Standalone FX project. It uses the same `projects/standalone-fx-module/project.json`
+as the browser page. `manifold-native` validates that project and prepares the
+same `manifold-core` persistent FX graph. The CLAP callback copies planar host
+audio through preallocated buffers, translates seven public parameters to the
+fixed host slots, and processes timed automation in native Rust. It does not
+execute Lua or depend on JUCE.
+
+Build a loadable file with `./scripts/build-clap.sh`. It prints the path under
+`target/clap/ManifoldFX.clap`. The bundle also contains `ManifoldFX-editor` and
+the built browser assets. The CLAP GUI extension embeds the ported widgets in
+an X11 child window; generic host parameters remain available.
+
+The browser's **Save host project** action exports the authored project JSON
+with all seven current public values and `typeParameters` for all 21 effects.
+The CLAP state stream writes the same JSON envelope. Both the browser's
+**Open state** action and `NativeProject::parse_fx_module` accept it. Browser
+state files remain available through the existing **Save state** action.
+
+## Evidence
+
+- `cargo test -p manifold-native standalone_fx_module_loads_the_authored_project_and_roundtrips_host_state`
+  opens the authored project, processes in-place host buffers, applies type and
+  mix automation at exact frame offsets, saves project state, and reopens it.
+- `cargo test -p manifold-clap` creates the CLAP plug-in through its factory,
+  activates it, sends a host parameter event, and compares its stereo output
+  sample for sample with the native project adapter. It also switches between
+  Chorus and Reverb, checks that the generic host controls follow each effect's
+  remembered values, saves through the CLAP stream callbacks, and reopens the
+  saved state with both effects' controls intact. A second test changes types
+  and controls while inactive, then activates and verifies the saved values.
+- `node web/tests/fx-module.browser.mjs` exports a host project from the
+  actual browser controls, reads its state, and reopens it in the browser.
+- `cargo test -p manifold-native fx_host_reset_clears_reverb_tail_and_keeps_controls`
+  excites a Reverb tail, calls the host reset path, and verifies silent input
+  stays silent while type and mix retain their host values.
+- `cargo test -p manifold-clap gui_messages_flush_as_host_gesture_and_parameter_events`
+  drives the pending native editor message queue through the CLAP params flush
+  callback, checks begin/value/end output events and public values, and checks
+  that rejected host output can be retried.
+- The official `free-audio/clap-validator` v0.4.1 test suite loads the built
+  `.clap` module. On this Linux machine it reports 44 tests run: 33 passed,
+  0 failed, 0 warnings, 11 skipped. The passing tests include in-place and
+  separate buffers, sample accurate parameters, saved state reproduction,
+  varied block sizes and sample rates, and repeated activation.
+- `scripts/probe-clap-gui.py` loads the actual `.clap` binary under a disposable
+  Weston/Xwayland host, loads Reverb through the CLAP state stream, creates a
+  500 × 246 native child window, captures its rendered widgets, sends host Mix
+  automation and captures the updated window, then exercises show, hide, and
+  destroy. The captures are in `web/public/standalone-fx-clap-editor.png` and
+  `web/public/standalone-fx-clap-automation.png`.
+  The validator still reports 33 successes, 11 skips, and no failures after
+  adding the GUI extension.
+
+The [CLAP specification](https://github.com/free-audio/clap) defines the C ABI
+used here. The adapter uses the raw `clap-sys` bindings. The
+[validator](https://github.com/free-audio/clap-validator) is an independent host
+and test tool; no CLAP framework runs the DSP.
+
+## Remaining host work
+
+The custom editor is embedded in the disposable X11 host, but a real DAW
+gesture and automation pass remains. This isolated Xwayland compositor did
+not permit XTEST pointer injection, so the complete native pointer-to-host
+path has not been exercised. The CLAP reset callback clears all 21 prepared
+effect histories in place while preserving
+controls and visited routing. Its cost includes clearing Reverb's prepared
+delay lines, so worst-case reset timing still needs measurement.
+State load while active prepares the replacement on the main thread and swaps
+at the next process block; old runtime retirement stays off the callback.
+Multiple queued state loads before a process block are currently rejected.
+The Graph CLAP state saver reads a complete versioned 128-slot bank under the
+same host-side locks as project state and bindings; an old runtime cannot write
+the new project's bank. A separate-process host probe has saved Note Voice,
+Tone Texture, and a 44.7 MB four-source project concurrently with processing;
+the Note Voice probe alternates paired host automation and verifies each save
+matches one block. Isolated REAPER now saves Note Voice eight times while
+transport plays. Its decoded state files contain whole attack/decay pairs;
+the final state reopens in a fresh REAPER process and renders within 5.96e-8
+peak error against native Rust. Further live DAW save stress with repeated
+project swaps remains to be exercised. A second isolated REAPER run imports
+the 44.7 MB four-source project through the original editor, saves it three
+times during playback, and verifies all four embedded PCM assets in each
+decoded state. A fresh-process render of the final save matches native Rust
+within 5.96e-8 peak error. Run
+`scripts/probe-reaper-graph-clap-live-state.py --project /tmp/manifold-four-source-bench.json --count 3`.
+
+The browser's per-effect control memory is now reflected in the live CLAP
+parameter values and its saved project state. Type switches request a host
+value rescan on the main thread. CLAP automation and audio
+processing cover f32 stereo; f64 audio and sidechain ports are not advertised.
+The first [VST3 Standalone FX bundle](vst3-host.md) now runs the same native DSP
+and authored state through Steinberg's processor/controller ABI. Audio Unit and
+broader graph project exports remain separate host adapters.

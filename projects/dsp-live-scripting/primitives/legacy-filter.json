@@ -1,0 +1,127 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "external",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "legacy-filter"
+      }
+    ],
+    "connections": [
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 4,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 1400
+      },
+      {
+        "nodeId": 4,
+        "id": 1,
+        "value": 0.1
+      },
+      {
+        "nodeId": 4,
+        "id": 2,
+        "value": 1
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/primitives/legacy-filter/node/0",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 0,
+      "min": 20,
+      "max": 18000,
+      "default": 1400
+    },
+    {
+      "path": "/primitives/legacy-filter/node/1",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 1,
+      "min": 0,
+      "max": 1,
+      "default": 0.1
+    },
+    {
+      "path": "/primitives/legacy-filter/node/2",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 2,
+      "min": 0,
+      "max": 1,
+      "default": 1
+    }
+  ],
+  "instances": [
+    {
+      "path": "/primitives/legacy-filter/node",
+      "nodeId": 4
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// Legacy Filter: Original FilterNode scalar algorithm, with cutoff, resonance and wet mix. Distinct from the four-mode SVF primitive.\n// Legacy reference: dsp/core/nodes/FilterNode.cpp\n// Examples name imports so you can trace each tool to its module.\n// Alternative: import * as manifold from '@manifold/author';\n// Then use manifold.createGraphWorkspace(), manifold.gain, etc.\n// Imports — each definition can be inspected in Manifold's primitive catalog.\nimport { createGraphWorkspace } from '@manifold/author';\nimport {\n  legacyFilter as legacyFilterDefinition,\n} from '@manifold/author/primitives';\n\nexport default function createProject() {\n  // Interface — public paths and stable IDs preserve saved controls.\n  const controls = {\n    legacyFilter_cutoffHz: {\n      \"path\": \"/primitives/legacy-filter/node/0\",\n      \"label\": \"Cutoff Hz\",\n      \"group\": \"Legacy Filter\",\n      \"min\": 20,\n      \"max\": 18000,\n      \"default\": 1400\n    },\n    legacyFilter_resonance: {\n      \"path\": \"/primitives/legacy-filter/node/1\",\n      \"label\": \"Resonance\",\n      \"group\": \"Legacy Filter\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0.1\n    },\n    legacyFilter_wetMix: {\n      \"path\": \"/primitives/legacy-filter/node/2\",\n      \"label\": \"Wet mix\",\n      \"group\": \"Legacy Filter\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 1\n    },\n  };\n\n  // Audio inputs and outputs — the host supplies the external audio input.\n  const graph = createGraphWorkspace().setInputSource('external');\n  const input = graph.input.output('out');\n  const output = graph.output.input('in');\n\n  // DSP instances — parameters belong to these named instances.\n  const legacyFilter = graph.add(legacyFilterDefinition.type, {\"id\":4});\n  graph.registerInstance('/primitives/legacy-filter/node', legacyFilter);\n  legacyFilter.parameter('cutoffHz').expose(controls.legacyFilter_cutoffHz);\n  legacyFilter.parameter('resonance').expose(controls.legacyFilter_resonance);\n  legacyFilter.parameter('wetMix').expose(controls.legacyFilter_wetMix);\n\n  // Composition — named ports make the audio and control paths visible.\n  graph.connect(input, legacyFilter.input('audio'));\n  graph.connect(legacyFilter.output('out'), output);\n\n  // Presentation — both renderers bind to the controls declared above.\n  const view = [\n    controls.legacyFilter_cutoffHz,\n    controls.legacyFilter_resonance,\n    controls.legacyFilter_wetMix\n  ].map(control => ({\n    id: control.path, type: 'parameter', path: control.path,\n    label: control.label, group: control.group,\n    ...(control.choices ? { choices: control.choices } : {}),\n  }));\n  function paint(ui) {\n    for (const component of view) {\n      if (component.type === 'label') ui.label(component.label, component.id);\n      else ui.parameter(component.path, component);\n    }\n  }\n\n  // The host uses this project declaration for audio, UI, save and live edits.\n  return { graph, view, paint };\n}",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "/primitives/legacy-filter/node/0",
+        "type": "parameter",
+        "path": "/primitives/legacy-filter/node/0",
+        "label": "Cutoff Hz",
+        "group": "Legacy Filter"
+      },
+      {
+        "id": "/primitives/legacy-filter/node/1",
+        "type": "parameter",
+        "path": "/primitives/legacy-filter/node/1",
+        "label": "Resonance",
+        "group": "Legacy Filter"
+      },
+      {
+        "id": "/primitives/legacy-filter/node/2",
+        "type": "parameter",
+        "path": "/primitives/legacy-filter/node/2",
+        "label": "Wet mix",
+        "group": "Legacy Filter"
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

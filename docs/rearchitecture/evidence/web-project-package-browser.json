@@ -1,0 +1,13 @@
+{
+  "site": "http://127.0.0.1:4173/package-project.html",
+  "dspBundleSha256": "65726bda92d4a179f39c21f3ab222496cf70b5ad14528feac3d1ac24a3fe5bcd",
+  "dspSavedGain": 0.4,
+  "dspSavedRoute": "input_trim → output",
+  "fxNodes": 10,
+  "fxGain": 0.5,
+  "nativeToBrowserFxNodes": 12,
+  "browserToNativeDspNodes": 4,
+  "privateSink": "manifold_null",
+  "pageErrors": [],
+  "screenshot": "docs/rearchitecture/evidence/web-packaged-dsp-live.png"
+}

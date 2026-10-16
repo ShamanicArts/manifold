@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Manifold · Authored rack oscillator</title>
+    <style>
+      :root { color-scheme: dark; font: 16px/1.5 system-ui,sans-serif; background:#11141b; color:#ecedf6; }
+      body { max-width:850px; margin:5vh auto; padding:0 1.5rem; }
+      p { color:#bdc3d4; }
+      section { margin:1.5rem 0; padding:1.4rem; background:#202635; border-radius:.8rem; }
+      button { background:#6753d4; color:white; border:0; border-radius:.5rem; padding:.7rem 1.2rem; font:inherit; cursor:pointer; }
+      button:disabled, input:disabled, select:disabled { opacity:.5; }
+      label { display:flex; align-items:center; gap:.8rem; margin:1rem 0; }
+      input[type=range] { flex:1; accent-color:#aa95ff; }
+      select { background:#343d50; color:white; font:inherit; padding:.4rem; border:0; border-radius:.4rem; }
+      #status { min-height:1.5rem; color:#9ce8c3; }
+      pre { overflow:auto; max-height:22rem; background:#0a0d13; padding:1rem; font-size:.75rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Rack oscillator from public primitives</h1>
+    <p>The old nine-oscillator layout is scripted as a portable graph. Standard, additive, drive, unison and stereo controls use the same public primitive. All eight voice nodes and the manual node start silent, as in the original project.</p>
+    <section>
+      <button id="start">Start audio</button> <button id="stop" disabled>Stop</button>
+      <button id="insert" disabled>Toggle live distortion insert</button>
+      <p>For off-thread live construction, open the <a href="?execution=prepared">prepared runtime</a>. <a href="/importable-prepared-library/">Independent library example</a></p>
+      <label>Waveform <select id="waveform" disabled><option value="0">Sine</option><option value="1" selected>Saw</option><option value="2">Square</option><option value="3">Triangle</option><option value="4">Blend</option><option value="5">Noise</option><option value="6">Pulse</option><option value="7">Supersaw</option></select></label>
+      <label>Drive shape <select id="driveShape" disabled><option value="0">Tanh</option><option value="1">Atan</option><option value="2">Clip</option><option value="3">Fold</option></select></label>
+      <label>Drive <input id="drive" type="range" min="0" max="20" step="0.1" value="0" disabled><output id="drive-value">0</output></label>
+      <label>Unison voices <input id="unison" type="range" min="1" max="8" step="1" value="1" disabled><output id="unison-value">1</output></label>
+      <label>Detune cents <input id="detune" type="range" min="0" max="100" step="1" value="0" disabled><output id="detune-value">0</output></label>
+      <label>Stereo spread <input id="spread" type="range" min="0" max="1" step="0.01" value="0" disabled><output id="spread-value">0</output></label>
+      <label>Render mode <select id="renderMode" disabled><option value="0">Standard</option><option value="1">Additive</option></select></label>
+      <label>Partials <input id="additivePartials" type="range" min="1" max="32" step="1" value="8" disabled><output id="additivePartials-value">8</output></label>
+      <label>Tilt <input id="additiveTilt" type="range" min="-1" max="1" step="0.01" value="0" disabled><output id="additiveTilt-value">0</output></label>
+      <label>Drift <input id="additiveDrift" type="range" min="0" max="1" step="0.01" value="0" disabled><output id="additiveDrift-value">0</output></label>
+      <label>Manual pitch <input id="manualPitch" type="range" min="0" max="127" step="1" value="60" disabled><output id="manualPitch-value">60</output></label>
+      <label>Manual level <input id="manualLevel" type="range" min="0" max="1" step="0.01" value="0" disabled><output id="manualLevel-value">0%</output></label>
+      <label>Voice 1 pitch <input id="voicePitch" type="range" min="0" max="127" step="1" value="60" disabled><output id="voicePitch-value">60</output></label>
+      <label>Voice 1 gate <input id="voiceGate" type="range" min="0" max="1" step="0.01" value="0" disabled><output id="voiceGate-value">0%</output></label>
+      <p id="status" role="status">Ready. The authored graph is silent until a level or gate is raised.</p>
+    </section>
+    <section><h2>Saved portable project</h2><pre id="project"></pre></section>
+    <section>
+      <h2>Retained live-edit recordings</h2>
+      <p>Twelve transparent insert/remove edits while two matching authored Rack graphs sound. The 80,896 recorded stereo frames match exactly; oscillator, mixer and gain history survive publication. This is a short continuity proof; full legacy and sustained performance gates remain open.</p>
+      <p>Edited graph</p><audio controls preload="none" src="/prepared-rack-oscillator/2026-09-30-prepared-rack-oscillator-v2/edited.wav"></audio>
+      <p>Untouched reference</p><audio controls preload="none" src="/prepared-rack-oscillator/2026-09-30-prepared-rack-oscillator-v2/reference.wav"></audio>
+      <p><a href="/prepared-rack-oscillator/2026-09-30-prepared-rack-oscillator-v2/report.json">Raw measurements and source hashes</a> · <a href="/prepared-rack-oscillator/2026-09-30-prepared-rack-oscillator-v2/final-project.json">Saved authored graph</a></p>
+    </section>
+    <script type="module" src="/src/rack-oscillator.js"></script>
+  </body>
+</html>

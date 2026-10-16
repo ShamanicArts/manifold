@@ -1,0 +1,19 @@
+{
+  "format": "manifold.browser-export",
+  "version": 1,
+  "job": "9ba0ef5d-1fe6-4367-806a-a98cd1816f53",
+  "product": {
+    "name": "Nacre Prism Bend",
+    "id": "dev.manifold.nacre_prism_bend",
+    "vendor": "Shamanic Arts",
+    "pluginVersion": "0.1.0",
+    "category": "Fx"
+  },
+  "revision": 0,
+  "target": "x86_64-unknown-linux-gnu",
+  "packageSha256": "fcecbefdacf632235538e6ae75232dfd909a9b1ec03d1cdd0e4cf3807c3e6ee4",
+  "archiveSha256": "b59f996f87bb94617c12590c8976ee516e84028b9c7a3a5260152743882bf759",
+  "sourceSha256": "667c5d91e103cfdecaa53fb3c8df8fe85c2f4f5162f7150f6a0ace5e815bca08",
+  "createdAt": 1791595104.0621412,
+  "completedAt": 1791595113.8963633
+}

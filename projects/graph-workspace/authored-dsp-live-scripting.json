@@ -1,0 +1,123 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "external",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "gain",
+        "a": 0.7
+      },
+      {
+        "id": 5,
+        "type": "stereo-widener"
+      }
+    ],
+    "connections": [
+      {
+        "from": 5,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 4,
+        "inputPort": 0
+      },
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 5,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 5,
+        "id": 0,
+        "value": 0.25
+      },
+      {
+        "nodeId": 5,
+        "id": 1,
+        "value": 120
+      },
+      {
+        "nodeId": 5,
+        "id": 2,
+        "value": 1
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/dsp/live/input_gain",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 0,
+      "min": 0,
+      "max": 2,
+      "default": 1
+    },
+    {
+      "path": "/dsp/live/width",
+      "kind": "parameter",
+      "nodeId": 5,
+      "id": 0,
+      "min": 0,
+      "max": 1,
+      "default": 0.25
+    }
+  ],
+  "hostBindings": [
+    {
+      "slot": 0,
+      "nodeId": 4,
+      "id": 0
+    },
+    {
+      "slot": 1,
+      "nodeId": 5,
+      "id": 0
+    }
+  ],
+  "hostAssignments": [
+    {
+      "slot": 0,
+      "path": "/dsp/live/input_gain"
+    },
+    {
+      "slot": 1,
+      "path": "/dsp/live/width"
+    }
+  ],
+  "instances": [
+    {
+      "path": "/dsp/live/nodes/input_trim",
+      "nodeId": 4
+    },
+    {
+      "path": "/dsp/live/nodes/width",
+      "nodeId": 5
+    }
+  ]
+}

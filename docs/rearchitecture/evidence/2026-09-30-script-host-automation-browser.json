@@ -1,0 +1,47 @@
+{
+  "recordedAt": "2026-09-29T23:53:58.192Z",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174",
+  "pageErrors": [],
+  "dsp": {
+    "initialHostGain": 0.375,
+    "externalGainBeforeScriptRemoval": 0.625,
+    "finalGain": 0.625,
+    "downloadedGain": 0.625,
+    "reopenedGain": 0.625,
+    "insertNodes": 5,
+    "removeNodes": 4,
+    "diagnostics": {
+      "audioBlocks": 380,
+      "underruns": 14,
+      "activeSlot": 0,
+      "outputLatencyBlocks": 4,
+      "lastPreparationMs": 11.170000076293945,
+      "lastPublicationMs": 126.16500008106232,
+      "lastTransferredNodes": 2
+    }
+  },
+  "vst3Reopened": {
+    "initialGain": 0.375,
+    "editedHostGain": 0.625,
+    "nodesAfterSlotChange": 14
+  },
+  "fx": {
+    "retainedHostGain": 0.375,
+    "nodes": 12,
+    "diagnostics": {
+      "audioBlocks": 104,
+      "underruns": 0,
+      "activeSlot": 1,
+      "outputLatencyBlocks": 4,
+      "lastPreparationMs": 4.375,
+      "lastPublicationMs": 66.89499998092651,
+      "lastTransferredNodes": 6
+    }
+  },
+  "directWorklet": {
+    "acceptedGain": 0.25,
+    "rejectedEditLeftSnapshotUnchanged": true,
+    "rejection": "Graph edit rejected: Node handle does not refer to a current graph instance",
+    "endpointRangeRejection": "Graph edit rejected: Value exceeds published range for /dsp/live/width"
+  }
+}

@@ -1,0 +1,83 @@
+# Native VST3 boundary
+
+## Prepared host buffer ingress
+
+`manifold_native::host_buffers::HostBuffers` prepares six planar scratch channels outside the process callback. Its unsafe `render` boundary accepts raw host pointers, copies any present main and sidechain channels to owned input scratch, renders through `NativeProcessor::process_host_automated`, then copies successful output to present host channels. Null input channels become silence; null output channels are discarded. A host may alias input and output pointers because Rust only borrows its private scratch during graph rendering. Oversize blocks and invalid automation leave the host output untouched. The first VST3 adapter now translates `ProcessData` to this boundary for the authored Standalone FX project. The bridge pays for input and output copies to keep the alias contract simple and bounded. Two host-buffer tests cover in-place output, a mono sidechain, absent buses, and rejection without output writes.
+
+Status: a loadable Linux VST3 bundle now runs the authored Standalone FX project through the same `manifold-core::ExecutionPlan` used by browser Wasm, native Rust, and CLAP. No JUCE or Lua is involved.
+
+A separate [loadable CLAP module](clap-host.md) now exercises the authored
+Standalone FX graph through this native processor. The CLAP validator passes
+33 applicable tests with no failures. VST3 is a separate adapter with its own
+processor/controller, state, and automation contracts.
+
+The [native host capture review](../web/public/native-host-capture-review.html)
+now includes a live REAPER VST3 Graph editor run. The packaged editor imported
+`retrospective-multisource.json`, requested a two-second main-input window,
+and saved a 96,000-frame PCM asset in the REAPER project. A fresh host render
+reopened that state and matched direct native Rust for the first second within
+`5.96e-8` peak sample error; the pre-note region was silent. The isolated test
+uses a private REAPER profile and mutes only that process's PulseAudio stream.
+The editor capture starts polling for completion after the host acknowledges
+that it has accepted the freeze request.
+
+The packaged VST3 editor now accepts host bars as well as seconds. Its processor
+asks for tempo and time signature in `IProcessContextRequirements`, publishes a
+single atomic bar-length snapshot per audio block, and converts the editor's
+bar request to a bounded frame count outside processing. An isolated REAPER
+run at 90 BPM in 3/4 captures 48,000 frames for half a bar at 48 kHz. The
+saved state records the requested bars and actual host tempo and meter; a fresh
+render is silent before MIDI and matches direct Rust within `5.96e-8` peak
+sample error. The [bar review](../web/public/native-host-bars-review.html)
+compares this with CLAP. The [free capture review](../web/public/native-free-capture-review.html)
+adds arm/stop ring cursors through both packaged editors. Each REAPER project
+saves and reopens its measured free take; fresh renders match direct Rust.
+
+`manifold_native::project::NativeProject::parse` accepts the browser's `manifold.project` schema v1 for all eight authored graph workspace bundles. The `project.json` in that directory is an older standalone format, not a graph workspace bundle. The loader validates graph shape, node arguments, routes, parameter IDs and ranges, asset limits, source rate, frame count, base64 byte count, finite PCM, Main partial targets, and optional temporal source recipes. `prepare` compiles and installs parameters, PCM, partial targets, and analyzed temporal frames away from the audio callback. The supported node kinds are `input.raw`, `input.sidechain`, `output`, `midi-input`, `midi-transpose`, `voice-synth`, `gain`, `sum2`, `svf`, `loop-capture`, `sample-instrument`, `sample-region`, `granulator`, `oscillator`, `noise`, `lfo`, `modulated-gain`, and `main-voice-bank`. Tests render audible native output from the note, region, granular, texture, and Main bank routes. An embedded Main sample and a temporal recipe also restore and sound. Browser source recipes are metadata, since the native host supplies its own main and sidechain buses. A saved temporal bundle now has matching native and Wasm audio output.
+
+Each restored control has an internal graph-scoped 32-bit ID, `(nodeId << 8) | localParameterId`, plus physical minimum, maximum, initial value, and discrete or continuous mapping. `NativeProcessor::process_automated` accepts ordered normalized points at frame offsets, validates the complete queue before touching output, then renders audio and MIDI in bounded segments. It reuses event scratch reserved in `prepare` and accepts up to 1024 MIDI events when automation splits a block. A zero-frame call can flush parameter changes.
+
+The general graph VST3 class now exports **128 fixed macro slots**, IDs `0x01000000` through `0x0100007f`, with generic names and normalized 0–1 values that do not change as graph nodes change. The optional `hostBindings` array in browser project schema v1 maps slots to node-local controls; both browser and native loaders fill unassigned slots deterministically in ascending node/control order. Existing mappings keep their slot across a browser topology edit, then new controls take free slots. Native `process_host_automated` translates the fixed slot to the prepared graph control at the requested frame. The slot list and IDs stay fixed for the controller; the binding and its physical range live in project state. The browser graph editor and Linux native editor show each slot and support deliberate reassignment: moving a control to an occupied slot swaps their bindings. The native editor sends a control-thread request through the existing validated VST3 project import path; preparation stays outside the audio callback, but this reload resets active voices and effect tails. Reassigned slots can change the targets of existing DAW automation, so both views warn about that. The [browser and native REAPER slot proof](../web/public/graph-host-slot-proof.html) shows a browser export's Oscillator Frequency moved to displayed slot 42 and altered host audio. An XTEST edit in the native editor moved Semitones to slot 42; the fresh REAPER render matched direct Rust within 5.96e-8 peak error. A second REAPER probe placed a Read-mode envelope on occupied slot 2 before swapping Semitones onto it. The existing envelope then drove Semitones to +12, and a saved-project render matched direct Rust within the same error bound. The [official VST3 parameter documentation](https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical%2BDocumentation/Parameters%2BAutomation/Index.html) requires a unique 32-bit ID per exported parameter and says plug-ins cannot reconfigure the automatable parameter set during normal use. This fixed-slot choice follows that constraint. The first authored Standalone FX VST3 module instead exposes its seven stable product IDs, 0–6, matching the CLAP module.
+
+## Saved Main temporal parity
+
+The parity harness creates one browser bundle with embedded stereo PCM that changes pitch, two partial targets, a temporal recipe, and fixed host bindings. Native Rust parses the bundle and analyzes the PCM during preparation; browser Wasm analyzes the same PCM and uploads raw frames to the actual AudioWorklet. With one MIDI note at frame 16, all 8,192 stereo output frames match exactly. Removing the temporal recipe changes audio by 0.138147 peak sample units. Run `node scripts/verify-native-project-temporal.mjs` after `npm run build` in `web` to repeat this gate. It does not yet exercise VST3 host processing.
+
+`NativeProject::prepare_with_state` retains the validated browser bundle beside the processor. The processor tracks accepted physical control values, including sample-offset host automation. While processing is synchronized, `PreparedNativeProject::save_state` writes those values into `signal.initialParameters` and emits the same project schema. Tests reopen the edited gain with its fixed slot and preserve a Main bundle's PCM, partial targets, and temporal recipe. Control-thread methods now prepare sample, Main partial target, and temporal recipe replacements as complete validated instances. `publish_replacement` swaps in a prepared instance at a host block boundary and returns the old one for retirement away from the audio callback. Replacement resets active voices and DSP history; this is an explicit project-load behavior. The general VST3 component now connects DAW state callbacks to this project format and atomically publishes prepared runtimes at block boundaries.
+
+## Contract already exercised
+
+`NativeProcessor::prepare` compiles the graph and allocates scratch before processing. `process` accepts variable-length planar `f32` blocks up to the prepared maximum, optional main and sidechain stereo buses, stereo output, and timed MIDI events. Missing buses read as silence. Buffer shape and event offsets are checked before output is changed. The native adapter tests main/sidechain separation, missing buses, block sizes 16/31/128, and a note at frame 40. Existing graph comparisons exercise the same core natively and in Wasm.
+
+## General graph VST3 adapter map
+
+The [Standalone FX VST3 host proof](vst3-host.md) is the first loadable slice.
+The [general graph VST3 review](../web/public/graph-vst3-host-proof.html) covers the second class. The table below tracks its current boundary.
+
+| VST3 contract | Manifold boundary | Remaining work |
+|---|---|---|
+| Module factory | `GetPluginFactory` exposes separate Standalone FX, Graph, and Main processor/controller pairs in one Linux bundle | Package and validate Windows/macOS bundles |
+| Audio buses | Graph accepts stereo main input, optional mono/stereo sidechain auxiliary input, stereo output; prepared host scratch permits in-place buffers | Test sidechain wiring in a real DAW project |
+| Processing lifecycle | `setupProcessing` prepares capacity; `setActive` builds the graph outside the callback; state replacement publishes at a block boundary | Exercise repeated project swaps under host transport |
+| `ProcessData` audio | Graph uses planar `f32`, missing buses, variable blocks, and fixed-capacity host scratch. A release-build offline native probe of the full 32 MiB four-source graph measured 0.144 ms median p95 at 128 frames with eight notes (32 active sample voices), 5.41% of the 48 kHz block period. | Measure callback timing and underruns in a real DAW and physical output device |
+| MIDI events | VST3 note on/off events reach the first `midi-input` graph node at sample offsets | Expose deliberate routing when a graph contains multiple MIDI input nodes; add controller mapping if needed |
+| Parameter automation | Graph controller exposes 128 fixed IDs and accepts bounded, ordered host queues; REAPER saved a Read-mode envelope on an occupied slot, then followed that slot to Semitones after a control swap. Fresh host audio matches native Rust. | Exercise longer transport sessions and other DAWs |
+| Component state | Native Rust loads all eight authored browser graph bundles; VST3 state restores and saves portable JSON. A Rust exporter writes standard `.vstpreset` files. Direct editor JSON import reaches the processor over the host's `IConnectionPoint`; REAPER saves the imported graph and a fresh-process render matches the preset route exactly. A 44,742,408-byte project with four sample sources also imports, saves, and reopens. Each imported VST3 runtime owns a versioned 128-slot value bank, so a concurrent save reads controls from one block and one project generation. | Stress repeated live project swaps and large state saves in a DAW; verify private-message capacity and preset recall across other hosts; add editor export |
+| Controller/editor | Linux `IPlugView` displays bound controls with ported original compact sliders and dropdowns, stable slot numbers, live host parameter updates, and direct browser JSON import; the Standalone FX editor remains separate. Element 1.2.0 discovered both VST3 classes, instantiated Graph, opened the original editor, and imported Tone Texture JSON. | Verify saved session recall and audio in Element; test platform views beyond Linux |
+| Test host | SDK validator: 1,611 passed, 0 failed across all three classes; REAPER's one-second MIDI note and imported Tone Texture renders each match direct native Rust over 48,000 stereo frames within `5.96e-8` peak. Isolated REAPER probes verify host automation, original-widget gestures, direct Tone Texture JSON import, a 30-second single source, four distinct sources filling the 32 MiB aggregate PCM allowance, native slot assignment, and an existing envelope retargeted by an occupied-slot swap; fresh renders match native Rust within `5.96e-8` peak. Element verifies discovery, Graph instance creation, editor display, and live Tone Texture import. | Exercise graph sidechain routing and state recall in more DAWs; profile callback timing under larger projects |
+
+The [official API documentation](https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical%2BDocumentation/API%2BDocumentation/Index.html) separates processor and edit controller, defines bus activation and state handling, and says hosts may supply different block lengths up to the prepared maximum. It also warns that input and output pointers can alias. The [processing FAQ](https://steinbergmedia.github.io/vst3_dev_portal/pages/FAQ/Processing.html) says hosts can call `process` without audio buffers to flush parameters and that an inactive trailing bus may be absent. Those cases need explicit behavior in the loadable adapter.
+
+The [full-asset timing review](../web/public/graph-asset-limit-performance.html)
+reports three offline release-build native runs on the Ryzen 9 3900X. With eight
+held notes, median p95 was 0.144 ms for 128-frame blocks and 1.128 ms for
+1,024-frame blocks. The host import, saved-state audio parity, and offline
+callback timing have separate evidence; physical device underruns remain open.
+
+The first adapter pins [`vst3` 0.3.0](https://github.com/coupler-rs/vst3-rs), a Rust binding to Steinberg's VST 3.8.0 interfaces, under MIT/Apache terms. Steinberg's [SDK 3.8](https://github.com/steinbergmedia/vst3sdk) is MIT licensed. The official [generated C API](https://github.com/steinbergmedia/vst3_c_api) remains available if a binding audit calls for a narrower ABI surface. `manifold-vst3` implements the COM factory, processor, and controller in Rust without JUCE or a C++ SDK runtime.
+
+## Order of work
+
+1. Exercise varied DAW audio configurations and longer automation sessions. The Linux `IPlugView` renders the packaged original widgets; an XTEST pointer drag reaches REAPER's parameter, and a saved project recalls that value in a fresh REAPER process. Host-originated changes and envelope playback update the open editor. REAPER Write mode records the original Room widget gesture, and Read mode replays that envelope through the plug-in parameter. Two instances on separate tracks retain distinct Reverb and Chorus states across editor switching and a fresh-process project reopen. A one-second real REAPER WaveShaper render matches the native Rust output to 24-bit quantization throughout when both use 1,024-frame blocks; see the [audio comparison](../web/public/standalone-fx-reaper-audio-proof.html) for the bounded claim and legacy block partition sensitivity.
+2. The general graph module now has the fixed 128-slot controller, optional sidechain and event buses, portable browser project state, `.vstpreset` export, and a Linux native editor using the original widgets. The editor follows REAPER host automation, sends REAPER a real pointer gesture, and accepts direct JSON import through a 30-second stereo source or four sources filling the 32 MiB PCM allowance. A fresh REAPER process renders its saved imported projects against direct native Rust. Element loads the same Graph class and imports Tone Texture through the editor; session recall and audio there remain unverified. Compare Main and sampler routes in other hosts against native/Wasm fixtures, then test other platforms and callback timing under larger projects.
+3. Package and validate Windows/macOS bundles, then test physical devices, timing, and underrun telemetry.

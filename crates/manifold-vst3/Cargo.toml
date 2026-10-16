@@ -1,0 +1,30 @@
+[package]
+name = "manifold-vst3"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+build = "../../build/plugin-export.rs"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+base64 = "0.23"
+crossbeam-queue = "0.3.14"
+libc = "0.2"
+manifold-core = { path = "../manifold-core" }
+manifold-native = { path = "../manifold-native" }
+manifold-project-js = { path = "../manifold-project-js" }
+serde_json = "1"
+vst3 = "=0.3.0"
+
+[dev-dependencies]
+sha2 = "0.10"
+
+[build-dependencies]
+serde_json = "1"
+sha2 = "0.10"
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+manifold-editor = { path = "../manifold-editor" }
+windows-sys = { version = "0.61", features = ["Win32_System_LibraryLoader"] }

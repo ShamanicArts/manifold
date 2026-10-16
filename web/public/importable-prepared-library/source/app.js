@@ -1,0 +1,9 @@
+import { BrowserGraphHost } from '@manifold/author/browser';
+import { createProject } from '@manifold/author/examples/dsp-live-scripting';
+let context,host,project,source,level,analyser;
+const show=()=>{const report={graph:project.toProject(),parameters:host.readPublishedParameters(),diagnostics:host.diagnostics};document.querySelector('#report').textContent=JSON.stringify(report,null,2);return report;};
+async function start(){context=new AudioContext({sampleRate:48000});await context.resume();host=new BrowserGraphHost(context,{execution:'prepared'});project=createProject(host);await host.prepare(project.toProject());source=context.createOscillator();source.frequency.value=220;level=context.createGain();level.gain.value=.08;source.connect(level);analyser=context.createAnalyser();analyser.fftSize=256;host.connect(level,analyser);analyser.connect(context.destination);source.start();await host.setParameter({nodeId:4,id:0,value:.375});await project.synchronizeParameters();document.querySelector('#status').textContent='Running imported library.';document.querySelector('#edit').disabled=false;document.querySelector('#stop').disabled=false;return show();}
+async function edit(){await project.setDistortion(true);document.querySelector('#status').textContent='Authored graph changed while sounding.';return show();}
+async function stop(){source.stop();await host.close();await context.close();document.querySelector('#status').textContent='Stopped.';}
+document.querySelector('#start').onclick=()=>start().catch(e=>document.querySelector('#status').textContent=e.message);document.querySelector('#edit').onclick=()=>edit().catch(e=>document.querySelector('#status').textContent=e.message);document.querySelector('#stop').onclick=()=>stop();
+window.genericManifold={start,edit,stop,get host(){return host;},get project(){return project;},get analyser(){return analyser;}};

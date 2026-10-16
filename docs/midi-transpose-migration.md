@@ -1,0 +1,16 @@
+# Standalone Transpose MIDI effect boundary
+
+The [prepared public MIDI follow-up](rearchitecture/prepared-midi-runtime.md)
+now runs an authored JS/TS audition through off-callback graph preparation,
+bounded event admission and compatible VoiceSynth/Transpose history. The live
+page, independent installed package, 55,808 exactly paired PCM frames and 25
+actual legacy Lua events extend the earlier fixed-graph proofs below. Full
+Standalone project UI/state/export and native controller parity remain open.
+
+The old `Standalone_Transpose` export is a MIDI effect. Its Lua adapter wraps `transpose_runtime.lua` with an eight-slot note router. Each slot tracks the input channel, input note, velocity, output note, and age. A note on transposes and clamps the output pitch to `0…127`; a note off finds the slot by its **original** channel and pitch. A ninth distinct held note first sends note off for the oldest slot. The public `semitones` control is bounded to `−24…24` and rounded by `floor(value + 0.5)`. Changing it while notes are held sends every old output note off, then restarts each held note at its new output pitch. Pitch bend forwards unchanged.
+
+The Rust [`MidiTranspose`](../crates/manifold-core/src/midi_transpose.rs) keeps the same fixed eight-slot state and emits into a caller-provided 16-event array. The event path allocates no heap memory. The [offline legacy probe](../scripts/probe-midi-transpose.py) runs the original Lua adapter with stubbed host services and compares its output to native Rust: 25 events match exactly, covering a held-note parameter change, pitch clamp, ninth-note eviction, all notes off, and pitch bend. This is an offline behavior oracle; Lua is not loaded by the v2 application.
+
+The [MIDI Transpose workbench](../projects/midi-transpose/project.json) routes keyboard or optional Web MIDI events through a typed `MidiInput → MidiTranspose → VoiceSynth` path in the prepared Rust graph. The worklet schedules incoming MIDI by frame; the graph calls the transformer when each event becomes due and forwards its resulting events to the voice. The semitone slider targets the transformer's node parameter with host ID `semitones`; it remaps held notes at the next block boundary. The voice's synthesis parameters retain their own IDs. The on-screen keyboard works without hardware MIDI permission, while hardware input still depends on browser permission.
+
+A native Rust audio case changes a held C4 from G4 to C3 at frame 2,048. The [Rust/Wasm verifier](../scripts/verify-midi-transpose-wasm.mjs) and [actual AudioWorklet adapter check](../scripts/verify-midi-transpose-worklet.mjs) reproduce its 8,192 stereo frames exactly through the typed graph. The comparison renderer uses the same typed graph. This slice does not yet export MIDI to another browser or native MIDI port or package a native MIDI effect plug-in.

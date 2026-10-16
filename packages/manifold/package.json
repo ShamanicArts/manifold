@@ -1,0 +1,28 @@
+{
+  "name": "manifold",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "description": "Manifold audio Device authoring and hosting; local development package",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./graph": {
+      "types": "./graph.d.ts",
+      "default": "./graph.js"
+    },
+    "./browser": {
+      "types": "./browser.d.ts",
+      "default": "./browser.js"
+    },
+    "./live-project": {
+      "types": "./live-project.d.ts",
+      "default": "./live-project.js"
+    }
+  },
+  "dependencies": {
+    "@manifold/author": "file:../manifold-author"
+  }
+}

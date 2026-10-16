@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Manifold · Main Wave creator</title><style>
+:root{color-scheme:dark;font:16px/1.5 system-ui;background:#111720;color:#edf2fa}body{max-width:1100px;margin:32px auto;padding:0 24px}h1{font-size:2rem}p{color:#bbc8d8}a{color:#a9c7ff}section{background:#1b2533;padding:22px;margin:20px 0;border-radius:12px}button,select{font:inherit;padding:9px 15px;border:1px solid #59739b;border-radius:6px;color:inherit;background:#293d5a;cursor:pointer}button:disabled{opacity:.4}label{display:flex;align-items:center;gap:15px;margin:14px 0}input[type=range]{width:270px}textarea,pre{font:13px/1.5 monospace;background:#0e141e;color:#d2e2ff;width:100%;box-sizing:border-box;padding:15px;border:1px solid #405570;border-radius:6px;max-height:360px;overflow:auto}textarea{height:160px}.keys{display:flex;flex-wrap:wrap;gap:8px}.voices{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.voice{background:#122035;padding:10px;border-radius:6px}.voice.active{outline:1px solid #92c8b0}.row{display:flex;gap:10px;flex-wrap:wrap}#status{min-height:24px;color:#a4e9bb}audio{max-width:100%}</style></head>
+<body><h1>Main’s authored Wave graph</h1>
+<p>Eight inspectable voice graphs, legacy allocation and envelope controls, plus Main’s dry, monitor, capture-send and master branches. This is a working portion of the port: Sample/blend modes, the real looper, egui and arbitrary host channel layouts remain unfinished.</p>
+<p><a href="/main-wave-author/2026-09-30-main-wave-author-v4/">Original C++ and port recordings</a> · <a href="/packages/main-wave-author.manifold.json">Portable project package</a></p>
+<section><div class="row"><button id="start">Start audio</button><button id="stop" disabled>Stop</button><button id="panic" disabled>Release all now</button><button id="insert" disabled>Toggle unity insert</button><button id="save" disabled>Download package</button></div>
+<p id="status" role="status">Ready.</p>
+<div class="keys" id="keys"></div>
+<label>Waveform <select id="waveform"><option value="0">Sine</option><option value="1" selected>Saw</option><option value="2">Square</option><option value="3">Triangle</option><option value="4">Blend</option><option value="6">Pulse</option><option value="7">Supersaw</option></select></label>
+<label>Wave/sample crossfade <input id="blend" type="range" min="0" max="1" step="0.01" value="0.5"><output id="blend-value">0.5</output></label>
+<label>Unison <input id="unison" type="range" min="1" max="8" step="1" value="1"><output id="unison-value">1</output></label>
+<label>Detune <input id="detune" type="range" min="0" max="100" step="1" value="0"><output id="detune-value">0</output></label>
+<label>Synth monitor <input id="monitor" type="range" min="0" max="1" step="0.01" value="0.8"><output id="monitor-value">0.8</output></label>
+<p>The sample input is currently silent. Reducing the Wave side of the crossfade therefore reduces its sound. Muting the synth monitor leaves the capture send running.</p>
+<div class="voices" id="voices"></div></section>
+<section><h2>Edit the sounding graph</h2><p>JavaScript runs on the control side. The public graph API validates and prepares your edit before publishing it.</p>
+<textarea id="script" spellcheck="false">const mixer = graph.findInstance('/midi/synth/nodes/voice_mixer');
+graph.configure(mixer, { inputs: 13 });
+// Existing eight voices retain their cables; five new inputs are available.
+// Connect your own public primitives with node.output(name), node.input(name).</textarea>
+<button id="apply" disabled>Apply graph edit</button><pre id="ports"></pre></section>
+<section><h2>Layer input capture taps</h2><p>These expose the dry + synth feeds intended for the four looper layers. The legacy LoopLayer playback, quantization and transport still need to be ported.</p><div class="row" id="captures"></div><audio id="capture-audio" controls preload="none"></audio></section>
+<details><summary>Saved graph and parameter bindings</summary><pre id="graph"></pre></details>
+<details><summary>Runtime health</summary><pre id="health"></pre></details>
+<script type="module" src="/src/main-wave-author.js"></script></body></html>

@@ -1,0 +1,131 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "external",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "stereo-widener"
+      }
+    ],
+    "connections": [
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      },
+      {
+        "from": 1,
+        "outputPort": 0,
+        "to": 4,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 1.6
+      },
+      {
+        "nodeId": 4,
+        "id": 1,
+        "value": 160
+      },
+      {
+        "nodeId": 4,
+        "id": 2,
+        "value": 1
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/primitives/width/node/0",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 0,
+      "min": 0,
+      "max": 2,
+      "default": 1.6
+    },
+    {
+      "path": "/primitives/width/node/1",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 1,
+      "min": 20,
+      "max": 500,
+      "default": 160
+    },
+    {
+      "path": "/primitives/width/node/2",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 2,
+      "min": 0,
+      "max": 1,
+      "default": 1
+    }
+  ],
+  "instances": [
+    {
+      "path": "/primitives/width/node",
+      "nodeId": 4
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// Stereo widener: Mid/side width with low-frequency mono protection; use stereo noise or a stereo file.\n// Audition composition of public Rust primitives; not an instrument parity claim.\n// Examples name imports so you can trace each tool to its module.\n// Alternative: import * as manifold from '@manifold/author';\n// Then use manifold.createGraphWorkspace(), manifold.gain, etc.\n// Imports — each definition can be inspected in Manifold's primitive catalog.\nimport { createGraphWorkspace } from '@manifold/author';\nimport {\n  stereoWidener as stereoWidenerDefinition,\n} from '@manifold/author/primitives';\n\nexport default function createProject() {\n  // Interface — public paths and stable IDs preserve saved controls.\n  const controls = {\n    stereoWidener_width: {\n      \"path\": \"/primitives/width/node/0\",\n      \"label\": \"Width\",\n      \"group\": \"Stereo widener\",\n      \"min\": 0,\n      \"max\": 2,\n      \"default\": 1.6\n    },\n    stereoWidener_monoLowCutoff: {\n      \"path\": \"/primitives/width/node/1\",\n      \"label\": \"Mono low cutoff\",\n      \"group\": \"Stereo widener\",\n      \"min\": 20,\n      \"max\": 500,\n      \"default\": 160\n    },\n    stereoWidener_monoLow: {\n      \"path\": \"/primitives/width/node/2\",\n      \"label\": \"Mono low\",\n      \"group\": \"Stereo widener\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 1,\n      \"choices\": [\n        \"Off\",\n        \"On\"\n      ]\n    },\n  };\n\n  // Audio inputs and outputs — the host supplies the external audio input.\n  const graph = createGraphWorkspace().setInputSource('external');\n  const input = graph.input.output('out');\n  const output = graph.output.input('in');\n\n  // DSP instances — parameters belong to these named instances.\n  const stereoWidener = graph.add(stereoWidenerDefinition.type, {\"id\":4});\n  graph.registerInstance('/primitives/width/node', stereoWidener);\n  stereoWidener.parameter('width').expose(controls.stereoWidener_width);\n  stereoWidener.parameter('monoLowCutoff').expose(controls.stereoWidener_monoLowCutoff);\n  stereoWidener.parameter('monoLow').expose(controls.stereoWidener_monoLow);\n\n  // Composition — named ports make the audio and control paths visible.\n  graph.connect(input, stereoWidener.input('audio'));\n  graph.connect(stereoWidener.output('out'), output);\n\n  // Presentation — both renderers bind to the controls declared above.\n  const view = [\n    controls.stereoWidener_width,\n    controls.stereoWidener_monoLowCutoff,\n    controls.stereoWidener_monoLow\n  ].map(control => ({\n    id: control.path, type: 'parameter', path: control.path,\n    label: control.label, group: control.group,\n    ...(control.choices ? { choices: control.choices } : {}),\n  }));\n  function paint(ui) {\n    for (const component of view) {\n      if (component.type === 'label') ui.label(component.label, component.id);\n      else ui.parameter(component.path, component);\n    }\n  }\n\n  // The host uses this project declaration for audio, UI, save and live edits.\n  return { graph, view, paint };\n}",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "/primitives/width/node/0",
+        "type": "parameter",
+        "path": "/primitives/width/node/0",
+        "label": "Width",
+        "group": "Stereo widener"
+      },
+      {
+        "id": "/primitives/width/node/1",
+        "type": "parameter",
+        "path": "/primitives/width/node/1",
+        "label": "Mono low cutoff",
+        "group": "Stereo widener"
+      },
+      {
+        "id": "/primitives/width/node/2",
+        "type": "parameter",
+        "path": "/primitives/width/node/2",
+        "label": "Mono low",
+        "group": "Stereo widener",
+        "choices": [
+          "Off",
+          "On"
+        ]
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

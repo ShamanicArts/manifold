@@ -1,0 +1,10 @@
+{
+  "format": "manifold.plugin-export",
+  "version": 1,
+  "id": "arts.shamanic.manifold.three-tone",
+  "name": "Manifold Three Tone",
+  "vendor": "Shamanic Arts",
+  "pluginVersion": "0.1.0",
+  "category": "Instrument",
+  "package": "../../web/public/packages/primitives/ui-three-tone.manifold.json"
+}

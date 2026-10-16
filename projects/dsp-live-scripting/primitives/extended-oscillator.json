@@ -1,0 +1,445 @@
+{
+  "format": "manifold.project",
+  "schemaVersion": 1,
+  "projectId": "manifold.graph-workspace",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      },
+      {
+        "id": 4,
+        "type": "extended-oscillator",
+        "a": 220,
+        "b": 0
+      }
+    ],
+    "connections": [
+      {
+        "from": 4,
+        "outputPort": 0,
+        "to": 3,
+        "inputPort": 0
+      }
+    ],
+    "initialParameters": [
+      {
+        "nodeId": 4,
+        "id": 0,
+        "value": 1
+      },
+      {
+        "nodeId": 4,
+        "id": 1,
+        "value": 220
+      },
+      {
+        "nodeId": 4,
+        "id": 2,
+        "value": 0.16
+      },
+      {
+        "nodeId": 4,
+        "id": 3,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 4,
+        "value": 0.5
+      },
+      {
+        "nodeId": 4,
+        "id": 5,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 6,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 7,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 8,
+        "value": 1
+      },
+      {
+        "nodeId": 4,
+        "id": 9,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 10,
+        "value": 1
+      },
+      {
+        "nodeId": 4,
+        "id": 11,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 12,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 13,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 14,
+        "value": 8
+      },
+      {
+        "nodeId": 4,
+        "id": 15,
+        "value": 0
+      },
+      {
+        "nodeId": 4,
+        "id": 16,
+        "value": 0
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "path": "/primitives/extended-oscillator/node/0",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 0,
+      "min": 0,
+      "max": 7,
+      "default": 1
+    },
+    {
+      "path": "/primitives/extended-oscillator/node/1",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 1,
+      "min": 20,
+      "max": 16000,
+      "default": 220
+    },
+    {
+      "path": "/primitives/extended-oscillator/node/10",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 10,
+      "min": 1,
+      "max": 8,
+      "default": 1
+    },
+    {
+      "path": "/primitives/extended-oscillator/node/11",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 11,
+      "min": 0,
+      "max": 100,
+      "default": 0
+    },
+    {
+      "path": "/primitives/extended-oscillator/node/12",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 12,
+      "min": 0,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "path": "/primitives/extended-oscillator/node/13",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 13,
+      "min": 0,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "path": "/primitives/extended-oscillator/node/14",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 14,
+      "min": 1,
+      "max": 32,
+      "default": 8
+    },
+    {
+      "path": "/primitives/extended-oscillator/node/15",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 15,
+      "min": -1,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "path": "/primitives/extended-oscillator/node/16",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 16,
+      "min": 0,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "path": "/primitives/extended-oscillator/node/2",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 2,
+      "min": 0,
+      "max": 1,
+      "default": 0.16
+    },
+    {
+      "path": "/primitives/extended-oscillator/node/3",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 3,
+      "min": 0,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "path": "/primitives/extended-oscillator/node/4",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 4,
+      "min": 0.01,
+      "max": 0.99,
+      "default": 0.5
+    },
+    {
+      "path": "/primitives/extended-oscillator/node/5",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 5,
+      "min": 0,
+      "max": 20,
+      "default": 0
+    },
+    {
+      "path": "/primitives/extended-oscillator/node/6",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 6,
+      "min": 0,
+      "max": 3,
+      "default": 0
+    },
+    {
+      "path": "/primitives/extended-oscillator/node/7",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 7,
+      "min": -1,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "path": "/primitives/extended-oscillator/node/8",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 8,
+      "min": 0,
+      "max": 1,
+      "default": 1
+    },
+    {
+      "path": "/primitives/extended-oscillator/node/9",
+      "kind": "parameter",
+      "nodeId": 4,
+      "id": 9,
+      "min": 0,
+      "max": 1,
+      "default": 0
+    }
+  ],
+  "instances": [
+    {
+      "path": "/primitives/extended-oscillator/node",
+      "nodeId": 4
+    }
+  ],
+  "liveAuthoring": {
+    "format": "manifold.live-project",
+    "version": 1,
+    "source": "// Extended oscillator: Eight waveforms, drive, unison and additive rendering.\n// Audition composition of public Rust primitives; not an instrument parity claim.\n// Examples name imports so you can trace each tool to its module.\n// Alternative: import * as manifold from '@manifold/author';\n// Then use manifold.createGraphWorkspace(), manifold.gain, etc.\n// Imports — each definition can be inspected in Manifold's primitive catalog.\nimport { createGraphWorkspace } from '@manifold/author';\nimport {\n  extendedOscillator as extendedOscillatorDefinition,\n} from '@manifold/author/primitives';\n\nexport default function createProject() {\n  // Interface — public paths and stable IDs preserve saved controls.\n  const controls = {\n    extendedOscillator_waveform: {\n      \"path\": \"/primitives/extended-oscillator/node/0\",\n      \"label\": \"Waveform\",\n      \"group\": \"Extended oscillator\",\n      \"min\": 0,\n      \"max\": 7,\n      \"default\": 1,\n      \"choices\": [\n        \"Sine\",\n        \"Saw\",\n        \"Square\",\n        \"Triangle\",\n        \"Blend\",\n        \"Noise\",\n        \"Pulse\",\n        \"Supersaw\"\n      ]\n    },\n    extendedOscillator_frequency: {\n      \"path\": \"/primitives/extended-oscillator/node/1\",\n      \"label\": \"Frequency\",\n      \"group\": \"Extended oscillator\",\n      \"min\": 20,\n      \"max\": 16000,\n      \"default\": 220\n    },\n    extendedOscillator_level: {\n      \"path\": \"/primitives/extended-oscillator/node/2\",\n      \"label\": \"Level\",\n      \"group\": \"Extended oscillator\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0.16\n    },\n    extendedOscillator_syncEnabled: {\n      \"path\": \"/primitives/extended-oscillator/node/3\",\n      \"label\": \"Sync enabled\",\n      \"group\": \"Extended oscillator\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0,\n      \"choices\": [\n        \"Free\",\n        \"Sync\"\n      ]\n    },\n    extendedOscillator_pulseWidth: {\n      \"path\": \"/primitives/extended-oscillator/node/4\",\n      \"label\": \"Pulse width\",\n      \"group\": \"Extended oscillator\",\n      \"min\": 0.01,\n      \"max\": 0.99,\n      \"default\": 0.5\n    },\n    extendedOscillator_drive: {\n      \"path\": \"/primitives/extended-oscillator/node/5\",\n      \"label\": \"Drive\",\n      \"group\": \"Extended oscillator\",\n      \"min\": 0,\n      \"max\": 20,\n      \"default\": 0\n    },\n    extendedOscillator_driveShape: {\n      \"path\": \"/primitives/extended-oscillator/node/6\",\n      \"label\": \"Drive shape\",\n      \"group\": \"Extended oscillator\",\n      \"min\": 0,\n      \"max\": 3,\n      \"default\": 0,\n      \"choices\": [\n        \"Tanh\",\n        \"Atan\",\n        \"Clip\",\n        \"Fold\"\n      ]\n    },\n    extendedOscillator_driveBias: {\n      \"path\": \"/primitives/extended-oscillator/node/7\",\n      \"label\": \"Drive bias\",\n      \"group\": \"Extended oscillator\",\n      \"min\": -1,\n      \"max\": 1,\n      \"default\": 0\n    },\n    extendedOscillator_driveMix: {\n      \"path\": \"/primitives/extended-oscillator/node/8\",\n      \"label\": \"Drive mix\",\n      \"group\": \"Extended oscillator\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 1\n    },\n    extendedOscillator_retriggerOnLevelRise: {\n      \"path\": \"/primitives/extended-oscillator/node/9\",\n      \"label\": \"Retrigger on level rise\",\n      \"group\": \"Extended oscillator\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0,\n      \"choices\": [\n        \"Off\",\n        \"On\"\n      ]\n    },\n    extendedOscillator_unisonVoices: {\n      \"path\": \"/primitives/extended-oscillator/node/10\",\n      \"label\": \"Unison voices\",\n      \"group\": \"Extended oscillator\",\n      \"min\": 1,\n      \"max\": 8,\n      \"default\": 1\n    },\n    extendedOscillator_detuneCents: {\n      \"path\": \"/primitives/extended-oscillator/node/11\",\n      \"label\": \"Detune cents\",\n      \"group\": \"Extended oscillator\",\n      \"min\": 0,\n      \"max\": 100,\n      \"default\": 0\n    },\n    extendedOscillator_stereoSpread: {\n      \"path\": \"/primitives/extended-oscillator/node/12\",\n      \"label\": \"Stereo spread\",\n      \"group\": \"Extended oscillator\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0\n    },\n    extendedOscillator_renderMode: {\n      \"path\": \"/primitives/extended-oscillator/node/13\",\n      \"label\": \"Render mode\",\n      \"group\": \"Extended oscillator\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0,\n      \"choices\": [\n        \"Standard\",\n        \"Additive\"\n      ]\n    },\n    extendedOscillator_additivePartials: {\n      \"path\": \"/primitives/extended-oscillator/node/14\",\n      \"label\": \"Additive partials\",\n      \"group\": \"Extended oscillator\",\n      \"min\": 1,\n      \"max\": 32,\n      \"default\": 8\n    },\n    extendedOscillator_additiveTilt: {\n      \"path\": \"/primitives/extended-oscillator/node/15\",\n      \"label\": \"Additive tilt\",\n      \"group\": \"Extended oscillator\",\n      \"min\": -1,\n      \"max\": 1,\n      \"default\": 0\n    },\n    extendedOscillator_additiveDrift: {\n      \"path\": \"/primitives/extended-oscillator/node/16\",\n      \"label\": \"Additive drift\",\n      \"group\": \"Extended oscillator\",\n      \"min\": 0,\n      \"max\": 1,\n      \"default\": 0\n    },\n  };\n\n  // Audio inputs and outputs — generated sound; no audio input is needed.\n  const graph = createGraphWorkspace().setInputSource('none');\n  const output = graph.output.input('in');\n\n  // DSP instances — parameters belong to these named instances.\n  const extendedOscillator = graph.add(extendedOscillatorDefinition.type, {\"id\":4});\n  graph.registerInstance('/primitives/extended-oscillator/node', extendedOscillator);\n  extendedOscillator.parameter('waveform').expose(controls.extendedOscillator_waveform);\n  extendedOscillator.parameter('frequency').expose(controls.extendedOscillator_frequency);\n  extendedOscillator.parameter('level').expose(controls.extendedOscillator_level);\n  extendedOscillator.parameter('syncEnabled').expose(controls.extendedOscillator_syncEnabled);\n  extendedOscillator.parameter('pulseWidth').expose(controls.extendedOscillator_pulseWidth);\n  extendedOscillator.parameter('drive').expose(controls.extendedOscillator_drive);\n  extendedOscillator.parameter('driveShape').expose(controls.extendedOscillator_driveShape);\n  extendedOscillator.parameter('driveBias').expose(controls.extendedOscillator_driveBias);\n  extendedOscillator.parameter('driveMix').expose(controls.extendedOscillator_driveMix);\n  extendedOscillator.parameter('retriggerOnLevelRise').expose(controls.extendedOscillator_retriggerOnLevelRise);\n  extendedOscillator.parameter('unisonVoices').expose(controls.extendedOscillator_unisonVoices);\n  extendedOscillator.parameter('detuneCents').expose(controls.extendedOscillator_detuneCents);\n  extendedOscillator.parameter('stereoSpread').expose(controls.extendedOscillator_stereoSpread);\n  extendedOscillator.parameter('renderMode').expose(controls.extendedOscillator_renderMode);\n  extendedOscillator.parameter('additivePartials').expose(controls.extendedOscillator_additivePartials);\n  extendedOscillator.parameter('additiveTilt').expose(controls.extendedOscillator_additiveTilt);\n  extendedOscillator.parameter('additiveDrift').expose(controls.extendedOscillator_additiveDrift);\n\n  // Composition — named ports make the audio and control paths visible.\n  graph.connect(extendedOscillator.output('out'), output);\n\n  // Presentation — both renderers bind to the controls declared above.\n  const view = [\n    controls.extendedOscillator_waveform,\n    controls.extendedOscillator_frequency,\n    controls.extendedOscillator_level,\n    controls.extendedOscillator_syncEnabled,\n    controls.extendedOscillator_pulseWidth,\n    controls.extendedOscillator_drive,\n    controls.extendedOscillator_driveShape,\n    controls.extendedOscillator_driveBias,\n    controls.extendedOscillator_driveMix,\n    controls.extendedOscillator_retriggerOnLevelRise,\n    controls.extendedOscillator_unisonVoices,\n    controls.extendedOscillator_detuneCents,\n    controls.extendedOscillator_stereoSpread,\n    controls.extendedOscillator_renderMode,\n    controls.extendedOscillator_additivePartials,\n    controls.extendedOscillator_additiveTilt,\n    controls.extendedOscillator_additiveDrift\n  ].map(control => ({\n    id: control.path, type: 'parameter', path: control.path,\n    label: control.label, group: control.group,\n    ...(control.choices ? { choices: control.choices } : {}),\n  }));\n  function paint(ui) {\n    for (const component of view) {\n      if (component.type === 'label') ui.label(component.label, component.id);\n      else ui.parameter(component.path, component);\n    }\n  }\n\n  // The host uses this project declaration for audio, UI, save and live edits.\n  return { graph, view, paint };\n}",
+    "files": [],
+    "composition": {
+      "version": 1,
+      "definitions": [],
+      "nodes": [],
+      "connections": []
+    },
+    "view": [
+      {
+        "id": "/primitives/extended-oscillator/node/0",
+        "type": "parameter",
+        "path": "/primitives/extended-oscillator/node/0",
+        "label": "Waveform",
+        "group": "Extended oscillator",
+        "choices": [
+          "Sine",
+          "Saw",
+          "Square",
+          "Triangle",
+          "Blend",
+          "Noise",
+          "Pulse",
+          "Supersaw"
+        ]
+      },
+      {
+        "id": "/primitives/extended-oscillator/node/1",
+        "type": "parameter",
+        "path": "/primitives/extended-oscillator/node/1",
+        "label": "Frequency",
+        "group": "Extended oscillator"
+      },
+      {
+        "id": "/primitives/extended-oscillator/node/2",
+        "type": "parameter",
+        "path": "/primitives/extended-oscillator/node/2",
+        "label": "Level",
+        "group": "Extended oscillator"
+      },
+      {
+        "id": "/primitives/extended-oscillator/node/3",
+        "type": "parameter",
+        "path": "/primitives/extended-oscillator/node/3",
+        "label": "Sync enabled",
+        "group": "Extended oscillator",
+        "choices": [
+          "Free",
+          "Sync"
+        ]
+      },
+      {
+        "id": "/primitives/extended-oscillator/node/4",
+        "type": "parameter",
+        "path": "/primitives/extended-oscillator/node/4",
+        "label": "Pulse width",
+        "group": "Extended oscillator"
+      },
+      {
+        "id": "/primitives/extended-oscillator/node/5",
+        "type": "parameter",
+        "path": "/primitives/extended-oscillator/node/5",
+        "label": "Drive",
+        "group": "Extended oscillator"
+      },
+      {
+        "id": "/primitives/extended-oscillator/node/6",
+        "type": "parameter",
+        "path": "/primitives/extended-oscillator/node/6",
+        "label": "Drive shape",
+        "group": "Extended oscillator",
+        "choices": [
+          "Tanh",
+          "Atan",
+          "Clip",
+          "Fold"
+        ]
+      },
+      {
+        "id": "/primitives/extended-oscillator/node/7",
+        "type": "parameter",
+        "path": "/primitives/extended-oscillator/node/7",
+        "label": "Drive bias",
+        "group": "Extended oscillator"
+      },
+      {
+        "id": "/primitives/extended-oscillator/node/8",
+        "type": "parameter",
+        "path": "/primitives/extended-oscillator/node/8",
+        "label": "Drive mix",
+        "group": "Extended oscillator"
+      },
+      {
+        "id": "/primitives/extended-oscillator/node/9",
+        "type": "parameter",
+        "path": "/primitives/extended-oscillator/node/9",
+        "label": "Retrigger on level rise",
+        "group": "Extended oscillator",
+        "choices": [
+          "Off",
+          "On"
+        ]
+      },
+      {
+        "id": "/primitives/extended-oscillator/node/10",
+        "type": "parameter",
+        "path": "/primitives/extended-oscillator/node/10",
+        "label": "Unison voices",
+        "group": "Extended oscillator"
+      },
+      {
+        "id": "/primitives/extended-oscillator/node/11",
+        "type": "parameter",
+        "path": "/primitives/extended-oscillator/node/11",
+        "label": "Detune cents",
+        "group": "Extended oscillator"
+      },
+      {
+        "id": "/primitives/extended-oscillator/node/12",
+        "type": "parameter",
+        "path": "/primitives/extended-oscillator/node/12",
+        "label": "Stereo spread",
+        "group": "Extended oscillator"
+      },
+      {
+        "id": "/primitives/extended-oscillator/node/13",
+        "type": "parameter",
+        "path": "/primitives/extended-oscillator/node/13",
+        "label": "Render mode",
+        "group": "Extended oscillator",
+        "choices": [
+          "Standard",
+          "Additive"
+        ]
+      },
+      {
+        "id": "/primitives/extended-oscillator/node/14",
+        "type": "parameter",
+        "path": "/primitives/extended-oscillator/node/14",
+        "label": "Additive partials",
+        "group": "Extended oscillator"
+      },
+      {
+        "id": "/primitives/extended-oscillator/node/15",
+        "type": "parameter",
+        "path": "/primitives/extended-oscillator/node/15",
+        "label": "Additive tilt",
+        "group": "Extended oscillator"
+      },
+      {
+        "id": "/primitives/extended-oscillator/node/16",
+        "type": "parameter",
+        "path": "/primitives/extended-oscillator/node/16",
+        "label": "Additive drift",
+        "group": "Extended oscillator"
+      }
+    ],
+    "eventState": null,
+    "eventStateSchema": null
+  }
+}

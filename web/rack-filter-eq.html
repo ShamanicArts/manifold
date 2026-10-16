@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Manifold · Rack module audition</title>
+    <style>
+      :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #121318; color: #e8e9f0; }
+      body { max-width: 840px; margin: 5vh auto; padding: 0 1.5rem; }
+      h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.1; }
+      p { color: #b9bbc8; }
+      section { margin: 1.5rem 0; padding: 1.4rem; background: #1d202a; border-radius: .8rem; }
+      button { background: #6246ea; color: white; border: 0; border-radius: .5rem; padding: .7rem 1.2rem; font: inherit; margin: .2rem; cursor: pointer; }
+      button:disabled { opacity: .5; cursor: default; }
+      button.secondary { background: #333747; }
+      button[aria-pressed="true"] { outline: 2px solid #a998ff; }
+      label { display: flex; align-items: center; gap: .8rem; margin-top: 1rem; }
+      select { background: #333747; color: white; border: 0; border-radius: .4rem; padding: .4rem; font: inherit; }
+      input[type=range] { flex: 1; accent-color: #a998ff; }
+      #status { color: #9ae0bb; min-height: 1.5rem; }
+      #instances { padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: .4rem; }
+      #instances li { padding: .5rem .7rem; background: #292d3a; border-radius: .4rem; font: .8rem ui-monospace, monospace; overflow-wrap: anywhere; }
+      pre { overflow: auto; max-height: 22rem; font-size: .75rem; background: #0c0e13; padding: 1rem; border-radius: .5rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Rack modules from an authored graph</h1>
+    <p>RackModuleHost’s Oscillator, eight-voice Sample, two source buses, Blend, Filter, FX, and EQ are composed from public primitives. The project script switches cables while audio runs. External uses a 110 Hz browser test tone.</p>
+    <section>
+      <button id="start">Start audition</button>
+      <button id="oscillator" class="secondary" disabled>Oscillator</button>
+      <button id="sample" class="secondary" disabled>Sample</button>
+      <button id="filter" class="secondary" disabled>Filter</button>
+      <button id="blend" class="secondary" disabled>Blend</button>
+      <button id="fx" class="secondary" disabled>FX</button>
+      <button id="eq" class="secondary" disabled>EQ</button>
+      <button id="stop" class="secondary" disabled>Stop</button>
+      <button id="download" class="secondary">Download project</button>
+      <label for="project-open">Open Rack project <input id="project-open" type="file" accept="application/json,.json" style="max-width:19rem" /></label>
+      <label for="osc-manual-level">Oscillator manual level <input id="osc-manual-level" type="range" min="0" max="1" step="0.01" value="0" disabled><output id="osc-manual-level-value">0%</output></label>
+      <label for="osc-waveform">Oscillator waveform <select id="osc-waveform" disabled><option value="0">Sine</option><option value="1" selected>Saw</option><option value="2">Square</option><option value="3">Triangle</option><option value="4">Blend</option><option value="5">Noise</option><option value="6">Pulse</option><option value="7">Supersaw</option></select></label>
+      <label for="osc-render-mode">Oscillator render <select id="osc-render-mode" disabled><option value="0">Standard</option><option value="1">Additive</option></select></label>
+      <label for="osc-voice-pitch">Oscillator voice 1 pitch <input id="osc-voice-pitch" type="range" min="0" max="127" step="1" value="60" disabled><output id="osc-voice-pitch-value">MIDI 60</output></label>
+      <label for="osc-voice-fm">Oscillator voice 1 FM <input id="osc-voice-fm" type="range" min="-1" max="1" step="0.01" value="0" disabled><output id="osc-voice-fm-value">0 semitones</output></label>
+      <label for="osc-voice-pw">Oscillator voice 1 pulse CV <input id="osc-voice-pw" type="range" min="0" max="1" step="0.01" value="0.5" disabled><output id="osc-voice-pw-value">50%</output></label>
+      <label for="osc-voice-gate">Oscillator voice 1 gate <input id="osc-voice-gate" type="range" min="0" max="1" step="0.01" value="0" disabled><output id="osc-voice-gate-value">0%</output></label>
+      <label for="sample-gate-1">Sample voice 1 gate <input id="sample-gate-1" type="range" min="0" max="1" step="0.01" value="0" disabled><output id="sample-gate-1-value">0%</output></label>
+      <label for="sample-pitch-1">Sample voice 1 pitch <input id="sample-pitch-1" type="range" min="48" max="72" step="1" value="60" disabled><output id="sample-pitch-1-value">MIDI 60</output></label>
+      <label for="sample-gate-8">Sample voice 8 gate <input id="sample-gate-8" type="range" min="0" max="1" step="0.01" value="0" disabled><output id="sample-gate-8-value">0%</output></label>
+      <label for="sample-pitch-8">Sample voice 8 pitch <input id="sample-pitch-8" type="range" min="48" max="72" step="1" value="60" disabled><output id="sample-pitch-8-value">MIDI 60</output></label>
+      <label for="sample-mode">Sample pitch mode <select id="sample-mode" disabled><option value="0">Classic</option><option value="1">Vocoder</option><option value="2">Vocoder HQ</option></select></label>
+      <label for="sample-root">Sample root note <input id="sample-root" type="range" min="12" max="96" step="1" value="60" disabled><output id="sample-root-value">MIDI 60</output></label>
+      <button id="sample-use-detected-root" class="secondary" disabled>Use captured pitch as root</button>
+      <label for="sample-unison">Sample unison <input id="sample-unison" type="range" min="1" max="8" step="1" value="1" disabled><output id="sample-unison-value">1 voice</output></label>
+      <label for="sample-detune">Sample detune <input id="sample-detune" type="range" min="0" max="100" step="1" value="0" disabled><output id="sample-detune-value">0 cents</output></label>
+      <label for="sample-spread">Sample spread <input id="sample-spread" type="range" min="0" max="1" step="0.01" value="0" disabled><output id="sample-spread-value">0%</output></label>
+      <label for="sample-capture-window">Capture window <select id="sample-capture-window" disabled><option value="seconds:1">1 second</option><option value="seconds:2">2 seconds</option><option value="bars:0.0625">1/16 bar at 120 BPM</option><option value="bars:1">1 bar at 120 BPM</option><option value="free">Free: press to arm, press to stop</option></select></label>
+      <label for="sample-capture-source">Capture source <select id="sample-capture-source" disabled><option value="0">Main input · 110 Hz</option><option value="1">Sidechain · 220 Hz</option></select></label>
+      <div id="layer-controls" hidden aria-label="Authored looper layers"></div>
+      <p id="layer-save-note" hidden>Stop recording before downloading. Saved projects include the stopped layer takes and Sample PCM.</p>
+      <label for="sample-free-offset">Free start offset, frames <input id="sample-free-offset" type="number" min="-1440000" max="1439999" step="1" value="0" disabled style="width:8rem;background:#333747;color:white;border:0;border-radius:.4rem;padding:.4rem"><span>Negative: frames back · positive: ring cursor · zero: arm/stop</span></label>
+      <button id="sample-read-cursor" class="secondary" disabled>Read selected source cursor</button>
+      <button id="sample-capture" class="secondary" disabled>Capture window into Sample</button>
+      <p id="sample-analysis" aria-live="polite">No captured Sample analysis yet.</p>
+      <canvas id="sample-peaks" width="560" height="96" style="max-width:100%;background:#111322;border-radius:6px" aria-label="Captured Sample stereo waveform peaks"></canvas>
+      <label for="cutoff">Filter cutoff <input id="cutoff" type="range" min="80" max="8000" step="1" value="3200" disabled><output id="cutoff-value">3200 Hz</output></label>
+      <label for="fx-mix">FX mix <input id="fx-mix" type="range" min="0" max="1" step="0.01" value="0" disabled><output id="fx-mix-value">0%</output></label>
+      <label for="source-mode">Input A mode <select id="source-mode" disabled><option value="1">External</option><option value="2">Silence</option><option value="3">Sine</option><option value="4">Saw</option><option value="5">Square</option><option value="6">Pulse</option><option value="7">Noise</option></select></label>
+      <label for="source-pitch">Input A pitch <input id="source-pitch" type="range" min="24" max="84" step="1" value="60" disabled><output id="source-pitch-value">MIDI 60</output></label>
+      <label for="source-level">Input A level <input id="source-level" type="range" min="0" max="1" step="0.01" value="0.65" disabled><output id="source-level-value">65%</output></label>
+      <label for="b-mode">Input B mode <select id="b-mode" disabled><option value="1">External</option><option value="2">Silence</option><option value="3">Sine</option><option value="4">Saw</option><option value="5">Square</option><option value="6">Pulse</option><option value="7">Noise</option></select></label>
+      <label for="b-pitch">Input B pitch <input id="b-pitch" type="range" min="24" max="84" step="1" value="67" disabled><output id="b-pitch-value">MIDI 67</output></label>
+      <label for="b-level">Input B level <input id="b-level" type="range" min="0" max="1" step="0.01" value="0.5" disabled><output id="b-level-value">50%</output></label>
+      <label for="blend-amount">Blend A ↔ B <input id="blend-amount" type="range" min="0" max="1" step="0.01" value="0.5" disabled><output id="blend-amount-value">50%</output></label>
+      <label for="blend-mode">Blend mode <select id="blend-mode" disabled><option value="0">Crossfade</option><option value="1">Ring</option><option value="2">Audio FM</option><option value="3">Audio sync</option></select></label>
+      <label for="blend-mod-amount">Modulation depth <input id="blend-mod-amount" type="range" min="0" max="1" step="0.01" value="0.5" disabled><output id="blend-mod-amount-value">50%</output></label>
+      <p id="status" role="status">Ready. The Filter route is selected in the saved graph.</p>
+    </section>
+    <section><h2>Named module processors</h2><ul id="instances"></ul><h2>Portable project</h2><pre id="project"></pre></section>
+    <script type="module" src="/src/rack-filter-eq.js"></script>
+  </body>
+</html>

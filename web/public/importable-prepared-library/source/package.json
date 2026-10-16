@@ -1,0 +1,1 @@
+{"name":"manifold-generic-prepared-consumer","private":true,"type":"module","dependencies":{"@manifold/author":"file:../manifold-public-prepared-pack/manifold-author-0.1.0.tgz"}}

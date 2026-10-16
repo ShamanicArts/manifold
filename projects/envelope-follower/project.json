@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.envelope-follower",
+  "name": "Envelope follower",
+  "source": "legacy EnvelopeFollowerNode peak/RMS/hybrid meter",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 2, "type": "envelope-follower", "a": 10, "b": 120 },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 4, "hostId": "mode", "label": "Detector", "kind": "choice", "choices": ["Peak", "RMS", "Hybrid"], "default": 0 },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 0, "hostId": "attack", "label": "Attack (ms)", "kind": "float", "min": 0.01, "max": 500, "default": 10 },
+    { "id": 2, "nodeId": 2, "nodeParameterId": 1, "hostId": "release", "label": "Release (ms)", "kind": "float", "min": 0.1, "max": 5000, "default": 120 },
+    { "id": 3, "nodeId": 2, "nodeParameterId": 2, "hostId": "sensitivity", "label": "Sensitivity", "kind": "float", "min": 0.01, "max": 16, "default": 1 },
+    { "id": 4, "nodeId": 2, "nodeParameterId": 3, "hostId": "highpass", "label": "Highpass (Hz)", "kind": "float", "min": 5, "max": 4000, "default": 80 }
+  ]
+}

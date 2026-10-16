@@ -1,0 +1,158 @@
+{
+  "recordedAt": "2026-09-30T06:18:40.073Z",
+  "site": "https://wubulon.tailfac9f9.ts.net:4174/importable-loop-library",
+  "chromiumVersion": "152.0.7977.82",
+  "peak": 0.7874454259872437,
+  "takes": [
+    {
+      "nodeId": 71,
+      "frames": 20992,
+      "expectedFrames": 20992,
+      "pcmEqual": true
+    },
+    {
+      "nodeId": 72,
+      "frames": 20992,
+      "expectedFrames": 20992,
+      "pcmEqual": true
+    },
+    {
+      "nodeId": 73,
+      "frames": 20992,
+      "expectedFrames": 20992,
+      "pcmEqual": true
+    },
+    {
+      "nodeId": 170,
+      "frames": 20992,
+      "expectedFrames": 20992,
+      "pcmEqual": true
+    }
+  ],
+  "capsule": [
+    {
+      "path": "crates/manifold-core/src/graph.rs",
+      "expected": "801da94141753be6f73816fb7c3e0ae6599f2f41bf9a55e64790869a5fd4e381",
+      "actual": "801da94141753be6f73816fb7c3e0ae6599f2f41bf9a55e64790869a5fd4e381",
+      "status": 200
+    },
+    {
+      "path": "crates/manifold-core/src/loop_capture.rs",
+      "expected": "d79f37aa6ca8fe9625dcc780ab2ba095c5bdb493d9b0b976e0584a2864982290",
+      "actual": "d79f37aa6ca8fe9625dcc780ab2ba095c5bdb493d9b0b976e0584a2864982290",
+      "status": 200
+    },
+    {
+      "path": "crates/manifold-web/src/prepared_worklet.rs",
+      "expected": "abec2986d9d4eb78d881b67c5da26554fdc214b84a2ba9abe9088d39fd338759",
+      "actual": "abec2986d9d4eb78d881b67c5da26554fdc214b84a2ba9abe9088d39fd338759",
+      "status": 200
+    },
+    {
+      "path": "packages/manifold-author/prepared-runtime.js",
+      "expected": "975a52a84b7d4d7abb6596fffffad6b6626abe43a14e866b260cdd22776f779a",
+      "actual": "975a52a84b7d4d7abb6596fffffad6b6626abe43a14e866b260cdd22776f779a",
+      "status": 200
+    },
+    {
+      "path": "packages/manifold-author/prepared-compiler.js",
+      "expected": "a484dc89c4b5cabec14f534fe6190260581253cdead87b19de87a0a68acdf060",
+      "actual": "a484dc89c4b5cabec14f534fe6190260581253cdead87b19de87a0a68acdf060",
+      "status": 200
+    },
+    {
+      "path": "packages/manifold-author/prepared-processor.js",
+      "expected": "97a6cd0a67aeb3fd82aa643c22c73295d05aeabff6c02f36ca05c0d1b68458b7",
+      "actual": "97a6cd0a67aeb3fd82aa643c22c73295d05aeabff6c02f36ca05c0d1b68458b7",
+      "status": 200
+    },
+    {
+      "path": "packages/manifold-author/browser.js",
+      "expected": "fd1608e389fbd640438005c29de2e127e5663c14b99fce8ccf23635781f5fbe3",
+      "actual": "fd1608e389fbd640438005c29de2e127e5663c14b99fce8ccf23635781f5fbe3",
+      "status": 200
+    },
+    {
+      "path": "packages/manifold-author/examples/four-layer-loops.mjs",
+      "expected": "be4fd71ea0bbc411badb1bc2223721a9c0325b4aadbe617b386127ec28920e9c",
+      "actual": "be4fd71ea0bbc411badb1bc2223721a9c0325b4aadbe617b386127ec28920e9c",
+      "status": 200
+    },
+    {
+      "path": "packages/manifold-author/examples/loop-authoring.mjs",
+      "expected": "519ef75421a29852cdad67d288a2a09964842ce16ed2b07cc18868dbbc4155c1",
+      "actual": "519ef75421a29852cdad67d288a2a09964842ce16ed2b07cc18868dbbc4155c1",
+      "status": 200
+    },
+    {
+      "path": "packages/manifold-author/runtime/manifold_prepared.wasm",
+      "expected": "2da5cd90b00a027f272fe9c2f7a9c2efd97df8c853027b21c50e6bb46f04963f",
+      "actual": "2da5cd90b00a027f272fe9c2f7a9c2efd97df8c853027b21c50e6bb46f04963f",
+      "status": 200
+    },
+    {
+      "path": "web/src/prepared-loops.js",
+      "expected": "ff45d9f40e81be41ddf8b2b05cd8eea820e90630cda13470c39bee6b33a3cffe",
+      "actual": "ff45d9f40e81be41ddf8b2b05cd8eea820e90630cda13470c39bee6b33a3cffe",
+      "status": 200
+    }
+  ],
+  "recordings": [
+    {
+      "name": "edited.wav",
+      "status": 200,
+      "sha256": "dc30ba0e8554f06d56350e40ec525de4580d9fc3cb15ed3f274a04319b2387a9",
+      "frames": 73088,
+      "sampleRate": 48000,
+      "channels": 2
+    },
+    {
+      "name": "reference.wav",
+      "status": 200,
+      "sha256": "dc30ba0e8554f06d56350e40ec525de4580d9fc3cb15ed3f274a04319b2387a9",
+      "frames": 73088,
+      "sampleRate": 48000,
+      "channels": 2
+    }
+  ],
+  "interrupted": {
+    "error": "Error: Loop changed during snapshot"
+  },
+  "diagnostics": {
+    "execution": "prepared",
+    "audioBlocks": 8960,
+    "rustProcessedBlocks": 8880,
+    "publications": 3,
+    "rustProcessingFailures": 0,
+    "rustCallbackAllocations": 0,
+    "rustCallbackDeallocations": 0,
+    "lastTransferredNodes": 7,
+    "lastPublicationContextFrame": 142336,
+    "outputLatencyBlocks": 0,
+    "memoryBytes": 34078720,
+    "lastPreparationMs": 84.93999993801117,
+    "lastPublicationMs": 901.7050000429153,
+    "compilerFailed": false,
+    "processorFailed": false,
+    "eventsAdmitted": 0,
+    "eventsConsumed": 0,
+    "eventsCancelled": 0,
+    "eventsRejected": 0,
+    "eventsPending": 0,
+    "lastEventContextFrame": 0,
+    "renderQuantum": 128
+  },
+  "restoredSpeed": "1.33",
+  "players": [
+    {
+      "autoplay": false,
+      "paused": true
+    },
+    {
+      "autoplay": false,
+      "paused": true
+    }
+  ],
+  "workersAfterClose": [],
+  "pageErrors": []
+}
